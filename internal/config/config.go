@@ -12,6 +12,7 @@ type Config struct {
 	Dev           bool
 	LogLevel      string
 	AdminPassword string
+	AuthDisabled  bool
 }
 
 // Load resolves config: flags win over env, env wins over defaults.
@@ -30,6 +31,9 @@ func Load(args []string, getenv func(string) string) (Config, error) {
 		c.Dev = true
 	}
 	c.AdminPassword = getenv("CRATE_ADMIN_PASSWORD")
+	if v := getenv("CRATE_AUTH_DISABLED"); v == "1" || v == "true" {
+		c.AuthDisabled = true
+	}
 
 	fs := flag.NewFlagSet("crate", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)

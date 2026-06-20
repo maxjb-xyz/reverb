@@ -2,6 +2,7 @@ package api
 
 import (
 	"bytes"
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -80,5 +81,17 @@ func TestSetupThenProtectedAccess(t *testing.T) {
 	h.ServeHTTP(rec, req)
 	if rec.Code != http.StatusConflict {
 		t.Fatalf("second setup/admin = %d, want 409", rec.Code)
+	}
+}
+
+func TestAuthDisabledAllowsProtectedRoutes(t *testing.T) {
+	srv := testServer(t)
+	if err := srv.deps.Auth.SetAuthDisabled(context.Background(), true); err != nil {
+		t.Fatal(err)
+	}
+	rec := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/me", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("/me with auth disabled = %d, want 200", rec.Code)
 	}
 }

@@ -112,3 +112,19 @@ func (s *Service) ValidateToken(ctx context.Context, tok string) (bool, error) {
 func (s *Service) Logout(ctx context.Context, tok string) error {
 	return s.q.DeleteSession(ctx, hashToken(tok))
 }
+
+func (s *Service) IsAuthDisabled(ctx context.Context) (bool, error) {
+	v, err := s.q.GetSetting(ctx, keyAuthDisabled)
+	if err != nil {
+		return false, nil // setting absent → not disabled
+	}
+	return v == "true", nil
+}
+
+func (s *Service) SetAuthDisabled(ctx context.Context, disabled bool) error {
+	v := "false"
+	if disabled {
+		v = "true"
+	}
+	return s.q.UpsertSetting(ctx, db.UpsertSettingParams{Key: keyAuthDisabled, Value: v})
+}

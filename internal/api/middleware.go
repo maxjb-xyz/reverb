@@ -19,6 +19,10 @@ func (s *Server) tokenFromRequest(r *http.Request) string {
 
 func (s *Server) requireAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if disabled, _ := s.deps.Auth.IsAuthDisabled(r.Context()); disabled {
+			next.ServeHTTP(w, r)
+			return
+		}
 		ok, _ := s.deps.Auth.ValidateToken(r.Context(), s.tokenFromRequest(r))
 		if !ok {
 			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})

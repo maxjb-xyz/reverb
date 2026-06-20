@@ -1,6 +1,6 @@
 services:
   navidrome:
-    image: deluan/navidrome:0.53.3
+    image: deluan/navidrome:0.62.0
     ports:
       - "4533:4533"
     environment:

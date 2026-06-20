@@ -37,6 +37,10 @@ func main() {
 			_ = authSvc.SetAdminPassword(context.Background(), cfg.AdminPassword)
 		}
 	}
+	if cfg.AuthDisabled {
+		_ = authSvc.SetAuthDisabled(context.Background(), true)
+		log.Printf("WARNING: auth is DISABLED (CRATE_AUTH_DISABLED) — all routes are unauthenticated; use only on a trusted LAN")
+	}
 
 	srv := api.NewServer(api.Deps{
 		Auth:       authSvc,
