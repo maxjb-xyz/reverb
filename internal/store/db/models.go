@@ -19,6 +19,24 @@ type AdapterInstance struct {
 	UpdatedAt  int64  `json:"updated_at"`
 }
 
+type DownloadJob struct {
+	ID             string         `json:"id"`
+	DedupKey       string         `json:"dedup_key"`
+	RequestJson    string         `json:"request_json"`
+	DownloaderName string         `json:"downloader_name"`
+	Status         string         `json:"status"`
+	Progress       int64          `json:"progress"`
+	Error          string         `json:"error"`
+	OutputPath     string         `json:"output_path"`
+	LibraryTrackID sql.NullString `json:"library_track_id"`
+	Priority       int64          `json:"priority"`
+	RequestedBy    sql.NullString `json:"requested_by"`
+	Attempts       int64          `json:"attempts"`
+	CreatedAt      int64          `json:"created_at"`
+	StartedAt      sql.NullInt64  `json:"started_at"`
+	FinishedAt     sql.NullInt64  `json:"finished_at"`
+}
+
 type MatchCache struct {
 	Source         string         `json:"source"`
 	ExternalID     string         `json:"external_id"`

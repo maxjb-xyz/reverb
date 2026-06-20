@@ -46,6 +46,87 @@ func TestLibraryVersionSetAndGet(t *testing.T) {
 	}
 }
 
+func TestSetAndGetLibraryVersion(t *testing.T) {
+	st, err := Open(t.TempDir() + "/lv.db")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	if err := st.Migrate(); err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	if err := st.SetLibraryVersion(ctx, 7); err != nil {
+		t.Fatal(err)
+	}
+	v, err := st.LibraryVersion(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v != 7 {
+		t.Fatalf("library_version = %d, want 7", v)
+	}
+}
+
+func TestDownloadJobRoundTrip(t *testing.T) {
+	st, err := Open(t.TempDir() + "/dj.db")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	if err := st.Migrate(); err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	q := st.Q()
+
+	if err := q.InsertDownloadJob(ctx, db.InsertDownloadJobParams{
+		ID: "j1", DedupKey: "dk1", RequestJson: `{"title":"Song"}`, DownloaderName: "spotdl",
+		Status: "queued", Progress: 0, Error: "", OutputPath: "",
+		LibraryTrackID: sql.NullString{}, Priority: 0, RequestedBy: sql.NullString{}, Attempts: 0,
+	}); err != nil {
+		t.Fatalf("insert: %v", err)
+	}
+
+	got, err := q.GetDownloadJob(ctx, "j1")
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if got.DedupKey != "dk1" || got.Status != "queued" || got.DownloaderName != "spotdl" {
+		t.Fatalf("round trip mismatch: %+v", got)
+	}
+
+	// Dedup-join lookup finds the active (queued) job.
+	active, err := q.GetActiveDownloadJobByDedup(ctx, "dk1")
+	if err != nil {
+		t.Fatalf("active lookup: %v", err)
+	}
+	if active.ID != "j1" {
+		t.Fatalf("active = %q, want j1", active.ID)
+	}
+
+	// Move to running, then completed; finished_at must be set.
+	if err := q.UpdateDownloadJobStatus(ctx, db.UpdateDownloadJobStatusParams{
+		Status: "running", ID: "j1",
+	}); err != nil {
+		t.Fatalf("status running: %v", err)
+	}
+	if err := q.UpdateDownloadJobStatus(ctx, db.UpdateDownloadJobStatusParams{
+		Status: "completed", ID: "j1",
+	}); err != nil {
+		t.Fatalf("status completed: %v", err)
+	}
+	done, _ := q.GetDownloadJob(ctx, "j1")
+	if !done.FinishedAt.Valid || !done.StartedAt.Valid {
+		t.Fatalf("started/finished not set: %+v", done)
+	}
+
+	// A completed job is no longer "active" for dedup-join.
+	if _, err := q.GetActiveDownloadJobByDedup(ctx, "dk1"); err != sql.ErrNoRows {
+		t.Fatalf("completed job should not be active, err=%v", err)
+	}
+}
+
 func TestMatchCacheUpsertPositiveAndNegative(t *testing.T) {
 	st := openMigrated(t)
 	ctx := context.Background()
