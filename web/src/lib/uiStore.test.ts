@@ -1,0 +1,41 @@
+import { beforeEach, describe, expect, it } from 'vitest'
+import { useUI } from './uiStore'
+import type { RightPanel } from './uiStore'
+
+// Zustand stores are module singletons shared across tests, so reset the
+// single right-panel slot to a known state before each test.
+beforeEach(() => {
+  useUI.setState({ rightPanel: null as RightPanel })
+})
+
+describe('uiStore right-panel slot', () => {
+  it('starts with no panel open', () => {
+    expect(useUI.getState().rightPanel).toBe(null)
+  })
+
+  it('openPanel("queue") opens the queue', () => {
+    useUI.getState().openPanel('queue')
+    expect(useUI.getState().rightPanel).toBe('queue')
+  })
+
+  it('openPanel replaces an already-open panel (mutual exclusion)', () => {
+    useUI.getState().openPanel('queue')
+    expect(useUI.getState().rightPanel).toBe('queue')
+    useUI.getState().openPanel('downloads')
+    expect(useUI.getState().rightPanel).toBe('downloads')
+  })
+
+  it('togglePanel closes the open panel and opens from null', () => {
+    useUI.getState().openPanel('downloads')
+    useUI.getState().togglePanel('downloads')
+    expect(useUI.getState().rightPanel).toBe(null)
+    useUI.getState().togglePanel('queue')
+    expect(useUI.getState().rightPanel).toBe('queue')
+  })
+
+  it('closePanel clears the slot', () => {
+    useUI.getState().openPanel('queue')
+    useUI.getState().closePanel()
+    expect(useUI.getState().rightPanel).toBe(null)
+  })
+})
