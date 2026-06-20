@@ -444,7 +444,6 @@ func (m *Manager) runScan() {
 	if err != nil {
 		return
 	}
-	var artistIDs, albumIDs []string
 	for _, j := range jobs {
 		if j.Status != core.DownloadCompleted || j.LibraryTrackID != "" {
 			continue
@@ -452,8 +451,11 @@ func (m *Manager) runScan() {
 		if m.rematcher == nil {
 			continue
 		}
+		// Forward all job metadata so the matcher can search the library by title/artist/ISRC.
+		// An empty Title would leave the matcher with no candidate query → no match ever found.
 		res, merr := m.rematcher.Match(ctx, core.ExternalResult{
 			Source: j.Source, ExternalID: j.ExternalID, Type: core.EntityTrack,
+			Title: j.Title, Artist: j.Artist, Album: j.Album, ISRC: j.ISRC,
 		})
 		if merr != nil || res.Status != core.MatchInLibrary {
 			continue
@@ -462,10 +464,10 @@ func (m *Manager) runScan() {
 		_ = m.store.Update(ctx, j)
 		m.publishComplete(j, res.LibraryTrackID)
 	}
+	// Per-album/artist IDs on LibraryUpdatedEvent are deferred to a later milestone;
+	// the frontend does broad library invalidation on this event.
 	if m.bus != nil {
-		m.bus.Publish(events.Event{Topic: TopicLibraryUpdate, Payload: core.LibraryUpdatedEvent{
-			ArtistIDs: artistIDs, AlbumIDs: albumIDs,
-		}})
+		m.bus.Publish(events.Event{Topic: TopicLibraryUpdate, Payload: core.LibraryUpdatedEvent{}})
 	}
 }
 

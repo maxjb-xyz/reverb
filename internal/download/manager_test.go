@@ -72,14 +72,27 @@ func (s *fakeScanner) ScanStatus(context.Context) (core.ScanStatus, error) {
 }
 func (s *fakeScanner) count() int { s.mu.Lock(); defer s.mu.Unlock(); return s.scans }
 
-// fakeRematcher returns a fixed in-library match.
-type fakeRematcher struct{ trackID string }
+// fakeRematcher returns a fixed in-library match and records the last ExternalResult it saw.
+type fakeRematcher struct {
+	trackID string
+	mu      sync.Mutex
+	lastReq core.ExternalResult
+}
 
-func (r fakeRematcher) Match(context.Context, core.ExternalResult) (core.MatchResult, error) {
+func (r *fakeRematcher) Match(_ context.Context, ext core.ExternalResult) (core.MatchResult, error) {
+	r.mu.Lock()
+	r.lastReq = ext
+	r.mu.Unlock()
 	if r.trackID == "" {
 		return core.MatchResult{Status: core.MatchNotInLibrary, Method: core.MatchNone}, nil
 	}
 	return core.MatchResult{Status: core.MatchInLibrary, LibraryTrackID: r.trackID, Method: core.MatchFuzzy, Confidence: 0.9}, nil
+}
+
+func (r *fakeRematcher) getLastReq() core.ExternalResult {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.lastReq
 }
 
 // fakeVersion is an in-memory VersionBumper.
@@ -172,7 +185,7 @@ func testManager(t *testing.T, downloaders []Downloader, store JobStore, rematch
 	bus := events.New()
 	scanner := &fakeScanner{}
 	if rematch == nil {
-		rematch = fakeRematcher{trackID: "t1"}
+		rematch = &fakeRematcher{trackID: "t1"}
 	}
 	if ver == nil {
 		ver = &fakeVersion{v: 1}
@@ -354,7 +367,7 @@ func TestCompletionDebouncesIntoOneScan(t *testing.T) {
 	ver := &fakeVersion{v: 1}
 	bus := events.New()
 	m := NewManager(Config{Workers: 3, DebounceWindow: 5 * time.Second, ScanPollEvery: time.Millisecond, ScanPollMax: time.Second},
-		[]Downloader{dl}, store, bus, scanner, fakeRematcher{trackID: "t1"}, ver, clk)
+		[]Downloader{dl}, store, bus, scanner, &fakeRematcher{trackID: "t1"}, ver, clk)
 	t.Cleanup(m.Stop)
 	m.Start()
 
@@ -408,8 +421,9 @@ func TestCompletionSetsLibraryTrackIDAndPublishesComplete(t *testing.T) {
 	dl := &fakeDL{name: "dl", canDownload: true}
 	store := newMemStore()
 	bus := events.New()
+	rematcher := &fakeRematcher{trackID: "lib-track-9"}
 	m := NewManager(Config{Workers: 1, DebounceWindow: 5 * time.Second, ScanPollEvery: time.Millisecond, ScanPollMax: time.Second},
-		[]Downloader{dl}, store, bus, &fakeScanner{}, fakeRematcher{trackID: "lib-track-9"}, &fakeVersion{v: 1}, clk)
+		[]Downloader{dl}, store, bus, &fakeScanner{}, rematcher, &fakeVersion{v: 1}, clk)
 	t.Cleanup(m.Stop)
 	m.Start()
 
@@ -454,6 +468,23 @@ func TestCompletionSetsLibraryTrackIDAndPublishesComplete(t *testing.T) {
 	// runScan executes synchronously inside Advance, so by the time Advance returns
 	// the re-match has run, the store is updated, and publishComplete has been called.
 	clk.Advance(5 * time.Second)
+
+	// Regression test (Fix 1): assert the rematcher received real metadata, not an empty
+	// ExternalResult. An empty Title means the candidate query has nothing to search
+	// → MatchNotInLibrary → library_track_id never set → the loop never closes.
+	lastReq := rematcher.getLastReq()
+	if lastReq.Title == "" {
+		t.Fatal("re-match ExternalResult.Title is empty: manager passed no metadata to the rematcher (regression)")
+	}
+	if lastReq.Artist == "" {
+		t.Fatal("re-match ExternalResult.Artist is empty: manager passed no metadata to the rematcher (regression)")
+	}
+	if lastReq.Title != "T" {
+		t.Fatalf("re-match ExternalResult.Title: got %q want %q", lastReq.Title, "T")
+	}
+	if lastReq.Artist != "A" {
+		t.Fatalf("re-match ExternalResult.Artist: got %q want %q", lastReq.Artist, "A")
+	}
 
 	// Assert the store reflects the re-matched library_track_id.
 	cur, _, _ := store.Get(context.Background(), job.ID)

@@ -61,6 +61,8 @@ export function useRealtime(makeSocket?: (url: string) => WebSocketLike): void {
           // After applying, read the job to see if it was play-when-ready.
           const job = useDownloads.getState().jobs[ev.jobId]
           const trackId = ev.libraryTrackId || job?.libraryTrackId || ''
+          // playWhenReady auto-play: intentional forward-compat seam for M3; no UI
+          // affordance sets playWhenReady yet — M4 may add a "download & play" control.
           if (job?.playWhenReady && trackId) {
             playTrackList(
               [trackFromJob(trackId, { title: job.title, album: job.album, artist: job.artist, isrc: job.isrc })],

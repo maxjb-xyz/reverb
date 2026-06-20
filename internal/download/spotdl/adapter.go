@@ -88,7 +88,9 @@ func (a *Adapter) CanDownload(ctx context.Context, req core.DownloadRequest) (bo
 // the scan picks it up — the exact filename is spotDL's concern).
 func (a *Adapter) Start(ctx context.Context, req core.DownloadRequest, onProgress func(int)) (string, error) {
 	query := strings.TrimSpace(req.Artist + " - " + req.Title)
-	args := []string{"download", query, "--output", a.outputDir}
+	// "--" ensures spotDL treats the query as a positional argument, not a flag,
+	// even if it starts with "-" (e.g. a title like "- Something").
+	args := []string{"download", "--", query, "--output", a.outputDir}
 
 	sawProgress := false
 	rerr := a.runner.Run(ctx, a.binary, args, func(line string) {
