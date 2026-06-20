@@ -4,7 +4,7 @@ gen:
 	@if command -v sqlc >/dev/null 2>&1; then sqlc generate; else go run github.com/sqlc-dev/sqlc/cmd/sqlc@v1.27.0 generate; fi
 
 test:
-	go test ./...
+	go test ./cmd/... ./internal/...
 	cd web && npm run test
 
 web:
