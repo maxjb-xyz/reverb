@@ -292,6 +292,224 @@ func TestConcurrentEnqueueSameKeyOneJob(t *testing.T) {
 	}
 }
 
+// fakeTimer is a scheduled AfterFunc the fakeClock controls.
+type fakeTimer struct {
+	at      time.Time
+	fn      func()
+	stopped bool
+}
+
+type fakeClock struct {
+	mu  sync.Mutex
+	now time.Time
+	fns []*fakeTimer
+}
+
+func newFakeClock() *fakeClock { return &fakeClock{now: time.Unix(1_700_000_000, 0)} }
+
+func (c *fakeClock) Now() time.Time {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.now
+}
+
+func (c *fakeClock) AfterFunc(d time.Duration, f func()) func() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	t := &fakeTimer{at: c.now.Add(d), fn: f}
+	c.fns = append(c.fns, t)
+	return func() bool {
+		c.mu.Lock()
+		defer c.mu.Unlock()
+		if t.stopped {
+			return false
+		}
+		t.stopped = true
+		return true
+	}
+}
+
+// Advance moves time forward and fires all timers now due (in order).
+func (c *fakeClock) Advance(d time.Duration) {
+	c.mu.Lock()
+	c.now = c.now.Add(d)
+	var due []*fakeTimer
+	for _, t := range c.fns {
+		if !t.stopped && !t.at.After(c.now) {
+			t.stopped = true
+			due = append(due, t)
+		}
+	}
+	c.mu.Unlock()
+	for _, t := range due {
+		t.fn()
+	}
+}
+
+func TestCompletionDebouncesIntoOneScan(t *testing.T) {
+	clk := newFakeClock()
+	dl := &fakeDL{name: "dl", canDownload: true}
+	store := newMemStore()
+	scanner := &fakeScanner{}
+	ver := &fakeVersion{v: 1}
+	bus := events.New()
+	m := NewManager(Config{Workers: 3, DebounceWindow: 5 * time.Second, ScanPollEvery: time.Millisecond, ScanPollMax: time.Second},
+		[]Downloader{dl}, store, bus, scanner, fakeRematcher{trackID: "t1"}, ver, clk)
+	t.Cleanup(m.Stop)
+	m.Start()
+
+	// Enqueue several distinct jobs; each completes quickly (no block).
+	for i := 0; i < 4; i++ {
+		_, err := m.Enqueue(context.Background(), core.DownloadRequest{
+			Source: "spotify", ExternalID: string(rune('a' + i)), Artist: "A", Title: "T" + string(rune('a'+i)), Album: "Al",
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Wait for all 4 downloads to finish (they schedule debounced scans).
+	deadline := time.After(2 * time.Second)
+	for {
+		jobs, _ := store.List(context.Background())
+		done := 0
+		for _, j := range jobs {
+			if j.Status == core.DownloadCompleted || j.Status == core.DownloadFailed {
+				done++
+			}
+		}
+		if done == 4 {
+			break
+		}
+		select {
+		case <-deadline:
+			t.Fatalf("downloads did not complete (done=%d)", done)
+		default:
+			time.Sleep(time.Millisecond)
+		}
+	}
+
+	if scanner.count() != 0 {
+		t.Fatalf("scan must NOT fire before the debounce window elapses, got %d", scanner.count())
+	}
+	// Advance past the window: the coalesced completions trigger exactly ONE scan.
+	clk.Advance(5 * time.Second)
+	// The scan + poll + rematch + version bump runs synchronously in the timer fn.
+	if scanner.count() != 1 {
+		t.Fatalf("expected exactly 1 coalesced StartScan, got %d", scanner.count())
+	}
+	if ver.get() != 2 {
+		t.Fatalf("library_version must bump from 1 to 2 on scan completion, got %d", ver.get())
+	}
+}
+
+func TestCompletionSetsLibraryTrackIDAndPublishesComplete(t *testing.T) {
+	clk := newFakeClock()
+	dl := &fakeDL{name: "dl", canDownload: true}
+	store := newMemStore()
+	bus := events.New()
+	m := NewManager(Config{Workers: 1, DebounceWindow: 5 * time.Second, ScanPollEvery: time.Millisecond, ScanPollMax: time.Second},
+		[]Downloader{dl}, store, bus, &fakeScanner{}, fakeRematcher{trackID: "lib-track-9"}, &fakeVersion{v: 1}, clk)
+	t.Cleanup(m.Stop)
+	m.Start()
+
+	// Subscribe to the complete topic.
+	ch, unsub := bus.Subscribe(TopicComplete)
+	defer unsub()
+
+	job, err := m.Enqueue(context.Background(), core.DownloadRequest{Source: "spotify", ExternalID: "e1", Artist: "A", Title: "T", Album: "Al"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Drain progress/complete events; wait until the job is completed in the store.
+	go func() {
+		for range ch {
+		}
+	}()
+	deadline := time.After(2 * time.Second)
+	for {
+		cur, _, _ := store.Get(context.Background(), job.ID)
+		if cur.Status == core.DownloadCompleted {
+			break
+		}
+		select {
+		case <-deadline:
+			t.Fatal("job never completed")
+		default:
+			time.Sleep(time.Millisecond)
+		}
+	}
+	clk.Advance(5 * time.Second) // fire the debounced scan → re-match → set library_track_id
+
+	cur, _, _ := store.Get(context.Background(), job.ID)
+	if cur.LibraryTrackID != "lib-track-9" {
+		t.Fatalf("library_track_id not set after re-match, got %q", cur.LibraryTrackID)
+	}
+}
+
+func TestCancelInFlight(t *testing.T) {
+	block := make(chan struct{})
+	defer close(block)
+	dl := &fakeDL{name: "dl", canDownload: true, block: block}
+	store := newMemStore()
+	m, _ := testManager(t, []Downloader{dl}, store, nil, nil, nil)
+
+	job, err := m.Enqueue(context.Background(), core.DownloadRequest{Source: "s", ExternalID: "e1", Artist: "A", Title: "T", Album: "Al"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Wait for in-flight.
+	deadline := time.After(2 * time.Second)
+	for dl.starts() == 0 {
+		select {
+		case <-deadline:
+			t.Fatal("never started")
+		default:
+			time.Sleep(time.Millisecond)
+		}
+	}
+	if err := m.Cancel(context.Background(), job.ID); err != nil {
+		t.Fatal(err)
+	}
+	// The job must reach canceled status.
+	for {
+		cur, _, _ := store.Get(context.Background(), job.ID)
+		if cur.Status == core.DownloadCanceled {
+			break
+		}
+		select {
+		case <-deadline:
+			t.Fatalf("job not canceled")
+		default:
+			time.Sleep(time.Millisecond)
+		}
+	}
+}
+
+func TestRetryResetsFailedJob(t *testing.T) {
+	store := newMemStore()
+	// Seed a failed job directly.
+	failed := core.DownloadJob{ID: "j1", DedupKey: "dk", Status: core.DownloadFailed, DownloaderName: "dl", Attempts: 1, Source: "s", ExternalID: "e1"}
+	_ = store.Insert(context.Background(), failed, core.DownloadRequest{Source: "s", ExternalID: "e1", Artist: "A", Title: "T", Album: "Al"})
+
+	dl := &fakeDL{name: "dl", canDownload: true}
+	m, _ := testManager(t, []Downloader{dl}, store, nil, nil, nil)
+	// Rehydrate the request map so the worker can run the retried job.
+	m.SeedRequest("j1", core.DownloadRequest{Source: "s", ExternalID: "e1", Artist: "A", Title: "T", Album: "Al"})
+
+	j, err := m.Retry(context.Background(), "j1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if j.Status != core.DownloadQueued {
+		t.Fatalf("retry should set queued, got %q", j.Status)
+	}
+	if j.Attempts != 2 {
+		t.Fatalf("retry should bump attempts to 2, got %d", j.Attempts)
+	}
+}
+
 func TestFailedDownloadPublishesFailedEvent(t *testing.T) {
 	dlErr := errors.New("network timeout")
 	dl := &fakeDL{name: "dl", canDownload: true, errOnStart: dlErr}

@@ -264,7 +264,7 @@ func (m *Manager) publishEvent(topic string, job core.DownloadJob, errMsg string
 	}})
 }
 
-// --- minimal worker plumbing (expanded in Task 6) ---
+// --- worker plumbing ---
 
 func (m *Manager) worker() {
 	defer m.wg.Done()
@@ -278,9 +278,6 @@ func (m *Manager) worker() {
 	}
 }
 
-// process runs one job to a terminal state. Full body (progress, completion,
-// re-match, debounce) is implemented in Task 6; part 1 ships the happy path so
-// the dedup-join concurrency test exercises a real in-flight download.
 func (m *Manager) process(id string) {
 	ctx := context.Background()
 	job, ok, err := m.store.Get(ctx, id)
@@ -288,14 +285,24 @@ func (m *Manager) process(id string) {
 		return
 	}
 	m.mu.Lock()
-	req := m.reqs[id]
+	req, haveReq := m.reqs[id]
+	m.mu.Unlock()
+	// Fall back to the request rehydrated onto the job from request_json (durable
+	// across restart) when the in-memory map has nothing (e.g. a retried/loaded job).
+	if !haveReq || req.ExternalID == "" {
+		req = core.DownloadRequest{
+			Source: job.Source, ExternalID: job.ExternalID, Artist: job.Artist,
+			Title: job.Title, Album: job.Album, ISRC: job.ISRC,
+			Downloader: job.DownloaderName, PlayWhenReady: job.PlayWhenReady,
+		}
+	}
+	m.mu.Lock()
 	jctx, cancel := context.WithCancel(ctx)
 	m.cancels[id] = cancel
 	m.mu.Unlock()
 	defer func() {
 		m.mu.Lock()
 		delete(m.cancels, id)
-		delete(m.reqs, id)
 		m.mu.Unlock()
 		cancel()
 	}()
@@ -308,14 +315,25 @@ func (m *Manager) process(id string) {
 		}
 	}
 	if dl == nil {
+		cur, _, _ := m.store.Get(ctx, id)
+		cur.Status = core.DownloadFailed
+		cur.Error = "downloader not registered"
+		_ = m.store.Update(ctx, cur)
+		m.publishEvent(TopicFailed, cur, cur.Error)
+		return
+	}
+
+	// If the job was canceled before the worker picked it up, do not start.
+	if job.Status == core.DownloadCanceled {
 		return
 	}
 
 	job.Status = core.DownloadRunning
+	job.StartedAt = m.clock.Now().Unix()
 	_ = m.store.Update(ctx, job)
 	m.publishEvent(TopicProgress, job, "")
 
-	_, serr := dl.Start(jctx, req, func(p int) {
+	outPath, serr := dl.Start(jctx, req, func(p int) {
 		m.mu.Lock()
 		cur, _, _ := m.store.Get(ctx, id)
 		cur.Progress = p
@@ -323,15 +341,200 @@ func (m *Manager) process(id string) {
 		m.mu.Unlock()
 		m.publishEvent(TopicProgress, cur, "")
 	})
+
 	cur, _, _ := m.store.Get(ctx, id)
 	if serr != nil {
+		// A canceled ctx => canceled status; any other error => failed.
+		if jctx.Err() == context.Canceled {
+			cur.Status = core.DownloadCanceled
+			cur.FinishedAt = m.clock.Now().Unix()
+			_ = m.store.Update(ctx, cur)
+			m.publishEvent(TopicFailed, cur, "canceled")
+			return
+		}
 		cur.Status = core.DownloadFailed
+		cur.Error = serr.Error()
+		cur.FinishedAt = m.clock.Now().Unix()
 		_ = m.store.Update(ctx, cur)
 		m.publishEvent(TopicFailed, cur, serr.Error())
 		return
 	}
+
 	cur.Status = core.DownloadCompleted
 	cur.Progress = 100
+	cur.OutputPath = outPath
+	cur.FinishedAt = m.clock.Now().Unix()
 	_ = m.store.Update(ctx, cur)
 	m.publishEvent(TopicComplete, cur, "")
+
+	// Clear the rehydrated request now the download is done.
+	m.mu.Lock()
+	delete(m.reqs, id)
+	m.mu.Unlock()
+
+	// Coalesce this completion into the debounced scan window.
+	m.scheduleScan(id)
+}
+
+// scheduleScan (re)arms the debounce timer. Multiple completions within the
+// window collapse into ONE scan. Uses the injectable clock so tests advance time.
+func (m *Manager) scheduleScan(jobID string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.pending = true
+	if m.debounce != nil {
+		m.debounce() // cancel the previous timer; we re-arm to extend the window
+	}
+	m.debounce = m.clock.AfterFunc(m.cfg.DebounceWindow, func() {
+		m.runScan()
+	})
+}
+
+// runScan performs the coalesced library refresh: StartScan → poll → re-match all
+// recently-completed jobs → set library_track_id → bump library_version →
+// publish library.updated + per-job download.complete (with artist/album IDs).
+func (m *Manager) runScan() {
+	m.mu.Lock()
+	if !m.pending {
+		m.mu.Unlock()
+		return
+	}
+	m.pending = false
+	m.debounce = nil
+	m.mu.Unlock()
+
+	ctx := context.Background()
+	if m.scanner == nil {
+		return
+	}
+	if err := m.scanner.StartScan(ctx); err != nil {
+		return
+	}
+	// Poll ScanStatus until idle or the poll budget elapses.
+	deadline := m.clock.Now().Add(m.cfg.ScanPollMax)
+	for {
+		st, err := m.scanner.ScanStatus(ctx)
+		if err != nil || !st.Scanning {
+			break
+		}
+		if !m.clock.Now().Before(deadline) {
+			break
+		}
+		time.Sleep(m.cfg.ScanPollEvery)
+	}
+
+	// Bump library_version FIRST so re-matches recompute against fresh data
+	// (invalidates match_cache rows whose library_version is now stale).
+	if m.version != nil {
+		if cur, err := m.version.LibraryVersion(ctx); err == nil {
+			_ = m.version.SetLibraryVersion(ctx, cur+1)
+		}
+	}
+
+	// Re-match every completed job that has no library_track_id yet.
+	jobs, err := m.store.List(ctx)
+	if err != nil {
+		return
+	}
+	var artistIDs, albumIDs []string
+	for _, j := range jobs {
+		if j.Status != core.DownloadCompleted || j.LibraryTrackID != "" {
+			continue
+		}
+		if m.rematcher == nil {
+			continue
+		}
+		res, merr := m.rematcher.Match(ctx, core.ExternalResult{
+			Source: j.Source, ExternalID: j.ExternalID, Type: core.EntityTrack,
+		})
+		if merr != nil || res.Status != core.MatchInLibrary {
+			continue
+		}
+		j.LibraryTrackID = res.LibraryTrackID
+		_ = m.store.Update(ctx, j)
+		m.publishComplete(j, res.LibraryTrackID)
+	}
+	if m.bus != nil {
+		m.bus.Publish(events.Event{Topic: TopicLibraryUpdate, Payload: core.LibraryUpdatedEvent{
+			ArtistIDs: artistIDs, AlbumIDs: albumIDs,
+		}})
+	}
+}
+
+// publishComplete emits a final download.complete carrying the library_track_id.
+// artistId/albumId are left empty in MVP (the re-matcher returns only the track
+// id); the client invalidates by libraryTrackId + does a scoped library refetch.
+func (m *Manager) publishComplete(job core.DownloadJob, libraryTrackID string) {
+	if m.bus == nil {
+		return
+	}
+	m.bus.Publish(events.Event{Topic: TopicComplete, Payload: core.DownloadEvent{
+		JobID: job.ID, DedupKey: job.DedupKey, Status: core.DownloadCompleted, Progress: 100,
+		Source: job.Source, ExternalID: job.ExternalID, LibraryTrackID: libraryTrackID,
+	}})
+}
+
+// Cancel aborts an in-flight or queued job. An in-flight exec is killed via its
+// context; a queued job is marked canceled so the worker skips it.
+func (m *Manager) Cancel(ctx context.Context, jobID string) error {
+	m.mu.Lock()
+	cancel, inFlight := m.cancels[jobID]
+	m.mu.Unlock()
+	if inFlight {
+		cancel() // kills the in-flight Start; process() marks it canceled
+		return nil
+	}
+	job, ok, err := m.store.Get(ctx, jobID)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return fmt.Errorf("job %q not found", jobID)
+	}
+	if job.Status == core.DownloadQueued {
+		job.Status = core.DownloadCanceled
+		job.FinishedAt = m.clock.Now().Unix()
+		if err := m.store.Update(ctx, job); err != nil {
+			return err
+		}
+		m.publishEvent(TopicFailed, job, "canceled")
+	}
+	return nil
+}
+
+// Retry resets a failed/canceled job to queued (attempts++) and re-enqueues it.
+func (m *Manager) Retry(ctx context.Context, jobID string) (core.DownloadJob, error) {
+	job, ok, err := m.store.Get(ctx, jobID)
+	if err != nil {
+		return core.DownloadJob{}, err
+	}
+	if !ok {
+		return core.DownloadJob{}, fmt.Errorf("job %q not found", jobID)
+	}
+	if job.Status != core.DownloadFailed && job.Status != core.DownloadCanceled {
+		return job, nil // nothing to retry
+	}
+	job.Status = core.DownloadQueued
+	job.Progress = 0
+	job.Error = ""
+	job.Attempts++
+	job.FinishedAt = 0
+	if err := m.store.Update(ctx, job); err != nil {
+		return core.DownloadJob{}, err
+	}
+	m.publishEvent(TopicQueued, job, "")
+	select {
+	case m.queue <- job.ID:
+	default:
+	}
+	return job, nil
+}
+
+// SeedRequest rehydrates the originating request for a job (used after restart or
+// to retry a job whose in-memory request was cleared on completion). The
+// composition root rehydrates queued jobs from request_json at startup.
+func (m *Manager) SeedRequest(jobID string, req core.DownloadRequest) {
+	m.mu.Lock()
+	m.reqs[jobID] = req
+	m.mu.Unlock()
 }
