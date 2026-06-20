@@ -7,14 +7,17 @@ export interface SourceStatus {
   status: EnvelopeStatus
 }
 
+export type SearchStatus = 'idle' | 'streaming' | 'done'
+
 export interface EverywhereState {
   tracks: ExternalResult[]
   albums: ExternalResult[]
   artists: ExternalResult[]
   sources: SourceStatus[]
+  status: SearchStatus
 }
 
-export const emptyEverywhere: EverywhereState = { tracks: [], albums: [], artists: [], sources: [] }
+export const emptyEverywhere: EverywhereState = { tracks: [], albums: [], artists: [], sources: [], status: 'idle' }
 
 // normalize mirrors the backend matching.Normalize closely enough for client-side
 // dedup: lowercase, strip feat groups, &→and, drop non-alphanumerics, collapse ws.
@@ -59,15 +62,24 @@ export function applyEnvelope(state: EverywhereState, env: SearchEnvelope): Ever
     albums: appendSection(state.albums, incAlbums),
     artists: appendSection(state.artists, incArtists),
     sources,
+    status: state.status, // envelope does not change streaming flag
   }
 }
 
-type Action = { type: 'reset' } | { type: 'envelope'; env: SearchEnvelope }
+type Action =
+  | { type: 'reset' }
+  | { type: 'startSearch' }
+  | { type: 'finishSearch' }
+  | { type: 'envelope'; env: SearchEnvelope }
 
 function reducer(state: EverywhereState, action: Action): EverywhereState {
   switch (action.type) {
     case 'reset':
       return emptyEverywhere
+    case 'startSearch':
+      return { ...emptyEverywhere, status: 'streaming' }
+    case 'finishSearch':
+      return { ...state, status: 'done' }
     case 'envelope':
       return applyEnvelope(state, action.env)
   }
@@ -82,7 +94,11 @@ export function useEverywhere(q: string, type: 'track' | 'album' | 'artist', ena
   useEffect(() => {
     dispatch({ type: 'reset' })
     if (!enabled || q.trim() === '') return
-    const stream = new SearchStream(q, type, { onEnvelope: (env) => dispatch({ type: 'envelope', env }) })
+    dispatch({ type: 'startSearch' })
+    const stream = new SearchStream(q, type, {
+      onEnvelope: (env) => dispatch({ type: 'envelope', env }),
+      onError: () => dispatch({ type: 'finishSearch' }),
+    })
     return () => stream.close()
   }, [q, type, enabled])
 
