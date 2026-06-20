@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 
 	"github.com/maximusjb/crate/internal/core"
 )
@@ -24,6 +25,10 @@ func (s *Server) handleEverywhere(w http.ResponseWriter, r *http.Request) {
 	}
 
 	q := r.URL.Query().Get("q")
+	if strings.TrimSpace(q) == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "q is required"})
+		return
+	}
 	var et core.EntityType
 	switch r.URL.Query().Get("type") {
 	case "album":

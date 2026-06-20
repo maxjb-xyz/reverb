@@ -127,3 +127,18 @@ func TestEverywhereNilAggregatorReturns503(t *testing.T) {
 		t.Fatalf("status = %d, want 503", rec.Code)
 	}
 }
+
+func TestEverywhereEmptyQueryReturns400(t *testing.T) {
+	srv, cookie := searchTestServer(t, fakeAgg{})
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/search/everywhere?q=", nil)
+	req.AddCookie(cookie)
+	srv.Handler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", rec.Code)
+	}
+	if ct := rec.Header().Get("Content-Type"); strings.HasPrefix(ct, "text/event-stream") {
+		t.Fatalf("content-type = %q, should not be an SSE stream", ct)
+	}
+}
