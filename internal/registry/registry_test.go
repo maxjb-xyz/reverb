@@ -35,9 +35,24 @@ func TestRegisterCreateNames(t *testing.T) {
 	if _, err := reg.Create("missing"); err == nil {
 		t.Fatal("expected error for unknown adapter")
 	}
+	if err := p.Init(nil); err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+	if fa, ok := p.(*fakeAdapter); !ok || !fa.initialized {
+		t.Fatal("Init did not set initialized on the adapter")
+	}
 }
 
 func TestDescribeCapabilities(t *testing.T) {
+	capMu.Lock()
+	saved := capProbes
+	capProbes = map[string]func(Plugin) bool{}
+	capMu.Unlock()
+	t.Cleanup(func() {
+		capMu.Lock()
+		capProbes = saved
+		capMu.Unlock()
+	})
 	RegisterCapability("discography", func(p Plugin) bool {
 		_, ok := p.(discographyProvider)
 		return ok
