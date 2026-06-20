@@ -1,0 +1,11 @@
+/data/
+/web/dist/
+/web/node_modules/
+*.db
+/.env
+/crate
+/.superpowers/
+/internal/api/dist/
+/dev/navidrome/
+dev/music/*
+!dev/music/.gitkeep

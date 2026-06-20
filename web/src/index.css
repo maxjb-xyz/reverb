@@ -1,0 +1,11 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* default accent: red #F0354B as space-separated RGB channels */
+  --color-accent: 240 53 75;
+}
+
+html, body, #root { height: 100%; }
+body { @apply bg-base text-neutral-200; margin: 0; }
