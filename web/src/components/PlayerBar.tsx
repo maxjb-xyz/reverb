@@ -176,9 +176,8 @@ export function PlayerBar() {
         </button>
         <button
           type="button"
-          disabled
-          title="Downloads (coming in M3)"
-          className="cursor-not-allowed rounded px-2 py-1 text-sm text-neutral-600"
+          onClick={() => togglePanel('downloads')}
+          className={`rounded px-2 py-1 text-sm ${rightPanel === 'downloads' ? 'text-accent' : 'text-neutral-300 hover:text-white'}`}
         >
           Downloads
         </button>
