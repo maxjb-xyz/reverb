@@ -8,11 +8,20 @@ import (
 
 	"github.com/maximusjb/crate/internal/api"
 	"github.com/maximusjb/crate/internal/config"
+	"github.com/maximusjb/crate/internal/store"
 )
 
 func main() {
 	cfg, err := config.Load(os.Args[1:], os.Getenv)
 	if err != nil {
+		log.Fatal(err)
+	}
+	st, err := store.Open(cfg.DBPath)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer st.Close()
+	if err := st.Migrate(); err != nil {
 		log.Fatal(err)
 	}
 	srv := api.NewServer(api.Deps{})
