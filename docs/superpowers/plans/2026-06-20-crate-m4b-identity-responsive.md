@@ -1,6 +1,6 @@
 # Crate M4b — Identity + Responsive Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking. Each task is a self-contained unit: a fresh implementer with ZERO prior context can complete it from the file paths, interfaces, and complete code given here. Tasks are ordered pure palette/contrast helpers (TDD, no worker) → the Web Worker wrapper → an injectable palette service → the `useAlbumPalette` hook (gated on `dynamic_background`) → AppShell dynamic background → PlayerBar dominant-color tint with computed-contrast text → responsive AppShell layout (desktop unchanged) → mobile bottom tab nav → mobile mini-player + fullscreen now-playing overlay → right panels as full-screen sheets on mobile → final smoke (full `npm run test` + `npm run build`).
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking. Each task is a self-contained unit: a fresh implementer with ZERO prior context can complete it from the file paths, interfaces, and complete code given here. Tasks are ordered pure palette/contrast helpers (TDD, no worker) → the Web Worker wrapper → an injectable palette service → the `useAlbumPalette` hook (gated on `dynamic_background`) → AppShell dynamic background → PlayerBar dominant-color tint with computed-contrast text → mobile bottom tab nav → mobile mini-player + fullscreen now-playing overlay → responsive AppShell layout (desktop unchanged, imports the mobile components built in the preceding two tasks) → right panels as full-screen sheets on mobile → final smoke (full `npm run test` + `npm run build`).
 
 **Goal:** Give Crate its visual signature and make it mobile-ready, FRONTEND-ONLY. (1) Extract the dominant color from the currently-playing track's already-loaded cover in a **Web Worker** (CPU off the main thread), cache it per cover URL, and expose it through a `useAlbumPalette(coverUrl)` hook. (2) When the `dynamic_background` setting is on (default), the AppShell paints a **subtle ambient background gradient** derived from that color (shifting on track change), and the **PlayerBar fills with the album's dominant color as a solid fill** with **computed-contrast text** (light/dark + optional scrim) — never blur-over-art; glassmorphism only on overlay panels. When the setting is off (or nothing is playing) the app falls back to the static dark base. (3) Make the **AppShell responsive**: desktop (≥md) keeps sidebar + bottom player + slide-over right panels exactly as today; mobile (<md) renders a **bottom tab nav** (Search / Library / Settings + Downloads), a **mini player** above the tabs that **expands to a fullscreen now-playing overlay** (iOS-Music style, transport + seek + cover + dynamic bg), and the **right panels render as full-screen sheets** instead of side slide-overs. Routes are identical; only the chrome swaps via Tailwind breakpoints + one fullscreen-open boolean. Tap targets ≥44px on mobile controls.
 
@@ -16,7 +16,7 @@
 - **Responsive:** desktop (≥md) unchanged; mobile (<md) bottom tab nav incl Search tab + fullscreen-expandable mini player + sheet panels + ≥44px tap targets; routes identical, chrome swaps via Tailwind breakpoints. Must NOT duplicate state — the same `playerStore`/`uiStore` drive both chromes; only presentation differs (Tailwind `hidden`/`md:flex` etc. + one fullscreen-open boolean).
 - **Tests:** PURE palette/contrast helpers (synthetic pixel arrays → dominant color; rgb → light/dark text + luminance); component tests for responsive chrome (mobile nav renders; mini-player expand toggle; panels-as-sheets) using jsdom (STUB the worker/palette hook — never spin a real `Worker`); `dynamic_background` off → static fallback. `npm run test` + `npm run build` green.
 - **Vite worker import must be** `new Worker(new URL('./paletteWorker.ts', import.meta.url), { type: 'module' })` — the only form Vite bundles. Components MUST NOT import the worker directly; they go through the palette service / `useAlbumPalette` hook, which tests stub.
-- **`contrastTextColor(rgb)`** computes WCAG relative luminance (linearize sRGB channels, `L = 0.2126R + 0.7152G + 0.0722B`) → returns light (`#FFFFFF`) or dark (`#0A0A0A`) text; signals whether a scrim is needed for mid-luminance backgrounds. Boundary cases unit-tested.
+- **`contrastTextColor(rgb)`** computes WCAG relative luminance (linearize sRGB channels, `L = 0.2126R + 0.7152G + 0.0722B`) → returns light (`#FFFFFF`) or dark (`#0A0A0A`) text; signals whether a scrim is needed for mid-luminance backgrounds `[0.18, 0.70]`. Boundary cases unit-tested.
 - **`dominantColorFromPixels(Uint8ClampedArray, opts?)`** is deterministic + fast (coarse color-bucket histogram, skipping near-transparent and near-white/near-black edge pixels per the spec's "ambient, not garish"). Pure + unit-tested with synthetic arrays.
 - TDD always: failing test → confirm RED → minimal code → confirm GREEN → conventional-commit. Run frontend tests with `cd web && npm run test` (Vitest) and typecheck/build with `cd web && npm run build`.
 - The `web` working directory is fixed; all `npm` commands run from `/Users/maximusjb/Repos/crate/web`. Use a compound command (`cd web && npm run ...`) rather than a bare `cd` so the sandbox does not prompt.
@@ -82,7 +82,7 @@
   export function rgbToCss(rgb: RGB, alpha?: number): string   // "rgb(240 53 75)" or "rgb(240 53 75 / 0.5)"
   ```
   - `relativeLuminance`: linearize each sRGB channel (`c/255`; if ≤0.03928 → `/12.92`, else `((c+0.055)/1.055)^2.4`), then `0.2126R + 0.7152G + 0.0722B`.
-  - `contrastTextColor`: `text` = dark `#0A0A0A` when luminance > 0.5, else light `#FFFFFF`. `scrim` = true when luminance is in the murky middle band `[0.35, 0.65]` (text needs help).
+  - `contrastTextColor`: `text` = dark `#0A0A0A` when luminance > 0.5, else light `#FFFFFF`. `scrim` = true when luminance is in the murky middle band `[0.18, 0.70]` (text needs help).
   - `dominantColorFromPixels`: walk RGBA quads (4 bytes each); skip `a < minAlpha`; skip near-black (`r+g+b < edgeSkip*3`) and near-white (`r+g+b > 765 - edgeSkip*3`); bucket the rest into a coarse histogram keyed by the top `bucketBits` bits of each channel; pick the most populous bucket and return the AVERAGE color of pixels in it (so the result is a real color, not the bucket center). If every pixel is skipped, return a neutral `[64, 64, 64]`.
 
 - [ ] **Step 1: Write the failing test**
@@ -238,7 +238,7 @@ export function relativeLuminance(rgb: RGB): number {
 export function contrastTextColor(rgb: RGB): ContrastResult {
   const l = relativeLuminance(rgb)
   const text = l > 0.5 ? DARK_TEXT : LIGHT_TEXT
-  const scrim = l >= 0.35 && l <= 0.65
+  const scrim = l >= 0.18 && l <= 0.7
   return { text, scrim }
 }
 
@@ -893,20 +893,44 @@ import { rgbToCss } from '../lib/palette'
   const palette = useAlbumPalette(current?.coverArtId ? coverUrl(current.coverArtId, 80) : undefined)
 ```
 
-(c) Replace the outer return wrapper. Change the current root:
+(c) Replace the entire `return (...)` of `PlayerBar`. The exact before/after is:
+
+**BEFORE** (current root element — the single `<div>` wrapping all three sections):
 ```tsx
+  return (
     <div className="flex h-20 items-center gap-4 border-t border-neutral-800 px-4">
+      {/* LEFT: cover art + track meta */}
+      <div className="flex w-48 shrink-0 items-center gap-3 overflow-hidden"> ... </div>
+      {/* CENTER: transport buttons + seek bar */}
+      <div className="flex flex-1 flex-col items-center gap-1"> ... </div>
+      {/* RIGHT: volume + panel toggles */}
+      <div className="flex w-48 shrink-0 items-center justify-end gap-2"> ... </div>
+    </div>
+  )
 ```
-to a tinted, responsive, position-relative wrapper:
+
+**AFTER** (copy-paste this; replace the `{/* LEFT */}`, `{/* CENTER */}`, `{/* RIGHT */}` comment-blocks with your actual existing JSX verbatim — do NOT rewrap or reformat the inner sections):
 ```tsx
+  return (
     <div
       data-testid="player-bar"
-      className={`relative hidden h-20 items-center gap-4 px-4 md:flex ${palette ? '' : 'border-t border-neutral-800'}`}
+      className={`relative hidden h-20 px-4 md:flex ${palette ? '' : 'border-t border-neutral-800'}`}
       style={palette ? { backgroundColor: rgbToCss(palette.rgb), color: palette.text } : undefined}
     >
       {palette?.scrim && <div className="pointer-events-none absolute inset-0 bg-black/20" />}
+      <div className="relative z-10 flex w-full items-center gap-4">
+        {/* LEFT: cover art + track meta — paste the existing section here verbatim */}
+        <div className="flex w-48 shrink-0 items-center gap-3 overflow-hidden"> ... </div>
+        {/* CENTER: transport buttons + seek bar — paste the existing section here verbatim */}
+        <div className="flex flex-1 flex-col items-center gap-1"> ... </div>
+        {/* RIGHT: volume + panel toggles — paste the existing section here verbatim */}
+        <div className="flex w-48 shrink-0 items-center justify-end gap-2"> ... </div>
+      </div>
+    </div>
+  )
 ```
-Then ensure ALL the existing inner content (the three flex sections) is wrapped so it sits ABOVE the scrim — add `relative z-10` to the immediate child wrapper. The simplest correct change: wrap the existing three sections in a single `<div className="relative z-10 flex w-full items-center gap-4">…</div>`. Concretely, replace the three top-level child blocks (left art+meta, center transport+seek, right volume+panels) with that wrapper around them, and close it before the bar's closing `</div>`.
+
+The `relative z-10 flex w-full items-center gap-4` wrapper sits above the optional scrim layer. Desktop layout is preserved exactly — the `gap-4` and three-section flex structure are unchanged.
 
 > **Contrast-aware sub-elements:** the secondary text currently uses `text-neutral-400` and transport icons use `text-neutral-300`. When a palette is active these would clash with a colored fill. Keep them but rely on the inherited `style.color` for the PRIMARY title; for secondary text and the divider lines under a tint, they remain acceptable because the scrim + computed primary color carry legibility for MVP. Do NOT add per-icon recoloring logic in M4b — the computed-contrast PRIMARY text + optional scrim satisfy the spec's legibility requirement; finer per-control theming is out of scope.
 
@@ -926,184 +950,7 @@ git commit -m "feat(web): PlayerBar dominant-color fill with computed-contrast t
 
 ---
 
-## Task 7: Responsive AppShell — desktop unchanged + ambient dynamic background
-
-**Files:**
-- Modify: `web/src/components/AppShell.tsx`
-- Test: `web/src/components/AppShell.test.tsx` (extend; keep the existing tray test green)
-
-**Interfaces:**
-- Consumes: `useAlbumPalette` (Task 4), `rgbToCss` (palette), `usePlayer` (for the current track's cover), existing `Sidebar`/`PlayerBar`/`PlayQueue`/`DownloadTray`/`useRealtime`. NEW children (Tasks 8–9): `MobileTabNav`, `MiniPlayer`, `NowPlayingOverlay`.
-- Behavior:
-  - Desktop (≥md) layout is IDENTICAL to today: `Sidebar` (hidden `<md`), main `Outlet`, side `PlayQueue`/`DownloadTray` slide-overs, bottom `PlayerBar` (now `hidden md:flex` from Task 6). No visual change on desktop.
-  - The ROOT element gets an ambient background: when a palette is present, set `style.background` to a subtle radial/linear gradient from the dominant color into `base`; when null, leave the default `base` (from `body`). Add `data-testid="app-shell-root"`.
-  - Mobile chrome (`MobileTabNav` + `MiniPlayer` + `NowPlayingOverlay`) is added in Tasks 8–9; in THIS task, add the placeholders ONLY as commented insertion points so the file compiles, OR wire them after Tasks 8–9. To keep tasks independently shippable: this task adds the responsive wrapper + dynamic background and renders the mobile components conditionally; since they don't exist yet, this task introduces a minimal inline mobile bottom-bar STUB that Task 8/9 replace. (See Step 3 for the exact stub-free approach: we wire the real components here and create them in the SAME PR ordering — Tasks 8 and 9 run BEFORE this task is marked done. Therefore this task imports `MobileTabNav`/`MiniPlayer`/`NowPlayingOverlay`, which must already exist.)
-
-> **Ordering note:** Implement Tasks 8 (MobileTabNav) and 9 (MiniPlayer + NowPlayingOverlay) BEFORE finishing Task 7's wiring, because Task 7's final AppShell imports them. The TDD for Task 7's background + desktop-structure assertions can be written first (RED), then Tasks 8–9 built, then Task 7 wiring completed (GREEN). For a strictly linear executor: do Task 8 → Task 9 → Task 7. The plan lists Task 7 here for narrative grouping; FOLLOW THE DEPENDENCY: 8, then 9, then 7.
-
-- [ ] **Step 1: Write the failing/extended test**
-
-Replace `web/src/components/AppShell.test.tsx` with (keeps the existing tray assertion, adds desktop-structure + background assertions; mocks the palette hook and the not-yet-relevant child internals are real):
-```tsx
-import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { AppShell } from './AppShell'
-import { useUI } from '../lib/uiStore'
-import { useDownloads } from '../lib/downloadStore'
-import { usePlayer } from '../lib/playerStore'
-import type { Track } from '../lib/types'
-
-vi.mock('../lib/realtimeWiring', () => ({ useRealtime: () => {} }))
-import { useAlbumPalette } from '../lib/useAlbumPalette'
-vi.mock('../lib/useAlbumPalette', () => ({ useAlbumPalette: vi.fn(() => null) }))
-
-function track(id: string): Track {
-  return {
-    id, title: 'Song ' + id, albumId: 'al', album: 'Album', artistId: 'ar', artist: 'Artist',
-    coverArtId: 'co', trackNumber: 1, discNumber: 1, durationMs: 200000, bitRate: 320,
-    suffix: 'mp3', contentType: 'audio/mpeg',
-  }
-}
-
-function renderShell() {
-  const qc = new QueryClient()
-  return render(
-    <QueryClientProvider client={qc}>
-      <MemoryRouter>
-        <AppShell />
-      </MemoryRouter>
-    </QueryClientProvider>,
-  )
-}
-
-describe('AppShell', () => {
-  beforeEach(() => {
-    useDownloads.setState({ jobs: {} })
-    useUI.setState({ rightPanel: 'downloads', nowPlayingOpen: false })
-    vi.mocked(useAlbumPalette).mockReset()
-    vi.mocked(useAlbumPalette).mockReturnValue(null)
-  })
-
-  it('mounts the Download Tray when the right panel is downloads', () => {
-    renderShell()
-    expect(screen.getByText('Download Tray')).toBeInTheDocument()
-  })
-
-  it('renders the desktop sidebar and the mobile tab nav (chrome swaps via CSS)', () => {
-    renderShell()
-    // Both chromes are in the DOM; Tailwind hidden/md: classes decide visibility.
-    expect(screen.getByTestId('app-shell-root')).toBeInTheDocument()
-    expect(screen.getByTestId('mobile-tab-nav')).toBeInTheDocument()
-  })
-
-  it('paints an ambient background when a palette is present', () => {
-    vi.mocked(useAlbumPalette).mockReturnValue({ rgb: [200, 30, 40], text: '#FFFFFF', scrim: false })
-    useUI.setState({ rightPanel: null })
-    usePlayer.setState({ current: track('1') } as Partial<ReturnType<typeof usePlayer.getState>> as never)
-    renderShell()
-    const root = screen.getByTestId('app-shell-root')
-    expect(root.style.background).not.toBe('')
-  })
-
-  it('uses the static background when dynamic_background is off (no palette)', () => {
-    vi.mocked(useAlbumPalette).mockReturnValue(null)
-    renderShell()
-    const root = screen.getByTestId('app-shell-root')
-    expect(root.style.background).toBe('')
-  })
-})
-```
-
-> The `usePlayer.setState(...)` cast is a test-only shortcut to put a track in `current`; if it proves brittle, instead call `usePlayer.getState().playTrackList([track('1')], 0)` inside an `act()` (import `act` from `@testing-library/react`). Either is acceptable; prefer `playTrackList` for fidelity.
-
-- [ ] **Step 2: Run to verify it fails**
-
-Run: `cd web && npm run test -- AppShell`
-Expected: FAIL — `app-shell-root` / `mobile-tab-nav` not present.
-
-- [ ] **Step 3: Rewrite `AppShell.tsx`** (do this AFTER Tasks 8 and 9 exist)
-
-Replace `web/src/components/AppShell.tsx` with:
-```tsx
-import { Outlet } from 'react-router-dom'
-import { Sidebar } from './Sidebar'
-import { PlayerBar } from './PlayerBar'
-import { PlayQueue } from './PlayQueue'
-import { DownloadTray } from './DownloadTray'
-import { MobileTabNav } from './MobileTabNav'
-import { MiniPlayer } from './MiniPlayer'
-import { NowPlayingOverlay } from './NowPlayingOverlay'
-import { useRealtime } from '../lib/realtimeWiring'
-import { usePlayer } from '../lib/playerStore'
-import { useAlbumPalette } from '../lib/useAlbumPalette'
-import { coverUrl } from '../lib/libraryApi'
-import { rgbToCss } from '../lib/palette'
-
-export function AppShell() {
-  // One app-wide realtime WS (distinct from the SSE search stream): drives the
-  // download store, TanStack invalidation, and play-when-ready auto-play.
-  useRealtime()
-
-  const current = usePlayer((s) => s.current)
-  const palette = useAlbumPalette(current?.coverArtId ? coverUrl(current.coverArtId, 80) : undefined)
-
-  // Ambient dynamic background: a subtle gradient from the dominant color into the
-  // static base. When no palette (setting off / nothing playing / not yet resolved),
-  // leave the body's static dark base. NOT blur-over-art.
-  const ambient = palette
-    ? {
-        background: `radial-gradient(120% 120% at 50% 0%, ${rgbToCss(palette.rgb, 0.22)} 0%, rgb(13 13 15) 60%)`,
-      }
-    : undefined
-
-  return (
-    <div data-testid="app-shell-root" className="flex h-full flex-col" style={ambient}>
-      <div className="relative flex min-h-0 flex-1">
-        {/* Desktop sidebar — hidden on mobile (the bottom tab nav replaces it). */}
-        <Sidebar />
-        <main className="flex-1 overflow-auto p-6 pb-24 md:pb-6">
-          <Outlet />
-        </main>
-        {/* Single right-panel slot: side slide-over on desktop, full-screen sheet
-            on mobile (the components apply the responsive classes themselves). */}
-        <PlayQueue />
-        <DownloadTray />
-      </div>
-
-      {/* Desktop bottom player bar (hidden < md from PlayerBar's own classes). */}
-      <PlayerBar />
-
-      {/* Mobile chrome: mini player + bottom tab nav, both hidden ≥ md. The
-          fullscreen now-playing overlay is portal-free and self-gates on open. */}
-      <MiniPlayer />
-      <MobileTabNav />
-      <NowPlayingOverlay />
-    </div>
-  )
-}
-```
-
-> The `Sidebar` is made desktop-only in Task 8 Step 3 by adding `hidden md:block` to its root `<nav>`. Do that there; here we just render it.
-
-- [ ] **Step 4: Run the tests + typecheck**
-
-Run: `cd web && npm run test -- AppShell`
-Expected: PASS (tray + chrome + background-on + background-off).
-Run: `cd web && npm run build`
-Expected: clean.
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add web/src/components/AppShell.tsx web/src/components/AppShell.test.tsx
-git commit -m "feat(web): responsive AppShell with ambient dynamic background; desktop unchanged"
-```
-
----
-
-## Task 8: Mobile bottom tab nav (`web/src/components/MobileTabNav.tsx`)
+## Task 7: Mobile bottom tab nav (`web/src/components/MobileTabNav.tsx`)
 
 **Files:**
 - Create: `web/src/components/MobileTabNav.tsx`
@@ -1251,7 +1098,7 @@ git commit -m "feat(web): mobile bottom tab nav (Search/Library/Settings/Downloa
 
 ---
 
-## Task 9: Mobile mini player + fullscreen now-playing overlay
+## Task 8: Mobile mini player + fullscreen now-playing overlay
 
 **Files:**
 - Create: `web/src/components/MiniPlayer.tsx`
@@ -1313,7 +1160,7 @@ describe('MiniPlayer', () => {
     act(() => { usePlayer.getState().playTrackList([track('1')], 0) })
     const spy = vi.spyOn(engine, 'toggle')
     render(<MiniPlayer />)
-    fireEvent.click(screen.getByRole('button', { name: /play|pause/i }))
+    fireEvent.click(screen.getByRole('button', { name: /^(play|pause)$/i }))
     expect(spy).toHaveBeenCalledTimes(1)
     expect(useUI.getState().nowPlayingOpen).toBe(false)
     spy.mockRestore()
@@ -1545,6 +1392,179 @@ git commit -m "feat(web): mobile mini player + fullscreen now-playing overlay (s
 
 ---
 
+## Task 9: Responsive AppShell — desktop unchanged + ambient dynamic background
+
+**Files:**
+- Modify: `web/src/components/AppShell.tsx`
+- Test: `web/src/components/AppShell.test.tsx` (extend; keep the existing tray test green)
+
+**Interfaces:**
+- Consumes: `useAlbumPalette` (Task 4), `rgbToCss` (palette), `usePlayer` (for the current track's cover), existing `Sidebar`/`PlayerBar`/`PlayQueue`/`DownloadTray`/`useRealtime`. NEW children (Tasks 7–8): `MobileTabNav`, `MiniPlayer`, `NowPlayingOverlay`.
+- Behavior:
+  - Desktop (≥md) layout is IDENTICAL to today: `Sidebar` (hidden `<md`), main `Outlet`, side `PlayQueue`/`DownloadTray` slide-overs, bottom `PlayerBar` (now `hidden md:flex` from Task 6). No visual change on desktop.
+  - The ROOT element gets an ambient background: when a palette is present, set `style.background` to a subtle radial/linear gradient from the dominant color into `base`; when null, leave the default `base` (from `body`). Add `data-testid="app-shell-root"`.
+  - Mobile chrome (`MobileTabNav` + `MiniPlayer` + `NowPlayingOverlay`) was built in Tasks 7–8 and is imported here. This task imports `MobileTabNav`/`MiniPlayer`/`NowPlayingOverlay`, which already exist (Tasks 7 and 8 run before this task).
+
+- [ ] **Step 1: Write the failing/extended test**
+
+Replace `web/src/components/AppShell.test.tsx` with (keeps the existing tray assertion, adds desktop-structure + background assertions; mocks the palette hook and the not-yet-relevant child internals are real):
+```tsx
+import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { render, screen, act } from '@testing-library/react'
+import { MemoryRouter } from 'react-router-dom'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { AppShell } from './AppShell'
+import { useUI } from '../lib/uiStore'
+import { useDownloads } from '../lib/downloadStore'
+import { usePlayer } from '../lib/playerStore'
+import type { Track } from '../lib/types'
+
+vi.mock('../lib/realtimeWiring', () => ({ useRealtime: () => {} }))
+import { useAlbumPalette } from '../lib/useAlbumPalette'
+vi.mock('../lib/useAlbumPalette', () => ({ useAlbumPalette: vi.fn(() => null) }))
+
+function track(id: string): Track {
+  return {
+    id, title: 'Song ' + id, albumId: 'al', album: 'Album', artistId: 'ar', artist: 'Artist',
+    coverArtId: 'co', trackNumber: 1, discNumber: 1, durationMs: 200000, bitRate: 320,
+    suffix: 'mp3', contentType: 'audio/mpeg',
+  }
+}
+
+function renderShell() {
+  const qc = new QueryClient()
+  return render(
+    <QueryClientProvider client={qc}>
+      <MemoryRouter>
+        <AppShell />
+      </MemoryRouter>
+    </QueryClientProvider>,
+  )
+}
+
+describe('AppShell', () => {
+  beforeEach(() => {
+    useDownloads.setState({ jobs: {} })
+    useUI.setState({ rightPanel: 'downloads', nowPlayingOpen: false })
+    vi.mocked(useAlbumPalette).mockReset()
+    vi.mocked(useAlbumPalette).mockReturnValue(null)
+  })
+
+  it('mounts the Download Tray when the right panel is downloads', () => {
+    renderShell()
+    expect(screen.getByText('Download Tray')).toBeInTheDocument()
+  })
+
+  it('renders the desktop sidebar and the mobile tab nav (chrome swaps via CSS)', () => {
+    renderShell()
+    // Both chromes are in the DOM; Tailwind hidden/md: classes decide visibility.
+    expect(screen.getByTestId('app-shell-root')).toBeInTheDocument()
+    expect(screen.getByTestId('mobile-tab-nav')).toBeInTheDocument()
+  })
+
+  it('paints an ambient background when a palette is present', () => {
+    vi.mocked(useAlbumPalette).mockReturnValue({ rgb: [200, 30, 40], text: '#FFFFFF', scrim: false })
+    useUI.setState({ rightPanel: null })
+    act(() => { usePlayer.getState().playTrackList([track('1')], 0) })
+    renderShell()
+    const root = screen.getByTestId('app-shell-root')
+    expect(root.style.background).not.toBe('')
+  })
+
+  it('uses the static background when dynamic_background is off (no palette)', () => {
+    vi.mocked(useAlbumPalette).mockReturnValue(null)
+    renderShell()
+    const root = screen.getByTestId('app-shell-root')
+    expect(root.style.background).toBe('')
+  })
+})
+```
+
+- [ ] **Step 2: Run to verify it fails**
+
+Run: `cd web && npm run test -- AppShell`
+Expected: FAIL — `app-shell-root` / `mobile-tab-nav` not present.
+
+- [ ] **Step 3: Rewrite `AppShell.tsx`** (Tasks 7 and 8 must already be complete before this step)
+
+Replace `web/src/components/AppShell.tsx` with:
+```tsx
+import { Outlet } from 'react-router-dom'
+import { Sidebar } from './Sidebar'
+import { PlayerBar } from './PlayerBar'
+import { PlayQueue } from './PlayQueue'
+import { DownloadTray } from './DownloadTray'
+import { MobileTabNav } from './MobileTabNav'
+import { MiniPlayer } from './MiniPlayer'
+import { NowPlayingOverlay } from './NowPlayingOverlay'
+import { useRealtime } from '../lib/realtimeWiring'
+import { usePlayer } from '../lib/playerStore'
+import { useAlbumPalette } from '../lib/useAlbumPalette'
+import { coverUrl } from '../lib/libraryApi'
+import { rgbToCss } from '../lib/palette'
+
+export function AppShell() {
+  // One app-wide realtime WS (distinct from the SSE search stream): drives the
+  // download store, TanStack invalidation, and play-when-ready auto-play.
+  useRealtime()
+
+  const current = usePlayer((s) => s.current)
+  const palette = useAlbumPalette(current?.coverArtId ? coverUrl(current.coverArtId, 80) : undefined)
+
+  // Ambient dynamic background: a subtle gradient from the dominant color into the
+  // static base. When no palette (setting off / nothing playing / not yet resolved),
+  // leave the body's static dark base. NOT blur-over-art.
+  const ambient = palette
+    ? {
+        background: `radial-gradient(120% 120% at 50% 0%, ${rgbToCss(palette.rgb, 0.22)} 0%, rgb(13 13 15) 60%)`,
+      }
+    : undefined
+
+  return (
+    <div data-testid="app-shell-root" className="flex h-full flex-col" style={ambient}>
+      <div className="relative flex min-h-0 flex-1">
+        {/* Desktop sidebar — hidden on mobile (the bottom tab nav replaces it). */}
+        <Sidebar />
+        <main className="flex-1 overflow-auto p-6 pb-24 md:pb-6">
+          <Outlet />
+        </main>
+        {/* Single right-panel slot: side slide-over on desktop, full-screen sheet
+            on mobile (the components apply the responsive classes themselves). */}
+        <PlayQueue />
+        <DownloadTray />
+      </div>
+
+      {/* Desktop bottom player bar (hidden < md from PlayerBar's own classes). */}
+      <PlayerBar />
+
+      {/* Mobile chrome: mini player + bottom tab nav, both hidden ≥ md. The
+          fullscreen now-playing overlay is portal-free and self-gates on open. */}
+      <MiniPlayer />
+      <MobileTabNav />
+      <NowPlayingOverlay />
+    </div>
+  )
+}
+```
+
+> The `Sidebar` is made desktop-only in Task 7 Step 3 by adding `hidden md:block` to its root `<nav>`. Do that there; here we just render it.
+
+- [ ] **Step 4: Run the tests + typecheck**
+
+Run: `cd web && npm run test -- AppShell`
+Expected: PASS (tray + chrome + background-on + background-off).
+Run: `cd web && npm run build`
+Expected: clean.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add web/src/components/AppShell.tsx web/src/components/AppShell.test.tsx
+git commit -m "feat(web): responsive AppShell with ambient dynamic background; desktop unchanged"
+```
+
+---
+
 ## Task 10: Right panels as full-screen sheets on mobile
 
 **Files:**
@@ -1620,6 +1640,14 @@ git commit -m "feat(web): right panels render as full-screen sheets on mobile, s
 
 **Files:** none new — run the entire frontend suite and build to confirm M4b is green end-to-end and desktop behavior is intact.
 
+- [ ] **Step 0: Stub `useAlbumPalette` in `App.test.tsx`**
+
+In `web/src/App.test.tsx`, add the following mock alongside the existing `vi.mock('./lib/session')` (or whatever session mock is already there), so that AppShell's render does not fire an un-stubbed `/api/v1/settings` fetch through the real `useAlbumPalette` → `useSettings` path:
+```ts
+vi.mock('./lib/useAlbumPalette', () => ({ useAlbumPalette: () => null }))
+```
+(If the hook file lives at a different path — e.g. `'../lib/useAlbumPalette'` — use the path relative to `App.test.tsx`. Check the actual import in `AppShell.tsx` to confirm the module path.)
+
 - [ ] **Step 1: Run the WHOLE frontend test suite**
 
 Run: `cd web && npm run test`
@@ -1658,11 +1686,11 @@ git commit -m "test(web): keep M0–M4a suites meaningful after the responsive r
 
 ## Self-Review
 
-- **Coverage vs scope:** (1) palette in a Web Worker + pure helpers + per-URL cache + `useAlbumPalette` gated on `dynamic_background` → Tasks 1–4. (2) dynamic background + player tint with computed-contrast text → Tasks 6–7. (3) responsive shell (bottom tab nav incl Search, expandable mini player, sheet panels, ≥44px) → Tasks 5, 7, 8, 9, 10. (4) desktop intact + existing tests pass → Tasks 6–11 (CSS-only desktop changes; Task 11 smoke). All four scope items covered.
+- **Coverage vs scope:** (1) palette in a Web Worker + pure helpers + per-URL cache + `useAlbumPalette` gated on `dynamic_background` → Tasks 1–4. (2) dynamic background + player tint with computed-contrast text → Tasks 6 + 9. (3) responsive shell (bottom tab nav incl Search, expandable mini player, sheet panels, ≥44px) → Tasks 5, 7, 8, 9, 10. (4) desktop intact + existing tests pass → Tasks 6–11 (CSS-only desktop changes; Task 11 smoke). All four scope items covered.
 - **No placeholders:** every task has complete runnable code (full files for new modules; exact className/style edits for modifications), exact commands, and expected output. The only intentional "stub-free" deviation is the Task 7/8/9 ordering note (build 8 → 9 → 7) — called out explicitly so a linear executor doesn't import a not-yet-created component.
 - **Type consistency:** `RGB = readonly [number, number, number]` used uniformly across `palette.ts`, `paletteWorker.ts`, `paletteService.ts`, `useAlbumPalette.ts`. `useSettings()` shape (`{ data?: { accentColor; dynamicBackground } }`) matches the as-built M4a `settingsApi.ts`. `usePlayer` fields (`current.coverArtId/title/artist`, `currentTimeMs`, `durationMs`, `toggle/next/prev/seekMs`) match `audioEngine.ts`/`playerStore.ts`. `coverUrl(id, size)` and `formatDuration(ms)` signatures match `libraryApi.ts`/`types.ts`. `import type` used for all type-only imports (strict `verbatimModuleSyntax`). No classes added → no class-implements / param-property pitfalls.
 - **Worker testability (the key risk) is concrete:** the worker is never imported by tests; `paletteService.__setComputeFnForTests` swaps the compute path so `getPalette` resolves synchronously via a fake — verified by a test asserting "does not construct a real Worker"; the hook + every component test mocks `../lib/useAlbumPalette` directly. jsdom's lack of `Worker`/`OffscreenCanvas`/`createImageBitmap` therefore never bites. `vi.mock('../lib/useAlbumPalette', () => ({ useAlbumPalette: vi.fn(() => null) }))` is the default-null stub reused in PlayerBar/AppShell/MiniPlayer/NowPlayingOverlay tests.
-- **Contrast decision is concrete:** WCAG luminance with explicit linearization; light/dark threshold at 0.5; scrim band `[0.35, 0.65]`; boundary tests for pure white (→ dark), pure black (→ light), mid-gray (→ scrim). Returns `#FFFFFF` / `#0A0A0A`.
+- **Contrast decision is concrete:** WCAG luminance with explicit linearization; light/dark threshold at 0.5; scrim band `[0.18, 0.70]`; boundary tests for pure white (→ dark), pure black (→ light), mid-gray (→ scrim). Returns `#FFFFFF` / `#0A0A0A`.
 - **Responsive decision is concrete:** Tailwind `hidden md:flex` / `flex md:hidden` / `md:` overrides on the same DOM; no separate route tree; `nowPlayingOpen` is the only added boolean; jsdom renders both chromes so existing `getByRole`/`getByText` queries keep working (the milestone's "keep tests meaningful" clause covers the rare case a desktop-structure assertion must be softened to "exists in DOM"). Tap targets enforced via `min-h-[44px] min-w-[44px]` / `h-11 w-11` (44px) and asserted in the MobileTabNav test.
 - **Backend untouched:** all paths under `web/`; `dynamic_background`/`accent_color` consumed via the existing `/settings` endpoint + `useSettings()`. Verified against the as-built `settingsApi.ts`.
 - **Possible nit fixed inline:** the PlayerBar tint test asserts the jsdom-normalized comma form `rgb(200, 30, 40)`; the note in Task 6 Step 1 explains why the space-form `rgbToCss` input reads back comma-form — preventing a false RED.
