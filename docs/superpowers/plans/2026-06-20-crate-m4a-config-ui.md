@@ -41,7 +41,7 @@ The flag is a single `*atomic.Bool` constructed in `main.go`, satisfied by a tin
 | `internal/api/config.go` | NEW: `GET /config/pending-restart` handler. |
 | `internal/api/config_test.go` | NEW: pending-restart reflects the flag; nil-safe. |
 | `internal/api/server.go` | MODIFY: add `Adapters`, `Settings`, `ConfigDirty` to `Deps`; mount the new routes; reuse `Search`/`Downloader`/`Library` registries for `/adapters/available` + `/adapters/test`. |
-| `cmd/crate/main.go` | MODIFY: construct an `*atomic.Bool` dirty flag, an `apiStore` adapter exposing the new store methods + registries to `api.Deps`. |
+| `cmd/crate/main.go` | MODIFY: construct an `*atomic.Bool` dirty flag; pass `st.Q()` directly as `api.Deps.Adapters` — `*db.Queries` satisfies `AdapterStore` without any wrapper. |
 | `cmd/crate/config_dirty.go` | NEW: `atomicDirty` wrapper satisfying `api.ConfigDirty`. |
 
 **React (frontend) — created/modified in M4a, under `web/`:**
@@ -442,7 +442,7 @@ git commit -m "feat(api): generic ConfigSchema-driven secret redaction and prese
 - Produces (added to `internal/api`):
   ```go
   // AdapterStore is the persistence slice the adapter/settings handlers need.
-  // *store.Store satisfies it via the apiStore adapter built in cmd/crate (Task 8).
+  // *db.Queries (from store.Store.Q()) satisfies it directly — no wrapper needed.
   type AdapterStore interface {
       ListAdapterInstances(ctx context.Context) ([]db.AdapterInstance, error)
       GetAdapterInstance(ctx context.Context, id string) (db.AdapterInstance, error)
@@ -511,164 +511,20 @@ Add the routes inside the protected group in `routes()` (after the existing `pr.
 			pr.Get("/config/pending-restart", s.handlePendingRestart)
 ```
 
-- [ ] **Step 2: Write the failing pending-restart test**
+- [ ] **Step 2: Create the shared test helper (REQUIRED before config_test.go)**
 
-Create `internal/api/config_test.go`:
-```go
-package api
+> **NOTE: Tasks 3, 4, and 5 form the adapters-API unit. The shared test helper is created HERE in Task 3 so that every subsequent task's `go test ./internal/api/` compiles at each task boundary. Create the helper first, then config_test.go.**
 
-import (
-	"encoding/json"
-	"net/http"
-	"net/http/httptest"
-	"sync/atomic"
-	"testing"
-)
-
-// testDirty is a minimal ConfigDirty for tests.
-type testDirty struct{ b atomic.Bool }
-
-func (d *testDirty) Set()        { d.b.Store(true) }
-func (d *testDirty) Dirty() bool { return d.b.Load() }
-
-func TestPendingRestartReflectsFlag(t *testing.T) {
-	dirty := &testDirty{}
-	srv, cookie := adapterTestServer(t, adapterServerOpts{dirty: dirty})
-
-	get := func() bool {
-		rec := httptest.NewRecorder()
-		req := httptest.NewRequest(http.MethodGet, "/api/v1/config/pending-restart", nil)
-		req.AddCookie(cookie)
-		srv.Handler().ServeHTTP(rec, req)
-		if rec.Code != http.StatusOK {
-			t.Fatalf("status = %d", rec.Code)
-		}
-		var body struct {
-			PendingRestart bool `json:"pendingRestart"`
-		}
-		_ = json.Unmarshal(rec.Body.Bytes(), &body)
-		return body.PendingRestart
-	}
-
-	if get() {
-		t.Fatal("should start clean")
-	}
-	dirty.Set()
-	if !get() {
-		t.Fatal("should be dirty after Set()")
-	}
-}
-
-func TestPendingRestartNilSafe(t *testing.T) {
-	srv, cookie := adapterTestServer(t, adapterServerOpts{dirty: nil})
-	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/config/pending-restart", nil)
-	req.AddCookie(cookie)
-	srv.Handler().ServeHTTP(rec, req)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status = %d", rec.Code)
-	}
-}
-```
-
-> `adapterTestServer` + `adapterServerOpts` are defined in Task 4's `adapters_test.go`. If you implement Task 3 before Task 4, temporarily inline a minimal server builder; the canonical helper lands in Task 4. The simplest path: do Task 4 Step 1 (the helper) first, then return here. The plan ASSUMES Tasks 3 and 4 land in one PR.
-
-- [ ] **Step 3: Write the config handler**
-
-Create `internal/api/config.go`:
-```go
-package api
-
-import "net/http"
-
-// handlePendingRestart reports whether any adapter/settings change has been made
-// since startup. With restart-to-apply (M4a) the UI shows a banner when true.
-func (s *Server) handlePendingRestart(w http.ResponseWriter, r *http.Request) {
-	dirty := false
-	if s.deps.ConfigDirty != nil {
-		dirty = s.deps.ConfigDirty.Dirty()
-	}
-	writeJSON(w, http.StatusOK, map[string]bool{"pendingRestart": dirty})
-}
-```
-
-- [ ] **Step 4: Verify the package compiles (handlers for adapters/settings land in Tasks 4–6)**
-
-Routes reference `s.handleListAdapters` etc. which do not exist yet — they are added in Tasks 4–6. To keep the package compiling between tasks, add THIN stubs now in `internal/api/adapters.go` and `internal/api/settings.go` that 501 (replaced fully in Tasks 4–6):
-```go
-// internal/api/adapters.go (stub — fully implemented in Tasks 4-5)
-package api
-
-import "net/http"
-
-func (s *Server) handleListAdapters(w http.ResponseWriter, r *http.Request)   { writeJSON(w, http.StatusNotImplemented, map[string]string{"error": "todo"}) }
-func (s *Server) handleCreateAdapter(w http.ResponseWriter, r *http.Request)  { writeJSON(w, http.StatusNotImplemented, map[string]string{"error": "todo"}) }
-func (s *Server) handleUpdateAdapter(w http.ResponseWriter, r *http.Request)  { writeJSON(w, http.StatusNotImplemented, map[string]string{"error": "todo"}) }
-func (s *Server) handleDeleteAdapter(w http.ResponseWriter, r *http.Request)  { writeJSON(w, http.StatusNotImplemented, map[string]string{"error": "todo"}) }
-func (s *Server) handleTestAdapter(w http.ResponseWriter, r *http.Request)    { writeJSON(w, http.StatusNotImplemented, map[string]string{"error": "todo"}) }
-```
-```go
-// internal/api/settings.go (stub — fully implemented in Task 6)
-package api
-
-import "net/http"
-
-func (s *Server) handleGetSettings(w http.ResponseWriter, r *http.Request) { writeJSON(w, http.StatusNotImplemented, map[string]string{"error": "todo"}) }
-func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) { writeJSON(w, http.StatusNotImplemented, map[string]string{"error": "todo"}) }
-```
-
-Run: `go build ./internal/api/`
-Expected: builds cleanly.
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add internal/api/server.go internal/api/config.go internal/api/adapters.go internal/api/settings.go internal/api/config_test.go
-git commit -m "feat(api): Deps adapter store + config-dirty flag, pending-restart route, handler stubs"
-```
-
----
-
-## Task 4: Adapters REST API — list (redacted), create, update (secret-preserving), delete
-
-**Files:**
-- Modify: `internal/api/adapters.go` (replace the list/create/update/delete stubs with full impls)
-- Modify: `internal/api/handlers.go` (extend `handleAdaptersAvailable` to also include the Library registry)
-- Test: `internal/api/adapters_test.go` (NEW)
-
-**Interfaces:**
-- Consumes: `s.deps.Adapters` (AdapterStore), `s.deps.Search`/`s.deps.Downloader`/`s.deps.Lib` registries, `s.deps.ConfigDirty`, `redactConfig`/`mergeSecrets` (Task 2), `uuid`, `chi.URLParam`.
-- Produces (HTTP):
-  ```
-  GET    /api/v1/adapters            → [{id,type,name,enabled,priority,config(redacted)}], 200
-  POST   /api/v1/adapters            → {type,name,config,enabled,priority} → created instance (redacted), 201; flips dirty
-  PUT    /api/v1/adapters/{id}       → {name?,config,enabled,priority} (secret-preserving) → updated (redacted), 200; flips dirty
-  DELETE /api/v1/adapters/{id}       → {ok:true}, 200; flips dirty
-  ```
-- DTO:
-  ```go
-  type adapterInstanceDTO struct {
-      ID       string         `json:"id"`
-      Type     string         `json:"type"`
-      Name     string         `json:"name"`
-      Enabled  bool           `json:"enabled"`
-      Priority int            `json:"priority"`
-      Config   map[string]any `json:"config"` // secrets redacted via redactConfig
-  }
-  ```
-
-- [ ] **Step 1: Write the failing tests + the shared test server helper**
-
-Create `internal/api/adapters_test.go`:
+Create `internal/api/testhelpers_test.go`:
 ```go
 package api
 
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -677,12 +533,17 @@ import (
 	"github.com/maximusjb/crate/internal/store"
 )
 
-// --- a fake adapter with a controllable TestConnection + a Secret field ---
+// testDirty is a minimal ConfigDirty for tests.
+type testDirty struct{ b atomic.Bool }
 
+func (d *testDirty) Set()        { d.b.Store(true) }
+func (d *testDirty) Dirty() bool { return d.b.Load() }
+
+// fakeAdapter is a controllable registry.Plugin with one Secret field.
 type fakeAdapter struct {
-	typ      string
-	name     string
-	testErr  error
+	typ     string
+	name    string
+	testErr error
 }
 
 func (a *fakeAdapter) Type() string { return a.typ }
@@ -735,6 +596,7 @@ func adapterTestServer(t *testing.T, opts adapterServerOpts) (*Server, *http.Coo
 	return srv, &http.Cookie{Name: sessionCookie, Value: tok}
 }
 
+// do fires an authenticated HTTP request against the server and returns the recorder.
 func do(t *testing.T, srv *Server, cookie *http.Cookie, method, path, body string) *httptest.ResponseRecorder {
 	t.Helper()
 	rec := httptest.NewRecorder()
@@ -749,6 +611,160 @@ func do(t *testing.T, srv *Server, cookie *http.Cookie, method, path, body strin
 	srv.Handler().ServeHTTP(rec, req)
 	return rec
 }
+```
+
+- [ ] **Step 3: Write the failing pending-restart test**
+
+Create `internal/api/config_test.go`:
+```go
+package api
+
+import (
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+)
+
+func TestPendingRestartReflectsFlag(t *testing.T) {
+	dirty := &testDirty{}
+	srv, cookie := adapterTestServer(t, adapterServerOpts{dirty: dirty})
+
+	get := func() bool {
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/config/pending-restart", nil)
+		req.AddCookie(cookie)
+		srv.Handler().ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status = %d", rec.Code)
+		}
+		var body struct {
+			PendingRestart bool `json:"pendingRestart"`
+		}
+		_ = json.Unmarshal(rec.Body.Bytes(), &body)
+		return body.PendingRestart
+	}
+
+	if get() {
+		t.Fatal("should start clean")
+	}
+	dirty.Set()
+	if !get() {
+		t.Fatal("should be dirty after Set()")
+	}
+}
+
+func TestPendingRestartNilSafe(t *testing.T) {
+	srv, cookie := adapterTestServer(t, adapterServerOpts{dirty: nil})
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/config/pending-restart", nil)
+	req.AddCookie(cookie)
+	srv.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d", rec.Code)
+	}
+}
+```
+
+- [ ] **Step 4: Write the config handler**
+
+Create `internal/api/config.go`:
+```go
+package api
+
+import "net/http"
+
+// handlePendingRestart reports whether any adapter/settings change has been made
+// since startup. With restart-to-apply (M4a) the UI shows a banner when true.
+func (s *Server) handlePendingRestart(w http.ResponseWriter, r *http.Request) {
+	dirty := false
+	if s.deps.ConfigDirty != nil {
+		dirty = s.deps.ConfigDirty.Dirty()
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"pendingRestart": dirty})
+}
+```
+
+- [ ] **Step 5: Verify the package compiles (handlers for adapters/settings land in Tasks 4–6)**
+
+Routes reference `s.handleListAdapters` etc. which do not exist yet — they are added in Tasks 4–6. To keep the package compiling between tasks, add THIN stubs now in `internal/api/adapters.go` and `internal/api/settings.go` that 501 (replaced fully in Tasks 4–6):
+```go
+// internal/api/adapters.go (stub — fully implemented in Tasks 4-5)
+package api
+
+import "net/http"
+
+func (s *Server) handleListAdapters(w http.ResponseWriter, r *http.Request)   { writeJSON(w, http.StatusNotImplemented, map[string]string{"error": "todo"}) }
+func (s *Server) handleCreateAdapter(w http.ResponseWriter, r *http.Request)  { writeJSON(w, http.StatusNotImplemented, map[string]string{"error": "todo"}) }
+func (s *Server) handleUpdateAdapter(w http.ResponseWriter, r *http.Request)  { writeJSON(w, http.StatusNotImplemented, map[string]string{"error": "todo"}) }
+func (s *Server) handleDeleteAdapter(w http.ResponseWriter, r *http.Request)  { writeJSON(w, http.StatusNotImplemented, map[string]string{"error": "todo"}) }
+func (s *Server) handleTestAdapter(w http.ResponseWriter, r *http.Request)    { writeJSON(w, http.StatusNotImplemented, map[string]string{"error": "todo"}) }
+```
+```go
+// internal/api/settings.go (stub — fully implemented in Task 6)
+package api
+
+import "net/http"
+
+func (s *Server) handleGetSettings(w http.ResponseWriter, r *http.Request) { writeJSON(w, http.StatusNotImplemented, map[string]string{"error": "todo"}) }
+func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) { writeJSON(w, http.StatusNotImplemented, map[string]string{"error": "todo"}) }
+```
+
+Run: `go build ./internal/api/`
+Expected: builds cleanly. `testhelpers_test.go` (with `adapterTestServer`, `do`, `fakeAdapter`, `testDirty`) is already present, so `config_test.go` also compiles: `go test ./internal/api/ -run PendingRestart -v` should PASS.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add internal/api/server.go internal/api/config.go internal/api/adapters.go internal/api/settings.go internal/api/config_test.go internal/api/testhelpers_test.go
+git commit -m "feat(api): Deps adapter store + config-dirty flag, pending-restart route, handler stubs"
+```
+
+---
+
+## Task 4: Adapters REST API — list (redacted), create, update (secret-preserving), delete
+
+**Files:**
+- Modify: `internal/api/adapters.go` (replace the list/create/update/delete stubs with full impls)
+- Modify: `internal/api/handlers.go` (extend `handleAdaptersAvailable` to also include the Library registry)
+- Test: `internal/api/adapters_test.go` (NEW)
+
+**Interfaces:**
+- Consumes: `s.deps.Adapters` (AdapterStore), `s.deps.Search`/`s.deps.Downloader`/`s.deps.Lib` registries, `s.deps.ConfigDirty`, `redactConfig`/`mergeSecrets` (Task 2), `uuid`, `chi.URLParam`.
+- Produces (HTTP):
+  ```
+  GET    /api/v1/adapters            → [{id,type,name,enabled,priority,config(redacted)}], 200
+  POST   /api/v1/adapters            → {type,name,config,enabled,priority} → created instance (redacted), 201; flips dirty
+  PUT    /api/v1/adapters/{id}       → {name?,config,enabled,priority} (secret-preserving) → updated (redacted), 200; flips dirty
+  DELETE /api/v1/adapters/{id}       → {ok:true}, 200; flips dirty
+  ```
+- DTO:
+  ```go
+  type adapterInstanceDTO struct {
+      ID       string         `json:"id"`
+      Type     string         `json:"type"`
+      Name     string         `json:"name"`
+      Enabled  bool           `json:"enabled"`
+      Priority int            `json:"priority"`
+      Config   map[string]any `json:"config"` // secrets redacted via redactConfig
+  }
+  ```
+
+- [ ] **Step 1: Write the failing tests**
+
+> `adapterTestServer`, `adapterServerOpts`, `do`, `fakeAdapter`, and `testDirty` are already defined in `internal/api/testhelpers_test.go` (created in Task 3 Step 2). Do NOT redefine them here — the package will have duplicate-definition errors if you do. Just create `adapters_test.go` with the test functions below.
+
+Create `internal/api/adapters_test.go`:
+```go
+package api
+
+import (
+	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+)
 
 func TestCreateThenListRedactsSecret(t *testing.T) {
 	dirty := &testDirty{}
@@ -1085,7 +1101,17 @@ func (s *Server) handleDeleteAdapter(w http.ResponseWriter, r *http.Request) {
 func (s *Server) dirtyNow() bool {
 	return s.deps.ConfigDirty != nil && s.deps.ConfigDirty.Dirty()
 }
+
+// handleTestAdapter is a temporary stub until Task 5 replaces it with the real
+// implementation. It is included here so that `go build ./internal/api/` succeeds
+// at the Task 4 boundary (the /adapters/test route is registered in server.go).
+// Task 5 Step 3 will overwrite this function with the real instantiate→Init→TestConnection logic.
+func (s *Server) handleTestAdapter(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusNotImplemented, map[string]string{"error": "not implemented yet"})
+}
 ```
+
+> **Compile invariant at Task 4 boundary:** after completing Task 4, `go build ./internal/api/` must succeed. The stub `handleTestAdapter` above satisfies the route registered in server.go. Task 5 replaces it with the real implementation.
 
 Add `writeJSONPending` to `internal/api/handlers.go` (near `writeJSON`):
 ```go
@@ -1312,7 +1338,7 @@ func (s *Server) handleTestAdapter(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 ```
-Remove the now-duplicated `handleTestAdapter` stub from the earlier stub file content (it was replaced when you rewrote `adapters.go` in Task 4; ensure only ONE definition exists).
+Remove the temporary stub `handleTestAdapter` that was added at the bottom of `adapters.go` in Task 4 (the one that returns 501 "not implemented yet") and replace it with the real implementation above. Ensure only ONE definition of `handleTestAdapter` exists in the package.
 
 - [ ] **Step 4: Run the tests**
 
@@ -2160,6 +2186,10 @@ vi.mock('../lib/adaptersApi', () => ({
   createAdapter: vi.fn(() => Promise.resolve({ data: {}, pendingRestart: true })),
   updateAdapter: vi.fn(() => Promise.resolve({ data: {}, pendingRestart: true })),
   deleteAdapter: vi.fn(() => Promise.resolve({ ok: true, pendingRestart: true })),
+  // testAdapter must be included: AdapterForm (imported by Settings) uses it, and a
+  // full vi.mock factory must export EVERY symbol the module's consumers import or
+  // Vitest throws "No 'testAdapter' export" at import time.
+  testAdapter: vi.fn(() => Promise.resolve({ ok: true })),
   SECRET_SENTINEL: '••••••••',
 }))
 vi.mock('../lib/settingsApi', () => ({
@@ -2422,6 +2452,11 @@ vi.mock('../lib/api', () => ({ api: { post: vi.fn(() => Promise.resolve({ ok: tr
 vi.mock('../lib/adaptersApi', () => ({
   useAvailableAdapters: vi.fn(() => ({ data: [{ type: 'library', name: 'subsonic', configSchema: { fields: [] }, capabilities: [] }] })),
   createAdapter: vi.fn(() => Promise.resolve({ data: {}, pendingRestart: true })),
+  // testAdapter + SECRET_SENTINEL must be included: Setup imports AdapterForm which
+  // imports { testAdapter, SECRET_SENTINEL } from adaptersApi. A full vi.mock factory
+  // must export every symbol or Vitest throws "No 'testAdapter' export" at import time.
+  testAdapter: vi.fn(() => Promise.resolve({ ok: true })),
+  SECRET_SENTINEL: '••••••••',
 }))
 import { api } from '../lib/api'
 
