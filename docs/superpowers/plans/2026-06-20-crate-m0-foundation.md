@@ -6,7 +6,7 @@
 
 **Architecture:** Modular-monolith Go binary (`cmd/crate`) with domain packages under `internal/`. It serves REST under `/api/v1`, gates protected routes behind session-cookie auth, and serves the React SPA either from `embed.FS` (prod) or by reverse-proxying Vite (`--dev`). State lives in SQLite (goose migrations, sqlc-typed queries). No real adapters yet — the registry + self-describing `Plugin` contract are proven with a fake adapter.
 
-**Tech Stack:** Go 1.23, chi v5, modernc.org/sqlite (pure-Go, cgo-free), pressly/goose v3, sqlc, x/crypto/bcrypt; React 18 + TypeScript 5 + Vite 5 + Tailwind 3.4, React Router 6, TanStack Query 5, Zustand 4, Vitest.
+**Tech Stack:** Go 1.23, chi v5, modernc.org/sqlite (pure-Go, cgo-free), pressly/goose v3, sqlc, x/crypto/bcrypt; React + TypeScript + Vite + Tailwind 3.4, React Router 6, TanStack Query 5, Zustand 4, Vitest. (As-built versions from `npm create vite@latest`: React 19, TypeScript ~5.9, Vite 8, Vitest 4, Node ≥22 — CI pins Node 22.)
 
 ## Global Constraints
 
