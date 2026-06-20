@@ -147,6 +147,8 @@ type Downloader interface {
 }
 ```
 
+> **Conformance carve-out:** `StartScan`/`ScanStatus` are library-maintenance operations modeled on Subsonic/Navidrome. A future folder-scan/standalone adapter (P3) owns scanning itself and may implement them as no-ops. `RunConformance` documents these methods as **optional/stubable** so future adapter authors aren't confused by a Navidrome-ism living in the shared suite.
+
 ### Capabilities = optional interfaces (compile-time safe) + a runtime descriptor
 
 Behavioral capabilities are **optional interfaces**, not boolean structs (idiomatic Go, compile-time contracts, no ever-growing struct):
@@ -187,7 +189,7 @@ The `download.Manager` owns: the queue, a worker pool (size = setting), **dedup*
 |---|---|---|---|
 | `schema_migrations` | migration tracking | version | — |
 | `adapter_instances` | every configured integration is a row; the registry instantiates from these | id, type, name, enabled, `priority`, config_json | `priority` drives downloader fallback + search fan-out order; new integration = new row |
-| `settings` | app prefs (k/v, JSON values) | key, value_json | `library_version`, `accent_color`, `auth_disabled`, `download.fallback`, `download.dedup`, worker count |
+| `settings` | app prefs (k/v, JSON values) | key, value_json | `library_version`, `accent_color`, `dynamic_background` (default on), `auth_disabled`, `download.fallback`, `download.dedup`, worker count |
 | `sessions` | auth | id, token_hash, expires_at, last_seen | bearer (mobile) + cookie (web) share it |
 | `download_jobs` | queue + active + done/failed (one table, status lifecycle) | id, `dedup_key`, request_json, downloader_name, status, progress, error, output_path, library_track_id, priority, `requested_by`, attempts, created/started/finished_at | powers MVP tray **and** P2 queue panel/retry; `requested_by` nullable = P3 multi-user stub |
 | `match_cache` | external⇄library results incl. **negative** matches | PK(source, external_id), library_track_id (nullable), method, confidence, isrc, mbid, duration_ms, `library_version`, matched_at | read-path for P2 artist pages / playlist sync / smart indicators |
@@ -279,7 +281,7 @@ click ↓ ─POST /api/v1/downloads {externalId, source, downloader?, playWhenRe
 3. Normalized fuzzy:  artist + title  ── disambiguate by ──▶ DURATION (±2–3s) + album
 ```
 
-**Normalization (`Normalize()`)** removes cosmetic noise (case, punctuation, `feat.`/`featuring`, collapsed whitespace, unicode normalization) but **must not over-strip** version qualifiers — otherwise a live cut matches the studio cut. **Duration is the tiebreaker** that separates collisions (a live version is rarely within 2–3s of the studio version). `Normalize()` is a pure function, unit-tested hard, and shared with `dedup_key`.
+**Normalization (`Normalize()`)** removes cosmetic noise (case, punctuation, `feat.`/`featuring`, collapsed whitespace, unicode normalization) but **must not over-strip** version qualifiers — otherwise a live cut matches the studio cut. **Duration is the tiebreaker** that separates collisions (a live version is rarely within 2–3s of the studio version). `Normalize()` is a pure function, unit-tested hard, and shared with `dedup_key`. **All normalization — `feat.`/`featuring` stripping included — applies symmetrically**: to both the external result *and* the library track before comparison, never one side only. Asymmetric stripping is a classic subtle bug that passes most fixtures and surfaces in production on a specific library's tagging layout.
 
 Results (positive and negative) are written to `match_cache`, invalidated by `library_version`.
 
@@ -356,7 +358,7 @@ The **Download Tray** and the future P2 **queue panel** share a `DownloadJobList
 
 - **Base = Spotify-like** (simple, functional, familiar).
 - **Accent = configurable, default red `#F0354B`.** Driven by a `--color-accent` CSS custom property (RGB channels) on `<html>`, with Tailwind referencing it via `rgb(var(--color-accent) / <alpha-value>)`. **This token system is built in M0** — accent is a *system* color (active nav, buttons, focus rings), deliberately not the memorable element.
-- **Signature = dynamic album background (committed).** Client-side palette extraction from the already-loaded cover (e.g. `node-vibrant`/canvas sampling, cached per album) sets a **subtle ambient background gradient** that shifts with the playing track. The **player bar uses the album's dominant color as a solid fill** with **computed-contrast text** (sample luminance → pick light/dark text, add a scrim only if needed) — *not* blur-over-art. Glassmorphism survives only on overlay panels over content, never over art.
+- **Signature = dynamic album background (committed, configurable).** Client-side palette extraction from the already-loaded cover (e.g. `node-vibrant`/canvas sampling, cached per album) sets a **subtle ambient background gradient** that shifts with the playing track. The **player bar uses the album's dominant color as a solid fill** with **computed-contrast text** (sample luminance → pick light/dark text, add a scrim only if needed) — *not* blur-over-art. Glassmorphism survives only on overlay panels over content, never over art. Extraction runs in a **Web Worker** (CPU-intensive sampling kept off the main thread → no dropped frames during the player-bar transition; result posted back). The effect is a **configurable setting `dynamic_background`, default on** — users can disable it to fall back to a flat accent-only background.
 
 ### Mobile — decided now, not retrofitted
 
@@ -418,7 +420,7 @@ Each milestone is independently demoable; M1–M3 are the spine, M4–M5 product
 - **M2 — Everywhere search + matching:** **author the matching fixture corpus first**, Spotify adapter (+conformance, ISRC), **`MatchingService`** (priority chain + duration disambiguation + `match_cache`/`library_version`, TDD), SSE aggregator (per-source deadlines), Everywhere UI (toggle, append-in-sections, per-source chips, ✓/↓/none). → *see what you have vs. don't.*
 - **M3 — Download loop (closes the loop):** Downloader registry + **Manager** (dedup join, fallback chain, scan debounce, cancel/retry), spotDL adapter (+conformance), download endpoints + WS events, library-refresh (StartScan/poll/re-match), **Download Tray** + ⟳ result state + `playWhenReady` auto-play. → *search → download → appears → plays.*
 - **M4a — Config UI + wizard (shippable checkpoint — unblocks real installation):** `ConfigSchema`-driven adapter forms + `TestConnection`, settings page (manage/enable/reorder `adapter_instances`), first-run wizard (same components), accent-color setting, keyboard shortcuts, empty/error/loading states. → *installable & configurable entirely via UI.*
-- **M4b — Design identity + responsive + polish:** dynamic album palette extraction + contrast logic, responsive shell (mobile bottom nav incl. Search tab, fullscreen-expandable mini player, sheet panels). → *distinctive and mobile-ready.*
+- **M4b — Design identity + responsive + polish:** dynamic album palette extraction **in a Web Worker** + contrast logic + the `dynamic_background` toggle (default on), responsive shell (mobile bottom nav incl. Search tab, fullscreen-expandable mini player, sheet panels). → *distinctive and mobile-ready.*
 - **M5 — Package & ship:** multi-stage Docker image, user `docker-compose.yml`, published OpenAPI, README with **legal/ethical framing** (Q#5), deployment docs (spotDL pin note), Playwright e2e, green CI, v0.1 release.
 
 ---
