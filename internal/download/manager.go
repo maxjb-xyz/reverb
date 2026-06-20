@@ -174,16 +174,18 @@ func (m *Manager) Enqueue(ctx context.Context, req core.DownloadRequest) (core.D
 
 	// Serialize the dedup-check + insert so two same-key callers can't both create.
 	m.mu.Lock()
-	defer m.mu.Unlock()
 
 	if existing, ok, err := m.store.ActiveByDedup(ctx, dedup); err != nil {
+		m.mu.Unlock()
 		return core.DownloadJob{}, err
 	} else if ok {
-		return existing, nil // dedup-join
+		m.mu.Unlock()
+		return existing, nil // dedup-join: no second dispatch
 	}
 
 	dl, err := m.pick(ctx, req)
 	if err != nil {
+		m.mu.Unlock()
 		return core.DownloadJob{}, err
 	}
 
@@ -205,16 +207,25 @@ func (m *Manager) Enqueue(ctx context.Context, req core.DownloadRequest) (core.D
 		CreatedAt:     m.clock.Now().Unix(),
 	}
 	if err := m.store.Insert(ctx, job, req); err != nil {
+		m.mu.Unlock()
 		return core.DownloadJob{}, err
 	}
 	m.reqs[job.ID] = req
 	m.publishEvent(TopicQueued, job, "")
+	id := job.ID
 
+	// Unlock BEFORE dispatching to the queue. Workers re-acquire m.mu inside the
+	// progress callback, so a blocking send under m.mu would deadlock. The job is
+	// already persisted as queued, so nothing is lost even if we shut down between
+	// unlock and send.
+	m.mu.Unlock()
+
+	// Blocking send: never silently drops the job, never deadlocks (no lock held).
+	// Cancelled only when the Manager is stopping, which is safe — the job is in
+	// the DB and can be recovered on restart.
 	select {
-	case m.queue <- job.ID:
-	default:
-		// Queue full: still persisted as queued; a worker will pick it up when space
-		// frees. For MVP the buffer (256) is generous; treat as enqueued.
+	case m.queue <- id:
+	case <-m.stopCh:
 	}
 	return job, nil
 }
@@ -316,6 +327,7 @@ func (m *Manager) process(id string) {
 	if serr != nil {
 		cur.Status = core.DownloadFailed
 		_ = m.store.Update(ctx, cur)
+		m.publishEvent(TopicFailed, cur, serr.Error())
 		return
 	}
 	cur.Status = core.DownloadCompleted

@@ -2,6 +2,7 @@ package download
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"testing"
 	"time"
@@ -15,10 +16,12 @@ import (
 
 // fakeDL is a controllable downloader. canDownload gates the fallback chain;
 // block lets a test hold a download open (to assert dedup-join while in-flight).
+// errOnStart, if non-nil, makes Start return that error immediately.
 type fakeDL struct {
 	name        string
 	canDownload bool
 	block       chan struct{} // if non-nil, Start blocks until closed/canceled
+	errOnStart  error        // if non-nil, Start returns this error
 	started     int32
 	mu          sync.Mutex
 	startCount  int
@@ -36,6 +39,9 @@ func (d *fakeDL) Start(ctx context.Context, req core.DownloadRequest, onProgress
 	d.mu.Lock()
 	d.startCount++
 	d.mu.Unlock()
+	if d.errOnStart != nil {
+		return "", d.errOnStart
+	}
 	onProgress(50)
 	if d.block != nil {
 		select {
@@ -283,5 +289,69 @@ func TestConcurrentEnqueueSameKeyOneJob(t *testing.T) {
 		if ids[i] != ids[0] {
 			t.Fatalf("concurrent same-key enqueues produced different jobs: %v", ids)
 		}
+	}
+}
+
+func TestFailedDownloadPublishesFailedEvent(t *testing.T) {
+	dlErr := errors.New("network timeout")
+	dl := &fakeDL{name: "dl", canDownload: true, errOnStart: dlErr}
+	store := newMemStore()
+	m, bus := testManager(t, []Downloader{dl}, store, nil, nil, nil)
+
+	// Subscribe to download.failed before enqueuing.
+	var failedEvents []core.DownloadEvent
+	var evMu sync.Mutex
+	gotFailed := make(chan struct{})
+	ch, unsub := bus.Subscribe(TopicFailed)
+	defer unsub()
+	go func() {
+		for ev := range ch {
+			if de, ok := ev.Payload.(core.DownloadEvent); ok {
+				evMu.Lock()
+				failedEvents = append(failedEvents, de)
+				evMu.Unlock()
+				close(gotFailed)
+				return
+			}
+		}
+	}()
+
+	job, err := m.Enqueue(context.Background(), core.DownloadRequest{
+		Source: "spotify", ExternalID: "fail1", Artist: "A", Title: "T", Album: "Al",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Wait for the failed event (or timeout).
+	select {
+	case <-gotFailed:
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting for download.failed event")
+	}
+
+	evMu.Lock()
+	defer evMu.Unlock()
+	if len(failedEvents) == 0 {
+		t.Fatal("no download.failed events received")
+	}
+	fe := failedEvents[0]
+	if fe.JobID != job.ID {
+		t.Fatalf("failed event job ID mismatch: got %q want %q", fe.JobID, job.ID)
+	}
+	if fe.Status != core.DownloadFailed {
+		t.Fatalf("failed event status: got %v want DownloadFailed", fe.Status)
+	}
+	if fe.Error != dlErr.Error() {
+		t.Fatalf("failed event error: got %q want %q", fe.Error, dlErr.Error())
+	}
+
+	// Verify the job is persisted as failed.
+	persisted, ok, err := store.Get(context.Background(), job.ID)
+	if err != nil || !ok {
+		t.Fatalf("job not found in store: %v", err)
+	}
+	if persisted.Status != core.DownloadFailed {
+		t.Fatalf("persisted job status: got %v want DownloadFailed", persisted.Status)
 	}
 }
