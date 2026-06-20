@@ -1,0 +1,7 @@
+/data/
+/web/dist/
+/web/node_modules/
+*.db
+/.env
+/crate
+/.superpowers/
