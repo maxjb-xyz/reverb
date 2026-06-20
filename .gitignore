@@ -6,3 +6,6 @@
 /crate
 /.superpowers/
 /internal/api/dist/
+/dev/navidrome/
+dev/music/*
+!dev/music/.gitkeep
