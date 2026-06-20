@@ -131,8 +131,17 @@ func (m *Manager) Start() {
 // Stop signals workers to drain and waits for them. It ALSO cancels any pending
 // scan-debounce timer (and clears pending) so a real-clock test cannot have
 // runScan fire against fakes after the test ends. Idempotent.
+//
+// Ordering rationale: close stopCh first so workers exit their select loops,
+// then wg.Wait() until every worker (and any scheduleScan it calls) has fully
+// finished, then cancel the debounce timer. This guarantees we cancel the
+// LAST timer armed by any worker — if we cancelled before Wait, a worker still
+// in process() could call scheduleScan() and re-arm a new timer after we
+// cleared it. No deadlock risk: wg.Wait() holds no lock, and workers only
+// acquire m.mu briefly inside callbacks (never blocking on Stop's lock).
 func (m *Manager) Stop() {
 	m.stopOnce.Do(func() { close(m.stopCh) })
+	m.wg.Wait()
 	m.mu.Lock()
 	if m.debounce != nil {
 		m.debounce() // stop the AfterFunc/clock timer
@@ -140,7 +149,6 @@ func (m *Manager) Stop() {
 	}
 	m.pending = false
 	m.mu.Unlock()
-	m.wg.Wait()
 }
 
 // pick chooses the downloader: an explicit name if set & present, else the first
@@ -525,7 +533,7 @@ func (m *Manager) Retry(ctx context.Context, jobID string) (core.DownloadJob, er
 	m.publishEvent(TopicQueued, job, "")
 	select {
 	case m.queue <- job.ID:
-	default:
+	case <-m.stopCh:
 	}
 	return job, nil
 }

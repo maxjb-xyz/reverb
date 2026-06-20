@@ -413,20 +413,29 @@ func TestCompletionSetsLibraryTrackIDAndPublishesComplete(t *testing.T) {
 	t.Cleanup(m.Stop)
 	m.Start()
 
-	// Subscribe to the complete topic.
-	ch, unsub := bus.Subscribe(TopicComplete)
+	// Subscribe to the complete topic BEFORE enqueuing so we don't miss the post-scan event.
+	completeCh, unsub := bus.Subscribe(TopicComplete)
 	defer unsub()
+
+	// Collect all TopicComplete events in the background.
+	var completeEvents []core.DownloadEvent
+	var ceMu sync.Mutex
+	go func() {
+		for ev := range completeCh {
+			if de, ok := ev.Payload.(core.DownloadEvent); ok {
+				ceMu.Lock()
+				completeEvents = append(completeEvents, de)
+				ceMu.Unlock()
+			}
+		}
+	}()
 
 	job, err := m.Enqueue(context.Background(), core.DownloadRequest{Source: "spotify", ExternalID: "e1", Artist: "A", Title: "T", Album: "Al"})
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	// Drain progress/complete events; wait until the job is completed in the store.
-	go func() {
-		for range ch {
-		}
-	}()
+	// Wait until the job is completed in the store (worker finished downloading).
 	deadline := time.After(2 * time.Second)
 	for {
 		cur, _, _ := store.Get(context.Background(), job.ID)
@@ -440,11 +449,59 @@ func TestCompletionSetsLibraryTrackIDAndPublishesComplete(t *testing.T) {
 			time.Sleep(time.Millisecond)
 		}
 	}
-	clk.Advance(5 * time.Second) // fire the debounced scan → re-match → set library_track_id
 
+	// Advance the fake clock to fire the debounced scan → re-match → set library_track_id.
+	// runScan executes synchronously inside Advance, so by the time Advance returns
+	// the re-match has run, the store is updated, and publishComplete has been called.
+	clk.Advance(5 * time.Second)
+
+	// Assert the store reflects the re-matched library_track_id.
 	cur, _, _ := store.Get(context.Background(), job.ID)
 	if cur.LibraryTrackID != "lib-track-9" {
 		t.Fatalf("library_track_id not set after re-match, got %q", cur.LibraryTrackID)
+	}
+
+	// Allow the goroutine a moment to deliver the event (channel send is non-blocking;
+	// goroutine scheduling may not have run yet).
+	deadline2 := time.After(time.Second)
+	for {
+		ceMu.Lock()
+		n := len(completeEvents)
+		ceMu.Unlock()
+		if n >= 2 { // first emit: job completes; second emit: post-scan publishComplete
+			break
+		}
+		select {
+		case <-deadline2:
+			// Give it one final check before failing.
+			goto checkEvents
+		default:
+			time.Sleep(time.Millisecond)
+		}
+	}
+checkEvents:
+	// Find the post-scan complete event that carries libraryTrackId.
+	ceMu.Lock()
+	evs := make([]core.DownloadEvent, len(completeEvents))
+	copy(evs, completeEvents)
+	ceMu.Unlock()
+
+	var found *core.DownloadEvent
+	for i := range evs {
+		if evs[i].JobID == job.ID && evs[i].LibraryTrackID == "lib-track-9" {
+			found = &evs[i]
+			break
+		}
+	}
+	if found == nil {
+		t.Fatalf("no download.complete event with libraryTrackId=%q for job %q; got events: %+v",
+			"lib-track-9", job.ID, evs)
+	}
+	if found.Source != "spotify" {
+		t.Fatalf("complete event source: got %q want %q", found.Source, "spotify")
+	}
+	if found.ExternalID != "e1" {
+		t.Fatalf("complete event externalId: got %q want %q", found.ExternalID, "e1")
 	}
 }
 
