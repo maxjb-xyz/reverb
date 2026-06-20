@@ -2,37 +2,92 @@ package store
 
 import (
 	"context"
-	"path/filepath"
+	"database/sql"
 	"testing"
 
 	"github.com/maximusjb/crate/internal/store/db"
 )
 
-func TestMigrateAndSettingsRoundTrip(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "test.db")
-	st, err := Open(path)
+func openMigrated(t *testing.T) *Store {
+	t.Helper()
+	st, err := Open(t.TempDir() + "/s.db")
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer st.Close()
+	t.Cleanup(func() { st.Close() })
 	if err := st.Migrate(); err != nil {
 		t.Fatal(err)
 	}
+	return st
+}
 
+func TestLibraryVersionDefaultsToOne(t *testing.T) {
+	st := openMigrated(t)
+	v, err := st.LibraryVersion(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v != 1 {
+		t.Fatalf("library_version = %d, want 1", v)
+	}
+}
+
+func TestLibraryVersionSetAndGet(t *testing.T) {
+	st := openMigrated(t)
+	if err := st.Q().SetLibraryVersion(context.Background(), "5"); err != nil {
+		t.Fatal(err)
+	}
+	v, err := st.LibraryVersion(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v != 5 {
+		t.Fatalf("library_version = %d, want 5", v)
+	}
+}
+
+func TestMatchCacheUpsertPositiveAndNegative(t *testing.T) {
+	st := openMigrated(t)
 	ctx := context.Background()
-	if err := st.Q().UpsertSetting(ctx, db.UpsertSettingParams{Key: "k", Value: "v1"}); err != nil {
+	q := st.Q()
+
+	// Positive match.
+	if err := q.UpsertMatchCache(ctx, db.UpsertMatchCacheParams{
+		Source: "spotify", ExternalID: "sp1",
+		LibraryTrackID: sql.NullString{String: "t1", Valid: true},
+		Method:         "isrc", Confidence: 1, Isrc: "USX1", Mbid: "", DurationMs: 210000, LibraryVersion: 1,
+	}); err != nil {
 		t.Fatal(err)
 	}
-	got, err := st.Q().GetSetting(ctx, "k")
-	if err != nil || got != "v1" {
-		t.Fatalf("get = %q err=%v", got, err)
-	}
-	// upsert overwrites
-	if err := st.Q().UpsertSetting(ctx, db.UpsertSettingParams{Key: "k", Value: "v2"}); err != nil {
+	row, err := q.GetMatchCache(ctx, db.GetMatchCacheParams{Source: "spotify", ExternalID: "sp1"})
+	if err != nil {
 		t.Fatal(err)
 	}
-	got, _ = st.Q().GetSetting(ctx, "k")
-	if got != "v2" {
-		t.Fatalf("upsert did not overwrite: %q", got)
+	if !row.LibraryTrackID.Valid || row.LibraryTrackID.String != "t1" || row.Method != "isrc" {
+		t.Fatalf("positive row: %+v", row)
+	}
+
+	// Negative match (library_track_id NULL).
+	if err := q.UpsertMatchCache(ctx, db.UpsertMatchCacheParams{
+		Source: "spotify", ExternalID: "sp2",
+		LibraryTrackID: sql.NullString{Valid: false},
+		Method:         "none", Confidence: 0, LibraryVersion: 1,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	neg, err := q.GetMatchCache(ctx, db.GetMatchCacheParams{Source: "spotify", ExternalID: "sp2"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if neg.LibraryTrackID.Valid {
+		t.Fatalf("negative row should have NULL library_track_id: %+v", neg)
+	}
+
+	// DeleteBySource clears both.
+	if err := q.DeleteMatchCacheBySource(ctx, "spotify"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := q.GetMatchCache(ctx, db.GetMatchCacheParams{Source: "spotify", ExternalID: "sp1"}); err == nil {
+		t.Fatal("expected ErrNoRows after delete")
 	}
 }
