@@ -256,3 +256,46 @@ func (a *Adapter) ScanStatus(ctx context.Context) (core.ScanStatus, error) {
 	}
 	return core.ScanStatus{Scanning: resp.ScanStatus.Scanning, Count: resp.ScanStatus.Count}, nil
 }
+
+// GetArtistsBrowse returns the full artist list (Subsonic getArtists), flattened
+// across index buckets. Used by the /library/artists browse endpoint.
+func (a *Adapter) GetArtistsBrowse(ctx context.Context) ([]core.Artist, error) {
+	var resp subsonicResponse
+	if err := a.client.GetJSON(ctx, "getArtists", nil, &resp); err != nil {
+		return nil, err
+	}
+	out := []core.Artist{}
+	if resp.Artists != nil {
+		for _, idx := range resp.Artists.Index {
+			for _, ar := range idx.Artist {
+				out = append(out, mapArtist(ar))
+			}
+		}
+	}
+	return out, nil
+}
+
+// GetAlbumsBrowse returns albums via Subsonic getAlbumList2 (listType e.g.
+// "newest", "frequent", "recent", "alphabeticalByName"). size defaults to 50.
+func (a *Adapter) GetAlbumsBrowse(ctx context.Context, listType string, size int) ([]core.Album, error) {
+	if listType == "" {
+		listType = "newest"
+	}
+	if size <= 0 {
+		size = 50
+	}
+	params := url.Values{}
+	params.Set("type", listType)
+	params.Set("size", strconv.Itoa(size))
+	var resp subsonicResponse
+	if err := a.client.GetJSON(ctx, "getAlbumList2", params, &resp); err != nil {
+		return nil, err
+	}
+	out := []core.Album{}
+	if resp.AlbumList2 != nil {
+		for _, al := range resp.AlbumList2.Album {
+			out = append(out, mapAlbum(al))
+		}
+	}
+	return out, nil
+}

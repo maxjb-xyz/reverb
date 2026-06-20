@@ -6,12 +6,13 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/maximusjb/crate/internal/auth"
+	"github.com/maximusjb/crate/internal/library"
 	"github.com/maximusjb/crate/internal/registry"
 )
 
 type Deps struct {
 	Auth       *auth.Service
-	Library    *registry.Registry
+	Library    library.LibraryAdapter
 	Search     *registry.Registry
 	Downloader *registry.Registry
 	Dev        bool
@@ -47,6 +48,14 @@ func (s *Server) routes() {
 			pr.Use(s.requireAuth)
 			pr.Get("/me", s.handleMe)
 			pr.Get("/adapters/available", s.handleAdaptersAvailable)
+			pr.Get("/library/search", s.handleLibrarySearch)
+			pr.Get("/library/artists", s.handleLibraryArtists)
+			pr.Get("/library/artist/{id}", s.handleLibraryArtist)
+			pr.Get("/library/album/{id}", s.handleLibraryAlbum)
+			pr.Get("/library/albums", s.handleLibraryAlbums)
+			pr.Get("/library/playlists", s.handleLibraryPlaylists)
+			pr.Get("/stream/{id}", s.handleStream)
+			pr.Get("/cover/{id}", s.handleCover)
 		})
 	})
 

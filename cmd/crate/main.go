@@ -44,7 +44,7 @@ func main() {
 
 	srv := api.NewServer(api.Deps{
 		Auth:       authSvc,
-		Library:    registry.NewRegistry("library"),
+		Library:    nil, // active library adapter wired in M4 settings work
 		Search:     registry.NewRegistry("search"),
 		Downloader: registry.NewRegistry("downloader"),
 		Dev:        cfg.Dev,

@@ -25,7 +25,6 @@ func testServer(t *testing.T) *Server {
 	}
 	return NewServer(Deps{
 		Auth:       auth.NewService(st.Q(), time.Now),
-		Library:    registry.NewRegistry("library"),
 		Search:     registry.NewRegistry("search"),
 		Downloader: registry.NewRegistry("downloader"),
 	})

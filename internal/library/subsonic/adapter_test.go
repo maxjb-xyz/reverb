@@ -193,3 +193,25 @@ func TestSubsonicConformance(t *testing.T) {
 	a := newTestAdapter(t)
 	library.RunConformance(t, a)
 }
+
+func TestGetArtistsBrowse(t *testing.T) {
+	a := newTestAdapter(t)
+	arts, err := a.GetArtistsBrowse(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(arts) != 2 {
+		t.Fatalf("artists: %+v", arts)
+	}
+}
+
+func TestGetAlbumsBrowse(t *testing.T) {
+	a := newTestAdapter(t)
+	albs, err := a.GetAlbumsBrowse(context.Background(), "newest", 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(albs) != 2 {
+		t.Fatalf("albums: %+v", albs)
+	}
+}
