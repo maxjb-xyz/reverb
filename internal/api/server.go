@@ -8,6 +8,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/maximusjb/crate/internal/auth"
 	"github.com/maximusjb/crate/internal/core"
+	"github.com/maximusjb/crate/internal/events"
 	"github.com/maximusjb/crate/internal/library"
 	"github.com/maximusjb/crate/internal/registry"
 	"github.com/maximusjb/crate/internal/search"
@@ -17,6 +18,11 @@ import (
 // *search.Aggregator satisfies it.
 type Streamer interface {
 	Stream(ctx context.Context, q string, t core.EntityType) <-chan search.Envelope
+}
+
+// EventSubscriber is the EventBus slice the WS handler needs.
+type EventSubscriber interface {
+	Subscribe(topic string) (<-chan events.Event, func())
 }
 
 // DownloadManager is the subset of *download.Manager the API needs.
@@ -34,6 +40,7 @@ type Deps struct {
 	Search           *registry.Registry
 	Downloader       *registry.Registry
 	Downloads        DownloadManager
+	Events           EventSubscriber
 	Dev              bool
 }
 
@@ -80,6 +87,7 @@ func (s *Server) routes() {
 			pr.Get("/downloads", s.handleListDownloads)
 			pr.Post("/downloads/{id}/cancel", s.handleCancelDownload)
 			pr.Post("/downloads/{id}/retry", s.handleRetryDownload)
+			pr.Get("/ws", s.handleWS)
 		})
 	})
 
