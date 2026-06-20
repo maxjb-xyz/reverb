@@ -111,7 +111,7 @@ export class AudioEngine {
 
   getState(): PlayerState {
     return {
-      queue: this.queue,
+      queue: [...this.queue],
       index: this.index,
       current: this.index >= 0 && this.index < this.queue.length ? this.queue[this.index] : null,
       playing: this.playing,
@@ -302,8 +302,9 @@ export class AudioEngine {
   }
 
   seekMs(ms: number) {
-    this.active.currentTime = Math.max(0, ms / 1000)
-    this.currentTimeMs = ms
+    const clamped = Math.max(0, this.durationMs > 0 ? Math.min(ms, this.durationMs) : ms)
+    this.active.currentTime = clamped / 1000
+    this.currentTimeMs = clamped
     this.emit()
   }
 

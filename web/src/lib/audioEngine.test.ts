@@ -93,6 +93,17 @@ describe('AudioEngine queue + transport', () => {
     expect(engine.getState().index).toBe(0)
   })
 
+  it('prev restarts current track when >3s in', () => {
+    engine.playTrackList(list, 1)
+    audios[0].currentTime = 5 // active element; >3s in
+    audios[0].fire('timeupdate')
+    expect(engine.getState().currentTimeMs).toBeGreaterThan(3000)
+    engine.prev()
+    const s = engine.getState()
+    expect(s.index).toBe(1) // unchanged
+    expect(s.currentTimeMs).toBe(0) // restarted
+  })
+
   it('repeat one replays same index on track end', () => {
     engine.playTrackList(list, 0)
     engine.cycleRepeat() // off -> all
