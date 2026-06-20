@@ -91,6 +91,7 @@ func mapTrack(c childDTO) core.Track {
 		BitRate:     c.BitRate,
 		Suffix:      c.Suffix,
 		ContentType: c.ContentType,
+		ISRC:        c.Isrc, // OpenSubsonic extension; empty on classic Subsonic
 	}
 }
 

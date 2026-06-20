@@ -162,6 +162,29 @@ func TestMatchCacheAvoidsLibraryQuery(t *testing.T) {
 	}
 }
 
+// TestMatchNonTrackExternalReturnsNotInLibrary verifies that a non-track external
+// (e.g. album or artist) returns not_in_library immediately without querying the
+// library — the candidate fetch assumes track-typed externals.
+func TestMatchNonTrackExternalReturnsNotInLibrary(t *testing.T) {
+	lib := &countingLib{inner: fakeLib{tracks: []core.Track{{ID: "t1", Title: "Song", Artist: "A", DurationMs: 200000}}}}
+	svc := NewService(lib, nil, func(context.Context) (int64, error) { return 1, nil })
+
+	for _, typ := range []core.EntityType{core.EntityAlbum, core.EntityArtist, core.EntityPlaylist} {
+		ext := core.ExternalResult{Source: "spotify", ExternalID: "ext-1", Title: "Song", Artist: "A", DurationMs: 200000, Type: typ}
+		got, err := svc.Match(context.Background(), ext)
+		if err != nil {
+			t.Fatalf("type %q: unexpected error: %v", typ, err)
+		}
+		if got.Status != core.MatchNotInLibrary {
+			t.Errorf("type %q: status=%q want %q", typ, got.Status, core.MatchNotInLibrary)
+		}
+	}
+	// Library must not have been queried for any of the above non-track types.
+	if lib.calls != 0 {
+		t.Errorf("library queried %d times for non-track externals, want 0", lib.calls)
+	}
+}
+
 func TestMatchNegativeIsCached(t *testing.T) {
 	cache := newMemCache()
 	svc := NewService(fakeLib{tracks: nil}, cache, func(context.Context) (int64, error) { return 1, nil })

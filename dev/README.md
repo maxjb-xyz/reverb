@@ -94,6 +94,11 @@ In the frontend, toggle **Everywhere** in the search bar — results stream in a
 appear in stable Tracks / Albums / Artists sections with a `spotify` source chip.
 In-library rows show ✓ and clicking them plays the matched library track.
 
+**ISRC matching note:** ISRC exact-match (highest confidence, 1.0) only fires when
+BOTH the external result AND the library track carry an ISRC; classic Subsonic servers
+omit ISRC, so against them matching falls back to normalized-fuzzy + duration; OpenSubsonic
+servers (e.g. Navidrome ≥ 0.49) that return `isrc` on song children enable the exact path.
+
 ### Step 4 — confirm the secret never leaks
 
 ```sh

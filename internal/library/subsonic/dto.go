@@ -42,6 +42,7 @@ type childDTO struct {
 	Suffix      string `json:"suffix"`
 	ContentType string `json:"contentType"`
 	IsDir       bool   `json:"isDir"`
+	Isrc        string `json:"isrc"` // OpenSubsonic extension; empty on classic Subsonic
 }
 
 type albumDTO struct {

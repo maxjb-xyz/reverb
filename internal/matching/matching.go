@@ -72,7 +72,13 @@ func (s *Service) Match(ctx context.Context, ext core.ExternalResult) (core.Matc
 		}
 	}
 
-	// 2. Candidate fetch. Title-only query; fall back to Artist if Title is empty.
+	// 2. Type guard: candidate fetch below assumes track-typed externals.
+	// Return not_in_library immediately for albums, artists, playlists etc.
+	if ext.Type != core.EntityTrack {
+		return core.MatchResult{Status: core.MatchNotInLibrary, Method: core.MatchNone, Confidence: 0}, nil
+	}
+
+	// 3. Candidate fetch. Title-only query; fall back to Artist if Title is empty.
 	query := ext.Title
 	if query == "" {
 		query = ext.Artist
@@ -83,10 +89,10 @@ func (s *Service) Match(ctx context.Context, ext core.ExternalResult) (core.Matc
 	}
 	cands := res.Tracks
 
-	// 3. Priority chain.
+	// 4. Priority chain.
 	result := s.resolve(ext, cands)
 
-	// 4. Write-through cache (positive and negative).
+	// 5. Write-through cache (positive and negative).
 	if s.cache != nil {
 		ltid := sql.NullString{}
 		if result.Status == core.MatchInLibrary {
