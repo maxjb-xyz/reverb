@@ -42,7 +42,7 @@
 - `internal/api/middleware.go` — auth middleware.
 - `internal/api/handlers.go` — health/setup/auth/me/adapters handlers.
 - `internal/api/static.go` — embed.FS / Vite-proxy SPA handler.
-- `api/openapi.yaml` — hand-authored OpenAPI for M0 endpoints (served at `/api/v1/openapi.yaml`).
+- `internal/api/openapi.yaml` — hand-authored OpenAPI for M0 endpoints (served at `/api/v1/openapi.yaml`; co-located with the api package because `//go:embed` cannot reference parent directories).
 - `Makefile` — build/test/dev/gen targets.
 
 **React (frontend) under `web/`:**
@@ -55,8 +55,9 @@
 - `web/src/App.test.tsx` — Vitest smoke test.
 - `web/src/setupTests.ts`, `web/vitest.config.ts`.
 
-**Embed bridge:**
-- `internal/api/embed.go` — `//go:embed` of `web/dist` (real in prod build).
+**Embed bridge (build-tagged so `go test ./...` never needs a built SPA):**
+- `internal/api/embed.go` (`//go:build !prod`) — dev stub handler (used by tests/CI).
+- `internal/api/embed_prod.go` (`//go:build prod`) — `//go:embed all:dist` real handler (used by `make build`, which passes `-tags prod`).
 
 **Infra:**
 - `docker-compose.dev.yml` — Navidrome dev service.
@@ -79,7 +80,7 @@
 Run:
 ```bash
 go mod init github.com/maximusjb/crate
-printf '%s\n' '/data/' '/web/dist/' '/web/node_modules/' '*.db' '/.env' '/crate' > .gitignore
+printf '%s\n' '/data/' '/web/dist/' '/web/node_modules/' '*.db' '/.env' '/crate' '/.superpowers/' > .gitignore
 go get github.com/go-chi/chi/v5@v5.1.0
 ```
 
@@ -1558,6 +1559,7 @@ Replace `cmd/crate/main.go`:
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"net/http"
@@ -1589,8 +1591,8 @@ func main() {
 	authSvc := auth.NewService(st.Q(), time.Now)
 	// Seed admin password from env if provided and not yet set.
 	if cfg.AdminPassword != "" {
-		if req, _ := authSvc.IsSetupRequired(nil); req {
-			_ = authSvc.SetAdminPassword(nil, cfg.AdminPassword)
+		if req, _ := authSvc.IsSetupRequired(context.Background()); req {
+			_ = authSvc.SetAdminPassword(context.Background(), cfg.AdminPassword)
 		}
 	}
 
@@ -1609,8 +1611,6 @@ func main() {
 	}
 }
 ```
-Note: replace `nil` context usages by importing `"context"` and passing `context.Background()` — update the three `nil` args to `context.Background()`.
-
 - [ ] **Step 9: Build, test, commit**
 
 Run: `go build ./... && go test ./...`
@@ -1625,7 +1625,7 @@ git commit -m "feat(api): auth middleware, setup/login/me/adapters endpoints, SP
 ## Task 8: OpenAPI scaffold
 
 **Files:**
-- Create: `api/openapi.yaml`
+- Create: `internal/api/openapi.yaml`
 - Modify: `internal/api/server.go` (serve the spec), `internal/api/handlers.go`
 - Test: `internal/api/openapi_test.go`
 
@@ -1634,7 +1634,7 @@ git commit -m "feat(api): auth middleware, setup/login/me/adapters endpoints, SP
 
 - [ ] **Step 1: Author the spec**
 
-Create `api/openapi.yaml`:
+Create `internal/api/openapi.yaml`:
 ```yaml
 openapi: 3.0.3
 info:
@@ -1715,7 +1715,7 @@ import (
 	"net/http"
 )
 
-//go:embed all:../../api/openapi.yaml
+//go:embed openapi.yaml
 var openapiSpec []byte
 
 func (s *Server) handleOpenAPI(w http.ResponseWriter, r *http.Request) {
@@ -1737,7 +1737,7 @@ Expected: PASS.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add api/openapi.yaml internal/api
+git add internal/api
 git commit -m "feat(api): serve hand-authored OpenAPI spec for M0 endpoints"
 ```
 
@@ -1755,6 +1755,7 @@ git commit -m "feat(api): serve hand-authored OpenAPI spec for M0 endpoints"
 
 Run:
 ```bash
+mkdir -p web
 cd web
 npm create vite@latest . -- --template react-ts
 npm install
@@ -2176,10 +2177,28 @@ git commit -m "feat(web): session-guarded routing with setup and login flows"
 **Interfaces:**
 - Produces: `(*Server) embeddedSPA()` serves files from embedded `web/dist` with SPA fallback to `index.html`. `make build` produces `./crate` with the SPA inside.
 
-- [ ] **Step 1: Replace the embed stub**
+- [ ] **Step 1: Tag the dev stub `!prod` and add the prod embed**
 
-Replace `internal/api/embed.go`:
+Add a build constraint as the **first line** of the existing `internal/api/embed.go` (keep the rest of the dev stub unchanged):
 ```go
+//go:build !prod
+
+package api
+
+import "net/http"
+
+// embeddedSPA (dev/test stub) — replaced by embed_prod.go under -tags prod.
+func (s *Server) embeddedSPA() http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]string{"app": "crate", "note": "frontend not embedded yet"})
+	})
+}
+```
+
+Create `internal/api/embed_prod.go`:
+```go
+//go:build prod
+
 package api
 
 import (
@@ -2218,7 +2237,7 @@ func trimLeadingSlash(p string) string {
 }
 ```
 
-Note: `//go:embed all:dist` requires `internal/api/dist` to exist at build time. The Makefile copies `web/dist` there.
+Why build tags: `go test ./...` and CI compile **without** `-tags prod`, so they use the stub and never require `internal/api/dist` to exist. Only `make build` (which runs `make web` first) passes `-tags prod` and embeds the real SPA.
 
 - [ ] **Step 2: Makefile**
 
@@ -2239,7 +2258,7 @@ web:
 	cp -r web/dist internal/api/dist
 
 build: web
-	go build -o crate ./cmd/crate
+	go build -tags prod -o crate ./cmd/crate
 
 dev:
 	@echo "Run in two shells:"
