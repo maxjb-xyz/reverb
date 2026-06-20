@@ -14,6 +14,17 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	_ = json.NewEncoder(w).Encode(v)
 }
 
+// writeJSONPending wraps a payload with the restart-to-apply flag so the client can
+// surface the "Restart to apply" banner immediately after a mutation.
+func writeJSONPending(w http.ResponseWriter, status int, v any, pending bool) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(struct {
+		Data           any  `json:"data"`
+		PendingRestart bool `json:"pendingRestart"`
+	}{Data: v, PendingRestart: pending})
+}
+
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
@@ -92,7 +103,10 @@ type adapterInfo struct {
 
 func (s *Server) handleAdaptersAvailable(w http.ResponseWriter, r *http.Request) {
 	out := make([]adapterInfo, 0)
-	for _, reg := range []*registry.Registry{s.deps.Search, s.deps.Downloader} {
+	for _, reg := range []*registry.Registry{s.deps.Lib, s.deps.Search, s.deps.Downloader} {
+		if reg == nil {
+			continue
+		}
 		for _, name := range reg.Names() {
 			p, err := reg.Create(name)
 			if err != nil {
