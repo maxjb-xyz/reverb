@@ -9,6 +9,12 @@ import (
 
 // RunConformance exercises the SearchSource contract. Call it from each adapter's
 // test package with a configured, ready-to-use source (pointed at httptest).
+//
+// The source passed in MUST be configured (e.g. pointed at an httptest server) so that:
+//   - Search(ctx, "test", core.EntityTrack) returns at least one result
+//   - GetAlbum(ctx, "al1") returns an album with a non-empty ExternalID
+//
+// Adapter tests are responsible for seeding fixtures that satisfy these calls.
 func RunConformance(t *testing.T, s SearchSource) {
 	t.Helper()
 	ctx := context.Background()
@@ -26,6 +32,9 @@ func RunConformance(t *testing.T, s SearchSource) {
 		res, err := s.Search(ctx, "test", core.EntityTrack)
 		if err != nil {
 			t.Fatalf("Search: %v", err)
+		}
+		if len(res) == 0 {
+			t.Fatalf("expected at least one result")
 		}
 		for _, r := range res {
 			if r.Source == "" || r.ExternalID == "" {
