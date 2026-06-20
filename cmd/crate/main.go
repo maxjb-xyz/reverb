@@ -69,11 +69,7 @@ func main() {
 	}
 
 	// Build active search sources + the matching service + the aggregator.
-	sources, err := buildSearchSources(searchReg, instances, os.Getenv)
-	if err != nil {
-		log.Printf("WARNING: search sources not available: %v", err)
-		sources = nil
-	}
+	sources := buildSearchSources(searchReg, instances, os.Getenv)
 	var aggregator *search.Aggregator
 	if len(sources) > 0 {
 		var matcher search.Matcher

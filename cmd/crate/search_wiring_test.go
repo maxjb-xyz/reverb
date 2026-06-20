@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/maximusjb/crate/internal/core"
@@ -26,6 +27,16 @@ func (s *stubSource) GetAlbum(ctx context.Context, id string) (core.ExternalAlbu
 	return core.ExternalAlbum{}, nil
 }
 
+// stubFailSource is a stubSource whose Init always returns an error.
+type stubFailSource struct {
+	stubSource
+}
+
+func (s *stubFailSource) Init(_ map[string]any) error { return errors.New("init failure") }
+
+// compile-time assertion: buildSearchSources returns the aggregator's expected input type.
+var _ []search.SearchSource = buildSearchSources(nil, nil, nil)
+
 func TestBuildSearchSourcesAppliesEnvSecret(t *testing.T) {
 	reg := registry.NewRegistry("search")
 	captured := &stubSource{}
@@ -37,10 +48,7 @@ func TestBuildSearchSourcesAppliesEnvSecret(t *testing.T) {
 	}}
 	env := map[string]string{"CRATE_SPOTIFY_CLIENT_SECRET": "env-secret"}
 
-	got, err := buildSearchSources(reg, instances, func(k string) string { return env[k] })
-	if err != nil {
-		t.Fatal(err)
-	}
+	got := buildSearchSources(reg, instances, func(k string) string { return env[k] })
 	if len(got) != 1 {
 		t.Fatalf("want 1 source, got %d", len(got))
 	}
@@ -59,16 +67,30 @@ func TestBuildSearchSourcesSkipsDisabledAndNonSearch(t *testing.T) {
 		{ID: "s1", Type: "search", Name: "spotify", Enabled: 0},
 		{ID: "l1", Type: "library", Name: "subsonic", Enabled: 1},
 	}
-	got, err := buildSearchSources(reg, instances, func(string) string { return "" })
-	if err != nil {
-		t.Fatal(err)
-	}
+	got := buildSearchSources(reg, instances, func(string) string { return "" })
 	if len(got) != 0 {
 		t.Fatalf("want 0 sources, got %d", len(got))
 	}
 }
 
-// Compile-time guard that the produced type matches the aggregator's input.
-var _ = func() {
-	var _ []search.SearchSource
+func TestBuildSearchSourcesInitFailSkips(t *testing.T) {
+	reg := registry.NewRegistry("search")
+	// First source: Init always fails.
+	reg.Register("bad-source", func() registry.Plugin { return &stubFailSource{} })
+	// Second source: Init succeeds.
+	good := &stubSource{}
+	reg.Register("good-source", func() registry.Plugin { return good })
+
+	instances := []db.AdapterInstance{
+		{ID: "b1", Type: "search", Name: "bad-source", Enabled: 1},
+		{ID: "g1", Type: "search", Name: "good-source", Enabled: 1},
+	}
+
+	got := buildSearchSources(reg, instances, func(string) string { return "" })
+	if len(got) != 1 {
+		t.Fatalf("want 1 source (good-source only), got %d", len(got))
+	}
+	if got[0] != good {
+		t.Fatalf("expected good-source to be the surviving source")
+	}
 }
