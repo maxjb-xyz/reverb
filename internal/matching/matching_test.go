@@ -16,6 +16,18 @@ func (f fakeLib) Search(ctx context.Context, q string, types []core.EntityType) 
 	return core.SearchResults{Tracks: f.tracks}, nil
 }
 
+// countingLib wraps a LibrarySearcher and counts how many times Search is
+// invoked, so tests can assert cache hits avoid the library query entirely.
+type countingLib struct {
+	inner LibrarySearcher
+	calls int
+}
+
+func (c *countingLib) Search(ctx context.Context, q string, types []core.EntityType) (core.SearchResults, error) {
+	c.calls++
+	return c.inner.Search(ctx, q, types)
+}
+
 // memCache is an in-memory MatchCacheStore.
 type memCache struct{ rows map[string]db.MatchCache }
 
@@ -96,6 +108,57 @@ func TestMatchCacheFirstAndInvalidation(t *testing.T) {
 	fresh, _ := svc.Match(context.Background(), ext)
 	if fresh.Status != core.MatchNotInLibrary {
 		t.Fatalf("expected re-match negative after version bump, got %+v", fresh)
+	}
+}
+
+// TestMatchCacheAvoidsLibraryQuery proves cache-first EXPLICITLY: a second Match
+// for the same external result must NOT re-query the library (call counter stays
+// flat), and a library_version bump must force a recompute (counter increments).
+func TestMatchCacheAvoidsLibraryQuery(t *testing.T) {
+	cands := []core.Track{{ID: "t1", Title: "Song", Artist: "A", Album: "X", DurationMs: 200000, ISRC: "USX1"}}
+	lib := &countingLib{inner: fakeLib{tracks: cands}}
+	cache := newMemCache()
+	version := int64(1)
+	svc := NewService(lib, cache, func(context.Context) (int64, error) { return version, nil })
+	ext := core.ExternalResult{Source: "spotify", ExternalID: "sp1", Title: "Song", Artist: "A", DurationMs: 200000, ISRC: "USX1", Type: core.EntityTrack}
+
+	// First Match computes the decision, which requires one library query.
+	first, err := svc.Match(context.Background(), ext)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.Status != core.MatchInLibrary || first.Method != core.MatchISRC {
+		t.Fatalf("first match: %+v", first)
+	}
+	if lib.calls != 1 {
+		t.Fatalf("after first Match: lib.calls=%d want 1", lib.calls)
+	}
+
+	// Second Match for the SAME external result must be served from match_cache
+	// without touching the library: the counter must NOT increment.
+	cached, err := svc.Match(context.Background(), ext)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cached.Status != core.MatchInLibrary {
+		t.Fatalf("expected cached positive, got %+v", cached)
+	}
+	if lib.calls != 1 {
+		t.Fatalf("cache hit queried the library: lib.calls=%d want 1", lib.calls)
+	}
+
+	// Bump library_version → cached row is stale → Match must recompute, which
+	// requires a fresh library query: the counter must increment.
+	version = 2
+	fresh, err := svc.Match(context.Background(), ext)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fresh.Status != core.MatchInLibrary {
+		t.Fatalf("expected recompute positive after version bump, got %+v", fresh)
+	}
+	if lib.calls != 2 {
+		t.Fatalf("version bump did not recompute: lib.calls=%d want 2", lib.calls)
 	}
 }
 
