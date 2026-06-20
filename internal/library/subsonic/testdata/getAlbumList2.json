@@ -1,0 +1,4 @@
+{"subsonic-response":{"status":"ok","version":"1.16.1","albumList2":{"album":[
+  {"id":"al1","name":"First Album","artist":"The Artists","artistId":"ar1","coverArt":"al-1","year":2020,"songCount":2,"duration":420},
+  {"id":"al2","name":"Second Album","artist":"The Artists","artistId":"ar1","coverArt":"al-2","year":2022,"songCount":1,"duration":180}
+]}}}

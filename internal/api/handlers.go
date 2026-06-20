@@ -92,7 +92,7 @@ type adapterInfo struct {
 
 func (s *Server) handleAdaptersAvailable(w http.ResponseWriter, r *http.Request) {
 	out := make([]adapterInfo, 0)
-	for _, reg := range []*registry.Registry{s.deps.Library, s.deps.Search, s.deps.Downloader} {
+	for _, reg := range []*registry.Registry{s.deps.Search, s.deps.Downloader} {
 		for _, name := range reg.Names() {
 			p, err := reg.Create(name)
 			if err != nil {
