@@ -76,4 +76,39 @@ func TestLoginAndSession(t *testing.T) {
 	}
 }
 
+func TestSessionExpires(t *testing.T) {
+	st, err := store.Open(t.TempDir() + "/exp.db")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { st.Close() })
+	if err := st.Migrate(); err != nil {
+		t.Fatal(err)
+	}
+
+	current := time.Unix(1_000_000, 0)
+	s := NewService(st.Q(), func() time.Time { return current })
+	ctx := context.Background()
+
+	tok, err := s.CreateSession(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ok, _ := s.ValidateToken(ctx, tok); !ok {
+		t.Fatal("token should be valid before expiry")
+	}
+	current = current.Add(sessionTTL + time.Hour)
+	if ok, _ := s.ValidateToken(ctx, tok); ok {
+		t.Fatal("token should be invalid after expiry")
+	}
+}
+
+func TestCheckLoginNoPasswordSet(t *testing.T) {
+	s := newTestService(t)
+	ctx := context.Background()
+	if ok, err := s.CheckLogin(ctx, "anything"); ok || err == nil {
+		t.Fatalf("CheckLogin with no admin password: want (false, error), got (%v, %v)", ok, err)
+	}
+}
+
 var _ = db.Session{}
