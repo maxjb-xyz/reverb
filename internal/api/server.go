@@ -19,12 +19,21 @@ type Streamer interface {
 	Stream(ctx context.Context, q string, t core.EntityType) <-chan search.Envelope
 }
 
+// DownloadManager is the subset of *download.Manager the API needs.
+type DownloadManager interface {
+	Enqueue(ctx context.Context, req core.DownloadRequest) (core.DownloadJob, error)
+	List(ctx context.Context) ([]core.DownloadJob, error)
+	Cancel(ctx context.Context, jobID string) error
+	Retry(ctx context.Context, jobID string) (core.DownloadJob, error)
+}
+
 type Deps struct {
 	Auth             *auth.Service
 	Library          library.LibraryAdapter
 	SearchAggregator Streamer
 	Search           *registry.Registry
 	Downloader       *registry.Registry
+	Downloads        DownloadManager
 	Dev              bool
 }
 
@@ -67,6 +76,10 @@ func (s *Server) routes() {
 			pr.Get("/stream/{id}", s.handleStream)
 			pr.Get("/cover/{id}", s.handleCover)
 			pr.Get("/search/everywhere", s.handleEverywhere)
+			pr.Post("/downloads", s.handleCreateDownload)
+			pr.Get("/downloads", s.handleListDownloads)
+			pr.Post("/downloads/{id}/cancel", s.handleCancelDownload)
+			pr.Post("/downloads/{id}/retry", s.handleRetryDownload)
 		})
 	})
 
