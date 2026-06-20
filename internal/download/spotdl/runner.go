@@ -3,6 +3,7 @@ package spotdl
 import (
 	"bufio"
 	"context"
+	"io"
 	"os/exec"
 )
 
@@ -17,20 +18,29 @@ type Runner interface {
 // kills the child process (exec.CommandContext).
 type ExecRunner struct{}
 
-func (ExecRunner) Run(ctx context.Context, name string, args []string, onLine func(string)) error {
+func (r ExecRunner) Run(ctx context.Context, name string, args []string, onLine func(string)) error {
 	cmd := exec.CommandContext(ctx, name, args...)
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		return err
-	}
-	cmd.Stderr = cmd.Stdout // spotDL writes progress to stdout; merge any stderr too
+	pr, pw := io.Pipe()
+	cmd.Stdout = pw
+	cmd.Stderr = pw
 	if err := cmd.Start(); err != nil {
+		_ = pw.Close()
 		return err
 	}
-	sc := bufio.NewScanner(stdout)
+	waitErr := make(chan error, 1)
+	go func() {
+		err := cmd.Wait()
+		_ = pw.CloseWithError(err) // unblocks the scanner with EOF (or the err)
+		waitErr <- err
+	}()
+	sc := bufio.NewScanner(pr)
 	sc.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 	for sc.Scan() {
 		onLine(sc.Text())
 	}
-	return cmd.Wait()
+	werr := <-waitErr
+	if werr != nil {
+		return werr
+	}
+	return sc.Err()
 }

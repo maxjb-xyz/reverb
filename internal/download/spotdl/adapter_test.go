@@ -2,6 +2,7 @@ package spotdl
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/maximusjb/crate/internal/core"
@@ -51,6 +52,9 @@ func TestIdentityAndSchema(t *testing.T) {
 	}
 	if !keys["output_dir"] {
 		t.Error("schema missing output_dir")
+	}
+	if !keys["binary_path"] {
+		t.Error("schema missing binary_path")
 	}
 }
 
@@ -126,23 +130,12 @@ func TestStartPassesOutputDirAndQuery(t *testing.T) {
 	for _, a := range r.gotArgs {
 		joined += a + " "
 	}
-	if !contains(joined, "/tmp/music") {
+	if !strings.Contains(joined, "/tmp/music") {
 		t.Fatalf("output dir not passed in args: %v", r.gotArgs)
 	}
-	if !contains(joined, "Daft Punk") && !contains(joined, "One More Time") {
+	if !strings.Contains(joined, "Daft Punk") && !strings.Contains(joined, "One More Time") {
 		t.Fatalf("search query not passed in args: %v", r.gotArgs)
 	}
-}
-
-func contains(s, sub string) bool {
-	return len(s) >= len(sub) && (func() bool {
-		for i := 0; i+len(sub) <= len(s); i++ {
-			if s[i:i+len(sub)] == sub {
-				return true
-			}
-		}
-		return false
-	})()
 }
 
 func TestSpotdlConformance(t *testing.T) {

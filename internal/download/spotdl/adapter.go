@@ -69,12 +69,10 @@ func (a *Adapter) Init(cfg map[string]any) error {
 
 // TestConnection runs `<binary> --version` to confirm spotDL is present/runnable.
 func (a *Adapter) TestConnection(ctx context.Context) error {
-	ran := false
-	err := a.runner.Run(ctx, a.binary, []string{"--version"}, func(string) { ran = true })
+	err := a.runner.Run(ctx, a.binary, []string{"--version"}, func(string) {})
 	if err != nil {
 		return fmt.Errorf("spotdl --version: %w", err)
 	}
-	_ = ran
 	return nil
 }
 
