@@ -3,10 +3,13 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 )
+
+var errFakeConn = errors.New("connection refused")
 
 func TestCreateThenListRedactsSecret(t *testing.T) {
 	dirty := &testDirty{}
@@ -122,6 +125,49 @@ func TestAdaptersRequireAuth(t *testing.T) {
 	srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/adapters", nil))
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("status = %d, want 401", rec.Code)
+	}
+}
+
+func TestTestAdapterOK(t *testing.T) {
+	srv, cookie := adapterTestServer(t, adapterServerOpts{dirty: &testDirty{}, testErr: nil})
+	rec := do(t, srv, cookie, http.MethodPost, "/api/v1/adapters/test",
+		`{"name":"fake","config":{"url":"http://x","token":"t"}}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d: %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		OK    bool   `json:"ok"`
+		Error string `json:"error"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &body)
+	if !body.OK {
+		t.Fatalf("expected ok=true, got %+v", body)
+	}
+}
+
+func TestTestAdapterError(t *testing.T) {
+	srv, cookie := adapterTestServer(t, adapterServerOpts{dirty: &testDirty{}, testErr: errFakeConn})
+	rec := do(t, srv, cookie, http.MethodPost, "/api/v1/adapters/test",
+		`{"name":"fake","config":{"url":"http://x","token":"t"}}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d (a connection failure is still a 200 ok:false)", rec.Code)
+	}
+	var body struct {
+		OK    bool   `json:"ok"`
+		Error string `json:"error"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &body)
+	if body.OK || body.Error == "" {
+		t.Fatalf("expected ok=false with error, got %+v", body)
+	}
+}
+
+func TestTestAdapterUnknownName(t *testing.T) {
+	srv, cookie := adapterTestServer(t, adapterServerOpts{dirty: &testDirty{}})
+	rec := do(t, srv, cookie, http.MethodPost, "/api/v1/adapters/test",
+		`{"name":"nope","config":{}}`)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400 for unknown adapter", rec.Code)
 	}
 }
 

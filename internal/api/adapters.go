@@ -1,8 +1,11 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
+	"os"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -199,10 +202,83 @@ func (s *Server) dirtyNow() bool {
 	return s.deps.ConfigDirty != nil && s.deps.ConfigDirty.Dirty()
 }
 
-// handleTestAdapter is a temporary stub until Task 5 replaces it with the real
-// implementation. It is included here so that `go build ./internal/api/` succeeds
-// at the Task 4 boundary (the /adapters/test route is registered in server.go).
-// Task 5 Step 3 will overwrite this function with the real instantiate→Init→TestConnection logic.
+type testAdapterBody struct {
+	Name   string         `json:"name"`
+	Config map[string]any `json:"config"`
+}
+
+// createUnregistered finds and instantiates a NON-persisted adapter by name across
+// all registries. Returns (nil, false) if the name is not registered.
+func (s *Server) createUnregistered(name string) (registry.Plugin, bool) {
+	for _, reg := range s.registries() {
+		if reg == nil {
+			continue
+		}
+		for _, n := range reg.Names() {
+			if n == name {
+				if p, err := reg.Create(n); err == nil {
+					return p, true
+				}
+			}
+		}
+	}
+	return nil, false
+}
+
+// overlayEnvSecrets applies the same env secret overrides the composition root uses,
+// so a Test honors CRATE_* secrets when the form omits them. Mirrors *_wiring.go.
+func overlayEnvSecrets(name string, cfg map[string]any) {
+	switch name {
+	case "subsonic":
+		if v := os.Getenv("CRATE_LIBRARY_PASSWORD"); v != "" {
+			cfg["password"] = v
+		}
+	case "spotify":
+		if v := os.Getenv("CRATE_SPOTIFY_CLIENT_SECRET"); v != "" {
+			cfg["client_secret"] = v
+		}
+	case "spotdl":
+		if v := os.Getenv("CRATE_SPOTDL_PATH"); v != "" {
+			cfg["binary_path"] = v
+		}
+		if v := os.Getenv("CRATE_DOWNLOAD_DIR"); v != "" {
+			cfg["output_dir"] = v
+		}
+	}
+}
+
 func (s *Server) handleTestAdapter(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusNotImplemented, map[string]string{"error": "not implemented yet"})
+	var body testAdapterBody
+	if err := decode(r, &body); err != nil || body.Name == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "name is required"})
+		return
+	}
+	plugin, ok := s.createUnregistered(body.Name)
+	if !ok {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "unknown adapter: " + body.Name})
+		return
+	}
+	cfg := body.Config
+	if cfg == nil {
+		cfg = map[string]any{}
+	}
+	// Strip any __isSet sidecars the client may echo; never feed them to Init.
+	for k := range cfg {
+		if len(k) > len(isSetSuffix) && k[len(k)-len(isSetSuffix):] == isSetSuffix {
+			delete(cfg, k)
+		}
+	}
+	overlayEnvSecrets(body.Name, cfg)
+
+	if err := plugin.Init(cfg); err != nil {
+		writeJSON(w, http.StatusOK, map[string]any{"ok": false, "error": err.Error()})
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+	if err := plugin.TestConnection(ctx); err != nil {
+		writeJSON(w, http.StatusOK, map[string]any{"ok": false, "error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
