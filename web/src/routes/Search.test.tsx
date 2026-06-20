@@ -1,4 +1,5 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
+import { act } from '@testing-library/react'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -53,5 +54,45 @@ describe('Search (library mode)', () => {
     expect(spy).toHaveBeenCalledOnce()
     expect(spy).toHaveBeenCalledWith([stubTrack], 0)
     spy.mockRestore()
+  })
+})
+
+describe('Search (everywhere mode)', () => {
+  it('streams external results into stable sections with source chips', async () => {
+    // Stub EventSource so no real network is opened; capture the instance to emit.
+    let inst: { onmessage: ((ev: { data: string }) => void) | null; onerror: (() => void) | null; close(): void } | null = null
+    class StubES {
+      onmessage: ((ev: { data: string }) => void) | null = null
+      onerror: (() => void) | null = null
+      url: string
+      constructor(url: string) {
+        this.url = url
+        inst = this
+      }
+      close() {}
+    }
+    vi.stubGlobal('EventSource', StubES as unknown as typeof EventSource)
+
+    render(wrap(<Search />))
+    fireEvent.change(screen.getByPlaceholderText(/search/i), { target: { value: 'echoes' } })
+    fireEvent.click(screen.getByRole('button', { name: /everywhere/i }))
+
+    act(() => {
+      inst!.onmessage?.({
+        data: JSON.stringify({
+          source: 'spotify',
+          status: 'ok',
+          results: [
+            { source: 'spotify', externalId: 'sp1', title: 'Echoes', artist: 'Vale', album: 'Deep', durationMs: 240000, type: 'track', match: { status: 'in_library', libraryTrackId: 't3', method: 'fuzzy', confidence: 0.9 } },
+          ],
+        }),
+      })
+    })
+
+    await waitFor(() => expect(screen.getByText('Echoes')).toBeInTheDocument())
+    expect(screen.getByText(/Spotify ✓/)).toBeInTheDocument()
+    expect(screen.getByTitle(/in library/i)).toBeInTheDocument()
+
+    vi.unstubAllGlobals()
   })
 })
