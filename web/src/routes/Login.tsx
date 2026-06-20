@@ -8,6 +8,7 @@ export default function Login() {
   const nav = useNavigate()
   async function submit(e: React.FormEvent) {
     e.preventDefault()
+    setErr('')
     try {
       await api.post('/auth/login', { password: pw })
       nav('/search')
@@ -27,7 +28,7 @@ export default function Login() {
         placeholder="Admin password"
       />
       {err && <p className="text-accent text-sm">{err}</p>}
-      <button className="w-full rounded bg-accent py-2 font-medium text-white">Log in</button>
+      <button type="submit" className="w-full rounded bg-accent py-2 font-medium text-white">Log in</button>
     </form>
   )
 }
