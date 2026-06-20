@@ -11,6 +11,7 @@ import (
 	"github.com/maximusjb/crate/internal/api"
 	"github.com/maximusjb/crate/internal/auth"
 	"github.com/maximusjb/crate/internal/config"
+	"github.com/maximusjb/crate/internal/library/subsonic"
 	"github.com/maximusjb/crate/internal/registry"
 	"github.com/maximusjb/crate/internal/store"
 )
@@ -42,11 +43,32 @@ func main() {
 		log.Printf("WARNING: auth is DISABLED (CRATE_AUTH_DISABLED) — all routes are unauthenticated; use only on a trusted LAN")
 	}
 
+	// Registries (explicit registration at the composition root — no init() side-effects).
+	libraryReg := registry.NewRegistry("library")
+	libraryReg.Register("subsonic", func() registry.Plugin { return subsonic.New() })
+	searchReg := registry.NewRegistry("search")
+	downloaderReg := registry.NewRegistry("downloader")
+
+	// Build the active library adapter from the enabled adapter_instance row.
+	instances, err := st.Q().ListAdapterInstances(context.Background())
+	if err != nil {
+		log.Fatal(err)
+	}
+	libAdapter, err := buildLibraryAdapter(context.Background(), libraryReg, instances, os.Getenv)
+	if err != nil {
+		log.Printf("WARNING: library adapter not available: %v", err)
+	}
+	if libAdapter != nil {
+		log.Printf("library adapter active: %s", libAdapter.Name())
+	} else {
+		log.Printf("no library adapter configured (add one via settings)")
+	}
+
 	srv := api.NewServer(api.Deps{
 		Auth:       authSvc,
-		Library:    nil, // active library adapter wired in M4 settings work
-		Search:     registry.NewRegistry("search"),
-		Downloader: registry.NewRegistry("downloader"),
+		Library:    libAdapter,
+		Search:     searchReg,
+		Downloader: downloaderReg,
 		Dev:        cfg.Dev,
 	})
 
