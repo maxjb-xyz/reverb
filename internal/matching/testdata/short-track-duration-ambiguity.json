@@ -1,0 +1,13 @@
+{"cases":[
+  {"name":"two short interludes same title; duration picks the right one",
+   "external":{"title":"Interlude","artist":"Mosaic","album":"Phase I","durationMs":42000},
+   "library":[
+     {"id":"int2","title":"Interlude","artist":"Mosaic","album":"Phase II","durationMs":75000},
+     {"id":"int1","title":"Interlude","artist":"Mosaic","album":"Phase I","durationMs":43000}
+   ],
+   "expect":{"status":"in_library","libraryTrackId":"int1","method":"fuzzy"}},
+  {"name":"short track with no duration match is rejected",
+   "external":{"title":"Intro","artist":"Mosaic","album":"Phase I","durationMs":30000},
+   "library":[{"id":"intro2","title":"Intro","artist":"Mosaic","album":"Phase II","durationMs":61000}],
+   "expect":{"status":"not_in_library","libraryTrackId":"","method":"none"}}
+]}

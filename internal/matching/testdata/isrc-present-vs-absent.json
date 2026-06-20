@@ -1,0 +1,14 @@
+{"cases":[
+  {"name":"ISRC exact wins even when title differs",
+   "external":{"title":"Different Title On Spotify","artist":"Loom","album":"X","durationMs":201000,"isrc":"GBARL0700001"},
+   "library":[{"id":"i1","title":"Canonical Title","artist":"Loom","album":"X","durationMs":201000,"isrc":"GBARL0700001"}],
+   "expect":{"status":"in_library","libraryTrackId":"i1","method":"isrc"}},
+  {"name":"ISRC mismatch falls through to fuzzy by title+artist+duration",
+   "external":{"title":"Glasshouse","artist":"Loom","album":"X","durationMs":201000,"isrc":"GBARL0700002"},
+   "library":[{"id":"i2","title":"Glasshouse","artist":"Loom","album":"X","durationMs":201500,"isrc":"GBARL0799999"}],
+   "expect":{"status":"in_library","libraryTrackId":"i2","method":"fuzzy"}},
+  {"name":"ISRC absent on external, fuzzy used",
+   "external":{"title":"Glasshouse","artist":"Loom","album":"X","durationMs":201000},
+   "library":[{"id":"i3","title":"Glasshouse","artist":"Loom","album":"X","durationMs":201000,"isrc":"GBARL0700003"}],
+   "expect":{"status":"in_library","libraryTrackId":"i3","method":"fuzzy"}}
+]}

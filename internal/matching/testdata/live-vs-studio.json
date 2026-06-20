@@ -1,0 +1,15 @@
+{"cases":[
+  {"name":"live external must not match studio library by duration",
+   "external":{"title":"Falling (Live)","artist":"Cinder","album":"Live at the Hall","durationMs":312000},
+   "library":[{"id":"studio","title":"Falling","artist":"Cinder","album":"Embers","durationMs":244000}],
+   "expect":{"status":"not_in_library","libraryTrackId":"","method":"none"},
+   "normalize":{"title":"falling (live)","artist":"cinder"}},
+  {"name":"studio external matches studio library; live candidate rejected",
+   "external":{"title":"Falling","artist":"Cinder","album":"Embers","durationMs":244000},
+   "library":[
+     {"id":"live","title":"Falling (Live)","artist":"Cinder","album":"Live at the Hall","durationMs":312000},
+     {"id":"studio","title":"Falling","artist":"Cinder","album":"Embers","durationMs":243500}
+   ],
+   "expect":{"status":"in_library","libraryTrackId":"studio","method":"fuzzy"},
+   "normalize":{"title":"falling","artist":"cinder"}}
+]}

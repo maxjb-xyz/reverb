@@ -1,0 +1,17 @@
+{"cases":[
+  {"name":"diacritics folded: Bjork accented matches unaccented",
+   "external":{"title":"Jóga","artist":"Björk","album":"Homogenic","durationMs":295000},
+   "library":[{"id":"j1","title":"Joga","artist":"Bjork","album":"Homogenic","durationMs":295000}],
+   "expect":{"status":"in_library","libraryTrackId":"j1","method":"fuzzy"},
+   "normalize":{"title":"joga","artist":"bjork"}},
+  {"name":"cyrillic exact match preserved",
+   "external":{"title":"Кукушка","artist":"Кино","album":"Звезда","durationMs":366000},
+   "library":[{"id":"k1","title":"Кукушка","artist":"Кино","album":"Звезда","durationMs":366000}],
+   "expect":{"status":"in_library","libraryTrackId":"k1","method":"fuzzy"},
+   "normalize":{"title":"кукушка","artist":"кино"}},
+  {"name":"CJK exact match preserved",
+   "external":{"title":"夜曲","artist":"周杰倫","album":"十一月的蕭邦","durationMs":227000},
+   "library":[{"id":"c1","title":"夜曲","artist":"周杰倫","album":"十一月的蕭邦","durationMs":227000}],
+   "expect":{"status":"in_library","libraryTrackId":"c1","method":"fuzzy"},
+   "normalize":{"title":"夜曲","artist":"周杰倫"}}
+]}
