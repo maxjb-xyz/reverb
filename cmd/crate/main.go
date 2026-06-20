@@ -11,6 +11,9 @@ import (
 	"github.com/maximusjb/crate/internal/api"
 	"github.com/maximusjb/crate/internal/auth"
 	"github.com/maximusjb/crate/internal/config"
+	"github.com/maximusjb/crate/internal/download"
+	"github.com/maximusjb/crate/internal/download/spotdl"
+	"github.com/maximusjb/crate/internal/events"
 	"github.com/maximusjb/crate/internal/library/subsonic"
 	"github.com/maximusjb/crate/internal/matching"
 	"github.com/maximusjb/crate/internal/registry"
@@ -52,6 +55,7 @@ func main() {
 	searchReg := registry.NewRegistry("search")
 	searchReg.Register("spotify", func() registry.Plugin { return spotify.New() })
 	downloaderReg := registry.NewRegistry("downloader")
+	downloaderReg.Register("spotdl", func() registry.Plugin { return spotdl.New() })
 
 	// Build the active library adapter from the enabled adapter_instance row.
 	instances, err := st.Q().ListAdapterInstances(context.Background())
@@ -82,15 +86,47 @@ func main() {
 		log.Printf("no search sources configured (add one via settings)")
 	}
 
+	// EventBus backs both the WS endpoint and the Manager's typed events.
+	bus := events.New()
+
+	// Build the download Manager from enabled downloader instances.
+	var manager *download.Manager
+	downloaders := buildDownloaders(downloaderReg, instances, os.Getenv)
+	if len(downloaders) > 0 && libAdapter != nil {
+		var rematcher download.Rematcher
+		rematcher = matching.NewService(libAdapter, st.Q(), st.LibraryVersion)
+		manager = download.NewManager(
+			download.Config{Workers: 2, DebounceWindow: 5 * time.Second},
+			downloaders,
+			download.NewSQLStore(st.Q()),
+			bus,
+			libAdapter,           // ScanController (StartScan/ScanStatus)
+			rematcher,            // Rematcher
+			st,                   // VersionBumper (LibraryVersion/SetLibraryVersion)
+			download.RealClock{}, // production clock
+		)
+		manager.Start()
+		defer manager.Stop()
+		log.Printf("download manager active: %d downloader(s)", len(downloaders))
+	} else if len(downloaders) > 0 {
+		log.Printf("WARNING: downloaders configured but no library adapter — download manager disabled")
+	} else {
+		log.Printf("no downloaders configured (add one via settings)")
+	}
+
 	deps := api.Deps{
 		Auth:       authSvc,
 		Library:    libAdapter,
 		Search:     searchReg,
 		Downloader: downloaderReg,
+		Events:     bus,
 		Dev:        cfg.Dev,
 	}
 	if aggregator != nil {
 		deps.SearchAggregator = aggregator
+	}
+	if manager != nil {
+		deps.Downloads = manager
 	}
 	srv := api.NewServer(deps)
 
