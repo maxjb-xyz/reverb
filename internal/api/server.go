@@ -40,6 +40,7 @@ func (s *Server) routes() {
 		r.Post("/setup/admin", s.handleSetupAdmin)
 		r.Post("/auth/login", s.handleLogin)
 		r.Post("/auth/logout", s.handleLogout)
+		r.Get("/openapi.yaml", s.handleOpenAPI)
 
 		// protected
 		r.Group(func(pr chi.Router) {

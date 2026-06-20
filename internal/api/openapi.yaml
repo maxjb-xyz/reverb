@@ -1,0 +1,35 @@
+openapi: 3.0.3
+info:
+  title: Crate API
+  version: 0.1.0
+servers:
+  - url: /api/v1
+paths:
+  /health:
+    get:
+      summary: Liveness probe
+      responses: { "200": { description: ok } }
+  /setup/status:
+    get:
+      summary: Whether first-run setup is required
+      responses: { "200": { description: ok } }
+  /setup/admin:
+    post:
+      summary: Set the admin password during first-run setup
+      responses: { "200": { description: session issued }, "409": { description: already set up } }
+  /auth/login:
+    post:
+      summary: Log in with the admin password
+      responses: { "200": { description: session issued }, "401": { description: invalid } }
+  /auth/logout:
+    post:
+      summary: Invalidate the current session
+      responses: { "200": { description: ok } }
+  /me:
+    get:
+      summary: Current session check
+      responses: { "200": { description: authenticated }, "401": { description: unauthorized } }
+  /adapters/available:
+    get:
+      summary: Registered adapter types with config schemas and capabilities
+      responses: { "200": { description: ok } }
