@@ -60,8 +60,8 @@ func (a *Adapter) Init(cfg map[string]any) error {
 	a.baseURL = cfgString(cfg, "url")
 	a.username = cfgString(cfg, "username")
 	a.password = cfgString(cfg, "password")
-	if a.baseURL == "" || a.username == "" {
-		return fmt.Errorf("subsonic: url and username are required")
+	if a.baseURL == "" || a.username == "" || a.password == "" {
+		return fmt.Errorf("subsonic: url, username, and password are required")
 	}
 	a.client = NewClient(a.baseURL, a.username, a.password, a.httpClient)
 	return nil

@@ -95,6 +95,17 @@ func TestAdapterIdentityAndSchema(t *testing.T) {
 	}
 }
 
+func TestInitRequiresPassword(t *testing.T) {
+	a := New()
+	err := a.Init(map[string]any{
+		"url":      "http://x",
+		"username": "u",
+	})
+	if err == nil {
+		t.Fatal("Init with empty password: want non-nil error, got nil")
+	}
+}
+
 func TestSearchMapsToCore(t *testing.T) {
 	a := newTestAdapter(t)
 	res, err := a.Search(context.Background(), "x", []core.EntityType{core.EntityTrack, core.EntityAlbum, core.EntityArtist})
