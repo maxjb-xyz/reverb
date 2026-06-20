@@ -79,6 +79,7 @@ func TestAggregatorPreMatchesAndEmitsPerSource(t *testing.T) {
 }
 
 func TestAggregatorTimeoutDoesNotBlockOthers(t *testing.T) {
+	start := time.Now()
 	slow := &scriptedSource{name: "slow", delay: 200 * time.Millisecond, results: []core.ExternalResult{{Source: "slow", ExternalID: "s1"}}}
 	fast := &scriptedSource{name: "fast", delay: 0, results: []core.ExternalResult{{Source: "fast", ExternalID: "f1"}}}
 	agg := NewAggregator([]SearchSource{slow, fast}, fakeMatcher{}, 20*time.Millisecond)
@@ -90,6 +91,9 @@ func TestAggregatorTimeoutDoesNotBlockOthers(t *testing.T) {
 	if got["slow"].Status != StatusTimeout {
 		t.Fatalf("slow should be timeout, got %+v", got["slow"])
 	}
+	if elapsed := time.Since(start); elapsed >= 100*time.Millisecond {
+		t.Fatalf("Stream took %v; want < 100ms (slow source delay is 200ms — blocking regression)", elapsed)
+	}
 }
 
 func TestAggregatorErrorEnvelope(t *testing.T) {
@@ -98,6 +102,39 @@ func TestAggregatorErrorEnvelope(t *testing.T) {
 	got := collect(agg.Stream(context.Background(), "q", core.EntityTrack))
 	if got["bad"].Status != StatusError || got["bad"].Error == "" {
 		t.Fatalf("want error envelope, got %+v", got["bad"])
+	}
+}
+
+// TestAggregatorCancelExitsCleanly verifies that cancelling the parent context
+// causes the output channel to close promptly even when sources are still
+// blocked. Without the ctx.Done() escape in the send select this test would
+// deadlock (the goroutines block on out<- forever, wg.Wait() never returns,
+// the closer goroutine never closes out, and the drain goroutine below times
+// out).
+func TestAggregatorCancelExitsCleanly(t *testing.T) {
+	// slow source takes much longer than our cancel window.
+	slow := &scriptedSource{name: "slow", delay: 2 * time.Second, results: []core.ExternalResult{{Source: "slow", ExternalID: "s1"}}}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	agg := NewAggregator([]SearchSource{slow}, fakeMatcher{}, 5*time.Second)
+	ch := agg.Stream(ctx, "q", core.EntityTrack)
+
+	// Cancel immediately — the slow source is still blocked in its delay.
+	cancel()
+
+	// Drain the channel in a goroutine so we can apply a timeout.
+	done := make(chan struct{})
+	go func() {
+		for range ch {
+		}
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		// channel closed promptly — no leak.
+	case <-time.After(time.Second):
+		t.Fatal("output channel did not close within 1s after context cancel — goroutine leak")
 	}
 }
 

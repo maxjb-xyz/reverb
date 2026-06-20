@@ -41,7 +41,11 @@ func (a *Aggregator) Stream(ctx context.Context, q string, t core.EntityType) <-
 		wg.Add(1)
 		go func(src SearchSource) {
 			defer wg.Done()
-			out <- a.runOne(ctx, src, q, t)
+			env := a.runOne(ctx, src, q, t)
+			select {
+			case out <- env:
+			case <-ctx.Done():
+			}
 		}(src)
 	}
 	go func() {
