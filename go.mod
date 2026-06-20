@@ -3,6 +3,7 @@ module github.com/maximusjb/crate
 go 1.23
 
 require (
+	github.com/coder/websocket v1.8.15
 	github.com/go-chi/chi/v5 v5.1.0
 	github.com/google/uuid v1.6.0
 	github.com/pressly/goose/v3 v3.22.1

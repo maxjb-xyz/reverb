@@ -68,3 +68,9 @@ func (s *Store) LibraryVersion(ctx context.Context) (int64, error) {
 	}
 	return n, nil
 }
+
+// SetLibraryVersion writes the monotonic library_version into settings. The
+// Manager bumps it on scan-completion to invalidate stale match_cache rows.
+func (s *Store) SetLibraryVersion(ctx context.Context, v int64) error {
+	return s.q.SetLibraryVersion(ctx, strconv.FormatInt(v, 10))
+}

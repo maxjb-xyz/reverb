@@ -8,6 +8,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/maximusjb/crate/internal/auth"
 	"github.com/maximusjb/crate/internal/core"
+	"github.com/maximusjb/crate/internal/events"
 	"github.com/maximusjb/crate/internal/library"
 	"github.com/maximusjb/crate/internal/registry"
 	"github.com/maximusjb/crate/internal/search"
@@ -19,12 +20,27 @@ type Streamer interface {
 	Stream(ctx context.Context, q string, t core.EntityType) <-chan search.Envelope
 }
 
+// EventSubscriber is the EventBus slice the WS handler needs.
+type EventSubscriber interface {
+	Subscribe(topic string) (<-chan events.Event, func())
+}
+
+// DownloadManager is the subset of *download.Manager the API needs.
+type DownloadManager interface {
+	Enqueue(ctx context.Context, req core.DownloadRequest) (core.DownloadJob, error)
+	List(ctx context.Context) ([]core.DownloadJob, error)
+	Cancel(ctx context.Context, jobID string) error
+	Retry(ctx context.Context, jobID string) (core.DownloadJob, error)
+}
+
 type Deps struct {
 	Auth             *auth.Service
 	Library          library.LibraryAdapter
 	SearchAggregator Streamer
 	Search           *registry.Registry
 	Downloader       *registry.Registry
+	Downloads        DownloadManager
+	Events           EventSubscriber
 	Dev              bool
 }
 
@@ -67,6 +83,11 @@ func (s *Server) routes() {
 			pr.Get("/stream/{id}", s.handleStream)
 			pr.Get("/cover/{id}", s.handleCover)
 			pr.Get("/search/everywhere", s.handleEverywhere)
+			pr.Post("/downloads", s.handleCreateDownload)
+			pr.Get("/downloads", s.handleListDownloads)
+			pr.Post("/downloads/{id}/cancel", s.handleCancelDownload)
+			pr.Post("/downloads/{id}/retry", s.handleRetryDownload)
+			pr.Get("/ws", s.handleWS)
 		})
 	})
 

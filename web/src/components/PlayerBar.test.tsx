@@ -33,9 +33,12 @@ describe('PlayerBar', () => {
     expect(useUI.getState().rightPanel).toBe('queue')
   })
 
-  it('Downloads button is disabled (M3 placeholder)', () => {
+  it('Downloads button toggles the downloads panel', () => {
     render(<PlayerBar />)
-    expect(screen.getByRole('button', { name: /downloads/i })).toBeDisabled()
+    const btn = screen.getByRole('button', { name: /downloads/i })
+    expect(btn).not.toBeDisabled()
+    fireEvent.click(btn)
+    expect(useUI.getState().rightPanel).toBe('downloads')
   })
 
   // --- transport button tests ---

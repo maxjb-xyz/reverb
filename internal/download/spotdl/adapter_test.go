@@ -1,0 +1,147 @@
+package spotdl
+
+import (
+	"context"
+	"strings"
+	"testing"
+
+	"github.com/maximusjb/crate/internal/core"
+	"github.com/maximusjb/crate/internal/download"
+)
+
+// fakeRunner replays canned stdout lines (incl. one malformed line) and records
+// the command it was asked to run. It never shells out.
+type fakeRunner struct {
+	lines   []string
+	gotName string
+	gotArgs []string
+	runErr  error
+}
+
+func (f *fakeRunner) Run(ctx context.Context, name string, args []string, onLine func(string)) error {
+	f.gotName = name
+	f.gotArgs = args
+	for _, l := range f.lines {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+		onLine(l)
+	}
+	return f.runErr
+}
+
+func newAdapter(t *testing.T, r Runner) *Adapter {
+	t.Helper()
+	a := New().WithRunner(r)
+	if err := a.Init(map[string]any{"output_dir": "/tmp/music", "binary_path": "spotdl"}); err != nil {
+		t.Fatal(err)
+	}
+	return a
+}
+
+func TestIdentityAndSchema(t *testing.T) {
+	a := New()
+	if a.Type() != "downloader" || a.Name() != "spotdl" {
+		t.Fatalf("identity: %q/%q", a.Type(), a.Name())
+	}
+	keys := map[string]bool{}
+	for _, f := range a.ConfigSchema().Fields {
+		keys[f.Key] = true
+	}
+	if !keys["output_dir"] {
+		t.Error("schema missing output_dir")
+	}
+	if !keys["binary_path"] {
+		t.Error("schema missing binary_path")
+	}
+}
+
+func TestCanDownloadHeuristic(t *testing.T) {
+	a := newAdapter(t, &fakeRunner{})
+	ok, err := a.CanDownload(context.Background(), core.DownloadRequest{Artist: "A", Title: "T"})
+	if err != nil || !ok {
+		t.Fatalf("CanDownload(complete req) = %v,%v want true,nil", ok, err)
+	}
+	ok, _ = a.CanDownload(context.Background(), core.DownloadRequest{})
+	if ok {
+		t.Fatal("CanDownload(empty req) should be false")
+	}
+}
+
+func TestStartParsesProgressAndDegradesGracefully(t *testing.T) {
+	// Realistic spotDL output incl. a malformed line that must NOT error.
+	r := &fakeRunner{lines: []string{
+		`Found 1 song`,
+		`Downloading "A - T": 25%`,
+		`THIS IS A MALFORMED LINE WITH NO PERCENT`,
+		`Downloading "A - T": 80%`,
+		`Downloaded "A - T": /tmp/music/A - T.mp3`,
+	}}
+	a := newAdapter(t, r)
+
+	var seen []int
+	out, err := a.Start(context.Background(), core.DownloadRequest{Source: "spotify", ExternalID: "e1", Artist: "A", Title: "T"}, func(p int) {
+		seen = append(seen, p)
+	})
+	if err != nil {
+		t.Fatalf("Start errored on malformed line (must degrade): %v", err)
+	}
+	if out == "" {
+		t.Fatal("Start returned empty output path")
+	}
+	// At least the 25 and 80 progress values were parsed; the malformed line is ignored.
+	has := func(v int) bool {
+		for _, p := range seen {
+			if p == v {
+				return true
+			}
+		}
+		return false
+	}
+	if !has(25) || !has(80) {
+		t.Fatalf("expected parsed progress 25 and 80, got %v", seen)
+	}
+}
+
+func TestStartUnknownProgressIsNotAnError(t *testing.T) {
+	// No parseable percentage at all → progress reported as -1 (indeterminate),
+	// success still returns an output path (the URL/query forms the spotdl arg).
+	r := &fakeRunner{lines: []string{`some opaque output`, `more opaque output`}}
+	a := newAdapter(t, r)
+	out, err := a.Start(context.Background(), core.DownloadRequest{Source: "spotify", ExternalID: "e2", Artist: "A", Title: "T"}, func(int) {})
+	if err != nil {
+		t.Fatalf("unknown progress must not error: %v", err)
+	}
+	if out == "" {
+		t.Fatal("expected a non-empty output path even with unknown progress")
+	}
+}
+
+func TestStartPassesOutputDirAndQuery(t *testing.T) {
+	r := &fakeRunner{lines: []string{`Downloaded: ok`}}
+	a := newAdapter(t, r)
+	_, _ = a.Start(context.Background(), core.DownloadRequest{Source: "spotify", ExternalID: "e1", Artist: "Daft Punk", Title: "One More Time"}, func(int) {})
+	if r.gotName != "spotdl" {
+		t.Fatalf("binary = %q, want spotdl", r.gotName)
+	}
+	joined := ""
+	for _, a := range r.gotArgs {
+		joined += a + " "
+	}
+	if !strings.Contains(joined, "/tmp/music") {
+		t.Fatalf("output dir not passed in args: %v", r.gotArgs)
+	}
+	if !strings.Contains(joined, "Daft Punk") && !strings.Contains(joined, "One More Time") {
+		t.Fatalf("search query not passed in args: %v", r.gotArgs)
+	}
+}
+
+func TestSpotdlConformance(t *testing.T) {
+	// Conformance Start must report progress + return an output path: feed a
+	// runner that yields a progress line and a completion line.
+	r := &fakeRunner{lines: []string{`Downloading "x": 50%`, `Downloaded: /tmp/music/x.mp3`}}
+	a := newAdapter(t, r)
+	download.RunConformance(t, a)
+}
