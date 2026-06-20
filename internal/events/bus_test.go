@@ -26,14 +26,15 @@ func TestUnsubscribeStopsDelivery(t *testing.T) {
 	b := New()
 	ch, cancel := b.Subscribe("t")
 	cancel()
+	// Publishing after cancel must neither panic (send on closed chan) nor deliver.
 	b.Publish(Event{Topic: "t", Payload: 1})
 	select {
 	case _, ok := <-ch:
 		if ok {
-			t.Fatal("received after cancel")
+			t.Fatal("received a value after cancel; channel should be closed")
 		}
 	case <-time.After(100 * time.Millisecond):
-		// no delivery — acceptable
+		t.Fatal("channel was not closed by cancel")
 	}
 }
 
