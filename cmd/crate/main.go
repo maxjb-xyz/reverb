@@ -56,12 +56,12 @@ func main() {
 	}
 	libAdapter, err := buildLibraryAdapter(context.Background(), libraryReg, instances, os.Getenv)
 	if err != nil {
+		libAdapter = nil
 		log.Printf("WARNING: library adapter not available: %v", err)
-	}
-	if libAdapter != nil {
-		log.Printf("library adapter active: %s", libAdapter.Name())
-	} else {
+	} else if libAdapter == nil {
 		log.Printf("no library adapter configured (add one via settings)")
+	} else {
+		log.Printf("library adapter active: %s", libAdapter.Name())
 	}
 
 	srv := api.NewServer(api.Deps{
