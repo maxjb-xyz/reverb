@@ -91,3 +91,54 @@ export interface SearchEnvelope {
   cursor?: string
   error?: string
 }
+
+export type DownloadStatus = 'queued' | 'running' | 'completed' | 'failed' | 'canceled'
+
+export interface DownloadJob {
+  id: string
+  dedupKey: string
+  status: DownloadStatus
+  progress: number // 0-100, or -1 = unknown (indeterminate)
+  error?: string
+  outputPath?: string
+  libraryTrackId?: string
+  downloaderName: string
+  priority: number
+  attempts: number
+  source: string
+  externalId: string
+  // Request fields carried from request_json (mirrors core.DownloadJob), so the
+  // client can build a playable Track for play-when-ready auto-play.
+  artist?: string
+  title?: string
+  album?: string
+  isrc?: string
+  playWhenReady: boolean
+  createdAt: number
+  startedAt: number
+  finishedAt: number
+}
+
+export interface DownloadEvent {
+  jobId: string
+  dedupKey: string
+  status: DownloadStatus
+  progress: number
+  error?: string
+  source: string
+  externalId: string
+  libraryTrackId?: string
+  artistId?: string
+  albumId?: string
+}
+
+export interface LibraryUpdatedEvent {
+  artistIds: string[]
+  albumIds: string[]
+}
+
+// RealtimeEvent is one WS frame: {type, payload}. type is the EventBus topic.
+export interface RealtimeEvent {
+  type: string
+  payload: unknown
+}
