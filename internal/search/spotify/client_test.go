@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"sync/atomic"
 	"testing"
+	"time"
 )
 
 func TestTokenBasicAuthAndForm(t *testing.T) {
@@ -63,6 +64,44 @@ func TestTokenIsCached(t *testing.T) {
 	}
 	if atomic.LoadInt32(&hits) != 1 {
 		t.Fatalf("token endpoint hit %d times, want 1 (cached)", hits)
+	}
+}
+
+func TestTokenRefreshesAfterExpiry(t *testing.T) {
+	var hits int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&hits, 1)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"access_token":"BQDtESTtoken123","token_type":"Bearer","expires_in":3600}`))
+	}))
+	defer srv.Close()
+
+	current := time.Unix(1_000_000, 0)
+	c := NewClient(srv.URL, srv.URL+"/v1", "cid", "csecret", srv.Client())
+	c.now = func() time.Time { return current }
+
+	if _, err := c.token(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if got := atomic.LoadInt32(&hits); got != 1 {
+		t.Fatalf("after first fetch hits = %d, want 1", got)
+	}
+
+	// Immediate second call should be served from cache.
+	if _, err := c.token(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if got := atomic.LoadInt32(&hits); got != 1 {
+		t.Fatalf("after cached call hits = %d, want 1 (cache hit)", got)
+	}
+
+	// Advance past expiry (3600s minus 60s skew) and expect a refresh.
+	current = current.Add(3601 * time.Second)
+	if _, err := c.token(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if got := atomic.LoadInt32(&hits); got != 2 {
+		t.Fatalf("after expiry hits = %d, want 2 (refreshed)", got)
 	}
 }
 

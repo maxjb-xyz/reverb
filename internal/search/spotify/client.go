@@ -77,8 +77,13 @@ func (c *Client) token(ctx context.Context) (string, error) {
 		return "", fmt.Errorf("spotify token: empty access_token")
 	}
 	c.token_ = tr.AccessToken
-	// Refresh 60s early to avoid using a just-expired token.
-	c.tokenExp = c.now().Add(time.Duration(tr.ExpiresIn-60) * time.Second)
+	// Refresh 60s early to avoid using a just-expired token. Clamp at 0 so a
+	// short expires_in can't produce a negative window and an infinite refetch.
+	secs := tr.ExpiresIn - 60
+	if secs < 0 {
+		secs = 0
+	}
+	c.tokenExp = c.now().Add(time.Duration(secs) * time.Second)
 	return c.token_, nil
 }
 
