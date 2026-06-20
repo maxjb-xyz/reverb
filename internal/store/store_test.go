@@ -28,7 +28,9 @@ func TestMigrateAndSettingsRoundTrip(t *testing.T) {
 		t.Fatalf("get = %q err=%v", got, err)
 	}
 	// upsert overwrites
-	_ = st.Q().UpsertSetting(ctx, db.UpsertSettingParams{Key: "k", Value: "v2"})
+	if err := st.Q().UpsertSetting(ctx, db.UpsertSettingParams{Key: "k", Value: "v2"}); err != nil {
+		t.Fatal(err)
+	}
 	got, _ = st.Q().GetSetting(ctx, "k")
 	if got != "v2" {
 		t.Fatalf("upsert did not overwrite: %q", got)

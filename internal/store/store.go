@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 
 	"github.com/maximusjb/crate/internal/store/db"
 	"github.com/pressly/goose/v3"
@@ -14,6 +15,8 @@ import (
 
 //go:embed migrations/*.sql
 var migrationFS embed.FS
+
+var migrateMu sync.Mutex
 
 type Store struct {
 	sql *sql.DB
@@ -34,6 +37,8 @@ func Open(path string) (*Store, error) {
 }
 
 func (s *Store) Migrate() error {
+	migrateMu.Lock()
+	defer migrateMu.Unlock()
 	goose.SetBaseFS(migrationFS)
 	if err := goose.SetDialect("sqlite"); err != nil {
 		return err
