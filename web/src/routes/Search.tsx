@@ -102,6 +102,10 @@ export default function Search() {
         </>
       )}
 
+      {mode === 'everywhere' && everywhere.status === 'streaming' && (
+        <p className="text-neutral-500 text-sm">Searching…</p>
+      )}
+
       {mode === 'everywhere' && q.trim() !== '' && (
         <>
           <SourceChips sources={everywhere.sources} />

@@ -1,6 +1,5 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
-import { act } from '@testing-library/react'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { act, render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import Search from './Search'
@@ -92,6 +91,92 @@ describe('Search (everywhere mode)', () => {
     await waitFor(() => expect(screen.getByText('Echoes')).toBeInTheDocument())
     expect(screen.getByText(/Spotify ✓/)).toBeInTheDocument()
     expect(screen.getByTitle(/in library/i)).toBeInTheDocument()
+
+    vi.unstubAllGlobals()
+  })
+
+  it('close-on-change: closes the prior stream when the query changes', async () => {
+    let inst: { onmessage: ((ev: { data: string }) => void) | null; onerror: (() => void) | null; close(): void } | null = null
+    let closeCalls = 0
+    class StubES2 {
+      onmessage: ((ev: { data: string }) => void) | null = null
+      onerror: (() => void) | null = null
+      url: string
+      constructor(url: string) {
+        this.url = url
+        inst = this
+      }
+      close() { closeCalls++ }
+    }
+    vi.stubGlobal('EventSource', StubES2 as unknown as typeof EventSource)
+
+    render(wrap(<Search />))
+    fireEvent.change(screen.getByPlaceholderText(/search/i), { target: { value: 'first' } })
+    fireEvent.click(screen.getByRole('button', { name: /everywhere/i }))
+
+    // Capture the first instance and spy on it
+    const firstInst = inst!
+    const closeSpy = vi.spyOn(firstInst, 'close')
+
+    // Change the query — the effect should close the prior stream
+    await act(async () => {
+      fireEvent.change(screen.getByPlaceholderText(/search/i), { target: { value: 'second' } })
+    })
+
+    expect(closeSpy).toHaveBeenCalled()
+
+    vi.unstubAllGlobals()
+  })
+
+  it('switch-back to Library: shows library UI after switching from Everywhere', async () => {
+    let inst: { onmessage: ((ev: { data: string }) => void) | null; onerror: (() => void) | null; close(): void } | null = null
+    class StubES3 {
+      onmessage: ((ev: { data: string }) => void) | null = null
+      onerror: (() => void) | null = null
+      url: string
+      constructor(url: string) {
+        this.url = url
+        inst = this
+      }
+      close() {}
+    }
+    vi.stubGlobal('EventSource', StubES3 as unknown as typeof EventSource)
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        new Response(JSON.stringify({ tracks: [], albums: [], artists: [] }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      ),
+    )
+
+    render(wrap(<Search />))
+    fireEvent.change(screen.getByPlaceholderText(/search/i), { target: { value: 'echoes' } })
+    fireEvent.click(screen.getByRole('button', { name: /everywhere/i }))
+
+    // Emit one envelope so Everywhere UI is visible
+    act(() => {
+      inst!.onmessage?.({
+        data: JSON.stringify({
+          source: 'spotify',
+          status: 'ok',
+          results: [
+            { source: 'spotify', externalId: 'sp1', title: 'EverywhereTitle', artist: 'X', album: 'Y', durationMs: 1000, type: 'track', match: { status: 'none' } },
+          ],
+        }),
+      })
+    })
+    await waitFor(() => expect(screen.getByText('EverywhereTitle')).toBeInTheDocument())
+
+    // Switch back to Library
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /my library/i }))
+    })
+
+    // External Everywhere rows should be gone; library input placeholder still present
+    expect(screen.queryByText('EverywhereTitle')).not.toBeInTheDocument()
+    expect(screen.getByPlaceholderText(/search your library/i)).toBeInTheDocument()
 
     vi.unstubAllGlobals()
   })
