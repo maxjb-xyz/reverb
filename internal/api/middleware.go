@@ -29,6 +29,10 @@ func (s *Server) requireAuth(next http.Handler) http.Handler {
 }
 
 func (s *Server) setSessionCookie(w http.ResponseWriter, token string, dev bool) {
+	maxAge := 30 * 24 * 3600
+	if token == "" {
+		maxAge = -1 // delete the cookie
+	}
 	http.SetCookie(w, &http.Cookie{
 		Name:     sessionCookie,
 		Value:    token,
@@ -36,6 +40,6 @@ func (s *Server) setSessionCookie(w http.ResponseWriter, token string, dev bool)
 		HttpOnly: true,
 		SameSite: http.SameSiteLaxMode,
 		Secure:   !dev,
-		MaxAge:   30 * 24 * 3600,
+		MaxAge:   maxAge,
 	})
 }

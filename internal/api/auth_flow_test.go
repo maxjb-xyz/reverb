@@ -68,4 +68,17 @@ func TestSetupThenProtectedAccess(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("/me with cookie = %d", rec.Code)
 	}
+
+	// the session cookie must be HttpOnly
+	if !cookie[0].HttpOnly {
+		t.Fatal("session cookie should be HttpOnly")
+	}
+
+	// a second setup/admin must be rejected (can't reset password after setup)
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "/api/v1/setup/admin", bytes.NewBufferString(`{"password":"pw2"}`))
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("second setup/admin = %d, want 409", rec.Code)
+	}
 }

@@ -70,7 +70,7 @@ func (s *Server) issueSession(w http.ResponseWriter, ctx context.Context) {
 		return
 	}
 	s.setSessionCookie(w, tok, s.deps.Dev)
-	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "token": tok})
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
 func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
@@ -91,7 +91,7 @@ type adapterInfo struct {
 }
 
 func (s *Server) handleAdaptersAvailable(w http.ResponseWriter, r *http.Request) {
-	var out []adapterInfo
+	out := make([]adapterInfo, 0)
 	for _, reg := range []*registry.Registry{s.deps.Library, s.deps.Search, s.deps.Downloader} {
 		for _, name := range reg.Names() {
 			p, err := reg.Create(name)
