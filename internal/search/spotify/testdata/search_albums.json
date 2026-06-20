@@ -1,0 +1,3 @@
+{"albums":{"items":[
+  {"id":"sp_al1","name":"First Album","release_date":"2020-05-01","images":[{"url":"https://img/al1.jpg","width":640,"height":640}],"artists":[{"id":"sp_ar1","name":"The Artists"}]}
+]}}
