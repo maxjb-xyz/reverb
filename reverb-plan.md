@@ -323,6 +323,7 @@ ui:
 - Reverb Wrapped: End of year review.
 - Discover Weekly: Grabs songs you'd be interested in from your downloader. Needs an algorithm backend.
 - SUB/WAVE: either a plugin to extend functionality or just absorb the codebase itself. Or equivalent functionality.
+- "Jukebox Mode": Control playback from other devices from any logged-in device.
 
 ---
 
