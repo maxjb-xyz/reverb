@@ -28,11 +28,13 @@ describe('ExternalRow', () => {
     vi.clearAllMocks()
   })
 
-  it('in-library row shows ✓ and plays the matched track', () => {
+  it('in-library row shows ✓ and plays the matched library track id', () => {
     render(<ExternalRow result={result({ match: { status: 'in_library', libraryTrackId: 't3', method: 'isrc', confidence: 1 } })} />)
     expect(screen.getByTitle(/in library/i)).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button'))
-    expect(playTrackList).toHaveBeenCalled()
+    expect(playTrackList).toHaveBeenCalledTimes(1)
+    // Must play the matched library track id ('t3'), never the external id ('sp1') or ''.
+    expect(playTrackList.mock.calls[0][0][0].id).toBe('t3')
   })
 
   it('not-in-library row shows ↓ and posts a download', async () => {
@@ -45,14 +47,28 @@ describe('ExternalRow', () => {
   it('active job shows the ⟳ progress ring (determinate)', () => {
     useDownloads.getState().upsert(job({ status: 'running', progress: 50 }))
     render(<ExternalRow result={result({})} />)
-    expect(screen.getByLabelText(/downloading/i)).toBeInTheDocument()
+    // Determinate ring labels with the percentage and is NOT a spinner.
+    const ring = screen.getByLabelText('Downloading 50%')
+    expect(ring).toBeInTheDocument()
+    expect(ring).not.toHaveClass('animate-spin')
   })
 
-  it('completed job with libraryTrackId flips to ✓ and plays', () => {
+  it('active job with unknown progress (-1) shows the indeterminate spinner', () => {
+    useDownloads.getState().upsert(job({ status: 'running', progress: -1 }))
+    render(<ExternalRow result={result({})} />)
+    // Indeterminate branch labels without a percentage and renders the spinner.
+    const spinner = screen.getByLabelText('Downloading')
+    expect(spinner).toBeInTheDocument()
+    expect(spinner).toHaveClass('animate-spin')
+  })
+
+  it('completed job with libraryTrackId flips to ✓ and plays that library track id', () => {
     useDownloads.getState().upsert(job({ status: 'completed', progress: 100, libraryTrackId: 't9' }))
     render(<ExternalRow result={result({})} />)
     expect(screen.getByTitle(/in library/i)).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button'))
-    expect(playTrackList).toHaveBeenCalled()
+    expect(playTrackList).toHaveBeenCalledTimes(1)
+    // Must play the completed job's library track id ('t9'), never the external id ('sp1') or ''.
+    expect(playTrackList.mock.calls[0][0][0].id).toBe('t9')
   })
 })
