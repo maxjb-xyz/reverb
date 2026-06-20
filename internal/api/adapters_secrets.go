@@ -47,9 +47,11 @@ func redactConfig(schema registry.ConfigSchema, cfg map[string]any) map[string]a
 }
 
 // mergeSecrets builds the config to PERSIST. Non-secret fields take the incoming
-// value. Secret fields: if incoming is blank or the sentinel, restore from stored
-// (preserve-on-blank); otherwise take the new incoming value. Any "<key>__isSet"
-// sidecars are stripped so they never reach config_json.
+// value. Secret fields are REPLACED only when the incoming value is a real,
+// non-empty, non-sentinel STRING; in every other case (omitted, nil, non-string,
+// empty string, or sentinel) the stored secret is PRESERVED so a bogus incoming
+// value can never wipe it. Any "<key>__isSet" sidecars are stripped so they never
+// reach config_json.
 func mergeSecrets(schema registry.ConfigSchema, stored, incoming map[string]any) map[string]any {
 	secrets := secretKeys(schema)
 	out := map[string]any{}
@@ -58,12 +60,14 @@ func mergeSecrets(schema registry.ConfigSchema, stored, incoming map[string]any)
 			continue // never persist the sidecar
 		}
 		if secrets[k] {
-			if isBlank(v) || asString(v) == secretSentinel {
-				if sv, ok := stored[k]; ok {
-					out[k] = sv // preserve
-				}
-				continue
+			// secret field: only a real non-empty, non-sentinel string replaces the stored value
+			if s, ok := v.(string); ok && s != "" && s != secretSentinel {
+				out[k] = s
+			} else if sv, ok := stored[k]; ok {
+				out[k] = sv // preserve stored secret
 			}
+			// else: no stored value and no real incoming → leave unset
+			continue
 		}
 		out[k] = v
 	}
@@ -82,11 +86,4 @@ func mergeSecrets(schema registry.ConfigSchema, stored, incoming map[string]any)
 func isBlank(v any) bool {
 	s, ok := v.(string)
 	return ok && s == ""
-}
-
-func asString(v any) string {
-	if s, ok := v.(string); ok {
-		return s
-	}
-	return ""
 }

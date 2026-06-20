@@ -66,6 +66,36 @@ func TestMergeSecretsNewValueOverwrites(t *testing.T) {
 	}
 }
 
+func TestMergeSecretsNilIncomingPreservesStored(t *testing.T) {
+	// A non-string incoming value (JSON null → Go nil) must never wipe the stored secret.
+	stored := map[string]any{"client_secret": "kept"}
+	incoming := map[string]any{"client_secret": nil}
+	out := mergeSecrets(schema(), stored, incoming)
+	if out["client_secret"] != "kept" {
+		t.Fatalf("nil incoming must preserve stored secret, got %v", out["client_secret"])
+	}
+}
+
+func TestMergeSecretsNumberIncomingPreservesStored(t *testing.T) {
+	// A non-string incoming value (e.g. a number) must never wipe the stored secret.
+	stored := map[string]any{"client_secret": "kept"}
+	incoming := map[string]any{"client_secret": 42}
+	out := mergeSecrets(schema(), stored, incoming)
+	if out["client_secret"] != "kept" {
+		t.Fatalf("numeric incoming must preserve stored secret, got %v", out["client_secret"])
+	}
+}
+
+func TestMergeSecretsOmittedPreservesStored(t *testing.T) {
+	// Client omits the secret key entirely → stored secret is preserved (defensive).
+	stored := map[string]any{"client_secret": "kept"}
+	incoming := map[string]any{"client_id": "abc"}
+	out := mergeSecrets(schema(), stored, incoming)
+	if out["client_secret"] != "kept" {
+		t.Fatalf("omitted secret must preserve stored value, got %v", out["client_secret"])
+	}
+}
+
 func TestMergeSecretsStripsIsSetKeys(t *testing.T) {
 	// The client may echo back the "<key>__isSet" sidecar; it must never be persisted.
 	stored := map[string]any{"client_secret": "kept"}
