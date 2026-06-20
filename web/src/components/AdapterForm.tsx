@@ -44,6 +44,7 @@ export function AdapterForm({ name, schema, initial, submitLabel = 'Save', onSub
   })
   const [testState, setTestState] = useState<{ status: 'idle' | 'testing' | 'ok' | 'error'; msg?: string }>({ status: 'idle' })
   const [submitting, setSubmitting] = useState(false)
+  const [submitError, setSubmitError] = useState<string | null>(null)
 
   const secretIsSet = useMemo(() => {
     const m: Record<string, boolean> = {}
@@ -67,9 +68,12 @@ export function AdapterForm({ name, schema, initial, submitLabel = 'Save', onSub
 
   async function submit(e: React.FormEvent) {
     e.preventDefault()
+    setSubmitError(null)
     setSubmitting(true)
     try {
       await onSubmit(collect(schema, values))
+    } catch (e) {
+      setSubmitError(e instanceof Error ? e.message : 'Save failed. Please try again.')
     } finally {
       setSubmitting(false)
     }
@@ -93,18 +97,24 @@ export function AdapterForm({ name, schema, initial, submitLabel = 'Save', onSub
               onChange={(e) => set(f.key, e.target.checked)}
             />
           ) : (
-            <input
-              id={`field-${f.key}`}
-              type={f.secret ? 'password' : f.type === 'number' ? 'number' : 'text'}
-              value={String(values[f.key] ?? '')}
-              onChange={(e) => set(f.key, e.target.value)}
-              placeholder={f.secret && secretIsSet[f.key] ? 'Leave blank to keep current value' : ''}
-              className="w-full rounded bg-neutral-900 border border-neutral-700 px-3 py-2"
-            />
+            <>
+              <input
+                id={`field-${f.key}`}
+                type={f.secret ? 'password' : f.type === 'number' ? 'number' : 'text'}
+                value={String(values[f.key] ?? '')}
+                onChange={(e) => set(f.key, e.target.value)}
+                placeholder={f.secret && secretIsSet[f.key] ? 'Leave blank to keep current value' : ''}
+                className="w-full rounded bg-neutral-900 border border-neutral-700 px-3 py-2"
+              />
+              {f.secret && secretIsSet[f.key] && (
+                <p className="text-xs text-neutral-500">Leave blank to keep the current value.</p>
+              )}
+            </>
           )}
         </div>
       ))}
 
+      {submitError && <p className="text-sm text-accent">{submitError}</p>}
       <div className="flex items-center gap-3 pt-1">
         <button type="submit" disabled={submitting} className="rounded bg-accent px-4 py-2 font-medium text-white disabled:opacity-50">
           {submitLabel}

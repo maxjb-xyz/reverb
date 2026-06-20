@@ -61,4 +61,45 @@ describe('AdapterForm', () => {
     fireEvent.click(screen.getByRole('button', { name: /^save$/i }))
     await waitFor(() => expect(onSubmit).toHaveBeenCalledWith({ client_id: 'cid', client_secret: 'csec' }))
   })
+
+  it('shows an error message when onSubmit rejects', async () => {
+    const onSubmit = vi.fn().mockRejectedValue(new Error('Server error 422'))
+    render(<AdapterForm name="spotify" schema={schema} onSubmit={onSubmit} />)
+    fireEvent.click(screen.getByRole('button', { name: /^save$/i }))
+    expect(await screen.findByText(/Server error 422/i)).toBeInTheDocument()
+  })
+
+  it('clears the submit error at the start of each submit attempt', async () => {
+    let callCount = 0
+    const onSubmit = vi.fn().mockImplementation(() => {
+      callCount++
+      if (callCount === 1) return Promise.reject(new Error('First failure'))
+      return Promise.resolve()
+    })
+    render(<AdapterForm name="spotify" schema={schema} onSubmit={onSubmit} />)
+    fireEvent.click(screen.getByRole('button', { name: /^save$/i }))
+    expect(await screen.findByText(/First failure/i)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /^save$/i }))
+    await waitFor(() => expect(screen.queryByText(/First failure/i)).not.toBeInTheDocument())
+  })
+
+  it('shows the "leave blank" hint only for already-set secrets', () => {
+    render(
+      <AdapterForm
+        name="spotify"
+        schema={schema}
+        initial={{ client_id: 'abc', client_secret__isSet: true }}
+        onSubmit={vi.fn()}
+      />,
+    )
+    expect(screen.getByText(/leave blank to keep the current value/i)).toBeInTheDocument()
+    // Non-secret field (client_id) should not show the hint
+    const hints = screen.queryAllByText(/leave blank to keep the current value/i)
+    expect(hints).toHaveLength(1)
+  })
+
+  it('does not show the "leave blank" hint when the secret is not yet set', () => {
+    render(<AdapterForm name="spotify" schema={schema} onSubmit={vi.fn()} />)
+    expect(screen.queryByText(/leave blank to keep the current value/i)).not.toBeInTheDocument()
+  })
 })

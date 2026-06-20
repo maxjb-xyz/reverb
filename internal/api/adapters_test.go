@@ -1,6 +1,7 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -168,6 +169,48 @@ func TestTestAdapterUnknownName(t *testing.T) {
 		`{"name":"nope","config":{}}`)
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want 400 for unknown adapter", rec.Code)
+	}
+}
+
+// TestAllProtectedRoutesRequireAuth verifies that every new protected route
+// returns 401 when no session cookie is present.
+func TestAllProtectedRoutesRequireAuth(t *testing.T) {
+	srv, _ := adapterTestServer(t, adapterServerOpts{dirty: &testDirty{}})
+
+	// Use a placeholder UUID so the router can parse {id} even though it won't exist.
+	const fakeID = "00000000-0000-0000-0000-000000000001"
+
+	routes := []struct {
+		method string
+		path   string
+		body   string
+	}{
+		{http.MethodGet, "/api/v1/adapters", ""},
+		{http.MethodPost, "/api/v1/adapters", `{"type":"search","name":"fake","config":{}}`},
+		{http.MethodPut, "/api/v1/adapters/" + fakeID, `{"name":"fake","config":{}}`},
+		{http.MethodDelete, "/api/v1/adapters/" + fakeID, ""},
+		{http.MethodPost, "/api/v1/adapters/test", `{"name":"fake","config":{}}`},
+		{http.MethodGet, "/api/v1/settings", ""},
+		{http.MethodPut, "/api/v1/settings", `{"accentColor":"#FF0000"}`},
+		{http.MethodGet, "/api/v1/config/pending-restart", ""},
+	}
+
+	for _, tc := range routes {
+		t.Run(tc.method+" "+tc.path, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			var buf *bytes.Buffer
+			if tc.body != "" {
+				buf = bytes.NewBufferString(tc.body)
+			} else {
+				buf = bytes.NewBufferString("")
+			}
+			req := httptest.NewRequest(tc.method, tc.path, buf)
+			// deliberately no cookie
+			srv.Handler().ServeHTTP(rec, req)
+			if rec.Code != http.StatusUnauthorized {
+				t.Fatalf("%s %s: got %d, want 401", tc.method, tc.path, rec.Code)
+			}
+		})
 	}
 }
 
