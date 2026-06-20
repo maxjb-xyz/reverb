@@ -112,6 +112,8 @@
       Priority     int
       Attempts     int
       Source, ExternalID string
+      // Request fields carried so a job loaded from SQLite (request_json) can run.
+      Artist, Title, Album, ISRC string
       PlayWhenReady bool
       CreatedAt, StartedAt, FinishedAt int64 // unix seconds; 0 = unset
   }
@@ -253,6 +255,11 @@ type DownloadJob struct {
 	Attempts       int            `json:"attempts"`
 	Source         string         `json:"source"`
 	ExternalID     string         `json:"externalId"`
+	// Request fields carried so a job rehydrated from request_json can run.
+	Artist         string         `json:"artist,omitempty"`
+	Title          string         `json:"title,omitempty"`
+	Album          string         `json:"album,omitempty"`
+	ISRC           string         `json:"isrc,omitempty"`
 	PlayWhenReady  bool           `json:"playWhenReady"`
 	CreatedAt      int64          `json:"createdAt"`
 	StartedAt      int64          `json:"startedAt"`
@@ -694,10 +701,10 @@ ORDER BY created_at DESC;
 
 -- name: UpdateDownloadJobStatus :exec
 UPDATE download_jobs
-SET status = ?,
-    started_at = CASE WHEN ? = 'running' AND started_at IS NULL THEN unixepoch() ELSE started_at END,
-    finished_at = CASE WHEN ? IN ('completed','failed','canceled') THEN unixepoch() ELSE finished_at END
-WHERE id = ?;
+SET status = @status,
+    started_at = CASE WHEN @status = 'running' AND started_at IS NULL THEN unixepoch() ELSE started_at END,
+    finished_at = CASE WHEN @status IN ('completed','failed','canceled') THEN unixepoch() ELSE finished_at END
+WHERE id = @id;
 
 -- name: UpdateDownloadJobProgress :exec
 UPDATE download_jobs SET progress = ? WHERE id = ?;
@@ -715,7 +722,7 @@ UPDATE download_jobs SET library_track_id = ? WHERE id = ?;
 UPDATE download_jobs SET attempts = attempts + 1 WHERE id = ?;
 ```
 
-> **sqlc note:** the `UpdateDownloadJobStatus` query has three `?` for the status value plus the `id`. sqlc names positional params `?1`-style only with explicit numbering; to keep generated params readable, this query is intentionally written so sqlc emits `UpdateDownloadJobStatusParams{Status string; Column2 string; Column3 string; ID string}`. The Manager (Task 5) passes the same status string into all three status slots. If your sqlc version names them differently, pass the status string to every status-typed field and the id last — do NOT change the SQL.
+> **sqlc note:** the `UpdateDownloadJobStatus` query uses NAMED parameters (`@status`, `@id`). A bare `?` inside `CASE WHEN ? IN (...)` makes sqlc fail with "could not determine data type of parameter"; named params avoid that AND collapse every status reference to a single param. sqlc emits `UpdateDownloadJobStatusParams{Status string; ID string}` — the Manager (Task 8 sqlStore) passes the status string once and the id once. Do NOT reintroduce positional `?` placeholders for the status.
 
 - [ ] **Step 3: Regenerate sqlc (installed binary; fallback go run)**
 
@@ -775,12 +782,12 @@ func TestDownloadJobRoundTrip(t *testing.T) {
 
 	// Move to running, then completed; finished_at must be set.
 	if err := q.UpdateDownloadJobStatus(ctx, db.UpdateDownloadJobStatusParams{
-		Status: "running", Column2: "running", Column3: "running", ID: "j1",
+		Status: "running", ID: "j1",
 	}); err != nil {
 		t.Fatalf("status running: %v", err)
 	}
 	if err := q.UpdateDownloadJobStatus(ctx, db.UpdateDownloadJobStatusParams{
-		Status: "completed", Column2: "completed", Column3: "completed", ID: "j1",
+		Status: "completed", ID: "j1",
 	}); err != nil {
 		t.Fatalf("status completed: %v", err)
 	}
@@ -796,7 +803,7 @@ func TestDownloadJobRoundTrip(t *testing.T) {
 }
 ```
 
-> NOTE: if the sqlc-generated param names for `UpdateDownloadJobStatus` differ from `Status/Column2/Column3/ID`, adjust the field names in THIS test to match the generated struct (run `grep -n "UpdateDownloadJobStatusParams" internal/store/db/download_jobs.sql.go` to read them). The values are all the same status string + the id.
+> NOTE: the named-param query generates `UpdateDownloadJobStatusParams{Status string; ID string}` (run `grep -n "UpdateDownloadJobStatusParams" internal/store/db/download_jobs.sql.go` to confirm). If your sqlc version names them differently, adjust the field names in THIS test — but there are only TWO fields: the status string and the id.
 
 The test file imports must include `context`, `database/sql`, and `github.com/maximusjb/crate/internal/store/db` — add any missing ones to the existing import block.
 
@@ -1013,7 +1020,7 @@ type memStore struct {
 
 func newMemStore() *memStore { return &memStore{jobs: map[string]core.DownloadJob{}} }
 
-func (s *memStore) Insert(_ context.Context, j core.DownloadJob) error {
+func (s *memStore) Insert(_ context.Context, j core.DownloadJob, _ core.DownloadRequest) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.jobs[j.ID] = j
@@ -1248,7 +1255,11 @@ import (
 // satisfy this directly (it speaks db.DownloadJob); the composition root adapts
 // it via a thin sqlStore wrapper (Task 7). The in-memory test store satisfies it.
 type JobStore interface {
-	Insert(ctx context.Context, j core.DownloadJob) error
+	// Insert persists a new job. The originating request is passed alongside so
+	// the sqlStore can marshal the FULL core.DownloadRequest into request_json
+	// (artist/title/album/source/externalId/isrc/playWhenReady/downloader),
+	// giving a job loaded back from SQLite enough to run.
+	Insert(ctx context.Context, j core.DownloadJob, req core.DownloadRequest) error
 	Get(ctx context.Context, id string) (core.DownloadJob, bool, error)
 	ActiveByDedup(ctx context.Context, dedupKey string) (core.DownloadJob, bool, error)
 	List(ctx context.Context) ([]core.DownloadJob, error)
@@ -1355,9 +1366,18 @@ func (m *Manager) Start() {
 	}
 }
 
-// Stop signals workers to drain and waits for them. Idempotent.
+// Stop signals workers to drain and waits for them. It ALSO cancels any pending
+// scan-debounce timer (and clears pending) so a real-clock test cannot have
+// runScan fire against fakes after the test ends. Idempotent.
 func (m *Manager) Stop() {
 	m.stopOnce.Do(func() { close(m.stopCh) })
+	m.mu.Lock()
+	if m.debounce != nil {
+		m.debounce() // stop the AfterFunc/clock timer
+		m.debounce = nil
+	}
+	m.pending = false
+	m.mu.Unlock()
 	m.wg.Wait()
 }
 
@@ -1413,10 +1433,16 @@ func (m *Manager) Enqueue(ctx context.Context, req core.DownloadRequest) (core.D
 		DownloaderName: dl.Name(),
 		Source:         req.Source,
 		ExternalID:     req.ExternalID,
-		PlayWhenReady:  req.PlayWhenReady,
-		CreatedAt:      m.clock.Now().Unix(),
+		// Carry the request fields so any JobStore (incl. in-memory) and the worker
+		// fallback have enough to run; the sqlStore ALSO persists request_json.
+		Artist:        req.Artist,
+		Title:         req.Title,
+		Album:         req.Album,
+		ISRC:          req.ISRC,
+		PlayWhenReady: req.PlayWhenReady,
+		CreatedAt:     m.clock.Now().Unix(),
 	}
-	if err := m.store.Insert(ctx, job); err != nil {
+	if err := m.store.Insert(ctx, job, req); err != nil {
 		return core.DownloadJob{}, err
 	}
 	m.publishEvent(TopicQueued, job, "")
@@ -1795,7 +1821,7 @@ func TestRetryResetsFailedJob(t *testing.T) {
 	store := newMemStore()
 	// Seed a failed job directly.
 	failed := core.DownloadJob{ID: "j1", DedupKey: "dk", Status: core.DownloadFailed, DownloaderName: "dl", Attempts: 1, Source: "s", ExternalID: "e1"}
-	_ = store.Insert(context.Background(), failed)
+	_ = store.Insert(context.Background(), failed, core.DownloadRequest{Source: "s", ExternalID: "e1", Artist: "A", Title: "T", Album: "Al"})
 
 	dl := &fakeDL{name: "dl", canDownload: true}
 	m, _ := testManager(t, []Downloader{dl}, store, nil, nil, nil)
@@ -1830,7 +1856,18 @@ func (m *Manager) process(id string) {
 		return
 	}
 	m.mu.Lock()
-	req := m.reqs[id]
+	req, haveReq := m.reqs[id]
+	m.mu.Unlock()
+	// Fall back to the request rehydrated onto the job from request_json (durable
+	// across restart) when the in-memory map has nothing (e.g. a retried/loaded job).
+	if !haveReq || req.ExternalID == "" {
+		req = core.DownloadRequest{
+			Source: job.Source, ExternalID: job.ExternalID, Artist: job.Artist,
+			Title: job.Title, Album: job.Album, ISRC: job.ISRC,
+			Downloader: job.DownloaderName, PlayWhenReady: job.PlayWhenReady,
+		}
+	}
+	m.mu.Lock()
 	jctx, cancel := context.WithCancel(ctx)
 	m.cancels[id] = cancel
 	m.mu.Unlock()
@@ -2474,9 +2511,9 @@ git commit -m "feat(spotdl): downloader adapter with injectable runner and grace
   type sqlStore struct { q *db.Queries }
   func NewSQLStore(q *db.Queries) JobStore
   ```
-  - The Manager stores the full request via `SeedRequest`, but `sqlStore.Insert` ALSO persists `request_json` (durability). For MVP the `core.DownloadJob` does not carry the request fields; `Insert` accepts the job + the originating request is passed by the Manager through the in-memory map. To persist request_json, `NewSQLStore` exposes the job's request via a side map is overkill — instead the Manager passes the request_json by storing it on the job is wrong (no field). RESOLUTION: add an `InsertWithRequest` path. The cleanest fit given the JobStore interface: `sqlStore.Insert` writes `request_json='{}'` and the Manager seeds the request in-memory (sufficient for MVP single-process). Durable rehydration across restart is a documented P2 follow-up. See note.
+  - `JobStore.Insert(ctx, job, req)` takes BOTH the job and its originating `core.DownloadRequest` (Task 5 widened the interface; the Manager has the request at Enqueue). `sqlStore.Insert` marshals the COMPLETE request into `request_json`, and `toCore` rehydrates ALL request fields (artist/title/album/source/externalId/isrc/playWhenReady) onto the returned `core.DownloadJob`, so a job loaded from SQLite carries enough to run. The Manager still seeds `m.reqs` in-memory for the in-process worker hand-off; the persisted `request_json` makes cross-restart rehydration of queued jobs straightforward (read it back and `SeedRequest`).
 
-> **MVP simplification (durability):** persisting full `request_json` requires threading the `core.DownloadRequest` into `JobStore.Insert`. To keep the `JobStore` interface clean and the in-memory test store simple, MVP persists job lifecycle state in `download_jobs` and keeps the originating request in the Manager's in-memory `reqs` map (seeded at Enqueue). Cross-restart rehydration of queued jobs (reading `request_json` back) is a documented P2 follow-up — the column exists and `sqlStore.Insert` writes a marshaled request when available via the optional `RequestCarrier` below, so no migration change is needed later.
+> **Durability:** the full request IS persisted (request_json), so the worker can be rehydrated from the store. The Manager's in-memory `reqs` map is the fast path for in-process hand-off; the column makes cross-restart rehydration of queued jobs a small follow-up (read `request_json` at startup → `SeedRequest`). No migration change is needed.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -2510,14 +2547,25 @@ func TestSQLStoreInsertGetUpdate(t *testing.T) {
 	ctx := context.Background()
 	job := core.DownloadJob{
 		ID: "j1", DedupKey: "dk1", Status: core.DownloadQueued, DownloaderName: "spotdl",
-		Source: "spotify", ExternalID: "e1", Progress: 0,
+		Source: "spotify", ExternalID: "e1", Progress: 0, PlayWhenReady: true,
 	}
-	if err := s.Insert(ctx, job); err != nil {
+	req := core.DownloadRequest{
+		Source: "spotify", ExternalID: "e1", Artist: "Daft Punk", Title: "One More Time",
+		Album: "Discovery", ISRC: "US-XYZ-01", Downloader: "spotdl", PlayWhenReady: true,
+	}
+	if err := s.Insert(ctx, job, req); err != nil {
 		t.Fatal(err)
 	}
 	got, ok, err := s.Get(ctx, "j1")
 	if err != nil || !ok {
 		t.Fatalf("get: %v ok=%v", err, ok)
+	}
+	// The FULL request rehydrates from request_json (so a loaded job can run).
+	if got.Artist != "Daft Punk" || got.Title != "One More Time" || got.Album != "Discovery" {
+		t.Fatalf("full request not rehydrated from request_json: %+v", got)
+	}
+	if got.ISRC != "US-XYZ-01" || !got.PlayWhenReady {
+		t.Fatalf("request fields not rehydrated: %+v", got)
 	}
 	if got.DedupKey != "dk1" || got.Status != core.DownloadQueued {
 		t.Fatalf("mismatch: %+v", got)
@@ -2603,21 +2651,26 @@ func toCore(r db.DownloadJob) core.DownloadJob {
 	if r.FinishedAt.Valid {
 		j.FinishedAt = r.FinishedAt.Int64
 	}
-	// Source/ExternalID/PlayWhenReady are carried in request_json; rehydrate them.
+	// The FULL request is carried in request_json; rehydrate every field so a job
+	// loaded from SQLite has enough to run (artist/title/album/source/externalId/
+	// isrc/playWhenReady — the explicit downloader is reflected by DownloaderName).
 	var req core.DownloadRequest
 	if r.RequestJson != "" {
 		_ = jsonUnmarshal(r.RequestJson, &req)
 	}
 	j.Source = req.Source
 	j.ExternalID = req.ExternalID
+	j.Artist = req.Artist
+	j.Title = req.Title
+	j.Album = req.Album
+	j.ISRC = req.ISRC
 	j.PlayWhenReady = req.PlayWhenReady
 	return j
 }
 
-func (s *sqlStore) Insert(ctx context.Context, j core.DownloadJob) error {
-	req := core.DownloadRequest{
-		Source: j.Source, ExternalID: j.ExternalID, PlayWhenReady: j.PlayWhenReady,
-	}
+// Insert persists the job lifecycle row AND marshals the COMPLETE originating
+// core.DownloadRequest into request_json, so toCore can rehydrate a runnable job.
+func (s *sqlStore) Insert(ctx context.Context, j core.DownloadJob, req core.DownloadRequest) error {
 	return s.q.InsertDownloadJob(ctx, db.InsertDownloadJobParams{
 		ID:             j.ID,
 		DedupKey:       j.DedupKey,
@@ -2670,7 +2723,7 @@ func (s *sqlStore) List(ctx context.Context) ([]core.DownloadJob, error) {
 
 func (s *sqlStore) Update(ctx context.Context, j core.DownloadJob) error {
 	if err := s.q.UpdateDownloadJobStatus(ctx, db.UpdateDownloadJobStatusParams{
-		Status: string(j.Status), Column2: string(j.Status), Column3: string(j.Status), ID: j.ID,
+		Status: string(j.Status), ID: j.ID,
 	}); err != nil {
 		return err
 	}
@@ -3610,7 +3663,7 @@ git commit -m "feat(cmd): wire download Manager, downloaders, and EventBus at th
   export type DownloadStatus = 'queued' | 'running' | 'completed' | 'failed' | 'canceled'
   export interface DownloadJob { id; dedupKey; status; progress; error?; outputPath?;
     libraryTrackId?; downloaderName; priority; attempts; source; externalId;
-    playWhenReady; createdAt; startedAt; finishedAt }
+    artist?; title?; album?; isrc?; playWhenReady; createdAt; startedAt; finishedAt }
   export interface DownloadEvent { jobId; dedupKey; status; progress; error?; source;
     externalId; libraryTrackId?; artistId?; albumId? }
   export interface LibraryUpdatedEvent { artistIds: string[]; albumIds: string[] }
@@ -3648,6 +3701,12 @@ export interface DownloadJob {
   attempts: number
   source: string
   externalId: string
+  // Request fields carried from request_json (mirrors core.DownloadJob), so the
+  // client can build a playable Track for play-when-ready auto-play.
+  artist?: string
+  title?: string
+  album?: string
+  isrc?: string
   playWhenReady: boolean
   createdAt: number
   startedAt: number
@@ -3695,7 +3754,9 @@ function makeStub() {
     onclose: (() => void) | null = null
     onerror: (() => void) | null = null
     closed = false
-    constructor(public url: string) {
+    url: string
+    constructor(url: string) {
+      this.url = url
       sockets.push(this)
     }
     close() {
@@ -3788,12 +3849,16 @@ export class RealtimeConnection {
   private closedByUser = false
   private backoff = BASE_BACKOFF_MS
   private retryTimer: ReturnType<typeof setTimeout> | null = null
+  // Declared as plain fields (NOT constructor parameter properties): the tsconfig
+  // sets erasableSyntaxOnly, which forbids `constructor(private x: ...)` shorthand.
+  private readonly handlers: RealtimeHandlers
   private readonly makeSocket: (url: string) => WebSocketLike
 
   constructor(
-    private handlers: RealtimeHandlers,
+    handlers: RealtimeHandlers,
     makeSocket?: (url: string) => WebSocketLike,
   ) {
+    this.handlers = handlers
     this.makeSocket =
       makeSocket ??
       ((url) => new WebSocket(url) as unknown as WebSocketLike)
@@ -4424,6 +4489,7 @@ Expected: FAIL — the ↓/⟳ affordances and completed-job flip don't exist ye
 
 Replace `web/src/components/ExternalRow.tsx`:
 ```tsx
+import type { ReactNode } from 'react'
 import type { ExternalResult, Track } from '../lib/types'
 import { formatDuration } from '../lib/types'
 import { usePlayer } from '../lib/playerStore'
@@ -4504,7 +4570,7 @@ export function ExternalRow({ result }: Props) {
     <div className="h-9 w-9 rounded bg-neutral-800" />
   )
 
-  let action: React.ReactNode
+  let action: ReactNode
   if (inLibrary) {
     action = <span title="In library" className="text-accent">✓</span>
   } else if (active) {
@@ -4552,7 +4618,7 @@ export function ExternalRow({ result }: Props) {
 }
 ```
 
-> NOTE: `import type React` is not needed for the `React.ReactNode` annotation under the new JSX transform only if `React` is in scope; to be safe, add `import type { ReactNode } from 'react'` and change `React.ReactNode` to `ReactNode`. Apply that change if `npm run build` complains about `React` being undefined.
+> NOTE: the row imports `import type { ReactNode } from 'react'` and annotates `action: ReactNode` (NOT `React.ReactNode`). The tsconfig sets `verbatimModuleSyntax` + `erasableSyntaxOnly`, so a bare `React.ReactNode` (React not in scope) would fail typecheck — the `import type { ReactNode }` form is erasable and required.
 
 - [ ] **Step 4: Run test to verify it passes**
 
@@ -4567,5 +4633,371 @@ Expected: build succeeds.
 git add web/src/components/ExternalRow.tsx web/src/components/ExternalRow.test.tsx
 git commit -m "feat(web): functional ExternalRow with download, progress ring, and in-place check flip"
 ```
+
+---
+
+## Task 16: Realtime wiring + app-shell mount + playWhenReady auto-play + invalidation
+
+**Files:**
+- Create: `web/src/lib/realtimeWiring.ts` (the `useRealtime()` hook)
+- Create: `web/src/lib/realtimeWiring.test.ts` (Vitest; stubbed socket + spied QueryClient)
+- Modify: `web/src/components/AppShell.tsx` (call `useRealtime()`; render `<DownloadTray/>` in the right slot)
+
+**Interfaces:**
+- Consumes: `RealtimeConnection` + `WebSocketLike` (Task 12 `realtime.ts`), `useDownloads` + `applyEvent`/`setAll` (Task 13 `downloadStore.ts`), `getDownloads` (Task 13 `downloadApi.ts`), `usePlayer` + `playTrackList` (existing `playerStore.ts`), the library query keys (existing `libraryApi.ts`: all start `['library', ...]`, with specific entities `['library','album',id]` / `['library','artist',id]`), `useQueryClient` (TanStack), `DownloadEvent`/`LibraryUpdatedEvent`/`RealtimeEvent` (Task 12 types).
+- Produces:
+  ```ts
+  // useRealtime opens ONE app-wide WS, fans events into the download store, drives
+  // surgical TanStack invalidation, and auto-plays a play-when-ready completion.
+  // makeSocket is an optional injectable socket factory (tests pass a stub).
+  export function useRealtime(makeSocket?: (url: string) => WebSocketLike): void
+  ```
+
+> **S1 note (empty IDs):** the backend `library.updated` / `download.complete` events may carry EMPTY `artistId`/`albumId` (the re-match yields only `libraryTrackId`). So invalidation MUST work with empty IDs: ALWAYS invalidate the broad `['library']` key; treat per-album/per-artist invalidation (`['library','album',albumId]` / `['library','artist',artistId]`) as a best-effort optimization applied ONLY when the id is non-empty. The in-place ✓ flip on the result row is keyed off `externalId` (present on every `download.complete`) via the downloadStore + ExternalRow cross-reference from Tasks 13/14 — that is the primary completion UX and does NOT depend on a refetch. **Precise per-album/artist invalidation is DEFERRED until the backend surfaces those IDs; the broad library invalidation is the MVP behavior.**
+
+- [ ] **Step 1: Write the failing wiring test (stub socket + spied QueryClient)**
+
+Create `web/src/lib/realtimeWiring.test.ts`:
+```ts
+import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { renderHook } from '@testing-library/react'
+import { createElement, type ReactNode } from 'react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { useRealtime } from './realtimeWiring'
+import { useDownloads } from './downloadStore'
+import type { WebSocketLike } from './realtime'
+
+// Player spy: usePlayer((s) => s.playTrackList) must return our spy.
+const playTrackList = vi.fn()
+vi.mock('./playerStore', () => ({
+  usePlayer: (sel: (s: { playTrackList: typeof playTrackList }) => unknown) => sel({ playTrackList }),
+}))
+
+// downloadApi resync is stubbed (no real network).
+vi.mock('./downloadApi', () => ({
+  getDownloads: vi.fn(() => Promise.resolve([])),
+}))
+
+// A controllable stub socket the test drives.
+const sockets: StubSocket[] = []
+class StubSocket implements WebSocketLike {
+  onopen: (() => void) | null = null
+  onmessage: ((ev: { data: string }) => void) | null = null
+  onclose: (() => void) | null = null
+  onerror: (() => void) | null = null
+  closed = false
+  url: string
+  constructor(url: string) {
+    this.url = url
+    sockets.push(this)
+  }
+  close() {
+    this.closed = true
+    this.onclose?.()
+  }
+}
+
+function frame(type: string, payload: unknown) {
+  return { data: JSON.stringify({ type, payload }) }
+}
+
+describe('useRealtime', () => {
+  let qc: QueryClient
+  let invalidateSpy: ReturnType<typeof vi.spyOn>
+
+  beforeEach(() => {
+    sockets.length = 0
+    playTrackList.mockClear()
+    useDownloads.setState({ jobs: {} })
+    qc = new QueryClient()
+    invalidateSpy = vi.spyOn(qc, 'invalidateQueries')
+  })
+
+  function wrapper({ children }: { children: ReactNode }) {
+    return createElement(QueryClientProvider, { client: qc }, children)
+  }
+
+  it('updates the store on progress, plays a play-when-ready completion, and invalidates', () => {
+    // Seed a job started with playWhenReady so completion auto-plays.
+    useDownloads.getState().upsert({
+      id: 'j1', dedupKey: 'dk', status: 'running', progress: 0, downloaderName: 'spotdl',
+      priority: 0, attempts: 0, source: 'spotify', externalId: 'sp1', playWhenReady: true,
+      title: 'Song', artist: 'Artist', album: 'Album', createdAt: 1, startedAt: 0, finishedAt: 0,
+    } as never)
+
+    const { unmount } = renderHook(() => useRealtime((url) => new StubSocket(url)), { wrapper })
+    const s = sockets[0]
+    expect(s.url).toContain('/api/v1/ws')
+
+    // A progress event patches the store.
+    s.onmessage?.(frame('download.progress', { jobId: 'j1', dedupKey: 'dk', status: 'running', progress: 42, source: 'spotify', externalId: 'sp1' }))
+    expect(useDownloads.getState().jobs['j1'].progress).toBe(42)
+
+    // A completion event: store reflects completed + libraryTrackId, player auto-plays
+    // (job had playWhenReady), and library queries are invalidated.
+    s.onmessage?.(frame('download.complete', { jobId: 'j1', dedupKey: 'dk', status: 'completed', progress: 100, source: 'spotify', externalId: 'sp1', libraryTrackId: 't9' }))
+    expect(useDownloads.getState().jobs['j1'].status).toBe('completed')
+    expect(useDownloads.getState().jobs['j1'].libraryTrackId).toBe('t9')
+    expect(playTrackList).toHaveBeenCalledTimes(1)
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['library'] })
+
+    // library.updated also invalidates (broad fallback even with empty IDs).
+    invalidateSpy.mockClear()
+    s.onmessage?.(frame('library.updated', { artistIds: [], albumIds: [] }))
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['library'] })
+
+    // Unmount closes the socket.
+    unmount()
+    expect(s.closed).toBe(true)
+  })
+
+  it('does NOT auto-play a completion whose job had playWhenReady=false', () => {
+    useDownloads.getState().upsert({
+      id: 'j2', dedupKey: 'dk2', status: 'running', progress: 0, downloaderName: 'spotdl',
+      priority: 0, attempts: 0, source: 'spotify', externalId: 'sp2', playWhenReady: false,
+      title: 'Song2', artist: 'Artist2', album: 'Album2', createdAt: 1, startedAt: 0, finishedAt: 0,
+    } as never)
+    renderHook(() => useRealtime((url) => new StubSocket(url)), { wrapper })
+    sockets[0].onmessage?.(frame('download.complete', { jobId: 'j2', dedupKey: 'dk2', status: 'completed', progress: 100, source: 'spotify', externalId: 'sp2', libraryTrackId: 't5' }))
+    expect(playTrackList).not.toHaveBeenCalled()
+  })
+})
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `cd web && npx vitest run src/lib/realtimeWiring.test.ts`
+Expected: FAIL — cannot resolve `./realtimeWiring`.
+
+- [ ] **Step 3: Write the wiring hook**
+
+Create `web/src/lib/realtimeWiring.ts`:
+```ts
+import { useEffect } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
+import { RealtimeConnection, type WebSocketLike } from './realtime'
+import { useDownloads } from './downloadStore'
+import { getDownloads } from './downloadApi'
+import { usePlayer } from './playerStore'
+import type { DownloadEvent, LibraryUpdatedEvent, RealtimeEvent, Track } from './types'
+
+// trackFromJob synthesizes a minimal library Track for play-when-ready auto-play,
+// using the re-matched libraryTrackId (mirrors ExternalRow.trackFromMatch). The
+// stream proxy plays by id; the rest is best-effort display metadata.
+function trackFromJob(libraryTrackId: string, meta: { title?: string; album?: string; artist?: string; durationMs?: number; isrc?: string }): Track {
+  return {
+    id: libraryTrackId,
+    title: meta.title ?? '',
+    albumId: '',
+    album: meta.album ?? '',
+    artistId: '',
+    artist: meta.artist ?? '',
+    coverArtId: '',
+    trackNumber: 0,
+    discNumber: 0,
+    durationMs: meta.durationMs ?? 0,
+    bitRate: 0,
+    suffix: '',
+    contentType: '',
+    isrc: meta.isrc,
+  }
+}
+
+// useRealtime opens ONE app-wide WebSocket (distinct from the SSE search stream),
+// fans typed events into the download store, drives TanStack invalidation, and
+// auto-plays a completion whose job was started with playWhenReady. makeSocket is
+// injectable for tests (a stub socket; no real network/media).
+export function useRealtime(makeSocket?: (url: string) => WebSocketLike): void {
+  const qc = useQueryClient()
+  // Read the player action imperatively to avoid re-subscribing the effect.
+  const playTrackList = usePlayer((s) => s.playTrackList)
+
+  useEffect(() => {
+    // Broad library invalidation is the MVP behavior; per-album/artist is a
+    // best-effort optimization applied only when the id is present (deferred:
+    // the backend may surface empty artistId/albumId on download.complete).
+    function invalidateLibrary(ids?: { artistId?: string; albumId?: string }) {
+      void qc.invalidateQueries({ queryKey: ['library'] })
+      if (ids?.albumId) void qc.invalidateQueries({ queryKey: ['library', 'album', ids.albumId] })
+      if (ids?.artistId) void qc.invalidateQueries({ queryKey: ['library', 'artist', ids.artistId] })
+    }
+
+    function onEvent(frame: RealtimeEvent) {
+      switch (frame.type) {
+        case 'download.queued':
+        case 'download.progress':
+        case 'download.failed': {
+          useDownloads.getState().applyEvent(frame.payload as DownloadEvent)
+          break
+        }
+        case 'download.complete': {
+          const ev = frame.payload as DownloadEvent
+          useDownloads.getState().applyEvent(ev)
+          // After applying, read the job to see if it was play-when-ready.
+          const job = useDownloads.getState().jobs[ev.jobId]
+          const trackId = ev.libraryTrackId || job?.libraryTrackId || ''
+          if (job?.playWhenReady && trackId) {
+            playTrackList(
+              [trackFromJob(trackId, { title: job.title, album: job.album, artist: job.artist, isrc: job.isrc })],
+              0,
+            )
+          }
+          invalidateLibrary({ artistId: ev.artistId, albumId: ev.albumId })
+          break
+        }
+        case 'library.updated': {
+          const ev = frame.payload as LibraryUpdatedEvent
+          const albumId = ev.albumIds?.[0]
+          const artistId = ev.artistIds?.[0]
+          invalidateLibrary({ artistId, albumId })
+          break
+        }
+        default:
+          break
+      }
+    }
+
+    function onOpen() {
+      // Resync the full job list on (re)connect so we never miss a transition.
+      void getDownloads().then((jobs) => useDownloads.getState().setAll(jobs))
+    }
+
+    const conn = new RealtimeConnection({ onEvent, onOpen }, makeSocket)
+    return () => conn.close()
+    // playTrackList is stable (zustand action); makeSocket is test-only/stable.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [qc])
+}
+```
+
+> NOTE: `DownloadJob` (Task 13) carries `title`/`album`/`artist` only if the POST response / store upsert supplied them; the auto-play Track is best-effort display metadata and ALWAYS sets `id = libraryTrackId` (what the stream proxy needs). If the job lacks those fields, the track still plays by id with blank labels — acceptable for MVP. (The downloadStore job mirrors the server `DownloadJob`, which carries the request fields from request_json per Task 1/Task 8.)
+
+- [ ] **Step 4: Run test to verify it passes**
+
+Run: `cd web && npx vitest run src/lib/realtimeWiring.test.ts`
+Expected: PASS (progress patches the store; a play-when-ready completion auto-plays exactly once + invalidates `['library']`; `library.updated` invalidates; a non-play-when-ready completion does NOT auto-play; unmount closes the socket).
+
+- [ ] **Step 5: Mount the WS + DownloadTray in the app shell**
+
+Replace `web/src/components/AppShell.tsx`:
+```tsx
+import { Outlet } from 'react-router-dom'
+import { Sidebar } from './Sidebar'
+import { PlayerBar } from './PlayerBar'
+import { PlayQueue } from './PlayQueue'
+import { DownloadTray } from './DownloadTray'
+import { useRealtime } from '../lib/realtimeWiring'
+
+export function AppShell() {
+  // One app-wide realtime WS (distinct from the SSE search stream): drives the
+  // download store, TanStack invalidation, and play-when-ready auto-play.
+  useRealtime()
+
+  return (
+    <div className="flex h-full flex-col">
+      <div className="relative flex min-h-0 flex-1">
+        <Sidebar />
+        <main className="flex-1 overflow-auto p-6">
+          <Outlet />
+        </main>
+        {/* Single right-panel slot, mutually exclusive via useUI.rightPanel:
+            'queue' → PlayQueue, 'downloads' → DownloadTray. Each renders null
+            when it is not the active panel. */}
+        <PlayQueue />
+        <DownloadTray />
+      </div>
+      <PlayerBar />
+    </div>
+  )
+}
+```
+> NOTE: both `PlayQueue` (renders only for `rightPanel==='queue'`) and `DownloadTray` (renders only for `rightPanel==='downloads'`) gate on `useUI.rightPanel`, so they are mutually exclusive in the SAME slot — rendering both is safe (at most one is non-null). This mirrors the M1 PlayQueue mount.
+
+- [ ] **Step 6: Add an AppShell mount test (tray renders when panel is 'downloads')**
+
+Append to (or create) `web/src/components/AppShell.test.tsx`:
+```tsx
+import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { render, screen } from '@testing-library/react'
+import { MemoryRouter } from 'react-router-dom'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { AppShell } from './AppShell'
+import { useUI } from '../lib/uiStore'
+import { useDownloads } from '../lib/downloadStore'
+
+// Stub the WS wiring so the shell mounts without a real socket.
+vi.mock('../lib/realtimeWiring', () => ({ useRealtime: () => {} }))
+
+function renderShell() {
+  const qc = new QueryClient()
+  return render(
+    <QueryClientProvider client={qc}>
+      <MemoryRouter>
+        <AppShell />
+      </MemoryRouter>
+    </QueryClientProvider>,
+  )
+}
+
+describe('AppShell', () => {
+  beforeEach(() => {
+    useDownloads.setState({ jobs: {} })
+    useUI.setState({ rightPanel: 'downloads' })
+  })
+
+  it('mounts the Download Tray when the right panel is downloads', () => {
+    renderShell()
+    expect(screen.getByText('Download Tray')).toBeInTheDocument()
+  })
+})
+```
+
+- [ ] **Step 7: Run tests + typecheck**
+
+Run: `cd web && npx vitest run src/lib/realtimeWiring.test.ts src/components/AppShell.test.tsx`
+Expected: PASS.
+
+Run: `cd web && npm run build`
+Expected: build succeeds (strict TS: `import type` for type-only imports; no constructor parameter properties; no bare `React.*` namespace).
+
+- [ ] **Step 8: Full frontend suite + typecheck (closes the loop)**
+
+Run: `cd web && npx vitest run`
+Expected: PASS (all M1/M2/M3 frontend tests).
+
+Run: `cd web && npm run build`
+Expected: build succeeds.
+
+- [ ] **Step 9: Commit**
+
+```bash
+git add web/src/lib/realtimeWiring.ts web/src/lib/realtimeWiring.test.ts web/src/components/AppShell.tsx web/src/components/AppShell.test.tsx
+git commit -m "feat(web): realtime wiring, download tray mount, and play-when-ready"
+```
+
+---
+
+## Definition of Done (M3)
+
+The core loop CLOSES end-to-end:
+- A user clicks ↓ on a not-in-library "Everywhere" result → `POST /api/v1/downloads` enqueues a job (dedup-join if an identical job is already active).
+- Progress streams live over the WebSocket → the **Download Tray** shows a progress bar AND the result row shows the **⟳ ring** (determinate when `progress>=0`, indeterminate when `-1`).
+- On completion the Manager runs the **scan-debounce** (one coalesced `StartScan`), polls scan status, **re-matches**, sets `library_track_id`, and **bumps `library_version`** (invalidating `match_cache`).
+- The track appears in the library and the result row **flips to ✓ in place** (keyed off `externalId` from `download.complete`, no refetch required); broad `['library']` queries are invalidated so library views refresh.
+- If the job was started with **`playWhenReady`**, the matched track **auto-plays**.
+
+Quality gates:
+- All Go suites green: `go test ./cmd/... ./internal/...` (Manager concurrency tests run under `-race`).
+- All frontend suites green: `cd web && npx vitest run`; typecheck clean: `cd web && npm run build`.
+- The **WebSocket transport is DISTINCT from the SSE** search stream (separate endpoint `/api/v1/ws`, separate client `RealtimeConnection`).
+- The **spotDL exec is injectable** (`Runner`) and **degrades gracefully** (unparseable stdout → unknown progress `-1`, never an error).
+- The Manager implements **dedup-join, fallback chain, scan-debounce (injectable clock), cancel, and retry**; downloaders are registered EXPLICITLY at the composition root with warn-and-skip on per-source init failure.
+- Library data is NEVER persisted; `download_jobs` stores only Crate job state (+ the full `request_json` for rehydration).
+
+## Self-Review
+
+- **Spec coverage:** download domain types → `Downloader` interface + conformance → `download_jobs` store → `Manager` (dedup-join, fallback, scan-debounce, cancel/retry, re-match + version bump) → spotDL adapter → REST + WS API → composition root → frontend WS client + downloadStore + DownloadTray + functional ExternalRow + app-shell wiring. Every downloader passes `RunConformance`. The WS is auth-gated and a distinct transport from SSE.
+- **Deferred (documented):** **precise per-album/per-artist query invalidation** is best-effort only — the backend `library.updated` / `download.complete` events may carry empty `artistId`/`albumId`, so the wiring ALWAYS falls back to a broad `['library']` invalidation. Tightening this to per-entity invalidation is a follow-up gated on the backend surfacing those IDs from the re-match. Cross-restart rehydration of queued jobs from `request_json` is a small follow-up (read at startup → `SeedRequest`); the column and full marshaling already exist.
+- **Manual verification:** a **live spotDL smoke test** (a real download against the actual `spotdl` binary writing into `CRATE_DOWNLOAD_DIR`) is MANUAL — all automated tests use the injectable fake `Runner` and never shell out or touch the network/media. Run one real download end-to-end before shipping to confirm the progress regex still matches the pinned spotDL version's output.
 
 ---
