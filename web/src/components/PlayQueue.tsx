@@ -11,6 +11,7 @@ export function PlayQueue() {
   const current = usePlayer((s) => s.current)
   const removeAt = usePlayer((s) => s.removeAt)
   const moveItem = usePlayer((s) => s.moveItem)
+  const jumpTo = usePlayer((s) => s.jumpTo)
 
   const dragFrom = useRef<number | null>(null)
 
@@ -55,6 +56,7 @@ export function PlayQueue() {
             <li
               key={`${t.id}-${i}`}
               draggable
+              onClick={() => jumpTo(i)}
               onDragStart={() => (dragFrom.current = i)}
               onDragOver={(e) => e.preventDefault()}
               onDrop={() => {
@@ -63,7 +65,7 @@ export function PlayQueue() {
                 }
                 dragFrom.current = null
               }}
-              className="flex items-center gap-2 rounded px-2 py-1.5 hover:bg-neutral-800"
+              className="flex items-center gap-2 rounded px-2 py-1.5 hover:bg-neutral-800 cursor-pointer"
             >
               <span className="cursor-grab text-neutral-600">⠿</span>
               <div className="min-w-0 flex-1">
@@ -73,7 +75,7 @@ export function PlayQueue() {
               <button
                 type="button"
                 aria-label={`Remove ${t.title}`}
-                onClick={() => removeAt(i)}
+                onClick={(e) => { e.stopPropagation(); removeAt(i) }}
                 className="text-neutral-500 hover:text-accent"
               >
                 ✕

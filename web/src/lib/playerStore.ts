@@ -10,6 +10,7 @@ interface PlayerActions {
   enqueue(t: Track): void
   removeAt(i: number): void
   moveItem(from: number, to: number): void
+  jumpTo(index: number): void
   play(): void
   pause(): void
   toggle(): void
@@ -32,6 +33,7 @@ export const usePlayer = create<PlayerStore>((set) => {
     enqueue: (t) => engine.enqueue(t),
     removeAt: (i) => engine.removeAt(i),
     moveItem: (from, to) => engine.moveItem(from, to),
+    jumpTo: (index) => engine.playAt(index),
     play: () => engine.play(),
     pause: () => engine.pause(),
     toggle: () => engine.toggle(),

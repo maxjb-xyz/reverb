@@ -149,6 +149,31 @@ describe('AudioEngine queue + transport', () => {
     expect(s.queue.map((t) => t.id)).toEqual(['2', '3', '1'])
   })
 
+  it('playAt jumps to the given index and plays', () => {
+    engine.playTrackList(list, 0)
+    engine.playAt(2)
+    const s = engine.getState()
+    expect(s.index).toBe(2)
+    expect(s.current?.id).toBe('3')
+    expect(s.playing).toBe(true)
+  })
+
+  it('playAt is a no-op for out-of-range indices', () => {
+    engine.playTrackList(list, 0)
+    engine.playAt(99)
+    expect(engine.getState().index).toBe(0) // unchanged
+    engine.playAt(-1)
+    expect(engine.getState().index).toBe(0) // unchanged
+  })
+
+  it('playAt aligns shufflePos so next stays coherent', () => {
+    engine.playTrackList(list, 0)
+    engine.toggleShuffle()
+    engine.playAt(2)
+    expect(engine.getState().index).toBe(2)
+    expect(engine.getState().current?.id).toBe('3')
+  })
+
   it('setVolume clamps 0..1 and notifies subscribers', () => {
     let notified = 0
     engine.subscribe(() => notified++)

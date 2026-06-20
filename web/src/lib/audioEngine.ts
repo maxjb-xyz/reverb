@@ -288,6 +288,17 @@ export class AudioEngine {
     this.loadCurrent(this.playing || fromEnded)
   }
 
+  playAt(index: number) {
+    if (this.queue.length === 0 || index < 0 || index >= this.queue.length) return
+    this.index = index
+    if (this.shuffle) {
+      // Align shufflePos so next/prev stay coherent from this index.
+      const pos = this.shuffleOrder.indexOf(index)
+      this.shufflePos = pos >= 0 ? pos : 0
+    }
+    this.loadCurrent(true)
+  }
+
   next() {
     this.advance(1)
   }
