@@ -3,6 +3,17 @@ import { render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import Album from './Album'
+import { makeTrack, makeAlbum } from '../test/factories'
+
+const stubTrack = makeTrack({ id: 't1', title: 'Track One', artist: 'A', durationMs: 1000, trackNumber: 1 })
+const stubAlbum = makeAlbum({
+  id: 'al1',
+  name: 'Great Album',
+  artistId: 'ar1',
+  artist: 'A',
+  year: 2021,
+  tracks: [stubTrack],
+})
 
 describe('Album page', () => {
   beforeEach(() => {
@@ -10,10 +21,7 @@ describe('Album page', () => {
       'fetch',
       vi.fn(async () =>
         new Response(
-          JSON.stringify({
-            id: 'al1', name: 'Great Album', artist: 'A', artistId: 'ar1', year: 2021,
-            tracks: [{ id: 't1', title: 'Track One', artist: 'A', durationMs: 1000, trackNumber: 1 }],
-          }),
+          JSON.stringify(stubAlbum),
           { status: 200, headers: { 'Content-Type': 'application/json' } },
         ),
       ),
