@@ -66,14 +66,28 @@ func TestWSStreamsPublishedEvents(t *testing.T) {
 	}
 	defer c.Close(websocket.StatusNormalClosure, "")
 
-	// Give the handler a moment to subscribe, then publish a progress event.
-	time.Sleep(50 * time.Millisecond)
-	bus.Publish(events.Event{Topic: download.TopicProgress, Payload: core.DownloadEvent{
+	progress := events.Event{Topic: download.TopicProgress, Payload: core.DownloadEvent{
 		JobID: "j1", Status: core.DownloadRunning, Progress: 42, Source: "spotify", ExternalID: "sp1",
-	}})
+	}}
 
+	// The handler subscribes asynchronously after the handshake. Rather than a
+	// fixed sleep, retry the publish in a short loop until a frame arrives,
+	// using a per-attempt read deadline so an early publish (before the
+	// subscription is live) doesn't lose the only event.
 	var frame wsFrame
-	if err := wsjson.Read(ctx, c, &frame); err != nil {
+	for i := 0; i < 50; i++ {
+		bus.Publish(progress)
+		readCtx, readCancel := context.WithTimeout(ctx, 50*time.Millisecond)
+		err = wsjson.Read(readCtx, c, &frame)
+		readCancel()
+		if err == nil {
+			break
+		}
+		if ctx.Err() != nil {
+			break
+		}
+	}
+	if err != nil {
 		t.Fatalf("read frame: %v", err)
 	}
 	if frame.Type != download.TopicProgress {

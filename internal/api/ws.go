@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"net/http"
+	"time"
 
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
@@ -85,7 +86,13 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 		case <-readCtx.Done():
 			return
 		case ev := <-merged:
-			if err := wsjson.Write(readCtx, c, wsEnvelope{Type: ev.Topic, Payload: ev.Payload}); err != nil {
+			// Bound each write so a client that stops reading (but keeps the
+			// connection open) can't stall the writer indefinitely. On timeout
+			// or error we return, letting the defers unsubscribe + close.
+			writeCtx, writeCancel := context.WithTimeout(readCtx, 10*time.Second)
+			err := wsjson.Write(writeCtx, c, wsEnvelope{Type: ev.Topic, Payload: ev.Payload})
+			writeCancel()
+			if err != nil {
 				return
 			}
 		}
