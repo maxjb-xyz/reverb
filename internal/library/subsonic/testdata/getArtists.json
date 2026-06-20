@@ -1,0 +1,4 @@
+{"subsonic-response":{"status":"ok","version":"1.16.1","artists":{"index":[
+  {"name":"T","artist":[{"id":"ar1","name":"The Artists","coverArt":"ar-1","albumCount":2}]},
+  {"name":"Z","artist":[{"id":"ar2","name":"Zephyr","coverArt":"ar-2","albumCount":1}]}
+]}}}
