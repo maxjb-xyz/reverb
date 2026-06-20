@@ -62,6 +62,14 @@ func TestSQLStoreInsertGetUpdate(t *testing.T) {
 	if active.Progress != 60 || active.Status != core.DownloadRunning {
 		t.Fatalf("active mismatch: %+v", active)
 	}
+	// Re-Get to confirm started_at was populated on the running transition.
+	running, _, err := s.Get(ctx, "j1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if running.StartedAt == 0 {
+		t.Fatalf("StartedAt must be non-zero after transitioning to running: %+v", running)
+	}
 
 	got.Status = core.DownloadCompleted
 	got.LibraryTrackID = "t9"
@@ -74,6 +82,14 @@ func TestSQLStoreInsertGetUpdate(t *testing.T) {
 	fin, _, _ := s.Get(ctx, "j1")
 	if fin.LibraryTrackID != "t9" {
 		t.Fatalf("library_track_id not persisted: %+v", fin)
+	}
+	// Re-Get to confirm finished_at was populated on the completed transition.
+	completed, _, err := s.Get(ctx, "j1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if completed.FinishedAt == 0 {
+		t.Fatalf("FinishedAt must be non-zero after transitioning to completed: %+v", completed)
 	}
 
 	list, err := s.List(ctx)

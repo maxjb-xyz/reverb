@@ -3,6 +3,7 @@ package download
 import (
 	"context"
 	"database/sql"
+	"fmt"
 
 	"github.com/maximusjb/crate/internal/core"
 	"github.com/maximusjb/crate/internal/store/db"
@@ -11,12 +12,17 @@ import (
 // sqlStore adapts *db.Queries to JobStore, mapping core.DownloadJob ⇄ db rows.
 type sqlStore struct{ q *db.Queries }
 
+// Compile-time assertion: sqlStore must satisfy JobStore.
+var _ JobStore = (*sqlStore)(nil)
+
 // NewSQLStore wraps generated queries as a Manager JobStore.
 func NewSQLStore(q *db.Queries) JobStore { return &sqlStore{q: q} }
 
 // toCore converts a db.DownloadJob row to a core.DownloadJob, rehydrating all
 // request fields from request_json so a job loaded from SQLite can run.
-func toCore(r db.DownloadJob) core.DownloadJob {
+// Returns an error if request_json is non-empty but cannot be decoded — a
+// corrupted row must not silently yield a job with empty request fields.
+func toCore(r db.DownloadJob) (core.DownloadJob, error) {
 	j := core.DownloadJob{
 		ID:             r.ID,
 		DedupKey:       r.DedupKey,
@@ -43,7 +49,9 @@ func toCore(r db.DownloadJob) core.DownloadJob {
 	// isrc/playWhenReady — the explicit downloader is reflected by DownloaderName).
 	var req core.DownloadRequest
 	if r.RequestJson != "" {
-		_ = jsonUnmarshal(r.RequestJson, &req)
+		if err := jsonUnmarshal(r.RequestJson, &req); err != nil {
+			return core.DownloadJob{}, fmt.Errorf("download job %s: decode request_json: %w", r.ID, err)
+		}
 	}
 	j.Source = req.Source
 	j.ExternalID = req.ExternalID
@@ -52,7 +60,7 @@ func toCore(r db.DownloadJob) core.DownloadJob {
 	j.Album = req.Album
 	j.ISRC = req.ISRC
 	j.PlayWhenReady = req.PlayWhenReady
-	return j
+	return j, nil
 }
 
 // Insert persists the job lifecycle row AND marshals the COMPLETE originating
@@ -82,7 +90,11 @@ func (s *sqlStore) Get(ctx context.Context, id string) (core.DownloadJob, bool, 
 	if err != nil {
 		return core.DownloadJob{}, false, err
 	}
-	return toCore(r), true, nil
+	j, err := toCore(r)
+	if err != nil {
+		return core.DownloadJob{}, false, err
+	}
+	return j, true, nil
 }
 
 func (s *sqlStore) ActiveByDedup(ctx context.Context, dedup string) (core.DownloadJob, bool, error) {
@@ -93,7 +105,11 @@ func (s *sqlStore) ActiveByDedup(ctx context.Context, dedup string) (core.Downlo
 	if err != nil {
 		return core.DownloadJob{}, false, err
 	}
-	return toCore(r), true, nil
+	j, err := toCore(r)
+	if err != nil {
+		return core.DownloadJob{}, false, err
+	}
+	return j, true, nil
 }
 
 func (s *sqlStore) List(ctx context.Context) ([]core.DownloadJob, error) {
@@ -103,12 +119,20 @@ func (s *sqlStore) List(ctx context.Context) ([]core.DownloadJob, error) {
 	}
 	out := make([]core.DownloadJob, 0, len(rows))
 	for _, r := range rows {
-		out = append(out, toCore(r))
+		j, err := toCore(r)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, j)
 	}
 	return out, nil
 }
 
 // Update persists all mutable fields of j by calling the appropriate sqlc queries.
+// NOTE: these statements are issued non-transactionally. A mid-Update crash can
+// leave the row internally inconsistent (e.g. status updated but progress not).
+// This is acceptable for M3 — cross-restart job recovery is deferred. Revisit
+// with a transaction when recovery lands.
 // Status drives started_at/finished_at via the SQL CASE expression in
 // UpdateDownloadJobStatus; progress/error/output_path/library_track_id each have
 // a dedicated update so callers can set them independently.
