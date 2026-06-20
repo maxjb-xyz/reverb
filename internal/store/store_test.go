@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/maximusjb/crate/internal/store/db"
 )
 
@@ -170,5 +171,67 @@ func TestMatchCacheUpsertPositiveAndNegative(t *testing.T) {
 	}
 	if _, err := q.GetMatchCache(ctx, db.GetMatchCacheParams{Source: "spotify", ExternalID: "sp1"}); err == nil {
 		t.Fatal("expected ErrNoRows after delete")
+	}
+}
+
+func TestAdapterInstanceCRUD(t *testing.T) {
+	st, err := Open(t.TempDir() + "/ai.db")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	if err := st.Migrate(); err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	q := st.Q()
+
+	id := uuid.NewString()
+	if err := q.CreateAdapterInstance(ctx, db.CreateAdapterInstanceParams{
+		ID: id, Type: "search", Name: "spotify", Enabled: 1, Priority: 0,
+		ConfigJson: `{"client_id":"abc","client_secret":"shh"}`,
+	}); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+
+	got, err := q.GetAdapterInstance(ctx, id)
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if got.Name != "spotify" || got.Enabled != 1 {
+		t.Fatalf("get mismatch: %+v", got)
+	}
+
+	if err := q.UpdateAdapterInstance(ctx, db.UpdateAdapterInstanceParams{
+		Name: "spotify", Enabled: 1, Priority: 5, ConfigJson: `{"client_id":"new"}`, ID: id,
+	}); err != nil {
+		t.Fatalf("update: %v", err)
+	}
+	got, _ = q.GetAdapterInstance(ctx, id)
+	if got.Priority != 5 || got.ConfigJson != `{"client_id":"new"}` {
+		t.Fatalf("update did not persist: %+v", got)
+	}
+
+	if err := q.SetAdapterInstanceEnabled(ctx, db.SetAdapterInstanceEnabledParams{Enabled: 0, ID: id}); err != nil {
+		t.Fatalf("set-enabled: %v", err)
+	}
+	got, _ = q.GetAdapterInstance(ctx, id)
+	if got.Enabled != 0 {
+		t.Fatalf("enabled not toggled: %+v", got)
+	}
+
+	if err := q.SetAdapterInstancePriority(ctx, db.SetAdapterInstancePriorityParams{Priority: 9, ID: id}); err != nil {
+		t.Fatalf("set-priority: %v", err)
+	}
+	got, _ = q.GetAdapterInstance(ctx, id)
+	if got.Priority != 9 {
+		t.Fatalf("priority not set: %+v", got)
+	}
+
+	if err := q.DeleteAdapterInstance(ctx, id); err != nil {
+		t.Fatalf("delete: %v", err)
+	}
+	if _, err := q.GetAdapterInstance(ctx, id); err == nil {
+		t.Fatal("expected error getting a deleted instance")
 	}
 }
