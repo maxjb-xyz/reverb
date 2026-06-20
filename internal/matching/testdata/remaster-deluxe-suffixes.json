@@ -1,0 +1,17 @@
+{"cases":[
+  {"name":"remaster matches same-labeled library copy within duration tolerance",
+   "external":{"title":"Wanderer (Remaster 2011)","artist":"Gold Coast","album":"Wanderer","durationMs":215000},
+   "library":[{"id":"t1","title":"Wanderer (Remaster 2011)","artist":"Gold Coast","album":"Wanderer","durationMs":216000}],
+   "expect":{"status":"in_library","libraryTrackId":"t1","method":"fuzzy"},
+   "normalize":{"title":"wanderer (remaster 2011)","artist":"gold coast"}},
+  {"name":"deluxe edition qualifier preserved (not stripped)",
+   "external":{"title":"Horizon (Deluxe Edition)","artist":"Pale Sun","album":"Horizon","durationMs":190000},
+   "library":[{"id":"t2","title":"Horizon (Deluxe Edition)","artist":"Pale Sun","album":"Horizon","durationMs":190200}],
+   "expect":{"status":"in_library","libraryTrackId":"t2","method":"fuzzy"},
+   "normalize":{"title":"horizon (deluxe edition)","artist":"pale sun"}},
+  {"name":"2009 remastered version qualifier preserved",
+   "external":{"title":"Tideways (2009 Remastered Version)","artist":"Estuary","album":"Tideways","durationMs":253000},
+   "library":[{"id":"t3","title":"Tideways (2009 Remastered Version)","artist":"Estuary","album":"Tideways","durationMs":253000}],
+   "expect":{"status":"in_library","libraryTrackId":"t3","method":"fuzzy"},
+   "normalize":{"title":"tideways (2009 remastered version)","artist":"estuary"}}
+]}

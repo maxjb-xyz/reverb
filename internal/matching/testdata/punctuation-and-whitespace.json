@@ -1,0 +1,17 @@
+{"cases":[
+  {"name":"ampersand normalizes to and",
+   "external":{"title":"Salt & Sea","artist":"Harbor","album":"Coast","durationMs":205000},
+   "library":[{"id":"p1","title":"Salt and Sea","artist":"Harbor","album":"Coast","durationMs":205000}],
+   "expect":{"status":"in_library","libraryTrackId":"p1","method":"fuzzy"},
+   "normalize":{"title":"salt and sea","artist":"harbor"}},
+  {"name":"Pt. abbreviation normalizes to part",
+   "external":{"title":"Movement Pt. 1","artist":"Quartet","album":"Suite","durationMs":300000},
+   "library":[{"id":"p2","title":"Movement Part 1","artist":"Quartet","album":"Suite","durationMs":300500}],
+   "expect":{"status":"in_library","libraryTrackId":"p2","method":"fuzzy"},
+   "normalize":{"title":"movement part 1","artist":"quartet"}},
+  {"name":"stray punctuation and double spaces collapsed",
+   "external":{"title":"  Hello,  World!! ","artist":"The Coders","album":"Init","durationMs":123000},
+   "library":[{"id":"p3","title":"Hello World","artist":"The Coders","album":"Init","durationMs":123000}],
+   "expect":{"status":"in_library","libraryTrackId":"p3","method":"fuzzy"},
+   "normalize":{"title":"hello world","artist":"the coders"}}
+]}

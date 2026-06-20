@@ -12,7 +12,10 @@ import (
 	"github.com/maximusjb/crate/internal/auth"
 	"github.com/maximusjb/crate/internal/config"
 	"github.com/maximusjb/crate/internal/library/subsonic"
+	"github.com/maximusjb/crate/internal/matching"
 	"github.com/maximusjb/crate/internal/registry"
+	"github.com/maximusjb/crate/internal/search"
+	"github.com/maximusjb/crate/internal/search/spotify"
 	"github.com/maximusjb/crate/internal/store"
 )
 
@@ -47,6 +50,7 @@ func main() {
 	libraryReg := registry.NewRegistry("library")
 	libraryReg.Register("subsonic", func() registry.Plugin { return subsonic.New() })
 	searchReg := registry.NewRegistry("search")
+	searchReg.Register("spotify", func() registry.Plugin { return spotify.New() })
 	downloaderReg := registry.NewRegistry("downloader")
 
 	// Build the active library adapter from the enabled adapter_instance row.
@@ -64,13 +68,31 @@ func main() {
 		log.Printf("library adapter active: %s", libAdapter.Name())
 	}
 
-	srv := api.NewServer(api.Deps{
+	// Build active search sources + the matching service + the aggregator.
+	sources := buildSearchSources(searchReg, instances, os.Getenv)
+	var aggregator *search.Aggregator
+	if len(sources) > 0 {
+		var matcher search.Matcher
+		if libAdapter != nil {
+			matcher = matching.NewService(libAdapter, st.Q(), st.LibraryVersion)
+		}
+		aggregator = search.NewAggregator(sources, matcher, 8*time.Second)
+		log.Printf("search sources active: %d", len(sources))
+	} else {
+		log.Printf("no search sources configured (add one via settings)")
+	}
+
+	deps := api.Deps{
 		Auth:       authSvc,
 		Library:    libAdapter,
 		Search:     searchReg,
 		Downloader: downloaderReg,
 		Dev:        cfg.Dev,
-	})
+	}
+	if aggregator != nil {
+		deps.SearchAggregator = aggregator
+	}
+	srv := api.NewServer(deps)
 
 	addr := fmt.Sprintf(":%d", cfg.Port)
 	log.Printf("crate listening on %s (dev=%v)", addr, cfg.Dev)

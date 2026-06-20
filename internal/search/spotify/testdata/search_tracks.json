@@ -1,0 +1,10 @@
+{"tracks":{"items":[
+  {"id":"sp_t1","name":"Opening","duration_ms":210000,
+   "artists":[{"id":"sp_ar1","name":"The Artists"}],
+   "album":{"id":"sp_al1","name":"First Album","release_date":"2020-05-01","images":[{"url":"https://img/al1.jpg","width":640,"height":640}],"artists":[{"id":"sp_ar1","name":"The Artists"}]},
+   "external_ids":{"isrc":"USX1234567"}},
+  {"id":"sp_t2","name":"Closing","duration_ms":195000,
+   "artists":[{"id":"sp_ar1","name":"The Artists"}],
+   "album":{"id":"sp_al1","name":"First Album","release_date":"2020","images":[{"url":"https://img/al1.jpg","width":640,"height":640}],"artists":[{"id":"sp_ar1","name":"The Artists"}]},
+   "external_ids":{}}
+]}}

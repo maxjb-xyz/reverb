@@ -4,6 +4,10 @@
 
 package db
 
+import (
+	"database/sql"
+)
+
 type AdapterInstance struct {
 	ID         string `json:"id"`
 	Type       string `json:"type"`
@@ -13,6 +17,19 @@ type AdapterInstance struct {
 	ConfigJson string `json:"config_json"`
 	CreatedAt  int64  `json:"created_at"`
 	UpdatedAt  int64  `json:"updated_at"`
+}
+
+type MatchCache struct {
+	Source         string         `json:"source"`
+	ExternalID     string         `json:"external_id"`
+	LibraryTrackID sql.NullString `json:"library_track_id"`
+	Method         string         `json:"method"`
+	Confidence     float64        `json:"confidence"`
+	Isrc           string         `json:"isrc"`
+	Mbid           string         `json:"mbid"`
+	DurationMs     int64          `json:"duration_ms"`
+	LibraryVersion int64          `json:"library_version"`
+	MatchedAt      int64          `json:"matched_at"`
 }
 
 type Session struct {

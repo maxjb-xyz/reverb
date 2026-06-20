@@ -126,6 +126,34 @@ func TestSearchMapsToCore(t *testing.T) {
 	}
 }
 
+// TestMapTrackISRC verifies that the OpenSubsonic `isrc` field is forwarded to
+// core.Track.ISRC (activates the confidence-1.0 ISRC match rung end-to-end) and
+// that a child without `isrc` maps to an empty ISRC (graceful classic Subsonic).
+func TestMapTrackISRC(t *testing.T) {
+	// With ISRC (OpenSubsonic server).
+	withISRC := mapTrack(childDTO{ID: "t-isrc", Title: "Song", Isrc: "USABC1234567"})
+	if withISRC.ISRC != "USABC1234567" {
+		t.Errorf("ISRC: got %q, want %q", withISRC.ISRC, "USABC1234567")
+	}
+	// Without ISRC (classic Subsonic server omits the field).
+	withoutISRC := mapTrack(childDTO{ID: "t-noisrc", Title: "Song"})
+	if withoutISRC.ISRC != "" {
+		t.Errorf("expected empty ISRC, got %q", withoutISRC.ISRC)
+	}
+	// ISRC also flows through via Search (fixture search3.json carries isrc).
+	a := newTestAdapter(t)
+	res, err := a.Search(context.Background(), "x", []core.EntityType{core.EntityTrack})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Tracks) == 0 {
+		t.Fatal("no tracks returned")
+	}
+	if res.Tracks[0].ISRC != "USABC1234567" {
+		t.Errorf("Search ISRC: got %q, want %q", res.Tracks[0].ISRC, "USABC1234567")
+	}
+}
+
 func TestGetAlbumIncludesTracks(t *testing.T) {
 	a := newTestAdapter(t)
 	al, err := a.GetAlbum(context.Background(), "al1")

@@ -1,11 +1,13 @@
 package store
 
 import (
+	"context"
 	"database/sql"
 	"embed"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"sync"
 
 	"github.com/maximusjb/crate/internal/store/db"
@@ -48,3 +50,21 @@ func (s *Store) Migrate() error {
 
 func (s *Store) Q() *db.Queries { return s.q }
 func (s *Store) Close() error   { return s.sql.Close() }
+
+// LibraryVersion returns the monotonic library_version from settings, returning
+// 1 when the key is absent or unparseable. A match_cache row is stale iff its
+// library_version is below this value.
+func (s *Store) LibraryVersion(ctx context.Context) (int64, error) {
+	v, err := s.q.GetLibraryVersion(ctx)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return 1, nil
+		}
+		return 0, err
+	}
+	n, perr := strconv.ParseInt(v, 10, 64)
+	if perr != nil {
+		return 1, nil
+	}
+	return n, nil
+}

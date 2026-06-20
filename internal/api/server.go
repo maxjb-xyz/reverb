@@ -1,21 +1,31 @@
 package api
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/maximusjb/crate/internal/auth"
+	"github.com/maximusjb/crate/internal/core"
 	"github.com/maximusjb/crate/internal/library"
 	"github.com/maximusjb/crate/internal/registry"
+	"github.com/maximusjb/crate/internal/search"
 )
 
+// Streamer is the subset of *search.Aggregator the SSE handler needs.
+// *search.Aggregator satisfies it.
+type Streamer interface {
+	Stream(ctx context.Context, q string, t core.EntityType) <-chan search.Envelope
+}
+
 type Deps struct {
-	Auth       *auth.Service
-	Library    library.LibraryAdapter
-	Search     *registry.Registry
-	Downloader *registry.Registry
-	Dev        bool
+	Auth             *auth.Service
+	Library          library.LibraryAdapter
+	SearchAggregator Streamer
+	Search           *registry.Registry
+	Downloader       *registry.Registry
+	Dev              bool
 }
 
 type Server struct {
@@ -56,6 +66,7 @@ func (s *Server) routes() {
 			pr.Get("/library/playlists", s.handleLibraryPlaylists)
 			pr.Get("/stream/{id}", s.handleStream)
 			pr.Get("/cover/{id}", s.handleCover)
+			pr.Get("/search/everywhere", s.handleEverywhere)
 		})
 	})
 

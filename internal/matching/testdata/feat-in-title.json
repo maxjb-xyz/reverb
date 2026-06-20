@@ -1,0 +1,17 @@
+{"cases":[
+  {"name":"feat. stripped symmetrically vs plain library title",
+   "external":{"title":"Sunrise (feat. Aluna)","artist":"DJ Sol","album":"Mornings","durationMs":200000},
+   "library":[{"id":"t1","title":"Sunrise","artist":"DJ Sol","album":"Mornings","durationMs":200500}],
+   "expect":{"status":"in_library","libraryTrackId":"t1","method":"fuzzy"},
+   "normalize":{"title":"sunrise","artist":"dj sol"}},
+  {"name":"featuring spelled out, both sides carry it",
+   "external":{"title":"Skyline featuring Mara","artist":"Nova","album":"City","durationMs":180000},
+   "library":[{"id":"t2","title":"Skyline (featuring Mara)","artist":"Nova","album":"City","durationMs":181000}],
+   "expect":{"status":"in_library","libraryTrackId":"t2","method":"fuzzy"},
+   "normalize":{"title":"skyline","artist":"nova"}},
+  {"name":"ft. variant",
+   "external":{"title":"Echoes ft. K","artist":"Vale","album":"Deep","durationMs":240000},
+   "library":[{"id":"t3","title":"Echoes","artist":"Vale","album":"Deep","durationMs":240000}],
+   "expect":{"status":"in_library","libraryTrackId":"t3","method":"fuzzy"},
+   "normalize":{"title":"echoes","artist":"vale"}}
+]}

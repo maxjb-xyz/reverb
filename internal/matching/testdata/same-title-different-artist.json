@@ -1,0 +1,15 @@
+{"cases":[
+  {"name":"Creep by Radiohead must not match Creep by TLC",
+   "external":{"title":"Creep","artist":"Radiohead","album":"Pablo Honey","durationMs":238000},
+   "library":[{"id":"tlc","title":"Creep","artist":"TLC","album":"CrazySexyCool","durationMs":265000}],
+   "expect":{"status":"not_in_library","libraryTrackId":"","method":"none"},
+   "normalize":{"title":"creep","artist":"radiohead"}},
+  {"name":"correct artist among multiple same-title candidates",
+   "external":{"title":"Creep","artist":"Radiohead","album":"Pablo Honey","durationMs":238000},
+   "library":[
+     {"id":"tlc","title":"Creep","artist":"TLC","album":"CrazySexyCool","durationMs":265000},
+     {"id":"rh","title":"Creep","artist":"Radiohead","album":"Pablo Honey","durationMs":239000}
+   ],
+   "expect":{"status":"in_library","libraryTrackId":"rh","method":"fuzzy"},
+   "normalize":{"title":"creep","artist":"radiohead"}}
+]}
