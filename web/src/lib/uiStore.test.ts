@@ -39,3 +39,31 @@ describe('uiStore right-panel slot', () => {
     expect(useUI.getState().rightPanel).toBe(null)
   })
 })
+
+describe('uiStore now-playing overlay', () => {
+  beforeEach(() => {
+    useUI.setState({ nowPlayingOpen: false })
+  })
+
+  it('starts closed', () => {
+    expect(useUI.getState().nowPlayingOpen).toBe(false)
+  })
+
+  it('openNowPlaying opens it', () => {
+    useUI.getState().openNowPlaying()
+    expect(useUI.getState().nowPlayingOpen).toBe(true)
+  })
+
+  it('closeNowPlaying closes it', () => {
+    useUI.getState().openNowPlaying()
+    useUI.getState().closeNowPlaying()
+    expect(useUI.getState().nowPlayingOpen).toBe(false)
+  })
+
+  it('toggleNowPlaying flips it', () => {
+    useUI.getState().toggleNowPlaying()
+    expect(useUI.getState().nowPlayingOpen).toBe(true)
+    useUI.getState().toggleNowPlaying()
+    expect(useUI.getState().nowPlayingOpen).toBe(false)
+  })
+})

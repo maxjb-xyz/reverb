@@ -89,6 +89,8 @@ func main() {
 	// EventBus backs both the WS endpoint and the Manager's typed events.
 	bus := events.New()
 
+	dirty := &atomicDirty{}
+
 	// Build the download Manager from enabled downloader instances.
 	var manager *download.Manager
 	downloaders := buildDownloaders(downloaderReg, instances, os.Getenv)
@@ -115,12 +117,15 @@ func main() {
 	}
 
 	deps := api.Deps{
-		Auth:       authSvc,
-		Library:    libAdapter,
-		Search:     searchReg,
-		Downloader: downloaderReg,
-		Events:     bus,
-		Dev:        cfg.Dev,
+		Auth:        authSvc,
+		Library:     libAdapter,
+		Lib:         libraryReg,
+		Search:      searchReg,
+		Downloader:  downloaderReg,
+		Adapters:    st.Q(),
+		Events:      bus,
+		ConfigDirty: dirty,
+		Dev:         cfg.Dev,
 	}
 	if aggregator != nil {
 		deps.SearchAggregator = aggregator

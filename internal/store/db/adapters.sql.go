@@ -44,6 +44,26 @@ func (q *Queries) DeleteAdapterInstance(ctx context.Context, id string) error {
 	return err
 }
 
+const getAdapterInstance = `-- name: GetAdapterInstance :one
+SELECT id, type, name, enabled, priority, config_json, created_at, updated_at FROM adapter_instances WHERE id = ?
+`
+
+func (q *Queries) GetAdapterInstance(ctx context.Context, id string) (AdapterInstance, error) {
+	row := q.db.QueryRowContext(ctx, getAdapterInstance, id)
+	var i AdapterInstance
+	err := row.Scan(
+		&i.ID,
+		&i.Type,
+		&i.Name,
+		&i.Enabled,
+		&i.Priority,
+		&i.ConfigJson,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const listAdapterInstances = `-- name: ListAdapterInstances :many
 SELECT id, type, name, enabled, priority, config_json, created_at, updated_at FROM adapter_instances ORDER BY type, priority
 `
@@ -78,4 +98,61 @@ func (q *Queries) ListAdapterInstances(ctx context.Context) ([]AdapterInstance, 
 		return nil, err
 	}
 	return items, nil
+}
+
+const setAdapterInstanceEnabled = `-- name: SetAdapterInstanceEnabled :exec
+UPDATE adapter_instances SET enabled = ?1, updated_at = unixepoch() WHERE id = ?2
+`
+
+type SetAdapterInstanceEnabledParams struct {
+	Enabled int64  `json:"enabled"`
+	ID      string `json:"id"`
+}
+
+func (q *Queries) SetAdapterInstanceEnabled(ctx context.Context, arg SetAdapterInstanceEnabledParams) error {
+	_, err := q.db.ExecContext(ctx, setAdapterInstanceEnabled, arg.Enabled, arg.ID)
+	return err
+}
+
+const setAdapterInstancePriority = `-- name: SetAdapterInstancePriority :exec
+UPDATE adapter_instances SET priority = ?1, updated_at = unixepoch() WHERE id = ?2
+`
+
+type SetAdapterInstancePriorityParams struct {
+	Priority int64  `json:"priority"`
+	ID       string `json:"id"`
+}
+
+func (q *Queries) SetAdapterInstancePriority(ctx context.Context, arg SetAdapterInstancePriorityParams) error {
+	_, err := q.db.ExecContext(ctx, setAdapterInstancePriority, arg.Priority, arg.ID)
+	return err
+}
+
+const updateAdapterInstance = `-- name: UpdateAdapterInstance :exec
+UPDATE adapter_instances
+SET name = ?1,
+    enabled = ?2,
+    priority = ?3,
+    config_json = ?4,
+    updated_at = unixepoch()
+WHERE id = ?5
+`
+
+type UpdateAdapterInstanceParams struct {
+	Name       string `json:"name"`
+	Enabled    int64  `json:"enabled"`
+	Priority   int64  `json:"priority"`
+	ConfigJson string `json:"config_json"`
+	ID         string `json:"id"`
+}
+
+func (q *Queries) UpdateAdapterInstance(ctx context.Context, arg UpdateAdapterInstanceParams) error {
+	_, err := q.db.ExecContext(ctx, updateAdapterInstance,
+		arg.Name,
+		arg.Enabled,
+		arg.Priority,
+		arg.ConfigJson,
+		arg.ID,
+	)
+	return err
 }

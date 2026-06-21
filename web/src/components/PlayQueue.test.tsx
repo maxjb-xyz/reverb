@@ -90,4 +90,11 @@ describe('PlayQueue', () => {
     act(() => { engine.playAt(-1) })
     expect(usePlayer.getState().index).toBe(before)
   })
+
+  it('is a full-screen sheet on mobile and a side panel on desktop (responsive classes)', () => {
+    render(<PlayQueue />)
+    const aside = screen.getByRole('complementary')
+    expect(aside.className).toMatch(/inset-0/)
+    expect(aside.className).toMatch(/md:w-80/)
+  })
 })

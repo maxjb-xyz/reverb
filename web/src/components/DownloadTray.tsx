@@ -40,7 +40,7 @@ export function DownloadTray() {
   const list = Object.values(jobs).sort((a, b) => b.createdAt - a.createdAt)
 
   return (
-    <aside className="absolute right-0 top-0 z-20 flex h-full w-80 flex-col border-l border-neutral-800 bg-neutral-950/95 backdrop-blur">
+    <aside className="absolute inset-0 z-30 flex h-full w-full flex-col border-neutral-800 bg-neutral-950/95 backdrop-blur md:inset-y-0 md:left-auto md:right-0 md:z-20 md:w-80 md:border-l">
       <div className="flex items-center justify-between border-b border-neutral-800 p-4">
         <h2 className="text-lg font-bold">Download Tray</h2>
         <button type="button" aria-label="Close downloads" onClick={closePanel} className="text-neutral-400 hover:text-white">

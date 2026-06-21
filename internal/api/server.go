@@ -12,6 +12,7 @@ import (
 	"github.com/maximusjb/crate/internal/library"
 	"github.com/maximusjb/crate/internal/registry"
 	"github.com/maximusjb/crate/internal/search"
+	"github.com/maximusjb/crate/internal/store/db"
 )
 
 // Streamer is the subset of *search.Aggregator the SSE handler needs.
@@ -33,14 +34,36 @@ type DownloadManager interface {
 	Retry(ctx context.Context, jobID string) (core.DownloadJob, error)
 }
 
+// AdapterStore is the persistence slice the adapter + settings handlers need.
+// *db.Queries (from store.Store.Q()) satisfies it directly.
+type AdapterStore interface {
+	ListAdapterInstances(ctx context.Context) ([]db.AdapterInstance, error)
+	GetAdapterInstance(ctx context.Context, id string) (db.AdapterInstance, error)
+	CreateAdapterInstance(ctx context.Context, arg db.CreateAdapterInstanceParams) error
+	UpdateAdapterInstance(ctx context.Context, arg db.UpdateAdapterInstanceParams) error
+	DeleteAdapterInstance(ctx context.Context, id string) error
+	GetSetting(ctx context.Context, key string) (string, error)
+	UpsertSetting(ctx context.Context, arg db.UpsertSettingParams) error
+}
+
+// ConfigDirty tracks whether adapter/settings config changed since startup. The
+// restart-to-apply UX reads this so it can show a "Restart to apply" banner.
+type ConfigDirty interface {
+	Set()
+	Dirty() bool
+}
+
 type Deps struct {
 	Auth             *auth.Service
 	Library          library.LibraryAdapter
 	SearchAggregator Streamer
 	Search           *registry.Registry
 	Downloader       *registry.Registry
+	Lib              *registry.Registry
 	Downloads        DownloadManager
 	Events           EventSubscriber
+	Adapters         AdapterStore
+	ConfigDirty      ConfigDirty
 	Dev              bool
 }
 
@@ -74,6 +97,14 @@ func (s *Server) routes() {
 			pr.Use(s.requireAuth)
 			pr.Get("/me", s.handleMe)
 			pr.Get("/adapters/available", s.handleAdaptersAvailable)
+			pr.Get("/adapters", s.handleListAdapters)
+			pr.Post("/adapters", s.handleCreateAdapter)
+			pr.Put("/adapters/{id}", s.handleUpdateAdapter)
+			pr.Delete("/adapters/{id}", s.handleDeleteAdapter)
+			pr.Post("/adapters/test", s.handleTestAdapter)
+			pr.Get("/settings", s.handleGetSettings)
+			pr.Put("/settings", s.handlePutSettings)
+			pr.Get("/config/pending-restart", s.handlePendingRestart)
 			pr.Get("/library/search", s.handleLibrarySearch)
 			pr.Get("/library/artists", s.handleLibraryArtists)
 			pr.Get("/library/artist/{id}", s.handleLibraryArtist)

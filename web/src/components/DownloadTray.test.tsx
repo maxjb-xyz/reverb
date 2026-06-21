@@ -45,4 +45,11 @@ describe('DownloadTray', () => {
     fireEvent.click(screen.getByRole('button', { name: /retry/i }))
     expect(retryDownload).toHaveBeenCalledWith('j2')
   })
+
+  it('is a full-screen sheet on mobile and a side panel on desktop (responsive classes)', () => {
+    render(<DownloadTray />)
+    const aside = screen.getByRole('complementary')
+    expect(aside.className).toMatch(/inset-0/)
+    expect(aside.className).toMatch(/md:w-80/)
+  })
 })

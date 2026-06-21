@@ -3,6 +3,8 @@ import { usePlayer } from '../lib/playerStore'
 import { useUI } from '../lib/uiStore'
 import { coverUrl } from '../lib/libraryApi'
 import { formatDuration } from '../lib/types'
+import { useAlbumPalette } from '../lib/useAlbumPalette'
+import { rgbToCss } from '../lib/palette'
 
 // SeekBar is waveform-STYLED (CSS bars, not real peaks). It shows played
 // progress, the buffered range, and accepts click-to-seek. True peaks deferred.
@@ -77,6 +79,8 @@ export function PlayerBar() {
   const togglePanel = useUI((s) => s.togglePanel)
   const rightPanel = useUI((s) => s.rightPanel)
 
+  const palette = useAlbumPalette(current?.coverArtId ? coverUrl(current.coverArtId, 80) : undefined)
+
   // Global keyboard shortcuts. Ignore when typing in an input/textarea.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -104,83 +108,90 @@ export function PlayerBar() {
   }, [toggle, next, prev, seekMs, currentTimeMs])
 
   return (
-    <div className="flex h-20 items-center gap-4 border-t border-neutral-800 px-4">
-      {/* left: art + meta */}
-      <div className="flex min-w-0 flex-1 items-center gap-3">
-        {current?.coverArtId ? (
-          <img src={coverUrl(current.coverArtId, 80)} alt="" className="h-12 w-12 rounded object-cover" />
-        ) : (
-          <div className="h-12 w-12 rounded bg-neutral-800" />
-        )}
-        <div className="min-w-0">
-          <div className="truncate text-sm font-medium">{current ? current.title : 'Nothing playing'}</div>
-          <div className="truncate text-xs text-neutral-400">{current?.artist ?? ''}</div>
+    <div
+      data-testid="player-bar"
+      className={`relative hidden h-20 px-4 md:flex ${palette ? '' : 'border-t border-neutral-800'}`}
+      style={palette ? { backgroundColor: rgbToCss(palette.rgb), color: palette.text } : undefined}
+    >
+      {palette?.scrim && <div className="pointer-events-none absolute inset-0 bg-black/20" />}
+      <div className="relative z-10 flex w-full items-center gap-4">
+        {/* left: art + meta */}
+        <div className="flex min-w-0 flex-1 items-center gap-3">
+          {current?.coverArtId ? (
+            <img src={coverUrl(current.coverArtId, 80)} alt="" className="h-12 w-12 rounded object-cover" />
+          ) : (
+            <div className="h-12 w-12 rounded bg-neutral-800" />
+          )}
+          <div className="min-w-0">
+            <div className="truncate text-sm font-medium">{current ? current.title : 'Nothing playing'}</div>
+            <div className="truncate text-xs text-neutral-400">{current?.artist ?? ''}</div>
+          </div>
         </div>
-      </div>
 
-      {/* center: transport + seek */}
-      <div className="flex min-w-0 flex-[2] flex-col gap-1">
-        <div className="flex items-center justify-center gap-4">
+        {/* center: transport + seek */}
+        <div className="flex min-w-0 flex-[2] flex-col gap-1">
+          <div className="flex items-center justify-center gap-4">
+            <button
+              type="button"
+              aria-label="Shuffle"
+              onClick={toggleShuffle}
+              className={shuffle ? 'text-accent' : 'text-neutral-400 hover:text-neutral-200'}
+            >
+              ⤮
+            </button>
+            <button type="button" aria-label="Previous" onClick={prev} className="text-neutral-300 hover:text-white">
+              ⏮
+            </button>
+            <button
+              type="button"
+              aria-label={playing ? 'Pause' : 'Play'}
+              onClick={toggle}
+              className="flex h-9 w-9 items-center justify-center rounded-full bg-white text-black"
+            >
+              {playing ? '⏸' : '▶'}
+            </button>
+            <button type="button" aria-label="Next" onClick={next} className="text-neutral-300 hover:text-white">
+              ⏭
+            </button>
+            <button
+              type="button"
+              aria-label={`Repeat ${repeat}`}
+              onClick={cycleRepeat}
+              className={repeat !== 'off' ? 'text-accent' : 'text-neutral-400 hover:text-neutral-200'}
+            >
+              {repeat === 'one' ? '🔂' : '🔁'}
+            </button>
+          </div>
+          <SeekBar />
+        </div>
+
+        {/* right: volume + panel buttons */}
+        <div className="flex flex-1 items-center justify-end gap-3">
+          <input
+            type="range"
+            min={0}
+            max={1}
+            step={0.01}
+            value={volume}
+            aria-label="Volume"
+            onChange={(e) => setVolume(Number(e.target.value))}
+            className="w-24 accent-[rgb(var(--color-accent))]"
+          />
           <button
             type="button"
-            aria-label="Shuffle"
-            onClick={toggleShuffle}
-            className={shuffle ? 'text-accent' : 'text-neutral-400 hover:text-neutral-200'}
+            onClick={() => togglePanel('queue')}
+            className={`rounded px-2 py-1 text-sm ${rightPanel === 'queue' ? 'text-accent' : 'text-neutral-300 hover:text-white'}`}
           >
-            ⤮
-          </button>
-          <button type="button" aria-label="Previous" onClick={prev} className="text-neutral-300 hover:text-white">
-            ⏮
+            Queue
           </button>
           <button
             type="button"
-            aria-label={playing ? 'Pause' : 'Play'}
-            onClick={toggle}
-            className="flex h-9 w-9 items-center justify-center rounded-full bg-white text-black"
+            onClick={() => togglePanel('downloads')}
+            className={`rounded px-2 py-1 text-sm ${rightPanel === 'downloads' ? 'text-accent' : 'text-neutral-300 hover:text-white'}`}
           >
-            {playing ? '⏸' : '▶'}
-          </button>
-          <button type="button" aria-label="Next" onClick={next} className="text-neutral-300 hover:text-white">
-            ⏭
-          </button>
-          <button
-            type="button"
-            aria-label={`Repeat ${repeat}`}
-            onClick={cycleRepeat}
-            className={repeat !== 'off' ? 'text-accent' : 'text-neutral-400 hover:text-neutral-200'}
-          >
-            {repeat === 'one' ? '🔂' : '🔁'}
+            Downloads
           </button>
         </div>
-        <SeekBar />
-      </div>
-
-      {/* right: volume + panel buttons */}
-      <div className="flex flex-1 items-center justify-end gap-3">
-        <input
-          type="range"
-          min={0}
-          max={1}
-          step={0.01}
-          value={volume}
-          aria-label="Volume"
-          onChange={(e) => setVolume(Number(e.target.value))}
-          className="w-24 accent-[rgb(var(--color-accent))]"
-        />
-        <button
-          type="button"
-          onClick={() => togglePanel('queue')}
-          className={`rounded px-2 py-1 text-sm ${rightPanel === 'queue' ? 'text-accent' : 'text-neutral-300 hover:text-white'}`}
-        >
-          Queue
-        </button>
-        <button
-          type="button"
-          onClick={() => togglePanel('downloads')}
-          className={`rounded px-2 py-1 text-sm ${rightPanel === 'downloads' ? 'text-accent' : 'text-neutral-300 hover:text-white'}`}
-        >
-          Downloads
-        </button>
       </div>
     </div>
   )
