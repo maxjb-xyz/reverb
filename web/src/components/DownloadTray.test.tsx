@@ -8,11 +8,12 @@ import type { DownloadJob } from '../lib/types'
 vi.mock('../lib/downloadApi', () => ({
   cancelDownload: vi.fn(() => Promise.resolve()),
   retryDownload: vi.fn(() => Promise.resolve({} as DownloadJob)),
+  postDownload: vi.fn(() => Promise.resolve({} as DownloadJob)),
 }))
 vi.mock('../lib/adaptersApi', () => ({
   useAdapters: vi.fn(() => ({ data: [] })),
 }))
-import { cancelDownload, retryDownload } from '../lib/downloadApi'
+import { cancelDownload, retryDownload, postDownload } from '../lib/downloadApi'
 import { useAdapters } from '../lib/adaptersApi'
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyQuery = any
@@ -151,7 +152,7 @@ describe('DownloadTray', () => {
     expect(failNode.textContent).not.toBe('Failed')
   })
 
-  it('shows "Try <next>" button when >1 downloader and job is failed', () => {
+  it('shows "Try <next>" button when >1 downloader and job is failed, and calls postDownload with next downloader + job fields', async () => {
     vi.mocked(useAdapters).mockReturnValue({
       data: [
         { id: 'a1', type: 'downloader', name: 'spotDL', enabled: true, priority: 1, config: {} },
@@ -159,11 +160,15 @@ describe('DownloadTray', () => {
       ],
     } as AnyQuery)
     useDownloads.getState().upsert(
-      job({ id: 'j5', status: 'failed', progress: 0, title: 'Bones', downloaderName: 'spotDL' }),
+      job({ id: 'j5', status: 'failed', progress: 0, title: 'Bones', downloaderName: 'spotDL', source: 'spotify', externalId: 'sp1' }),
     )
     render(<DownloadTray />)
     const tryBtn = screen.getByRole('button', { name: /try lidarr/i })
     expect(tryBtn).toBeInTheDocument()
+    fireEvent.click(tryBtn)
+    expect(postDownload).toHaveBeenCalledWith(
+      expect.objectContaining({ downloader: 'Lidarr', source: 'spotify', externalId: 'sp1', title: 'Bones' }),
+    )
   })
 
   it('is a side panel inside the layout — no absolute inset-0 z-30 on the root element', () => {

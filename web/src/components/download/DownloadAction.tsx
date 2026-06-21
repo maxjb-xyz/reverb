@@ -105,7 +105,7 @@ export function DownloadAction({ result, onPlay }: Props) {
   if (job?.status === 'failed') {
     return (
       <span className="inline-flex items-center gap-2">
-        <span className="text-xs font-bold text-error">Failed</span>
+        <Icon name="warn" className="text-xs text-text-muted" />
         <button
           type="button"
           aria-label="Retry download"

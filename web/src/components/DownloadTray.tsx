@@ -43,7 +43,7 @@ export function failureMessage(job: DownloadJob): string {
   }
 
   if (err.includes('auth') || err.includes('unauthorized') || err.includes('forbidden')) {
-    return `${dl} authentication failed — check your credentials`
+    return `${dl} authentication failed - check your credentials`
   }
 
   // Generic fallback: contextual but never bare "Error" / "Failed"

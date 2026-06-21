@@ -135,12 +135,12 @@ describe('DownloadAction', () => {
   })
 
   // ── 6. job failed ─────────────────────────────────────────────────────────
-  it('failed job → renders "Failed · Retry" affordance', () => {
+  it('failed job → renders Retry affordance without "Failed" text', () => {
     useDownloads.getState().upsert(makeJob({ status: 'failed', progress: 0 }))
     render(<DownloadAction result={makeResult()} onPlay={onPlay} />)
 
-    expect(screen.getByText(/failed/i)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /retry/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /retry download/i })).toBeInTheDocument()
+    expect(screen.queryByText(/^failed$/i)).not.toBeInTheDocument()
   })
 
   // ── 7. no job, 1 downloader → immediate postDownload ─────────────────────

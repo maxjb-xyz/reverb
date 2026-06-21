@@ -6,6 +6,20 @@ import Search from './Search'
 import { engine } from '../lib/playerStore'
 import { makeTrack, makeAlbum } from '../test/factories'
 
+const postDownloadMock = vi.fn((_req: unknown) => Promise.resolve({ id: 'j-album', status: 'queued' } as never))
+vi.mock('../lib/downloadApi', () => ({
+  postDownload: (req: unknown) => postDownloadMock(req),
+}))
+vi.mock('../lib/downloadStore', () => ({
+  useDownloads: Object.assign(
+    vi.fn(() => ({ byExternal: () => undefined })),
+    { getState: () => ({ upsert: vi.fn() }) },
+  ),
+}))
+vi.mock('../lib/adaptersApi', () => ({
+  useAdapters: vi.fn(() => ({ data: [] })),
+}))
+
 const stubTrack = makeTrack({ id: 't1', title: 'Found Song', artist: 'A', durationMs: 1000, trackNumber: 1 })
 const stubAlbum = makeAlbum({ id: 'al1', name: 'Found Album', artist: 'A' })
 
@@ -55,6 +69,11 @@ describe('Search (library mode)', () => {
     await waitFor(() => expect(screen.getByText('Found Song')).toBeInTheDocument())
     expect(screen.getByText('Found Album')).toBeInTheDocument()
     expect(screen.getByText('Found Artist')).toBeInTheDocument()
+  })
+
+  it('placeholder is mode-conditional: My Library mode shows "Search your library"', () => {
+    render(wrap(<Search />))
+    expect(screen.getByPlaceholderText('Search your library')).toBeInTheDocument()
   })
 
   it('calls engine.playTrackList with track list and index when a track row is clicked', async () => {
@@ -108,8 +127,8 @@ describe('Search (everywhere mode)', () => {
     })
 
     await waitFor(() => expect(screen.getByText('Echoes')).toBeInTheDocument())
-    // Source chip shows "Spotify ✓" for ok status
-    expect(screen.getByText(/Spotify ✓/)).toBeInTheDocument()
+    // Source chip shows the source name (ok status) without a glyph literal
+    expect(screen.getByText('Spotify')).toBeInTheDocument()
     // In-library track shows a "In Library" button with title
     expect(screen.getByTitle(/in library/i)).toBeInTheDocument()
 
@@ -223,6 +242,73 @@ describe('Search (everywhere mode)', () => {
 
     expect(closeSpy).toHaveBeenCalled()
 
+    vi.unstubAllGlobals()
+  })
+
+  it('placeholder is mode-conditional: Everywhere mode shows "Search everywhere"', async () => {
+    render(wrap(<Search />))
+    clickTab(/everywhere/i)
+    expect(screen.getByPlaceholderText('Search everywhere')).toBeInTheDocument()
+  })
+
+  it('I2 — timeout chip: source with status timeout renders timeout label and warning tone', async () => {
+    let inst: { onmessage: ((ev: { data: string }) => void) | null; close(): void } | null = null
+    class StubES {
+      onmessage: ((ev: { data: string }) => void) | null = null
+      onerror: (() => void) | null = null
+      url: string
+      constructor(url: string) { this.url = url; inst = this }
+      close() {}
+    }
+    vi.stubGlobal('EventSource', StubES as unknown as typeof EventSource)
+
+    render(wrap(<Search />))
+    fireEvent.change(screen.getByPlaceholderText(/search/i), { target: { value: 'test' } })
+    clickTab(/everywhere/i)
+
+    act(() => {
+      inst!.onmessage?.({
+        data: JSON.stringify({ source: 'spotify', status: 'timeout', results: [] }),
+      })
+    })
+
+    await waitFor(() => expect(screen.getByText(/Spotify timed out/i)).toBeInTheDocument())
+    vi.unstubAllGlobals()
+  })
+
+  it('C2 — non-in-library album shows a Download-all control that calls postDownload with album fields', async () => {
+    let inst: { onmessage: ((ev: { data: string }) => void) | null; close(): void } | null = null
+    class StubES {
+      onmessage: ((ev: { data: string }) => void) | null = null
+      onerror: (() => void) | null = null
+      url: string
+      constructor(url: string) { this.url = url; inst = this }
+      close() {}
+    }
+    vi.stubGlobal('EventSource', StubES as unknown as typeof EventSource)
+    postDownloadMock.mockClear()
+
+    render(wrap(<Search />))
+    fireEvent.change(screen.getByPlaceholderText(/search/i), { target: { value: 'blues' } })
+    clickTab(/everywhere/i)
+
+    act(() => {
+      inst!.onmessage?.({
+        data: JSON.stringify({
+          source: 'spotify',
+          status: 'ok',
+          results: [
+            { source: 'spotify', externalId: 'alb1', title: 'Blue Album', artist: 'Band', album: 'Blue Album', durationMs: 0, type: 'album', match: { status: 'not_in_library' } },
+          ],
+        }),
+      })
+    })
+
+    await waitFor(() => expect(screen.getByRole('button', { name: /download all of Blue Album/i })).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: /download all of Blue Album/i }))
+    expect(postDownloadMock).toHaveBeenCalledWith(
+      expect.objectContaining({ source: 'spotify', externalId: 'alb1', artist: 'Band', title: 'Blue Album', album: 'Blue Album' }),
+    )
     vi.unstubAllGlobals()
   })
 

@@ -3,12 +3,16 @@ import { useNavigate } from 'react-router-dom'
 import { useLibrarySearch } from '../lib/libraryApi'
 import { useEverywhere } from '../lib/everywhereStore'
 import { usePlayer } from '../lib/playerStore'
+import { postDownload } from '../lib/downloadApi'
+import { useDownloads } from '../lib/downloadStore'
 import { DownloadAction } from '../components/download/DownloadAction'
 import {
   Segmented,
   TrackRow,
   MediaCard,
   Badge,
+  Icon,
+  Button,
   EmptyState,
   Skeleton,
 } from '../components/ui'
@@ -30,9 +34,13 @@ function sourceTone(status: EnvelopeStatus): 'success' | 'warning' | 'error' {
   return 'error'
 }
 
+function sourceName(s: SourceStatus): string {
+  return s.source.charAt(0).toUpperCase() + s.source.slice(1)
+}
+
 function sourceLabel(s: SourceStatus): string {
-  const name = s.source.charAt(0).toUpperCase() + s.source.slice(1)
-  if (s.status === 'ok') return `${name} ✓`
+  const name = sourceName(s)
+  if (s.status === 'ok') return name
   if (s.status === 'timeout') return `${name} timed out`
   return `${name} error`
 }
@@ -65,7 +73,14 @@ function SourceChipsRow({ sources }: { sources: SourceStatus[] }) {
     <div className="flex flex-wrap items-center gap-2" aria-label="Source status">
       {sources.map((s) => (
         <Badge key={s.source} kind="status" tone={sourceTone(s.status)}>
-          {sourceLabel(s)}
+          {s.status === 'ok' ? (
+            <>
+              {sourceName(s)}
+              <Icon name="check" className="ml-1 text-xs" aria-hidden="true" />
+            </>
+          ) : (
+            sourceLabel(s)
+          )}
         </Badge>
       ))}
     </div>
@@ -207,7 +222,7 @@ export default function Search() {
           {/* Streaming hint — shows while at least one envelope is in flight */}
           {everywhere.status === 'streaming' && (
             <p className="text-xs text-text-muted" aria-live="polite">
-              Searching sources…
+              Searching sources...
             </p>
           )}
 
@@ -273,18 +288,37 @@ export default function Search() {
           {everywhere.albums.length > 0 && (
             <section aria-label="Albums">
               <SectionHeading>Albums</SectionHeading>
+              {/* TODO(phase-6): partial N-of-M needs external album tracks + matching */}
               <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-                {everywhere.albums.map((r) => (
+                {everywhere.albums.map((a) => (
                   <MediaCard
-                    key={`${r.source}:${r.externalId}`}
-                    title={r.title}
-                    subtitle={r.artist}
+                    key={`${a.source}:${a.externalId}`}
+                    title={a.title}
+                    subtitle={a.artist}
                     badge={
-                      r.match?.status === 'in_library' ? (
+                      a.match?.status === 'in_library' ? (
                         <Badge kind="in-library">
                           In Library
                         </Badge>
-                      ) : undefined
+                      ) : (
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          aria-label={`Download all of ${a.title}`}
+                          onClick={() => {
+                            void postDownload({
+                              source: a.source,
+                              externalId: a.externalId,
+                              artist: a.artist,
+                              title: a.title,
+                              album: a.title,
+                            }).then((j) => useDownloads.getState().upsert(j))
+                          }}
+                        >
+                          <Icon name="dl" className="text-xs" />
+                          Download all
+                        </Button>
+                      )
                     }
                   />
                 ))}
@@ -323,6 +357,7 @@ interface SearchBarProps {
 }
 
 function SearchBar({ q, onChange, mode, onMode }: SearchBarProps) {
+  const placeholder = mode === 'everywhere' ? 'Search everywhere' : 'Search your library'
   return (
     <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
       <label className="sr-only" htmlFor="search-input">
@@ -333,7 +368,7 @@ function SearchBar({ q, onChange, mode, onMode }: SearchBarProps) {
         autoFocus
         value={q}
         onChange={(e) => onChange(e.target.value)}
-        placeholder="Search your library…"
+        placeholder={placeholder}
         className="w-full max-w-xl rounded-full bg-raised px-4 py-2 text-sm text-text-primary outline-none ring-1 ring-border-subtle placeholder:text-text-muted focus-visible:ring-2 focus-visible:ring-accent"
       />
       <Segmented options={MODE_OPTIONS} value={mode} onChange={onMode} />
