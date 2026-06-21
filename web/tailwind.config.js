@@ -3,6 +3,15 @@ export default {
   content: ['./index.html', './src/**/*.{ts,tsx}'],
   theme: {
     extend: {
+      keyframes: {
+        eq: {
+          '0%, 100%': { height: '4px' },
+          '50%': { height: '14px' },
+        },
+      },
+      animation: {
+        eq: 'eq .9s ease-in-out infinite',
+      },
       colors: {
         accent: 'rgb(var(--color-accent) / <alpha-value>)',
         base: 'var(--bg-base)',
