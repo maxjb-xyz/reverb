@@ -79,6 +79,18 @@ describe('applyEnvelope', () => {
     const after = applyEnvelope(streaming, env({ source: 'spotify', results: [track({})] }))
     expect(after.status).toBe('streaming')
   })
+
+  it('is idempotent: re-applying the same envelope returns the SAME reference', () => {
+    // Guards the re-render fix: a re-delivered envelope (e.g. an EventSource
+    // reconnect) must not churn a new state object, or it re-renders result rows.
+    const e = env({ source: 'spotify', status: 'ok', results: [track({ externalId: 'x1' })] })
+    const s1 = applyEnvelope(emptyEverywhere, e)
+    const s2 = applyEnvelope(s1, e)
+    expect(s2).toBe(s1) // nothing new → same reference
+    // Sub-collections are also preserved by identity.
+    expect(s2.tracks).toBe(s1.tracks)
+    expect(s2.sources).toBe(s1.sources)
+  })
 })
 
 describe('streaming status lifecycle', () => {
