@@ -9,6 +9,7 @@ import Login from './routes/Login'
 import Setup from './routes/Setup'
 import Album from './routes/Album'
 import Artist from './routes/Artist'
+import Home from './routes/Home'
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 30_000, retry: 1 } },
@@ -31,12 +32,13 @@ function Routed() {
   return (
     <Routes>
       <Route element={<AppShell />}>
+        <Route path="/" element={<Home />} />
         <Route path="/search" element={<Search />} />
         <Route path="/library" element={<Library />} />
         <Route path="/album/:id" element={<Album />} />
         <Route path="/artist/:id" element={<Artist />} />
         <Route path="/settings" element={<Settings />} />
-        <Route path="*" element={<Navigate to="/search" replace />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>
   )
