@@ -41,7 +41,7 @@ test('unauthenticated renders the login page', () => {
       <App />
     </MemoryRouter>,
   )
-  expect(screen.getByText('Log in to Reverb')).toBeInTheDocument()
+  expect(screen.getByText('Welcome back')).toBeInTheDocument()
 })
 
 test('error renders the server error state with retry button', () => {
