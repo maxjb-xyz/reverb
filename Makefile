@@ -15,12 +15,12 @@ web:
 	cp -r web/dist internal/api/dist
 
 build: web
-	CGO_ENABLED=0 go build -tags prod -ldflags "-X main.version=$(VERSION)" -o crate ./cmd/crate
+	CGO_ENABLED=0 go build -tags prod -ldflags "-X main.version=$(VERSION)" -o reverb ./cmd/reverb
 
 dev:
 	@echo "Run in two shells:"
 	@echo "  1) cd web && npm run dev"
-	@echo "  2) go run ./cmd/crate --dev"
+	@echo "  2) go run ./cmd/reverb --dev"
 
 clean:
-	rm -rf crate web/dist internal/api/dist
+	rm -rf reverb web/dist internal/api/dist

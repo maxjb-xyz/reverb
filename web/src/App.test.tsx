@@ -19,7 +19,7 @@ test('authenticated renders the app shell', () => {
       <App />
     </MemoryRouter>,
   )
-  expect(screen.getByText('Crate')).toBeInTheDocument()
+  expect(screen.getByText('Reverb')).toBeInTheDocument()
 })
 
 test('setupRequired renders the setup page', () => {
@@ -29,7 +29,7 @@ test('setupRequired renders the setup page', () => {
       <App />
     </MemoryRouter>,
   )
-  expect(screen.getByText('Welcome to Crate')).toBeInTheDocument()
+  expect(screen.getByText('Welcome to Reverb')).toBeInTheDocument()
 })
 
 test('unauthenticated renders the login page', () => {
@@ -39,5 +39,5 @@ test('unauthenticated renders the login page', () => {
       <App />
     </MemoryRouter>,
   )
-  expect(screen.getByText('Log in to Crate')).toBeInTheDocument()
+  expect(screen.getByText('Log in to Reverb')).toBeInTheDocument()
 })

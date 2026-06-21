@@ -4,8 +4,8 @@ import (
 	"context"
 	"database/sql"
 
-	"github.com/maxjb-xyz/crate/internal/core"
-	"github.com/maxjb-xyz/crate/internal/store/db"
+	"github.com/maxjb-xyz/reverb/internal/core"
+	"github.com/maxjb-xyz/reverb/internal/store/db"
 )
 
 // DurationToleranceMs is the max |external-library| duration delta accepted by

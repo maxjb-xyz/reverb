@@ -8,22 +8,22 @@ import (
 	"os"
 	"time"
 
-	"github.com/maxjb-xyz/crate/internal/api"
-	"github.com/maxjb-xyz/crate/internal/auth"
-	"github.com/maxjb-xyz/crate/internal/config"
-	"github.com/maxjb-xyz/crate/internal/download"
-	"github.com/maxjb-xyz/crate/internal/download/spotdl"
-	"github.com/maxjb-xyz/crate/internal/events"
-	"github.com/maxjb-xyz/crate/internal/library/subsonic"
-	"github.com/maxjb-xyz/crate/internal/matching"
-	"github.com/maxjb-xyz/crate/internal/registry"
-	"github.com/maxjb-xyz/crate/internal/search"
-	"github.com/maxjb-xyz/crate/internal/search/spotify"
-	"github.com/maxjb-xyz/crate/internal/store"
+	"github.com/maxjb-xyz/reverb/internal/api"
+	"github.com/maxjb-xyz/reverb/internal/auth"
+	"github.com/maxjb-xyz/reverb/internal/config"
+	"github.com/maxjb-xyz/reverb/internal/download"
+	"github.com/maxjb-xyz/reverb/internal/download/spotdl"
+	"github.com/maxjb-xyz/reverb/internal/events"
+	"github.com/maxjb-xyz/reverb/internal/library/subsonic"
+	"github.com/maxjb-xyz/reverb/internal/matching"
+	"github.com/maxjb-xyz/reverb/internal/registry"
+	"github.com/maxjb-xyz/reverb/internal/search"
+	"github.com/maxjb-xyz/reverb/internal/search/spotify"
+	"github.com/maxjb-xyz/reverb/internal/store"
 )
 
 func main() {
-	log.Printf("crate %s starting", version)
+	log.Printf("reverb %s starting", version)
 
 	cfg, err := config.Load(os.Args[1:], os.Getenv)
 	if err != nil {
@@ -48,7 +48,7 @@ func main() {
 	}
 	if cfg.AuthDisabled {
 		_ = authSvc.SetAuthDisabled(context.Background(), true)
-		log.Printf("WARNING: auth is DISABLED (CRATE_AUTH_DISABLED) — all routes are unauthenticated; use only on a trusted LAN")
+		log.Printf("WARNING: auth is DISABLED (REVERB_AUTH_DISABLED) — all routes are unauthenticated; use only on a trusted LAN")
 	}
 
 	// Registries (explicit registration at the composition root — no init() side-effects).
@@ -139,7 +139,7 @@ func main() {
 	srv := api.NewServer(deps)
 
 	addr := fmt.Sprintf(":%d", cfg.Port)
-	log.Printf("crate listening on %s (dev=%v)", addr, cfg.Dev)
+	log.Printf("reverb listening on %s (dev=%v)", addr, cfg.Dev)
 	if err := http.ListenAndServe(addr, srv.Handler()); err != nil {
 		log.Fatal(err)
 	}

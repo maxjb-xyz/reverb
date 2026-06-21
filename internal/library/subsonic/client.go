@@ -15,7 +15,7 @@ import (
 
 const (
 	apiVersion = "1.16.1"
-	clientName = "crate"
+	clientName = "reverb"
 )
 
 // Client is a low-level Subsonic API client using token auth. The *http.Client

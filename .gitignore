@@ -3,7 +3,7 @@
 /web/node_modules/
 *.db
 /.env
-/crate
+/reverb
 /.superpowers/
 /internal/api/dist/
 /dev/navidrome/

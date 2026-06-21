@@ -45,7 +45,7 @@ export default function Setup() {
   if (step === 'password') {
     return (
       <form onSubmit={submitPassword} className="max-w-sm mx-auto mt-24 space-y-4">
-        <h1 className="text-2xl font-bold">Welcome to Crate</h1>
+        <h1 className="text-2xl font-bold">Welcome to Reverb</h1>
         <p className="text-neutral-400 text-sm">Set an admin password to get started.</p>
         <input
           type="password"
@@ -65,10 +65,10 @@ export default function Setup() {
       <div className="max-w-md mx-auto mt-24 space-y-4 text-center">
         <h1 className="text-2xl font-bold">You're all set</h1>
         <p className="text-neutral-400 text-sm">
-          Setup complete. Restart Crate so your library, search, and downloader become active, then log in.
+          Setup complete. Restart Reverb so your library, search, and downloader become active, then log in.
         </p>
         <button type="button" onClick={() => window.location.reload()} className="rounded bg-accent px-6 py-2 font-medium text-white">
-          Go to Crate
+          Go to Reverb
         </button>
       </div>
     )

@@ -1,6 +1,6 @@
-# Deploying Crate
+# Deploying Reverb
 
-Crate ships as a single Docker image: a static Go binary with the web UI
+Reverb ships as a single Docker image: a static Go binary with the web UI
 embedded, plus Python 3, ffmpeg, and a pinned spotDL. This guide covers a
 production-ish single-host deployment.
 
@@ -8,30 +8,30 @@ production-ish single-host deployment.
 
 ```bash
 cp .env.example .env      # fill in secrets
-docker compose up -d      # builds + starts Crate on :8090
+docker compose up -d      # builds + starts Reverb on :8090
 ```
 
 Open http://localhost:8090 and complete the first-run wizard (set an admin
-password unless you provided `CRATE_ADMIN_PASSWORD` in `.env`), then add your
+password unless you provided `REVERB_ADMIN_PASSWORD` in `.env`), then add your
 adapters in Settings:
 
 - **Library** (Subsonic/Navidrome): point it at your existing server.
 - **Search** (Spotify): set the Client ID in Settings; the Client Secret comes
-  from `CRATE_SPOTIFY_CLIENT_SECRET` in `.env`.
+  from `REVERB_SPOTIFY_CLIENT_SECRET` in `.env`.
 - **Downloader** (spotDL): set `output_dir` to `/music`.
 
 ## The shared music volume
 
-Crate's spotDL downloader writes into `/music`. For downloads to appear in your
+Reverb's spotDL downloader writes into `/music`. For downloads to appear in your
 library, your Subsonic/Navidrome server MUST scan the SAME directory. The
-provided `docker-compose.yml` mounts `./music:/music` into Crate and (in the
+provided `docker-compose.yml` mounts `./music:/music` into Reverb and (in the
 commented Navidrome service) `./music:/music:ro` into Navidrome. After a
-download completes, Crate triggers a library scan and the track becomes
+download completes, Reverb triggers a library scan and the track becomes
 playable.
 
 ## Reverse proxy + TLS
 
-Run Crate behind a TLS-terminating reverse proxy. Crate serves plain HTTP on
+Run Reverb behind a TLS-terminating reverse proxy. Reverb serves plain HTTP on
 8090 and uses a same-origin session cookie + a WebSocket at `/api/v1/ws`, so the
 proxy MUST forward Upgrade/Connection headers.
 
@@ -69,17 +69,17 @@ server {
 
 ## Volumes & backups
 
-- `./data` → `/data` holds the SQLite database (`/data/crate.db`, set via
-  `CRATE_DB`) plus app state. This is the only stateful Crate volume.
+- `./data` → `/data` holds the SQLite database (`/data/reverb.db`, set via
+  `REVERB_DB`) plus app state. This is the only stateful Reverb volume.
 - `./music` → `/music` holds downloaded audio (shared with the library server).
 
 **Backup:** stop the container (or use SQLite's online backup) and copy
-`./data/crate.db`. A simple cold backup:
+`./data/reverb.db`. A simple cold backup:
 
 ```bash
-docker compose stop crate
-cp ./data/crate.db ./backups/crate-$(date +%F).db
-docker compose start crate
+docker compose stop reverb
+cp ./data/reverb.db ./backups/reverb-$(date +%F).db
+docker compose start reverb
 ```
 
 ## Upgrades
@@ -90,13 +90,13 @@ docker compose build      # rebuild from the new source
 docker compose up -d      # recreate the container
 ```
 
-Crate runs SQLite migrations automatically on startup. Back up `./data/crate.db`
+Reverb runs SQLite migrations automatically on startup. Back up `./data/reverb.db`
 before a major upgrade.
 
 ## spotDL version pin
 
 The image pins `spotdl==4.2.11`. spotDL's stdout formatting is fragile and
-Crate parses download progress with the regex `(\d{1,3})\s*%`
+Reverb parses download progress with the regex `(\d{1,3})\s*%`
 (`internal/download/spotdl/adapter.go`). **Bumping the spotDL pin requires
 re-validating that regex against the new output format** before shipping —
 otherwise progress may silently degrade to "indeterminate".

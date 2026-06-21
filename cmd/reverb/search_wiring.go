@@ -4,13 +4,13 @@ import (
 	"encoding/json"
 	"log"
 
-	"github.com/maxjb-xyz/crate/internal/registry"
-	"github.com/maxjb-xyz/crate/internal/search"
-	"github.com/maxjb-xyz/crate/internal/store/db"
+	"github.com/maxjb-xyz/reverb/internal/registry"
+	"github.com/maxjb-xyz/reverb/internal/search"
+	"github.com/maxjb-xyz/reverb/internal/store/db"
 )
 
 // buildSearchSources instantiates every ENABLED adapter_instance of type
-// "search" from the registry, applying CRATE_SPOTIFY_CLIENT_SECRET onto the
+// "search" from the registry, applying REVERB_SPOTIFY_CLIENT_SECRET onto the
 // spotify config_json just before Init (env wins; never sent to the browser).
 // instances are already ordered by (type, priority) from ListAdapterInstances.
 func buildSearchSources(reg *registry.Registry, instances []db.AdapterInstance, getenv func(string) string) []search.SearchSource {
@@ -40,7 +40,7 @@ func buildSearchSources(reg *registry.Registry, instances []db.AdapterInstance, 
 		}
 		// Env secret override (Spotify) — env wins for client_secret before Init.
 		if inst.Name == "spotify" {
-			if sec := getenv("CRATE_SPOTIFY_CLIENT_SECRET"); sec != "" {
+			if sec := getenv("REVERB_SPOTIFY_CLIENT_SECRET"); sec != "" {
 				cfg["client_secret"] = sec
 			}
 		}

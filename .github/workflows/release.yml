@@ -31,8 +31,8 @@ jobs:
           context: .
           push: true
           tags: |
-            ghcr.io/${{ github.repository_owner }}/crate:${{ steps.ver.outputs.version }}
-            ghcr.io/${{ github.repository_owner }}/crate:latest
+            ghcr.io/${{ github.repository_owner }}/reverb:${{ steps.ver.outputs.version }}
+            ghcr.io/${{ github.repository_owner }}/reverb:latest
           build-args: |
             VERSION=${{ steps.ver.outputs.version }}
       - name: Attach notes to GitHub Release

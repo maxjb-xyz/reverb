@@ -5,10 +5,10 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/maxjb-xyz/crate/internal/core"
-	"github.com/maxjb-xyz/crate/internal/registry"
-	"github.com/maxjb-xyz/crate/internal/search"
-	"github.com/maxjb-xyz/crate/internal/store/db"
+	"github.com/maxjb-xyz/reverb/internal/core"
+	"github.com/maxjb-xyz/reverb/internal/registry"
+	"github.com/maxjb-xyz/reverb/internal/search"
+	"github.com/maxjb-xyz/reverb/internal/store/db"
 )
 
 type stubSource struct {
@@ -46,7 +46,7 @@ func TestBuildSearchSourcesAppliesEnvSecret(t *testing.T) {
 		ID: "s1", Type: "search", Name: "spotify", Enabled: 1, Priority: 0,
 		ConfigJson: `{"client_id":"cid","client_secret":"file-secret"}`,
 	}}
-	env := map[string]string{"CRATE_SPOTIFY_CLIENT_SECRET": "env-secret"}
+	env := map[string]string{"REVERB_SPOTIFY_CLIENT_SECRET": "env-secret"}
 
 	got := buildSearchSources(reg, instances, func(k string) string { return env[k] })
 	if len(got) != 1 {

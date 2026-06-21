@@ -1,5 +1,5 @@
 // Package library defines the LibraryAdapter contract and a conformance suite
-// every adapter must pass. Library data is never persisted by Crate — it always
+// every adapter must pass. Library data is never persisted by Reverb — it always
 // flows through an adapter, so a future standalone (folder-scan) adapter is a
 // drop-in replacement.
 package library
@@ -7,8 +7,8 @@ package library
 import (
 	"context"
 
-	"github.com/maxjb-xyz/crate/internal/core"
-	"github.com/maxjb-xyz/crate/internal/registry"
+	"github.com/maxjb-xyz/reverb/internal/core"
+	"github.com/maxjb-xyz/reverb/internal/registry"
 )
 
 type LibraryAdapter interface {

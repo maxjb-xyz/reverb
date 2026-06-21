@@ -1,24 +1,24 @@
-# Production-ish single-host deployment for Crate.
+# Production-ish single-host deployment for Reverb.
 #
-# Crate writes downloads (via spotDL) into the shared /music volume. Point your
+# Reverb writes downloads (via spotDL) into the shared /music volume. Point your
 # Subsonic/Navidrome library adapter at the SAME music so downloads appear in the
 # library after a scan. See the commented `navidrome` service below for a ready
 # pairing. Secrets come ONLY from .env (copy .env.example -> .env).
 
 services:
-  crate:
+  reverb:
     build:
       context: .
       args:
-        VERSION: "${CRATE_VERSION:-dev}"
+        VERSION: "${REVERB_VERSION:-dev}"
     # Or pull a published image instead of building:
-    # image: ghcr.io/maxjb-xyz/crate:latest
+    # image: ghcr.io/maxjb-xyz/reverb:latest
     ports:
       - "8090:8090"
     env_file:
       - .env
     volumes:
-      # SQLite DB + app state (CRATE_DB defaults to /data/crate.db in the image).
+      # SQLite DB + app state (REVERB_DB defaults to /data/reverb.db in the image).
       - ./data:/data
       # Shared music dir. Set the spotDL adapter's `output_dir` to /music in the
       # Settings UI so downloads land where the library scans.
@@ -27,8 +27,8 @@ services:
 
   # ---------------------------------------------------------------------------
   # Optional: a Navidrome that scans the SAME ./music volume. Uncomment to run
-  # the full pairing. In Crate's Settings UI add a Subsonic library adapter with
-  # base URL http://navidrome:4533 (and CRATE_LIBRARY_PASSWORD in .env).
+  # the full pairing. In Reverb's Settings UI add a Subsonic library adapter with
+  # base URL http://navidrome:4533 (and REVERB_LIBRARY_PASSWORD in .env).
   # ---------------------------------------------------------------------------
   # navidrome:
   #   image: deluan/navidrome:latest

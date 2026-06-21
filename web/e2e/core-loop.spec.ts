@@ -10,7 +10,7 @@ test('core loop: login -> search everywhere -> download -> in-library -> play', 
 
   // 1) Load: setup not required, not authed -> Login screen.
   await page.goto('/')
-  await expect(page.getByRole('heading', { name: 'Log in to Crate' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Log in to Reverb' })).toBeVisible()
 
   // 2) Log in. The app reloads on success; /me now returns authed. After the
   //    reload the realtime socket opens and resyncs the download list exactly once

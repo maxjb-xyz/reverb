@@ -27,7 +27,7 @@ func TestTokenAuthParams(t *testing.T) {
 	if gotQuery.Get("u") != "alice" {
 		t.Errorf("u = %q, want alice", gotQuery.Get("u"))
 	}
-	if gotQuery.Get("v") != "1.16.1" || gotQuery.Get("c") != "crate" || gotQuery.Get("f") != "json" {
+	if gotQuery.Get("v") != "1.16.1" || gotQuery.Get("c") != "reverb" || gotQuery.Get("f") != "json" {
 		t.Errorf("missing fixed params: %v", gotQuery)
 	}
 	salt := gotQuery.Get("s")

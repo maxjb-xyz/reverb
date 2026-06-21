@@ -4,14 +4,14 @@ import (
 	"encoding/json"
 	"log"
 
-	"github.com/maxjb-xyz/crate/internal/download"
-	"github.com/maxjb-xyz/crate/internal/registry"
-	"github.com/maxjb-xyz/crate/internal/store/db"
+	"github.com/maxjb-xyz/reverb/internal/download"
+	"github.com/maxjb-xyz/reverb/internal/registry"
+	"github.com/maxjb-xyz/reverb/internal/store/db"
 )
 
 // buildDownloaders instantiates every ENABLED adapter_instance of type
-// "downloader" from the registry, applying env overrides (CRATE_SPOTDL_PATH →
-// binary_path, CRATE_DOWNLOAD_DIR → output_dir) just before Init. instances are
+// "downloader" from the registry, applying env overrides (REVERB_SPOTDL_PATH →
+// binary_path, REVERB_DOWNLOAD_DIR → output_dir) just before Init. instances are
 // ordered by (type, priority) from ListAdapterInstances, so the returned slice is
 // already in fallback-chain order. Per-source failures warn-and-skip.
 func buildDownloaders(reg *registry.Registry, instances []db.AdapterInstance, getenv func(string) string) []download.Downloader {
@@ -41,10 +41,10 @@ func buildDownloaders(reg *registry.Registry, instances []db.AdapterInstance, ge
 		}
 		// Env overrides (spotdl) before Init.
 		if inst.Name == "spotdl" {
-			if p := getenv("CRATE_SPOTDL_PATH"); p != "" {
+			if p := getenv("REVERB_SPOTDL_PATH"); p != "" {
 				cfg["binary_path"] = p
 			}
-			if d := getenv("CRATE_DOWNLOAD_DIR"); d != "" {
+			if d := getenv("REVERB_DOWNLOAD_DIR"); d != "" {
 				cfg["output_dir"] = d
 			}
 		}

@@ -3,7 +3,7 @@ package download
 import (
 	"testing"
 
-	"github.com/maxjb-xyz/crate/internal/core"
+	"github.com/maxjb-xyz/reverb/internal/core"
 )
 
 func TestDedupKeyStableAndNormalized(t *testing.T) {

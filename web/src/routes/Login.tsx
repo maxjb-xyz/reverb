@@ -19,7 +19,7 @@ export default function Login() {
   }
   return (
     <form onSubmit={submit} className="max-w-sm mx-auto mt-24 space-y-4">
-      <h1 className="text-2xl font-bold">Log in to Crate</h1>
+      <h1 className="text-2xl font-bold">Log in to Reverb</h1>
       <input
         type="password"
         value={pw}

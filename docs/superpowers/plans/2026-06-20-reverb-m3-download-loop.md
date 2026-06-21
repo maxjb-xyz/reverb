@@ -1,16 +1,16 @@
-# Crate M3 — Download Loop Implementation Plan
+# Reverb M3 — Download Loop Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking. Each task is a self-contained unit: a fresh implementer with ZERO prior context can complete it from the file paths, interfaces, and complete code given here. Tasks are ordered domain types → Downloader interface/conformance → store → Manager (dedup/fallback/debounce/cancel/retry) → spotDL adapter → API REST + WS → composition → frontend WS client → downloadStore → DownloadTray → ExternalRow ⟳/↓/✓ + playWhenReady → app-shell wiring → smoke.
 
 **Goal:** Close the core loop — a user clicks download on a not-in-library "Everywhere" result, the job queues, progress streams live to a Download Tray and an in-place ⟳ ring on the result row, the track appears in the library, the row flips to ✓, and (if requested) it auto-plays. This is the download spine: download domain types → `Downloader` interface (+conformance) → `download_jobs` store → `download.Manager` (dedup-join, fallback chain, scan-debounce, cancel/retry, EventBus events) → spotDL adapter (injectable exec runner, graceful stdout-parse degradation) → REST endpoints + a NEW WebSocket endpoint streaming typed events → composition wiring → frontend `RealtimeConnection` (WS, distinct from SSE) + `downloadStore` + `DownloadTray` + functional `ExternalRow` ↓/⟳/✓ + `playWhenReady` auto-play + surgical TanStack Query invalidation.
 
-**Architecture:** Builds on M0 (binary serving `/api/v1` + embedded SPA), M1 (`core`, `library` + Subsonic adapter incl. `StartScan`/`ScanStatus`, stream proxy, frontend player + `uiStore` right-panel slot), and M2 (`search` + Spotify adapter + SSE aggregator, `matching` + `Normalize` + `match_cache`/`library_version`, frontend SSE `SearchStream` + Everywhere UI + `ExternalRow` with the M3 download seam marked). M3 adds a `download` package (`Downloader` interface + conformance + `Manager`), a `download/spotdl` adapter, a `0003` migration with `download_jobs` + sqlc queries, REST download endpoints + a WebSocket endpoint on the existing chi router, explicit downloader registration + Manager wiring at the composition root, and a frontend WS `RealtimeConnection` + `downloadStore` + `DownloadTray` + functional `ExternalRow` states. Library data is NEVER persisted — `download_jobs` stores only Crate job state; on completion the Manager re-matches via the existing `MatchingService` and bumps `library_version` (invalidating `match_cache`). The WebSocket is a DISTINCT transport from the SSE search stream.
+**Architecture:** Builds on M0 (binary serving `/api/v1` + embedded SPA), M1 (`core`, `library` + Subsonic adapter incl. `StartScan`/`ScanStatus`, stream proxy, frontend player + `uiStore` right-panel slot), and M2 (`search` + Spotify adapter + SSE aggregator, `matching` + `Normalize` + `match_cache`/`library_version`, frontend SSE `SearchStream` + Everywhere UI + `ExternalRow` with the M3 download seam marked). M3 adds a `download` package (`Downloader` interface + conformance + `Manager`), a `download/spotdl` adapter, a `0003` migration with `download_jobs` + sqlc queries, REST download endpoints + a WebSocket endpoint on the existing chi router, explicit downloader registration + Manager wiring at the composition root, and a frontend WS `RealtimeConnection` + `downloadStore` + `DownloadTray` + functional `ExternalRow` states. Library data is NEVER persisted — `download_jobs` stores only Reverb job state; on completion the Manager re-matches via the existing `MatchingService` and bumps `library_version` (invalidating `match_cache`). The WebSocket is a DISTINCT transport from the SSE search stream.
 
 **Tech Stack:** Go 1.23 (toolchain present), chi v5, `net/http`, `net/http/httptest`, `os/exec` (behind an injectable `Runner`), `github.com/coder/websocket v1.8.15` (the WS library, pinned), `github.com/google/uuid` (already a dependency, for job IDs), sqlc v1.31.1 (installed) for `download_jobs` queries. React 19, TypeScript ~6, Vite 8, Vitest 4, Tailwind 3.4, React Router 6, TanStack Query 5, Zustand 4 (all already in `web/`); browser-native `WebSocket` for the realtime transport (stubbed in tests, no real network/media).
 
 ## Global Constraints
 
-- Go module `github.com/maximusjb/crate`; Go 1.23; SQLite modernc only.
+- Go module `github.com/maximusjb/reverb`; Go 1.23; SQLite modernc only.
 - dedup_key = hash of matching.Normalize(artist)+sep+Normalize(title)+sep+Normalize(album) — REUSE matching.Normalize (single source of truth). In-flight/queued same-key → join.
 - Fallback chain: iterate enabled downloaders by priority via CanDownload; configurable.
 - spotDL via injectable exec runner; stdout parse degrades gracefully (unknown progress, never error); version-pinned (comment + doc).
@@ -52,9 +52,9 @@
 | `internal/api/server.go` | MODIFY: add `Downloads` + `Events` to `Deps`; mount REST + WS routes. |
 | `internal/api/auth_flow_test.go` | MODIFY (none required — new Deps fields are interfaces/pointers, zero value nil). |
 | `internal/api/search_test.go` | MODIFY (none required — same). |
-| `cmd/crate/download_wiring.go` | NEW: `buildDownloaders` (enabled `downloader` adapter_instances + env override) + `wireSpotdl` registration. |
-| `cmd/crate/download_wiring_test.go` | NEW: env-override + enabled-filter + warn-and-skip tests. |
-| `cmd/crate/main.go` | MODIFY: register spotdl factory, build downloaders, construct the Manager (worker count, deduper, library adapter, matching service, store, EventBus), wire Manager + EventBus into `api.Deps`. |
+| `cmd/reverb/download_wiring.go` | NEW: `buildDownloaders` (enabled `downloader` adapter_instances + env override) + `wireSpotdl` registration. |
+| `cmd/reverb/download_wiring_test.go` | NEW: env-override + enabled-filter + warn-and-skip tests. |
+| `cmd/reverb/main.go` | MODIFY: register spotdl factory, build downloaders, construct the Manager (worker count, deduper, library adapter, matching service, store, EventBus), wire Manager + EventBus into `api.Deps`. |
 | `go.mod` / `go.sum` | MODIFY: add `github.com/coder/websocket v1.8.15`. |
 
 **React (frontend) — created/modified in M3, under `web/`:**
@@ -347,8 +347,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/maximusjb/crate/internal/core"
-	"github.com/maximusjb/crate/internal/registry"
+	"github.com/maximusjb/reverb/internal/core"
+	"github.com/maximusjb/reverb/internal/registry"
 )
 
 type fakeDownloader struct{}
@@ -389,8 +389,8 @@ package download
 import (
 	"context"
 
-	"github.com/maximusjb/crate/internal/core"
-	"github.com/maximusjb/crate/internal/registry"
+	"github.com/maximusjb/reverb/internal/core"
+	"github.com/maximusjb/reverb/internal/registry"
 )
 
 // EventBus topics published by the Manager.
@@ -427,7 +427,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/maximusjb/crate/internal/core"
+	"github.com/maximusjb/reverb/internal/core"
 )
 
 // RunConformance exercises the Downloader contract. Call it from each adapter's
@@ -521,7 +521,7 @@ package download
 import (
 	"testing"
 
-	"github.com/maximusjb/crate/internal/core"
+	"github.com/maximusjb/reverb/internal/core"
 )
 
 func TestDedupKeyStableAndNormalized(t *testing.T) {
@@ -567,8 +567,8 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 
-	"github.com/maximusjb/crate/internal/core"
-	"github.com/maximusjb/crate/internal/matching"
+	"github.com/maximusjb/reverb/internal/core"
+	"github.com/maximusjb/reverb/internal/matching"
 )
 
 // dedupSep is the unit-separator rune (␟) joining the normalized fields, matching
@@ -805,7 +805,7 @@ func TestDownloadJobRoundTrip(t *testing.T) {
 
 > NOTE: the named-param query generates `UpdateDownloadJobStatusParams{Status string; ID string}` (run `grep -n "UpdateDownloadJobStatusParams" internal/store/db/download_jobs.sql.go` to confirm). If your sqlc version names them differently, adjust the field names in THIS test — but there are only TWO fields: the status string and the id.
 
-The test file imports must include `context`, `database/sql`, and `github.com/maximusjb/crate/internal/store/db` — add any missing ones to the existing import block.
+The test file imports must include `context`, `database/sql`, and `github.com/maximusjb/reverb/internal/store/db` — add any missing ones to the existing import block.
 
 - [ ] **Step 5: Run test to verify it passes**
 
@@ -920,9 +920,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/maximusjb/crate/internal/core"
-	"github.com/maximusjb/crate/internal/events"
-	"github.com/maximusjb/crate/internal/registry"
+	"github.com/maximusjb/reverb/internal/core"
+	"github.com/maximusjb/reverb/internal/events"
+	"github.com/maximusjb/reverb/internal/registry"
 )
 
 // ---- fakes ----
@@ -1247,8 +1247,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/maximusjb/crate/internal/core"
-	"github.com/maximusjb/crate/internal/events"
+	"github.com/maximusjb/reverb/internal/core"
+	"github.com/maximusjb/reverb/internal/events"
 )
 
 // JobStore is the persistence slice the Manager needs. *db.Queries does NOT
@@ -2166,8 +2166,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/maximusjb/crate/internal/core"
-	"github.com/maximusjb/crate/internal/download"
+	"github.com/maximusjb/reverb/internal/core"
+	"github.com/maximusjb/reverb/internal/download"
 )
 
 // fakeRunner replays canned stdout lines (incl. one malformed line) and records
@@ -2383,9 +2383,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/maximusjb/crate/internal/core"
-	"github.com/maximusjb/crate/internal/download"
-	"github.com/maximusjb/crate/internal/registry"
+	"github.com/maximusjb/reverb/internal/core"
+	"github.com/maximusjb/reverb/internal/download"
+	"github.com/maximusjb/reverb/internal/registry"
 )
 
 var _ download.Downloader = (*Adapter)(nil)
@@ -2525,8 +2525,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/maximusjb/crate/internal/core"
-	"github.com/maximusjb/crate/internal/store"
+	"github.com/maximusjb/reverb/internal/core"
+	"github.com/maximusjb/reverb/internal/store"
 )
 
 func newSQLStore(t *testing.T) JobStore {
@@ -2619,8 +2619,8 @@ import (
 	"context"
 	"database/sql"
 
-	"github.com/maximusjb/crate/internal/core"
-	"github.com/maximusjb/crate/internal/store/db"
+	"github.com/maximusjb/reverb/internal/core"
+	"github.com/maximusjb/reverb/internal/store/db"
 )
 
 // sqlStore adapts *db.Queries to JobStore, mapping core.DownloadJob ⇄ db rows.
@@ -2857,10 +2857,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/maximusjb/crate/internal/auth"
-	"github.com/maximusjb/crate/internal/core"
-	"github.com/maximusjb/crate/internal/registry"
-	"github.com/maximusjb/crate/internal/store"
+	"github.com/maximusjb/reverb/internal/auth"
+	"github.com/maximusjb/reverb/internal/core"
+	"github.com/maximusjb/reverb/internal/registry"
+	"github.com/maximusjb/reverb/internal/store"
 )
 
 // fakeManager is an in-memory DownloadManager.
@@ -3025,7 +3025,7 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/maximusjb/crate/internal/core"
+	"github.com/maximusjb/reverb/internal/core"
 )
 
 // createDownloadBody is the POST /downloads request DTO.
@@ -3174,7 +3174,7 @@ In `internal/api/server.go`, add the `internal/events` import, the interface, th
 
 Add to imports:
 ```go
-	"github.com/maximusjb/crate/internal/events"
+	"github.com/maximusjb/reverb/internal/events"
 ```
 
 Add after the `DownloadManager` interface:
@@ -3211,12 +3211,12 @@ import (
 
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
-	"github.com/maximusjb/crate/internal/auth"
-	"github.com/maximusjb/crate/internal/core"
-	"github.com/maximusjb/crate/internal/download"
-	"github.com/maximusjb/crate/internal/events"
-	"github.com/maximusjb/crate/internal/registry"
-	"github.com/maximusjb/crate/internal/store"
+	"github.com/maximusjb/reverb/internal/auth"
+	"github.com/maximusjb/reverb/internal/core"
+	"github.com/maximusjb/reverb/internal/download"
+	"github.com/maximusjb/reverb/internal/events"
+	"github.com/maximusjb/reverb/internal/registry"
+	"github.com/maximusjb/reverb/internal/store"
 )
 
 func wsTestServer(t *testing.T) (*httptest.Server, *events.Bus, string) {
@@ -3319,8 +3319,8 @@ import (
 
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
-	"github.com/maximusjb/crate/internal/download"
-	"github.com/maximusjb/crate/internal/events"
+	"github.com/maximusjb/reverb/internal/download"
+	"github.com/maximusjb/reverb/internal/events"
 )
 
 // wsTopics are the EventBus topics streamed to WS clients.
@@ -3428,9 +3428,9 @@ git commit -m "feat(api): WebSocket endpoint streaming typed EventBus frames"
 ## Task 11: Composition root — register spotdl, build downloaders, wire the Manager + EventBus
 
 **Files:**
-- Create: `cmd/crate/download_wiring.go`
-- Test: `cmd/crate/download_wiring_test.go`
-- Modify: `cmd/crate/main.go`
+- Create: `cmd/reverb/download_wiring.go`
+- Test: `cmd/reverb/download_wiring_test.go`
+- Modify: `cmd/reverb/main.go`
 
 **Interfaces:**
 - Consumes: `registry`, `download`, `download/spotdl`, `db.AdapterInstance`, the existing `libAdapter` + `matching.Service` + `store.Store` + `events.Bus`.
@@ -3438,20 +3438,20 @@ git commit -m "feat(api): WebSocket endpoint streaming typed EventBus frames"
   ```go
   func buildDownloaders(reg *registry.Registry, instances []db.AdapterInstance, getenv func(string) string) []download.Downloader
   ```
-  - Builds every ENABLED `downloader` adapter_instance, applying env overrides (`CRATE_SPOTDL_PATH` → `binary_path`, `CRATE_DOWNLOAD_DIR` → `output_dir`) before `Init`. Per-source init failures warn-and-skip.
+  - Builds every ENABLED `downloader` adapter_instance, applying env overrides (`REVERB_SPOTDL_PATH` → `binary_path`, `REVERB_DOWNLOAD_DIR` → `output_dir`) before `Init`. Per-source init failures warn-and-skip.
 
 - [ ] **Step 1: Write the failing wiring test**
 
-Create `cmd/crate/download_wiring_test.go`:
+Create `cmd/reverb/download_wiring_test.go`:
 ```go
 package main
 
 import (
 	"testing"
 
-	"github.com/maximusjb/crate/internal/download/spotdl"
-	"github.com/maximusjb/crate/internal/registry"
-	"github.com/maximusjb/crate/internal/store/db"
+	"github.com/maximusjb/reverb/internal/download/spotdl"
+	"github.com/maximusjb/reverb/internal/registry"
+	"github.com/maximusjb/reverb/internal/store/db"
 )
 
 func env(m map[string]string) func(string) string {
@@ -3484,7 +3484,7 @@ func TestBuildDownloadersEnvOverrideAndSkipOnBadConfig(t *testing.T) {
 		// Unknown adapter → warn-and-skip, not a panic.
 		{Type: "downloader", Name: "ghost", Enabled: 1, ConfigJson: `{}`},
 	}
-	out := buildDownloaders(reg, instances, env(map[string]string{"CRATE_DOWNLOAD_DIR": "/from/env"}))
+	out := buildDownloaders(reg, instances, env(map[string]string{"REVERB_DOWNLOAD_DIR": "/from/env"}))
 	if len(out) != 1 {
 		t.Fatalf("want 1 downloader (env-supplied dir), got %d", len(out))
 	}
@@ -3493,12 +3493,12 @@ func TestBuildDownloadersEnvOverrideAndSkipOnBadConfig(t *testing.T) {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `go test ./cmd/crate/ -run Downloaders -v`
+Run: `go test ./cmd/reverb/ -run Downloaders -v`
 Expected: FAIL — `undefined: buildDownloaders`.
 
 - [ ] **Step 3: Write the wiring helper**
 
-Create `cmd/crate/download_wiring.go`:
+Create `cmd/reverb/download_wiring.go`:
 ```go
 package main
 
@@ -3506,14 +3506,14 @@ import (
 	"encoding/json"
 	"log"
 
-	"github.com/maximusjb/crate/internal/download"
-	"github.com/maximusjb/crate/internal/registry"
-	"github.com/maximusjb/crate/internal/store/db"
+	"github.com/maximusjb/reverb/internal/download"
+	"github.com/maximusjb/reverb/internal/registry"
+	"github.com/maximusjb/reverb/internal/store/db"
 )
 
 // buildDownloaders instantiates every ENABLED adapter_instance of type
-// "downloader" from the registry, applying env overrides (CRATE_SPOTDL_PATH →
-// binary_path, CRATE_DOWNLOAD_DIR → output_dir) just before Init. instances are
+// "downloader" from the registry, applying env overrides (REVERB_SPOTDL_PATH →
+// binary_path, REVERB_DOWNLOAD_DIR → output_dir) just before Init. instances are
 // ordered by (type, priority) from ListAdapterInstances, so the returned slice is
 // already in fallback-chain order. Per-source failures warn-and-skip.
 func buildDownloaders(reg *registry.Registry, instances []db.AdapterInstance, getenv func(string) string) []download.Downloader {
@@ -3543,10 +3543,10 @@ func buildDownloaders(reg *registry.Registry, instances []db.AdapterInstance, ge
 		}
 		// Env overrides (spotdl) before Init.
 		if inst.Name == "spotdl" {
-			if p := getenv("CRATE_SPOTDL_PATH"); p != "" {
+			if p := getenv("REVERB_SPOTDL_PATH"); p != "" {
 				cfg["binary_path"] = p
 			}
-			if d := getenv("CRATE_DOWNLOAD_DIR"); d != "" {
+			if d := getenv("REVERB_DOWNLOAD_DIR"); d != "" {
 				cfg["output_dir"] = d
 			}
 		}
@@ -3563,18 +3563,18 @@ func buildDownloaders(reg *registry.Registry, instances []db.AdapterInstance, ge
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `go test ./cmd/crate/ -run Downloaders -v`
+Run: `go test ./cmd/reverb/ -run Downloaders -v`
 Expected: PASS (enabled-only filter; env-supplied output_dir; unknown adapter skipped).
 
 - [ ] **Step 5: Wire the Manager + EventBus into `main.go`**
 
-In `cmd/crate/main.go`, make these changes:
+In `cmd/reverb/main.go`, make these changes:
 
 (a) Add imports:
 ```go
-	"github.com/maximusjb/crate/internal/download"
-	"github.com/maximusjb/crate/internal/download/spotdl"
-	"github.com/maximusjb/crate/internal/events"
+	"github.com/maximusjb/reverb/internal/download"
+	"github.com/maximusjb/reverb/internal/download/spotdl"
+	"github.com/maximusjb/reverb/internal/events"
 ```
 
 (b) Register the spotdl factory next to the others (after `downloaderReg := registry.NewRegistry("downloader")`):
@@ -3644,7 +3644,7 @@ Expected: PASS (all Go tests across the module).
 - [ ] **Step 7: Commit**
 
 ```bash
-git add cmd/crate/download_wiring.go cmd/crate/download_wiring_test.go cmd/crate/main.go
+git add cmd/reverb/download_wiring.go cmd/reverb/download_wiring_test.go cmd/reverb/main.go
 git commit -m "feat(cmd): wire download Manager, downloaders, and EventBus at the composition root"
 ```
 
@@ -4331,7 +4331,7 @@ export function Sidebar() {
 
   return (
     <nav className="w-56 shrink-0 border-r border-neutral-800 p-4 space-y-1">
-      <div className="text-xl font-bold mb-4 text-accent">Crate</div>
+      <div className="text-xl font-bold mb-4 text-accent">Reverb</div>
       {items.map((i) => (
         <NavLink
           key={i.to}
@@ -4992,12 +4992,12 @@ Quality gates:
 - The **WebSocket transport is DISTINCT from the SSE** search stream (separate endpoint `/api/v1/ws`, separate client `RealtimeConnection`).
 - The **spotDL exec is injectable** (`Runner`) and **degrades gracefully** (unparseable stdout → unknown progress `-1`, never an error).
 - The Manager implements **dedup-join, fallback chain, scan-debounce (injectable clock), cancel, and retry**; downloaders are registered EXPLICITLY at the composition root with warn-and-skip on per-source init failure.
-- Library data is NEVER persisted; `download_jobs` stores only Crate job state (+ the full `request_json` for rehydration).
+- Library data is NEVER persisted; `download_jobs` stores only Reverb job state (+ the full `request_json` for rehydration).
 
 ## Self-Review
 
 - **Spec coverage:** download domain types → `Downloader` interface + conformance → `download_jobs` store → `Manager` (dedup-join, fallback, scan-debounce, cancel/retry, re-match + version bump) → spotDL adapter → REST + WS API → composition root → frontend WS client + downloadStore + DownloadTray + functional ExternalRow + app-shell wiring. Every downloader passes `RunConformance`. The WS is auth-gated and a distinct transport from SSE.
 - **Deferred (documented):** **precise per-album/per-artist query invalidation** is best-effort only — the backend `library.updated` / `download.complete` events may carry empty `artistId`/`albumId`, so the wiring ALWAYS falls back to a broad `['library']` invalidation. Tightening this to per-entity invalidation is a follow-up gated on the backend surfacing those IDs from the re-match. Cross-restart rehydration of queued jobs from `request_json` is a small follow-up (read at startup → `SeedRequest`); the column and full marshaling already exist.
-- **Manual verification:** a **live spotDL smoke test** (a real download against the actual `spotdl` binary writing into `CRATE_DOWNLOAD_DIR`) is MANUAL — all automated tests use the injectable fake `Runner` and never shell out or touch the network/media. Run one real download end-to-end before shipping to confirm the progress regex still matches the pinned spotDL version's output.
+- **Manual verification:** a **live spotDL smoke test** (a real download against the actual `spotdl` binary writing into `REVERB_DOWNLOAD_DIR`) is MANUAL — all automated tests use the injectable fake `Runner` and never shell out or touch the network/media. Run one real download end-to-end before shipping to confirm the progress regex still matches the pinned spotDL version's output.
 
 ---

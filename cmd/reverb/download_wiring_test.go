@@ -3,9 +3,9 @@ package main
 import (
 	"testing"
 
-	"github.com/maxjb-xyz/crate/internal/download/spotdl"
-	"github.com/maxjb-xyz/crate/internal/registry"
-	"github.com/maxjb-xyz/crate/internal/store/db"
+	"github.com/maxjb-xyz/reverb/internal/download/spotdl"
+	"github.com/maxjb-xyz/reverb/internal/registry"
+	"github.com/maxjb-xyz/reverb/internal/store/db"
 )
 
 func env(m map[string]string) func(string) string {
@@ -38,7 +38,7 @@ func TestBuildDownloadersEnvOverrideAndSkipOnBadConfig(t *testing.T) {
 		// Unknown adapter → warn-and-skip, not a panic.
 		{Type: "downloader", Name: "ghost", Enabled: 1, ConfigJson: `{}`},
 	}
-	out := buildDownloaders(reg, instances, env(map[string]string{"CRATE_DOWNLOAD_DIR": "/from/env"}))
+	out := buildDownloaders(reg, instances, env(map[string]string{"REVERB_DOWNLOAD_DIR": "/from/env"}))
 	if len(out) != 1 {
 		t.Fatalf("want 1 downloader (env-supplied dir), got %d", len(out))
 	}

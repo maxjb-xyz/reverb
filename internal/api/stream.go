@@ -6,7 +6,7 @@ import (
 	"strconv"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/maxjb-xyz/crate/internal/core"
+	"github.com/maxjb-xyz/reverb/internal/core"
 )
 
 // handleStream proxies an audio stream from the library adapter, forwarding the

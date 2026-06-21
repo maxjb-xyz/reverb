@@ -1,4 +1,4 @@
-# Crate M2 — Everywhere Search Implementation Plan
+# Reverb M2 — Everywhere Search Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking. Each task is a self-contained unit: a fresh implementer with ZERO prior context can complete it from the file paths, interfaces, and complete code given here. Tasks are ordered so the matching fixture corpus is authored BEFORE the MatchingService implementation.
 
@@ -10,12 +10,12 @@
 
 ## Global Constraints
 
-- Go module path: `github.com/maximusjb/crate` (verbatim in every `import`). Go version floor `go 1.23`. SQLite driver: `modernc.org/sqlite` only.
+- Go module path: `github.com/maximusjb/reverb` (verbatim in every `import`). Go version floor `go 1.23`. SQLite driver: `modernc.org/sqlite` only.
 - **ISRC is DATA on `ExternalResult`** (no capability flag). Matching priority: ISRC → MBID → normalized-fuzzy + duration (±2–3s). `Normalize` is a PURE function, shared (future `dedup_key`), SYMMETRIC (applied to both external and library sides), and must NOT over-strip version qualifiers (a live cut must not collapse onto the studio cut).
 - `match_cache` stores NEGATIVE matches (a `not_in_library` decision is cached too); invalidated by a monotonic `library_version` (in `settings`, default 1; bumped on scan/download in M3, not M2).
 - **Library data is never persisted.** Matching queries the `LibraryAdapter.Search` live and caches only the match decision (the row in `match_cache`), never the library track itself.
 - **Everywhere search = SSE** (distinct transport). Each source runs in its own goroutine with an individual `context.WithTimeout`; results stream per-source as they arrive; one slow/down source never blocks others. Frontend renders append-in-stable-sections (Tracks/Albums/Artists), never reflowing already-shown rows.
-- **Spotify:** client-credentials OAuth (Basic auth = base64(client_id:client_secret) to `accounts.spotify.com/api/token`, grant_type=client_credentials; token cached with expiry). `client_secret` comes from `CRATE_SPOTIFY_CLIENT_SECRET` env (overrides `config_json`) and is NEVER sent to the browser. Search sources are registered EXPLICITLY at the composition root (no `init()` side-effects). Injectable base URLs + `*http.Client` so tests point at `httptest`.
+- **Spotify:** client-credentials OAuth (Basic auth = base64(client_id:client_secret) to `accounts.spotify.com/api/token`, grant_type=client_credentials; token cached with expiry). `client_secret` comes from `REVERB_SPOTIFY_CLIENT_SECRET` env (overrides `config_json`) and is NEVER sent to the browser. Search sources are registered EXPLICITLY at the composition root (no `init()` side-effects). Injectable base URLs + `*http.Client` so tests point at `httptest`.
 - **M2 result rows: ✓ in-library vs plain.** No ↓/⟳ affordances (downloaders are M3). Leave the download seam clearly marked in `Search.tsx`.
 - **Tests:** TDD always (failing test → confirm red → minimal code → confirm green → conventional-commit). Go adapter/matching tests use `httptest` + recorded JSON under the PACKAGE's `testdata/` (never `..`). Run Go tests with `go test ./cmd/... ./internal/...` (NOT `./...`). Frontend Vitest with stubbed `EventSource`/`fetch` (no real network); typecheck via `cd web && npm run build`. Every `SearchSource` passes `search.RunConformance(t, source)`.
 - **sqlc generated code is committed.** Regenerate via the installed `sqlc` binary; fall back to `go run github.com/sqlc-dev/sqlc/cmd/sqlc@v1.27.0 generate` if `sqlc` is not on PATH.
@@ -58,9 +58,9 @@
 | `internal/api/search_test.go` | NEW: SSE handler test (parse streamed events). |
 | `internal/api/server.go` | MODIFY: add `SearchAggregator` to `Deps`; mount the SSE route. |
 | `internal/api/auth_flow_test.go` | MODIFY: leave `SearchAggregator` nil in the `testServer` Deps literal (no change needed — it's a pointer, zero value nil). |
-| `cmd/crate/search_wiring.go` | NEW: `buildSearchSources` (build enabled `search` adapter_instances + env secret override) + `wireSpotify` registration. |
-| `cmd/crate/search_wiring_test.go` | NEW: env-override + enabled-filter tests. |
-| `cmd/crate/main.go` | MODIFY: register spotify factory, build active search sources, construct the aggregator + matching service, pass into `api.Deps.SearchAggregator`. |
+| `cmd/reverb/search_wiring.go` | NEW: `buildSearchSources` (build enabled `search` adapter_instances + env secret override) + `wireSpotify` registration. |
+| `cmd/reverb/search_wiring_test.go` | NEW: env-override + enabled-filter tests. |
+| `cmd/reverb/main.go` | MODIFY: register spotify factory, build active search sources, construct the aggregator + matching service, pass into `api.Deps.SearchAggregator`. |
 
 **React (frontend) — created/modified in M2, under `web/`:**
 
@@ -296,8 +296,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/maximusjb/crate/internal/core"
-	"github.com/maximusjb/crate/internal/registry"
+	"github.com/maximusjb/reverb/internal/core"
+	"github.com/maximusjb/reverb/internal/registry"
 )
 
 type fakeSource struct{}
@@ -336,8 +336,8 @@ package search
 import (
 	"context"
 
-	"github.com/maximusjb/crate/internal/core"
-	"github.com/maximusjb/crate/internal/registry"
+	"github.com/maximusjb/reverb/internal/core"
+	"github.com/maximusjb/reverb/internal/registry"
 )
 
 // SearchSource is an external catalog (MVP: Spotify). ISRC/MBID are DATA on the
@@ -383,7 +383,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/maximusjb/crate/internal/core"
+	"github.com/maximusjb/reverb/internal/core"
 )
 
 // RunConformance exercises the SearchSource contract. Call it from each adapter's
@@ -485,8 +485,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/maximusjb/crate/internal/core"
-	"github.com/maximusjb/crate/internal/registry"
+	"github.com/maximusjb/reverb/internal/core"
+	"github.com/maximusjb/reverb/internal/registry"
 )
 
 // scriptedSource returns canned results after an artificial delay.
@@ -606,7 +606,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/maximusjb/crate/internal/core"
+	"github.com/maximusjb/reverb/internal/core"
 )
 
 // Matcher pre-matches an external result against the library. Implemented by
@@ -1112,8 +1112,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/maximusjb/crate/internal/core"
-	"github.com/maximusjb/crate/internal/search"
+	"github.com/maximusjb/reverb/internal/core"
+	"github.com/maximusjb/reverb/internal/search"
 )
 
 // fixtureServer serves token + search/album fixtures based on the path & type.
@@ -1259,9 +1259,9 @@ import (
 	"net/url"
 	"strconv"
 
-	"github.com/maximusjb/crate/internal/core"
-	"github.com/maximusjb/crate/internal/registry"
-	"github.com/maximusjb/crate/internal/search"
+	"github.com/maximusjb/reverb/internal/core"
+	"github.com/maximusjb/reverb/internal/registry"
+	"github.com/maximusjb/reverb/internal/search"
 )
 
 var (
@@ -1594,7 +1594,7 @@ import (
 	"database/sql"
 	"testing"
 
-	"github.com/maximusjb/crate/internal/store/db"
+	"github.com/maximusjb/reverb/internal/store/db"
 )
 
 func openMigrated(t *testing.T) *Store {
@@ -2084,7 +2084,7 @@ Expected: FAIL — `undefined: Normalize`.
 
 Create `internal/matching/normalize.go`:
 ```go
-// Package matching implements Crate's external⇄library matcher and the shared,
+// Package matching implements Reverb's external⇄library matcher and the shared,
 // pure Normalize() used by both matching and (future) dedup_key. Normalization is
 // SYMMETRIC: callers apply it to both sides before comparison.
 package matching
@@ -2212,8 +2212,8 @@ import (
 	"database/sql"
 	"testing"
 
-	"github.com/maximusjb/crate/internal/core"
-	"github.com/maximusjb/crate/internal/store/db"
+	"github.com/maximusjb/reverb/internal/core"
+	"github.com/maximusjb/reverb/internal/store/db"
 )
 
 // fakeLib returns a fixed candidate set for any query (the case's library tracks).
@@ -2338,8 +2338,8 @@ import (
 	"context"
 	"database/sql"
 
-	"github.com/maximusjb/crate/internal/core"
-	"github.com/maximusjb/crate/internal/store/db"
+	"github.com/maximusjb/reverb/internal/core"
+	"github.com/maximusjb/reverb/internal/store/db"
 )
 
 // DurationToleranceMs is the max |external-library| duration delta accepted by
@@ -2545,11 +2545,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/maximusjb/crate/internal/auth"
-	"github.com/maximusjb/crate/internal/core"
-	"github.com/maximusjb/crate/internal/registry"
-	"github.com/maximusjb/crate/internal/search"
-	"github.com/maximusjb/crate/internal/store"
+	"github.com/maximusjb/reverb/internal/auth"
+	"github.com/maximusjb/reverb/internal/core"
+	"github.com/maximusjb/reverb/internal/registry"
+	"github.com/maximusjb/reverb/internal/search"
+	"github.com/maximusjb/reverb/internal/store"
 )
 
 // fakeAgg emits a fixed set of envelopes then closes the channel.
@@ -2673,7 +2673,7 @@ Expected: FAIL — `Deps` has no field `SearchAggregator` / undefined `handleEve
 
 - [ ] **Step 3: Extend `Deps` + mount the route**
 
-Edit `internal/api/server.go`. Add `"github.com/maximusjb/crate/internal/search"` and `"github.com/maximusjb/crate/internal/core"` and `"context"` to the import block, add the `Streamer` interface + `SearchAggregator` field, and mount the route. Replace the `Deps` struct with:
+Edit `internal/api/server.go`. Add `"github.com/maximusjb/reverb/internal/search"` and `"github.com/maximusjb/reverb/internal/core"` and `"context"` to the import block, add the `Streamer` interface + `SearchAggregator` field, and mount the route. Replace the `Deps` struct with:
 ```go
 type Deps struct {
 	Auth             *auth.Service
@@ -2704,7 +2704,7 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/maximusjb/crate/internal/core"
+	"github.com/maximusjb/reverb/internal/core"
 )
 
 // handleEverywhere streams per-source search envelopes as Server-Sent Events.
@@ -2779,22 +2779,22 @@ git commit -m "feat(api): Server-Sent Events endpoint for Everywhere search"
 ## Task 11: Composition root — search sources, matching service, aggregator
 
 **Files:**
-- Create: `cmd/crate/search_wiring.go`, `cmd/crate/search_wiring_test.go`
-- Modify: `cmd/crate/main.go`
+- Create: `cmd/reverb/search_wiring.go`, `cmd/reverb/search_wiring_test.go`
+- Modify: `cmd/reverb/main.go`
 
 **Interfaces:**
-- Consumes: `registry.Registry`, `spotify.New`, `db.AdapterInstance`, env (`CRATE_SPOTIFY_CLIENT_SECRET`), `search.SearchSource`, `matching.Service`, `search.NewAggregator`, `store.LibraryVersion`.
+- Consumes: `registry.Registry`, `spotify.New`, `db.AdapterInstance`, env (`REVERB_SPOTIFY_CLIENT_SECRET`), `search.SearchSource`, `matching.Service`, `search.NewAggregator`, `store.LibraryVersion`.
 - Produces:
   ```go
   // buildSearchSources builds every ENABLED adapter_instance of type "search",
-  // applying CRATE_SPOTIFY_CLIENT_SECRET onto spotify config before Init. Sources
+  // applying REVERB_SPOTIFY_CLIENT_SECRET onto spotify config before Init. Sources
   // are ordered by Priority (ascending, matching the SQL ORDER BY).
   func buildSearchSources(reg *registry.Registry, instances []db.AdapterInstance, getenv func(string) string) ([]search.SearchSource, error)
   ```
 
 - [ ] **Step 1: Write the failing wiring test**
 
-Create `cmd/crate/search_wiring_test.go`:
+Create `cmd/reverb/search_wiring_test.go`:
 ```go
 package main
 
@@ -2802,10 +2802,10 @@ import (
 	"context"
 	"testing"
 
-	"github.com/maximusjb/crate/internal/core"
-	"github.com/maximusjb/crate/internal/registry"
-	"github.com/maximusjb/crate/internal/search"
-	"github.com/maximusjb/crate/internal/store/db"
+	"github.com/maximusjb/reverb/internal/core"
+	"github.com/maximusjb/reverb/internal/registry"
+	"github.com/maximusjb/reverb/internal/search"
+	"github.com/maximusjb/reverb/internal/store/db"
 )
 
 type stubSource struct {
@@ -2833,7 +2833,7 @@ func TestBuildSearchSourcesAppliesEnvSecret(t *testing.T) {
 		ID: "s1", Type: "search", Name: "spotify", Enabled: 1, Priority: 0,
 		ConfigJson: `{"client_id":"cid","client_secret":"file-secret"}`,
 	}}
-	env := map[string]string{"CRATE_SPOTIFY_CLIENT_SECRET": "env-secret"}
+	env := map[string]string{"REVERB_SPOTIFY_CLIENT_SECRET": "env-secret"}
 
 	got, err := buildSearchSources(reg, instances, func(k string) string { return env[k] })
 	if err != nil {
@@ -2874,12 +2874,12 @@ var _ = func() {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `go test ./cmd/crate/ -run BuildSearch -v`
+Run: `go test ./cmd/reverb/ -run BuildSearch -v`
 Expected: FAIL — `undefined: buildSearchSources`.
 
 - [ ] **Step 3: Write the wiring helper**
 
-Create `cmd/crate/search_wiring.go`:
+Create `cmd/reverb/search_wiring.go`:
 ```go
 package main
 
@@ -2887,13 +2887,13 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/maximusjb/crate/internal/registry"
-	"github.com/maximusjb/crate/internal/search"
-	"github.com/maximusjb/crate/internal/store/db"
+	"github.com/maximusjb/reverb/internal/registry"
+	"github.com/maximusjb/reverb/internal/search"
+	"github.com/maximusjb/reverb/internal/store/db"
 )
 
 // buildSearchSources instantiates every ENABLED adapter_instance of type
-// "search" from the registry, applying CRATE_SPOTIFY_CLIENT_SECRET onto the
+// "search" from the registry, applying REVERB_SPOTIFY_CLIENT_SECRET onto the
 // spotify config_json just before Init (env wins; never sent to the browser).
 // instances are already ordered by (type, priority) from ListAdapterInstances.
 func buildSearchSources(reg *registry.Registry, instances []db.AdapterInstance, getenv func(string) string) ([]search.SearchSource, error) {
@@ -2920,7 +2920,7 @@ func buildSearchSources(reg *registry.Registry, instances []db.AdapterInstance, 
 		}
 		// Env secret override (Spotify) — env wins for client_secret before Init.
 		if inst.Name == "spotify" {
-			if sec := getenv("CRATE_SPOTIFY_CLIENT_SECRET"); sec != "" {
+			if sec := getenv("REVERB_SPOTIFY_CLIENT_SECRET"); sec != "" {
 				cfg["client_secret"] = sec
 			}
 		}
@@ -2936,16 +2936,16 @@ func buildSearchSources(reg *registry.Registry, instances []db.AdapterInstance, 
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `go test ./cmd/crate/ -run BuildSearch -v`
+Run: `go test ./cmd/reverb/ -run BuildSearch -v`
 Expected: PASS.
 
 - [ ] **Step 5: Wire into main**
 
-Edit `cmd/crate/main.go`. Add imports `"time"` is already present; add:
+Edit `cmd/reverb/main.go`. Add imports `"time"` is already present; add:
 ```go
-	"github.com/maximusjb/crate/internal/matching"
-	"github.com/maximusjb/crate/internal/search"
-	"github.com/maximusjb/crate/internal/search/spotify"
+	"github.com/maximusjb/reverb/internal/matching"
+	"github.com/maximusjb/reverb/internal/search"
+	"github.com/maximusjb/reverb/internal/search/spotify"
 ```
 Register the spotify factory next to the subsonic one — change the search registry block to:
 ```go
@@ -3009,7 +3009,7 @@ Expected: build OK; all PASS.
 
 ```bash
 go mod tidy
-git add cmd/crate go.mod go.sum
+git add cmd/reverb go.mod go.sum
 git commit -m "feat(cmd): wire spotify source, matching service, and SSE aggregator"
 ```
 
@@ -3852,13 +3852,13 @@ git commit -m "feat(web): activate Everywhere search with stable sections and so
 
 - [ ] **Step 1: Seed a Spotify search adapter_instance**
 
-With Crate stopped, seed the row (until the settings UI lands in M4). The DB is at `./data/crate.db`:
+With Reverb stopped, seed the row (until the settings UI lands in M4). The DB is at `./data/reverb.db`:
 ```bash
-sqlite3 data/crate.db "INSERT INTO adapter_instances (id,type,name,enabled,priority,config_json) VALUES ('srch1','search','spotify',1,0,'{\"client_id\":\"YOUR_CLIENT_ID\"}');"
+sqlite3 data/reverb.db "INSERT INTO adapter_instances (id,type,name,enabled,priority,config_json) VALUES ('srch1','search','spotify',1,0,'{\"client_id\":\"YOUR_CLIENT_ID\"}');"
 ```
-Start Crate with the secret in the env (never in config_json):
+Start Reverb with the secret in the env (never in config_json):
 ```bash
-CRATE_ADMIN_PASSWORD=devpw CRATE_SPOTIFY_CLIENT_SECRET=YOUR_CLIENT_SECRET go run ./cmd/crate &
+REVERB_ADMIN_PASSWORD=devpw REVERB_SPOTIFY_CLIENT_SECRET=YOUR_CLIENT_SECRET go run ./cmd/reverb &
 sleep 2
 ```
 Expected log lines: `search sources active: 1` (and `library adapter active: subsonic` if M1's library row is also seeded).
@@ -3867,7 +3867,7 @@ Expected log lines: `search sources active: 1` (and `library adapter active: sub
 
 Run:
 ```bash
-curl -s -c /tmp/crate.cookies -X POST localhost:8090/api/v1/auth/login -H 'Content-Type: application/json' -d '{"password":"devpw"}'
+curl -s -c /tmp/reverb.cookies -X POST localhost:8090/api/v1/auth/login -H 'Content-Type: application/json' -d '{"password":"devpw"}'
 ```
 Expected: `{"ok":true}`.
 
@@ -3875,7 +3875,7 @@ Expected: `{"ok":true}`.
 
 Run (stream a few seconds, then it ends when the aggregator closes):
 ```bash
-curl -sN -b /tmp/crate.cookies "localhost:8090/api/v1/search/everywhere?q=daft%20punk&type=track" | head -c 600
+curl -sN -b /tmp/reverb.cookies "localhost:8090/api/v1/search/everywhere?q=daft%20punk&type=track" | head -c 600
 ```
 Expected: one or more `data: {"source":"spotify","status":"ok","results":[...]}` lines, each result carrying `match` (`in_library` if it is in your seeded Navidrome library, else `not_in_library`). With no library configured, `match.status` is `not_in_library` for everything (matcher with a nil library returns negatives — note: when `libAdapter` is nil the aggregator's matcher is nil, so `match` is absent; that is acceptable for M2 and the UI renders plain rows).
 
@@ -3883,8 +3883,8 @@ Expected: one or more `data: {"source":"spotify","status":"ok","results":[...]}`
 
 Run:
 ```bash
-curl -s -b /tmp/crate.cookies "localhost:8090/api/v1/adapters/available" | grep -i secret || echo "no secret value exposed"
-curl -sN -b /tmp/crate.cookies "localhost:8090/api/v1/search/everywhere?q=x&type=track" | grep -i "YOUR_CLIENT_SECRET" || echo "secret not in SSE stream"
+curl -s -b /tmp/reverb.cookies "localhost:8090/api/v1/adapters/available" | grep -i secret || echo "no secret value exposed"
+curl -sN -b /tmp/reverb.cookies "localhost:8090/api/v1/search/everywhere?q=x&type=track" | grep -i "YOUR_CLIENT_SECRET" || echo "secret not in SSE stream"
 ```
 Expected: `no secret value exposed` and `secret not in SSE stream`.
 
@@ -3904,7 +3904,7 @@ kill %1 2>/dev/null
 - `cd web && npm run build` (tsc + vite) succeeds — no TS errors.
 - sqlc generated code is regenerated and committed (`internal/store/db/match_cache.sql.go`, `library_version.sql.go`, `MatchCache` in `models.go`).
 - The migration is additive (`0002_match_cache.sql`); `0001_init.sql` is untouched; `library_version` defaults to 1 (seeded + accessor fallback).
-- Spotify search sources are registered EXPLICITLY at the composition root; `CRATE_SPOTIFY_CLIENT_SECRET` overrides `config_json` and never reaches the browser; the SSE endpoint is auth-gated, streams correctly framed `data: ...\n\n` events flushed per source, pre-matches each result via MatchingService, and respects client disconnect.
+- Spotify search sources are registered EXPLICITLY at the composition root; `REVERB_SPOTIFY_CLIENT_SECRET` overrides `config_json` and never reaches the browser; the SSE endpoint is auth-gated, streams correctly framed `data: ...\n\n` events flushed per source, pre-matches each result via MatchingService, and respects client disconnect.
 - The frontend Everywhere mode uses `EventSource` (distinct transport), appends results in stable Tracks/Albums/Artists sections without reflow, dedupes across sources by ISRC/normalized key, shows per-source status chips, and renders ✓ for in-library results (click plays the matched library track) with NO download affordance (M3 seam clearly marked). Library mode remains a normal REST query, unchanged from M1.
 
 ---
@@ -3917,7 +3917,7 @@ kill %1 2>/dev/null
 - Spotify adapter: client-credentials OAuth (Basic-auth token + cache/expiry, injectable base URLs + `*http.Client`), search tracks/albums/artists, ISRC from `external_ids.isrc` + cover image, `GetAlbum`, Plugin (ConfigSchema client_id/client_secret[secret], TestConnection=token fetch), httptest + recorded JSON under package `testdata/` (no `..`) ✓ (Tasks 4–5).
 - MatchingService: PURE symmetric `Normalize` (lowercase, strip punctuation, collapse ws, unicode fold, feat/featuring/ft stripped symmetrically, version qualifiers preserved); `Match` priority chain ISRC→MBID(structural)→normalized-fuzzy disambiguated by DURATION(±3s)+album; cache-first via `match_cache` storing positive AND negative, invalidated by `library_version`; queries `LibrarySearcher` (the `LibraryAdapter.Search` slice) for candidates; enumerated fixture corpus authored first (8 files) + table tests; `Normalize` exported for reuse ✓ (Tasks 7–9).
 - Store: additive `0002` migration creating `match_cache` (PK(source,external_id), nullable library_track_id, method, confidence, isrc, mbid, duration_ms, library_version, matched_at); queries get/upsert/delete-by-source/clear + `library_version` get/set; sqlc regenerated; `LibraryVersion` accessor (default 1) ✓ (Task 6).
-- API + composition: `Search`/aggregator + matching service added to `Deps`; search sources wired from `adapter_instances` (type='search') at the composition root with `CRATE_SPOTIFY_CLIENT_SECRET` override; `GET /api/v1/search/everywhere?q=&type=` as SSE (each event a per-source envelope pre-matched; correct framing, flush per event, respects request-context disconnect; aggregator closes channel so handler returns); auth-gated; local `/library/search` kept as-is ✓ (Tasks 10–11).
+- API + composition: `Search`/aggregator + matching service added to `Deps`; search sources wired from `adapter_instances` (type='search') at the composition root with `REVERB_SPOTIFY_CLIENT_SECRET` override; `GET /api/v1/search/everywhere?q=&type=` as SSE (each event a per-source envelope pre-matched; correct framing, flush per event, respects request-context disconnect; aggregator closes channel so handler returns); auth-gated; local `/library/search` kept as-is ✓ (Tasks 10–11).
 - Frontend: distinct `SearchStream` (`EventSource`, same-origin, cookie auto, `close()` on unmount); Everywhere toggle activated in `Search.tsx`; append-in-stable-sections deduped across sources by ISRC/normalized key, never reordering; per-source status chips; rows show ✓ for `match.status==='in_library'` (click plays matched library track) else plain row with NO download affordance (M3 seam marked); Library mode stays REST ✓ (Tasks 12–15).
 
 **Placeholder scan:** every code block is complete and runnable. No `TODO`/`add error handling`/`similar to above`. The two intentional, clearly-labeled seams are: the MBID rung in `matching.go` (structural — `core.Track` has no MBID field in M2; documented as a P2 drop-in, with ISRC + fuzzy fully exercised) and the M3 download affordance comment inside `ExternalRow.tsx` (the spot where ↓/⟳ land in M3). Both are explicitly flagged, not unfinished work.

@@ -1,4 +1,4 @@
-module github.com/maxjb-xyz/crate
+module github.com/maxjb-xyz/reverb
 
 go 1.23
 

@@ -29,7 +29,7 @@ describe('Setup wizard', () => {
 
   it('step 1 prompts for an admin password', () => {
     renderSetup()
-    expect(screen.getByText('Welcome to Crate')).toBeInTheDocument()
+    expect(screen.getByText('Welcome to Reverb')).toBeInTheDocument()
     expect(screen.getByPlaceholderText('Choose a password')).toBeInTheDocument()
   })
 

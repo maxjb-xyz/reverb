@@ -1,9 +1,9 @@
 openapi: 3.0.3
 info:
-  title: Crate API
+  title: Reverb API
   version: 0.1.0
   description: >
-    Crate is a self-hosted music app unifying a Subsonic/Navidrome library,
+    Reverb is a self-hosted music app unifying a Subsonic/Navidrome library,
     Spotify search, and spotDL one-click download. All paths are served under
     /api/v1. Session auth is a cookie issued by /setup/admin or /auth/login;
     protected routes return 401 without it (unless auth is disabled via env).

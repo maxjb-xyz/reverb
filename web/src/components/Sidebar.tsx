@@ -15,7 +15,7 @@ export function Sidebar() {
 
   return (
     <nav className="hidden w-56 shrink-0 border-r border-neutral-800 p-4 space-y-1 md:block">
-      <div className="text-xl font-bold mb-4 text-accent">Crate</div>
+      <div className="text-xl font-bold mb-4 text-accent">Reverb</div>
       {items.map((i) => (
         <NavLink
           key={i.to}

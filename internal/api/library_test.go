@@ -10,10 +10,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/maxjb-xyz/crate/internal/auth"
-	"github.com/maxjb-xyz/crate/internal/core"
-	"github.com/maxjb-xyz/crate/internal/registry"
-	"github.com/maxjb-xyz/crate/internal/store"
+	"github.com/maxjb-xyz/reverb/internal/auth"
+	"github.com/maxjb-xyz/reverb/internal/core"
+	"github.com/maxjb-xyz/reverb/internal/registry"
+	"github.com/maxjb-xyz/reverb/internal/store"
 )
 
 // fakeLibrary implements library.LibraryAdapter (+ browse interfaces) for tests.

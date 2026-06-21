@@ -1,10 +1,10 @@
-# Crate M5 (Package & Ship) Implementation Plan
+# Reverb M5 (Package & Ship) Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Package Crate as a single self-hosted Docker image (prod Go binary with embedded SPA + Python3 + ffmpeg + a pinned spotDL), document it (README + deployment + OpenAPI + legal/ethical framing), prove the core loop with a hermetic Playwright e2e, and wire CI + a (prepared-but-untriggered) GHCR release workflow.
+**Goal:** Package Reverb as a single self-hosted Docker image (prod Go binary with embedded SPA + Python3 + ffmpeg + a pinned spotDL), document it (README + deployment + OpenAPI + legal/ethical framing), prove the core loop with a hermetic Playwright e2e, and wire CI + a (prepared-but-untriggered) GHCR release workflow.
 
-**Architecture:** A multi-stage Dockerfile builds the web app (node), compiles a static `CGO_ENABLED=0 -tags prod` binary with the SPA embedded (golang), and ships it on `python:3.12-slim` with ffmpeg + a version-pinned spotDL, running as a non-root user. The binary is version-stamped via `-ldflags -X main.version`, which is surfaced at startup and at `GET /api/v1/version`. A production `docker-compose.yml` shares a `/music` volume between Crate (spotDL `output_dir`) and a Subsonic/Navidrome library so downloads appear in the library. A Playwright spec drives the login → search-everywhere → download → flip-to-in-library → play loop entirely against route/WebSocket mocks (no real network, credentials, or money).
+**Architecture:** A multi-stage Dockerfile builds the web app (node), compiles a static `CGO_ENABLED=0 -tags prod` binary with the SPA embedded (golang), and ships it on `python:3.12-slim` with ffmpeg + a version-pinned spotDL, running as a non-root user. The binary is version-stamped via `-ldflags -X main.version`, which is surfaced at startup and at `GET /api/v1/version`. A production `docker-compose.yml` shares a `/music` volume between Reverb (spotDL `output_dir`) and a Subsonic/Navidrome library so downloads appear in the library. A Playwright spec drives the login → search-everywhere → download → flip-to-in-library → play loop entirely against route/WebSocket mocks (no real network, credentials, or money).
 
 **Tech Stack:** Go 1.23 (chi v5, `modernc.org/sqlite`), React 19 / TypeScript ~6 (Vite 8, TanStack Query, zustand, react-router 6), Playwright (e2e), Docker multi-stage, GitHub Actions, GHCR.
 
@@ -20,21 +20,21 @@
 - TS strict for any new TS (Playwright config/spec): the web tsconfig sets `verbatimModuleSyntax` and `erasableSyntaxOnly` → use `import type` for type-only imports, NO enums, NO constructor parameter-properties.
 - No regressions to M0–M4: existing 208 Go tests + 150 FE tests stay green; existing CI `backend` + `frontend` jobs stay intact.
 - Legal/ethical framing is REQUIRED in the README.
-- Config surface (verbatim, do not re-derive): flags `--port` (default 8090), `--db` (default `./data/crate.db`), `--dev`, `--log-level` (default `info`). Env: `CRATE_PORT`, `CRATE_DB`, `CRATE_DEV=1`, `CRATE_ADMIN_PASSWORD`, `CRATE_AUTH_DISABLED=1|true`. Adapter secrets via env: `CRATE_LIBRARY_PASSWORD`, `CRATE_SPOTIFY_CLIENT_SECRET`. Flags win over env, env wins over defaults.
+- Config surface (verbatim, do not re-derive): flags `--port` (default 8090), `--db` (default `./data/reverb.db`), `--dev`, `--log-level` (default `info`). Env: `REVERB_PORT`, `REVERB_DB`, `REVERB_DEV=1`, `REVERB_ADMIN_PASSWORD`, `REVERB_AUTH_DISABLED=1|true`. Adapter secrets via env: `REVERB_LIBRARY_PASSWORD`, `REVERB_SPOTIFY_CLIENT_SECRET`. Flags win over env, env wins over defaults.
 
 ## License Decision
 
-Adopt **AGPL-3.0-only**. Rationale: Crate is a network-served, self-hosted app that bundles a third-party downloader (spotDL, itself GPL-family) and connects to user-provided services; AGPL keeps modifications open for a service that users reach over a network, matches the GPL-family tooling it ships, and is the conventional license for self-hosted media servers (Navidrome/Jellyfin lineage). The `LICENSE` file is added in Task 6, and the README states the choice + reasoning in one line.
+Adopt **AGPL-3.0-only**. Rationale: Reverb is a network-served, self-hosted app that bundles a third-party downloader (spotDL, itself GPL-family) and connects to user-provided services; AGPL keeps modifications open for a service that users reach over a network, matches the GPL-family tooling it ships, and is the conventional license for self-hosted media servers (Navidrome/Jellyfin lineage). The `LICENSE` file is added in Task 6, and the README states the choice + reasoning in one line.
 
 ## File Structure
 
 New files:
-- `cmd/crate/version.go` — `var version = "dev"` + `Version()` accessor (own file so the `-X main.version` symbol is obvious and version logic is isolated).
+- `cmd/reverb/version.go` — `var version = "dev"` + `Version()` accessor (own file so the `-X main.version` symbol is obvious and version logic is isolated).
 - `internal/api/version.go` — `GET /api/v1/version` handler returning `{"version": "..."}`.
 - `internal/api/version_test.go` — httptest for the version handler.
 - `Dockerfile` — 3-stage build (node → golang → python runtime).
 - `.dockerignore` — keep build context small + secrets/artifacts out.
-- `docker-compose.yml` — production compose (Crate + commented Navidrome, shared `/music`).
+- `docker-compose.yml` — production compose (Reverb + commented Navidrome, shared `/music`).
 - `.env.example` — committed secret/template env file.
 - `web/playwright.config.ts` — Playwright config (webServer = `vite preview`).
 - `web/e2e/core-loop.spec.ts` — the hermetic "money test".
@@ -45,7 +45,7 @@ New files:
 - `.github/workflows/release.yml` — release-published GHCR publish + GitHub Release (committed, NOT triggered).
 
 Modified files:
-- `cmd/crate/main.go` — log the version at startup; thread `version` into `api.Deps.Version`.
+- `cmd/reverb/main.go` — log the version at startup; thread `version` into `api.Deps.Version`.
 - `internal/api/server.go` — add `Version string` to `Deps`; register `GET /api/v1/version`.
 - `internal/api/openapi.yaml` — expand to document the real `/api/v1` surface (incl. `/version`).
 - `internal/api/openapi_test.go` — assert content-type + the `openapi: 3.0.3` body (extend existing).
@@ -58,11 +58,11 @@ Modified files:
 ## Task 1: Version stamping (Go + API + Makefile)
 
 **Files:**
-- Create: `cmd/crate/version.go`
+- Create: `cmd/reverb/version.go`
 - Create: `internal/api/version.go`
 - Create: `internal/api/version_test.go`
 - Modify: `internal/api/server.go` (add `Version string` to `Deps`; register route)
-- Modify: `cmd/crate/main.go` (log version at startup; set `deps.Version`)
+- Modify: `cmd/reverb/main.go` (log version at startup; set `deps.Version`)
 - Modify: `Makefile` (`VERSION ?= dev`; ldflags + `CGO_ENABLED=0`)
 
 **Interfaces:**
@@ -181,7 +181,7 @@ Expected: PASS (both subtests).
 
 - [ ] **Step 7: Add the `main.version` variable**
 
-Create `cmd/crate/version.go`:
+Create `cmd/reverb/version.go`:
 
 ```go
 package main
@@ -194,11 +194,11 @@ var version = "dev"
 
 - [ ] **Step 8: Log the version at startup and thread it into Deps**
 
-In `cmd/crate/main.go`, add a startup log line as the FIRST statement inside `main()` (before `config.Load`):
+In `cmd/reverb/main.go`, add a startup log line as the FIRST statement inside `main()` (before `config.Load`):
 
 ```go
 func main() {
-	log.Printf("crate %s starting", version)
+	log.Printf("reverb %s starting", version)
 
 	cfg, err := config.Load(os.Args[1:], os.Getenv)
 ```
@@ -226,7 +226,7 @@ In `Makefile`, change the `build` target and add a `VERSION` default at the top.
 
 ```make
 build: web
-	go build -tags prod -o crate ./cmd/crate
+	go build -tags prod -o reverb ./cmd/reverb
 ```
 
 with:
@@ -235,26 +235,26 @@ with:
 VERSION ?= dev
 
 build: web
-	CGO_ENABLED=0 go build -tags prod -ldflags "-X main.version=$(VERSION)" -o crate ./cmd/crate
+	CGO_ENABLED=0 go build -tags prod -ldflags "-X main.version=$(VERSION)" -o reverb ./cmd/reverb
 ```
 
 - [ ] **Step 10: Verify the binary builds and stamps the version**
 
-Run: `make build VERSION=t-1.0.0 && ./crate --help 2>&1 | head -n 1 ; echo "exit:$?"`
+Run: `make build VERSION=t-1.0.0 && ./reverb --help 2>&1 | head -n 1 ; echo "exit:$?"`
 Expected: build succeeds; `--help` exits non-zero is fine — the goal is the binary exists. Then verify the stamp without a long-running server:
-Run: `go build -tags prod -ldflags "-X main.version=t-1.0.0" -o /tmp/crate-vtest ./cmd/crate && /tmp/crate-vtest --port 0 --db /tmp/crate-vtest.db & pid=$!; sleep 1; kill "$pid" 2>/dev/null; true`
-Expected: among the startup logs, the line `crate t-1.0.0 starting` appears.
+Run: `go build -tags prod -ldflags "-X main.version=t-1.0.0" -o /tmp/reverb-vtest ./cmd/reverb && /tmp/reverb-vtest --port 0 --db /tmp/reverb-vtest.db & pid=$!; sleep 1; kill "$pid" 2>/dev/null; true`
+Expected: among the startup logs, the line `reverb t-1.0.0 starting` appears.
 (Note: `--help` is not a defined flag; `flag` will error and exit — that only confirms the binary runs. The version log line is the real check. PID capture is used instead of `kill %1` because job-control is unreliable in non-interactive shells.)
 
 - [ ] **Step 11: Run the full Go API test package**
 
 Run: `go test ./internal/api/ -count=1`
-Expected: PASS (ok github.com/maxjb-xyz/crate/internal/api).
+Expected: PASS (ok github.com/maxjb-xyz/reverb/internal/api).
 
 - [ ] **Step 12: Commit**
 
 ```bash
-git add cmd/crate/version.go cmd/crate/main.go internal/api/version.go internal/api/version_test.go internal/api/server.go Makefile
+git add cmd/reverb/version.go cmd/reverb/main.go internal/api/version.go internal/api/version_test.go internal/api/server.go Makefile
 git commit -m "feat(version): stamp build version, log at startup, expose GET /api/v1/version"
 ```
 
@@ -324,10 +324,10 @@ Replace the entire contents of `internal/api/openapi.yaml` with:
 ```yaml
 openapi: 3.0.3
 info:
-  title: Crate API
+  title: Reverb API
   version: 0.1.0
   description: >
-    Crate is a self-hosted music app unifying a Subsonic/Navidrome library,
+    Reverb is a self-hosted music app unifying a Subsonic/Navidrome library,
     Spotify search, and spotDL one-click download. All paths are served under
     /api/v1. Session auth is a cookie issued by /setup/admin or /auth/login;
     protected routes return 401 without it (unless auth is disabled via env).
@@ -545,8 +545,8 @@ git commit -m "docs(api): expand OpenAPI to the real /api/v1 surface incl. /vers
 - Create: `.dockerignore`
 
 **Interfaces:**
-- Consumes: `Makefile`/build conventions (`-tags prod`, `CGO_ENABLED=0`, `-ldflags -X main.version`), the embed contract (`web/dist` → `internal/api/dist`), the spotDL runtime needs (Python3 + ffmpeg), `ENV CRATE_DB` default.
-- Produces: an image `crate:test` whose `ENTRYPOINT ["crate"]` runs the prod binary as a non-root user; `EXPOSE 8090`; `VOLUME ["/data"]`; spotDL pinned at `4.2.11`.
+- Consumes: `Makefile`/build conventions (`-tags prod`, `CGO_ENABLED=0`, `-ldflags -X main.version`), the embed contract (`web/dist` → `internal/api/dist`), the spotDL runtime needs (Python3 + ffmpeg), `ENV REVERB_DB` default.
+- Produces: an image `reverb:test` whose `ENTRYPOINT ["reverb"]` runs the prod binary as a non-root user; `EXPOSE 8090`; `VOLUME ["/data"]`; spotDL pinned at `4.2.11`.
 
 - [ ] **Step 1: Create `.dockerignore`**
 
@@ -564,7 +564,7 @@ data
 *.db
 
 # The locally built binary (the image builds its own)
-/crate
+/reverb
 
 # VCS, tooling, scratch
 .git
@@ -614,7 +614,7 @@ COPY --from=web /app/web/dist ./internal/api/dist
 # Static, cgo-free, prod-embedded, version-stamped.
 RUN CGO_ENABLED=0 go build -tags prod \
       -ldflags "-X main.version=${VERSION}" \
-      -o /out/crate ./cmd/crate
+      -o /out/reverb ./cmd/reverb
 
 # ---------- Stage 3: runtime ----------
 FROM python:3.12-slim AS runtime
@@ -622,37 +622,37 @@ FROM python:3.12-slim AS runtime
 RUN apt-get update \
  && apt-get install -y --no-install-recommends ffmpeg \
  && rm -rf /var/lib/apt/lists/*
-# VERSION PIN: spotDL output formatting is fragile. Crate's spotdl adapter parses
+# VERSION PIN: spotDL output formatting is fragile. Reverb's spotdl adapter parses
 # progress with the regex `(\d{1,3})\s*%` in internal/download/spotdl/adapter.go.
 # Bumping this pin REQUIRES re-validating that regex against the new output.
 RUN pip install --no-cache-dir "spotdl==4.2.11"
 # Non-root user.
-RUN useradd --create-home --uid 10001 crate
-COPY --from=gobuild /out/crate /usr/local/bin/crate
-ENV CRATE_DB=/data/crate.db
+RUN useradd --create-home --uid 10001 reverb
+COPY --from=gobuild /out/reverb /usr/local/bin/reverb
+ENV REVERB_DB=/data/reverb.db
 VOLUME ["/data"]
 EXPOSE 8090
-USER crate
-ENTRYPOINT ["crate"]
+USER reverb
+ENTRYPOINT ["reverb"]
 ```
 
 - [ ] **Step 3: Build the image (executor's local Docker check)**
 
-Run: `docker build -t crate:test --build-arg VERSION=t-1.0.0 .`
-Expected: build succeeds — final line `naming to docker.io/library/crate:test` (or `Successfully tagged crate:test`). Each stage (web npm build, go build, pip install spotdl==4.2.11, apt ffmpeg) completes without error.
+Run: `docker build -t reverb:test --build-arg VERSION=t-1.0.0 .`
+Expected: build succeeds — final line `naming to docker.io/library/reverb:test` (or `Successfully tagged reverb:test`). Each stage (web npm build, go build, pip install spotdl==4.2.11, apt ffmpeg) completes without error.
 Note: this step needs a working Docker daemon on the executor. If Docker is unavailable in the sandbox, mark the step as "deferred to CI (Task 8 `docker` job runs the same build)" and proceed — the Dockerfile content is the deliverable.
 
 - [ ] **Step 4: Smoke-run the image prints the version and serves /health**
 
 Run:
 ```bash
-docker run -d --name crate-smoke -p 18090:8090 crate:test --db /tmp/smoke.db
+docker run -d --name reverb-smoke -p 18090:8090 reverb:test --db /tmp/smoke.db
 sleep 2
-docker logs crate-smoke 2>&1 | grep "crate t-1.0.0 starting"
+docker logs reverb-smoke 2>&1 | grep "reverb t-1.0.0 starting"
 curl -fsS http://localhost:18090/api/v1/version
-docker rm -f crate-smoke
+docker rm -f reverb-smoke
 ```
-Expected: the log line `crate t-1.0.0 starting` is present; the curl prints `{"version":"t-1.0.0"}`. (If Docker is unavailable, defer to CI as in Step 3.)
+Expected: the log line `reverb t-1.0.0 starting` is present; the curl prints `{"version":"t-1.0.0"}`. (If Docker is unavailable, defer to CI as in Step 3.)
 
 - [ ] **Step 5: Commit**
 
@@ -670,7 +670,7 @@ git commit -m "build(docker): multi-stage image (node->go prod embed->python3+ff
 - Create: `.env.example`
 
 **Interfaces:**
-- Consumes: the Dockerfile (`build: .`), the config env surface, the shared-`/music` requirement (spotDL `output_dir` = `/music`; Navidrome scans the same volume), `EXPOSE 8090`, `VOLUME ["/data"]`, `ENV CRATE_DB=/data/crate.db`.
+- Consumes: the Dockerfile (`build: .`), the config env surface, the shared-`/music` requirement (spotDL `output_dir` = `/music`; Navidrome scans the same volume), `EXPOSE 8090`, `VOLUME ["/data"]`, `ENV REVERB_DB=/data/reverb.db`.
 - Produces: a compose project that `docker compose config -q` parses clean; secrets sourced only from `.env` (gitignored), with `.env.example` as the committed template.
 
 - [ ] **Step 1: Create `.env.example`**
@@ -683,15 +683,15 @@ Create `.env.example`:
 
 # Admin password seeded on first run if setup has not been completed yet.
 # Leave blank to use the in-app first-run wizard instead.
-CRATE_ADMIN_PASSWORD=
+REVERB_ADMIN_PASSWORD=
 
 # Spotify search adapter — your Spotify app's Client Secret.
 # (The Client ID is non-secret and is set in the in-app Settings UI.)
-CRATE_SPOTIFY_CLIENT_SECRET=
+REVERB_SPOTIFY_CLIENT_SECRET=
 
 # Subsonic/Navidrome library adapter password (overrides the stored config_json
-# secret at runtime). Set this if you point Crate at an existing Navidrome.
-CRATE_LIBRARY_PASSWORD=
+# secret at runtime). Set this if you point Reverb at an existing Navidrome.
+REVERB_LIBRARY_PASSWORD=
 ```
 
 - [ ] **Step 2: Create `docker-compose.yml`**
@@ -699,27 +699,27 @@ CRATE_LIBRARY_PASSWORD=
 Create `docker-compose.yml`:
 
 ```yaml
-# Production-ish single-host deployment for Crate.
+# Production-ish single-host deployment for Reverb.
 #
-# Crate writes downloads (via spotDL) into the shared /music volume. Point your
+# Reverb writes downloads (via spotDL) into the shared /music volume. Point your
 # Subsonic/Navidrome library adapter at the SAME music so downloads appear in the
 # library after a scan. See the commented `navidrome` service below for a ready
 # pairing. Secrets come ONLY from .env (copy .env.example -> .env).
 
 services:
-  crate:
+  reverb:
     build:
       context: .
       args:
-        VERSION: "${CRATE_VERSION:-dev}"
+        VERSION: "${REVERB_VERSION:-dev}"
     # Or pull a published image instead of building:
-    # image: ghcr.io/maxjb-xyz/crate:latest
+    # image: ghcr.io/maxjb-xyz/reverb:latest
     ports:
       - "8090:8090"
     env_file:
       - .env
     volumes:
-      # SQLite DB + app state (CRATE_DB defaults to /data/crate.db in the image).
+      # SQLite DB + app state (REVERB_DB defaults to /data/reverb.db in the image).
       - ./data:/data
       # Shared music dir. Set the spotDL adapter's `output_dir` to /music in the
       # Settings UI so downloads land where the library scans.
@@ -728,8 +728,8 @@ services:
 
   # ---------------------------------------------------------------------------
   # Optional: a Navidrome that scans the SAME ./music volume. Uncomment to run
-  # the full pairing. In Crate's Settings UI add a Subsonic library adapter with
-  # base URL http://navidrome:4533 (and CRATE_LIBRARY_PASSWORD in .env).
+  # the full pairing. In Reverb's Settings UI add a Subsonic library adapter with
+  # base URL http://navidrome:4533 (and REVERB_LIBRARY_PASSWORD in .env).
   # ---------------------------------------------------------------------------
   # navidrome:
   #   image: deluan/navidrome:latest
@@ -747,7 +747,7 @@ services:
 
 Run: `docker compose config -q`
 Expected: no output, exit code 0. (`-q` prints nothing on success.)
-Note: `docker compose config` reads `.env` for variable substitution. `${CRATE_VERSION:-dev}` has a default so it parses even without `.env`. If the daemon/CLI is unavailable, defer to CI (Task 8 `docker` job can add the same check); the compose content is the deliverable.
+Note: `docker compose config` reads `.env` for variable substitution. `${REVERB_VERSION:-dev}` has a default so it parses even without `.env`. If the daemon/CLI is unavailable, defer to CI (Task 8 `docker` job can add the same check); the compose content is the deliverable.
 
 - [ ] **Step 4: Confirm `.env` is gitignored (no new ignore needed)**
 
@@ -1013,7 +1013,7 @@ test('core loop: login -> search everywhere -> download -> in-library -> play', 
 
   // 1) Load: setup not required, not authed -> Login screen.
   await page.goto('/')
-  await expect(page.getByRole('heading', { name: 'Log in to Crate' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Log in to Reverb' })).toBeVisible()
 
   // 2) Log in. The app reloads on success; /me now returns authed.
   await page.getByPlaceholder('Admin password').fill('correct horse')
@@ -1103,7 +1103,7 @@ git commit -m "test(e2e): hermetic Playwright core-loop (login->search->download
 - Create: `docs/deployment.md`
 
 **Interfaces:**
-- Consumes: the config surface (env + flags), the quick-start (docker compose from Task 4), the design spec at `docs/superpowers/specs/2026-06-20-crate-mvp-design.md`, the spotDL pin note.
+- Consumes: the config surface (env + flags), the quick-start (docker compose from Task 4), the design spec at `docs/superpowers/specs/2026-06-20-reverb-mvp-design.md`, the spotDL pin note.
 - Produces: human-facing docs. Verification is a section-presence checklist (no automated test).
 
 - [ ] **Step 1: Create the LICENSE file (AGPL-3.0)**
@@ -1118,9 +1118,9 @@ If there is no network in the executor environment: create `LICENSE` containing 
 Create `docs/deployment.md`:
 
 ```markdown
-# Deploying Crate
+# Deploying Reverb
 
-Crate ships as a single Docker image: a static Go binary with the web UI
+Reverb ships as a single Docker image: a static Go binary with the web UI
 embedded, plus Python 3, ffmpeg, and a pinned spotDL. This guide covers a
 production-ish single-host deployment.
 
@@ -1128,30 +1128,30 @@ production-ish single-host deployment.
 
 ```bash
 cp .env.example .env      # fill in secrets
-docker compose up -d      # builds + starts Crate on :8090
+docker compose up -d      # builds + starts Reverb on :8090
 ```
 
 Open http://localhost:8090 and complete the first-run wizard (set an admin
-password unless you provided `CRATE_ADMIN_PASSWORD` in `.env`), then add your
+password unless you provided `REVERB_ADMIN_PASSWORD` in `.env`), then add your
 adapters in Settings:
 
 - **Library** (Subsonic/Navidrome): point it at your existing server.
 - **Search** (Spotify): set the Client ID in Settings; the Client Secret comes
-  from `CRATE_SPOTIFY_CLIENT_SECRET` in `.env`.
+  from `REVERB_SPOTIFY_CLIENT_SECRET` in `.env`.
 - **Downloader** (spotDL): set `output_dir` to `/music`.
 
 ## The shared music volume
 
-Crate's spotDL downloader writes into `/music`. For downloads to appear in your
+Reverb's spotDL downloader writes into `/music`. For downloads to appear in your
 library, your Subsonic/Navidrome server MUST scan the SAME directory. The
-provided `docker-compose.yml` mounts `./music:/music` into Crate and (in the
+provided `docker-compose.yml` mounts `./music:/music` into Reverb and (in the
 commented Navidrome service) `./music:/music:ro` into Navidrome. After a
-download completes, Crate triggers a library scan and the track becomes
+download completes, Reverb triggers a library scan and the track becomes
 playable.
 
 ## Reverse proxy + TLS
 
-Run Crate behind a TLS-terminating reverse proxy. Crate serves plain HTTP on
+Run Reverb behind a TLS-terminating reverse proxy. Reverb serves plain HTTP on
 8090 and uses a same-origin session cookie + a WebSocket at `/api/v1/ws`, so the
 proxy MUST forward Upgrade/Connection headers.
 
@@ -1189,17 +1189,17 @@ server {
 
 ## Volumes & backups
 
-- `./data` → `/data` holds the SQLite database (`/data/crate.db`, set via
-  `CRATE_DB`) plus app state. This is the only stateful Crate volume.
+- `./data` → `/data` holds the SQLite database (`/data/reverb.db`, set via
+  `REVERB_DB`) plus app state. This is the only stateful Reverb volume.
 - `./music` → `/music` holds downloaded audio (shared with the library server).
 
 **Backup:** stop the container (or use SQLite's online backup) and copy
-`./data/crate.db`. A simple cold backup:
+`./data/reverb.db`. A simple cold backup:
 
 ```bash
-docker compose stop crate
-cp ./data/crate.db ./backups/crate-$(date +%F).db
-docker compose start crate
+docker compose stop reverb
+cp ./data/reverb.db ./backups/reverb-$(date +%F).db
+docker compose start reverb
 ```
 
 ## Upgrades
@@ -1210,13 +1210,13 @@ docker compose build      # rebuild from the new source
 docker compose up -d      # recreate the container
 ```
 
-Crate runs SQLite migrations automatically on startup. Back up `./data/crate.db`
+Reverb runs SQLite migrations automatically on startup. Back up `./data/reverb.db`
 before a major upgrade.
 
 ## spotDL version pin
 
 The image pins `spotdl==4.2.11`. spotDL's stdout formatting is fragile and
-Crate parses download progress with the regex `(\d{1,3})\s*%`
+Reverb parses download progress with the regex `(\d{1,3})\s*%`
 (`internal/download/spotdl/adapter.go`). **Bumping the spotDL pin requires
 re-validating that regex against the new output format** before shipping —
 otherwise progress may silently degrade to "indeterminate".
@@ -1227,14 +1227,14 @@ otherwise progress may silently degrade to "indeterminate".
 Create `README.md`:
 
 ```markdown
-# Crate
+# Reverb
 
-**Crate** is a self-hosted music app that unifies your existing music library, the
+**Reverb** is a self-hosted music app that unifies your existing music library, the
 broader catalog you can search online, and one-click downloading — in a single
 fast web UI. It is a Go single-binary modular monolith with an embedded
 React/TypeScript SPA.
 
-> Crate is for personal use with music you have the legal right to download. See
+> Reverb is for personal use with music you have the legal right to download. See
 > [Legal & ethical use](#legal--ethical-use).
 
 ## The core loop
@@ -1245,7 +1245,7 @@ React/TypeScript SPA.
    (by ISRC/metadata), so you instantly know what is missing.
 3. **One-click download** — missing tracks download via spotDL into your music
    folder; live progress streams over a WebSocket.
-4. **It just appears** — when the download finishes, Crate rescans your library
+4. **It just appears** — when the download finishes, Reverb rescans your library
    and the track flips to in-library — ready to play, in the same row.
 
 ## Features
@@ -1270,21 +1270,21 @@ _Screenshots coming soon._
 ## Quick start (Docker Compose)
 
 ```bash
-git clone https://github.com/maxjb-xyz/crate.git
-cd crate
+git clone https://github.com/maxjb-xyz/reverb.git
+cd reverb
 cp .env.example .env        # fill in secrets (see Configuration)
 docker compose up -d        # builds + runs on http://localhost:8090
 ```
 
 Open http://localhost:8090 and complete the **first-run wizard**: set an admin
-password (unless you set `CRATE_ADMIN_PASSWORD` in `.env`), then add your
+password (unless you set `REVERB_ADMIN_PASSWORD` in `.env`), then add your
 library, search, and downloader adapters in Settings. Point the spotDL
 downloader's `output_dir` at `/music` so downloads land where your library
 scans. Full details: [docs/deployment.md](docs/deployment.md).
 
 ## Configuration reference
 
-Crate is configured by flags, environment variables, and the in-app Settings UI.
+Reverb is configured by flags, environment variables, and the in-app Settings UI.
 **Precedence: flags > environment > defaults.**
 
 ### Flags
@@ -1292,7 +1292,7 @@ Crate is configured by flags, environment variables, and the in-app Settings UI.
 | Flag | Default | Description |
 | --- | --- | --- |
 | `--port` | `8090` | HTTP listen port |
-| `--db` | `./data/crate.db` | SQLite database path |
+| `--db` | `./data/reverb.db` | SQLite database path |
 | `--dev` | `false` | Dev mode (proxies the Vite dev server) |
 | `--log-level` | `info` | Log level |
 
@@ -1300,52 +1300,52 @@ Crate is configured by flags, environment variables, and the in-app Settings UI.
 
 | Variable | Description |
 | --- | --- |
-| `CRATE_PORT` | HTTP listen port (same as `--port`) |
-| `CRATE_DB` | SQLite path (same as `--db`); the Docker image defaults this to `/data/crate.db` |
-| `CRATE_DEV=1` | Enable dev mode |
-| `CRATE_ADMIN_PASSWORD` | Seed the admin password on first run (if setup not yet complete) |
-| `CRATE_AUTH_DISABLED=1` (or `true`) | Disable auth entirely — **trusted LAN only**, all routes become unauthenticated |
-| `CRATE_SPOTIFY_CLIENT_SECRET` | Spotify search adapter Client Secret (overrides stored config) |
-| `CRATE_LIBRARY_PASSWORD` | Subsonic/Navidrome library adapter password (overrides stored config) |
+| `REVERB_PORT` | HTTP listen port (same as `--port`) |
+| `REVERB_DB` | SQLite path (same as `--db`); the Docker image defaults this to `/data/reverb.db` |
+| `REVERB_DEV=1` | Enable dev mode |
+| `REVERB_ADMIN_PASSWORD` | Seed the admin password on first run (if setup not yet complete) |
+| `REVERB_AUTH_DISABLED=1` (or `true`) | Disable auth entirely — **trusted LAN only**, all routes become unauthenticated |
+| `REVERB_SPOTIFY_CLIENT_SECRET` | Spotify search adapter Client Secret (overrides stored config) |
+| `REVERB_LIBRARY_PASSWORD` | Subsonic/Navidrome library adapter password (overrides stored config) |
 
-Secrets (`CRATE_*_SECRET`, `CRATE_*_PASSWORD`, `CRATE_ADMIN_PASSWORD`) should be
+Secrets (`REVERB_*_SECRET`, `REVERB_*_PASSWORD`, `REVERB_ADMIN_PASSWORD`) should be
 provided via environment / `.env` only — never committed. `.env` is gitignored;
 `.env.example` is the committed template.
 
 ### First-run wizard
 
-On first launch Crate detects that no admin password is set and shows a setup
-screen. Set a password (or pre-seed `CRATE_ADMIN_PASSWORD`), then configure
+On first launch Reverb detects that no admin password is set and shows a setup
+screen. Set a password (or pre-seed `REVERB_ADMIN_PASSWORD`), then configure
 adapters in Settings. Adapter config changes that require a restart surface a
 "Restart to apply" banner.
 
 ## Legal & ethical use
 
-Crate is a tool for **personal use with content you have the legal right to
-access and download**. By using Crate you agree that:
+Reverb is a tool for **personal use with content you have the legal right to
+access and download**. By using Reverb you agree that:
 
 - You are responsible for complying with the laws of your jurisdiction and the
-  **terms of service** of every service you connect Crate to (your music server,
-  Spotify, etc.). Crate does not grant any rights to content.
-- **spotDL is a separate, third-party tool** that Crate invokes. Crate does not
+  **terms of service** of every service you connect Reverb to (your music server,
+  Spotify, etc.). Reverb does not grant any rights to content.
+- **spotDL is a separate, third-party tool** that Reverb invokes. Reverb does not
   host, distribute, or provide any copyrighted content; it orchestrates tools you
   configure. How you use spotDL is your responsibility.
-- Crate is intended for downloading music **you own or are otherwise legally
+- Reverb is intended for downloading music **you own or are otherwise legally
   entitled to** (e.g. content you have purchased or that is freely licensed). Do
-  not use Crate to infringe copyright.
-- Crate is provided **"as is", without warranty of any kind**. The authors are
+  not use Reverb to infringe copyright.
+- Reverb is provided **"as is", without warranty of any kind**. The authors are
   not liable for misuse. See the [LICENSE](LICENSE).
 
 ## Architecture overview
 
-Crate is a **modular monolith**: a single Go binary organized around clean
+Reverb is a **modular monolith**: a single Go binary organized around clean
 **adapter seams** — `library` (Subsonic/Navidrome), `search` (Spotify), and
 `downloader` (spotDL) — each registered explicitly at the composition root (no
 `init()` side-effects). The frontend is a React/TypeScript SPA embedded into the
 binary at build time (`-tags prod`). State and events flow through an in-process
 EventBus that backs both the WebSocket and the download manager. The full design
 rationale is in
-[docs/superpowers/specs/2026-06-20-crate-mvp-design.md](docs/superpowers/specs/2026-06-20-crate-mvp-design.md).
+[docs/superpowers/specs/2026-06-20-reverb-mvp-design.md](docs/superpowers/specs/2026-06-20-reverb-mvp-design.md).
 The HTTP API is documented in OpenAPI, served live at `/api/v1/openapi.yaml`.
 
 ## Development & contributing
@@ -1359,7 +1359,7 @@ cd web && npm install && npm run test
 
 # Run locally (two shells)
 cd web && npm run dev          # shell 1: Vite dev server
-go run ./cmd/crate --dev       # shell 2: Go server proxying Vite
+go run ./cmd/reverb --dev       # shell 2: Go server proxying Vite
 
 # End-to-end (hermetic, mocked)
 cd web && npm run e2e
@@ -1372,7 +1372,7 @@ tests.
 
 ## License
 
-**AGPL-3.0-only** — chosen because Crate is a network-served, self-hosted app
+**AGPL-3.0-only** — chosen because Reverb is a network-served, self-hosted app
 that bundles GPL-family tooling (spotDL); AGPL keeps modifications open for a
 networked service and matches the self-hosted-media-server tradition. See
 [LICENSE](LICENSE).
@@ -1381,8 +1381,8 @@ networked service and matches the self-hosted-media-server tradition. See
 - [ ] **Step 4: Verify the required README sections exist (checklist)**
 
 Run: `grep -nE "^#|^##" README.md`
-Expected: the output includes (in order) headings for `# Crate`, `## The core loop`, `## Features`, `## Screenshots`, `## Quick start (Docker Compose)`, `## Configuration reference`, `## Legal & ethical use`, `## Architecture overview`, `## Development & contributing`, `## License`.
-Run: `grep -c "CRATE_" README.md`
+Expected: the output includes (in order) headings for `# Reverb`, `## The core loop`, `## Features`, `## Screenshots`, `## Quick start (Docker Compose)`, `## Configuration reference`, `## Legal & ethical use`, `## Architecture overview`, `## Development & contributing`, `## License`.
+Run: `grep -c "REVERB_" README.md`
 Expected: ≥ 6 (every documented env var present).
 
 - [ ] **Step 5: Verify deployment doc sections**
@@ -1449,20 +1449,20 @@ jobs:
           context: .
           push: false
           load: true
-          tags: crate:ci
+          tags: reverb:ci
           build-args: |
             VERSION=${{ github.sha }}
       - name: Smoke-test the image
         run: |
-          docker run -d --name crate-ci -p 18090:8090 crate:ci --db /tmp/ci.db
+          docker run -d --name reverb-ci -p 18090:8090 reverb:ci --db /tmp/ci.db
           for i in $(seq 1 20); do
             if curl -fsS http://localhost:18090/api/v1/version; then ok=1; break; fi
             sleep 1
           done
-          docker logs crate-ci
+          docker logs reverb-ci
           test "${ok:-0}" = "1"
           curl -fsS http://localhost:18090/api/v1/version | grep "${GITHUB_SHA}"
-          docker rm -f crate-ci
+          docker rm -f reverb-ci
   e2e:
     runs-on: ubuntu-latest
     defaults: { run: { working-directory: web } }
@@ -1499,7 +1499,7 @@ git commit -m "ci: add docker (build+smoke) and e2e (playwright) jobs"
 - Create: `.github/workflows/release.yml`
 
 **Interfaces:**
-- Consumes: the Dockerfile (Task 3), GHCR (`ghcr.io/maxjb-xyz/crate` — intended owner is `maxjb-xyz`; the workflow uses `${{ github.repository_owner }}` so it resolves correctly for whatever account the repo lives under), `GITHUB_TOKEN`.
+- Consumes: the Dockerfile (Task 3), GHCR (`ghcr.io/maxjb-xyz/reverb` — intended owner is `maxjb-xyz`; the workflow uses `${{ github.repository_owner }}` so it resolves correctly for whatever account the repo lives under), `GITHUB_TOKEN`.
 - Produces: a release-published workflow that builds + pushes the image to GHCR (tagged with the version + `latest`) and fires on a published GitHub Release.
 
 > **HUMAN ACTION — DEFERRED:** Actually publishing the `v0.1.0` GitHub Release
@@ -1547,8 +1547,8 @@ jobs:
           context: .
           push: true
           tags: |
-            ghcr.io/${{ github.repository_owner }}/crate:${{ steps.ver.outputs.version }}
-            ghcr.io/${{ github.repository_owner }}/crate:latest
+            ghcr.io/${{ github.repository_owner }}/reverb:${{ steps.ver.outputs.version }}
+            ghcr.io/${{ github.repository_owner }}/reverb:latest
           build-args: |
             VERSION=${{ steps.ver.outputs.version }}
       - name: Attach notes to GitHub Release
@@ -1587,9 +1587,9 @@ git commit -m "ci: prepared GHCR release workflow (release-published trigger; no
 - [ ] **Step 1: Prod build with VERSION stamps and logs the version**
 
 Run: `make build VERSION=0.1.0`
-Expected: web build + `CGO_ENABLED=0 ... -ldflags "-X main.version=0.1.0"` succeed; `./crate` exists.
-Run: `go build -tags prod -ldflags "-X main.version=0.1.0" -o /tmp/crate-ship ./cmd/crate && /tmp/crate-ship --port 0 --db /tmp/crate-ship.db & pid=$!; sleep 1; kill "$pid" 2>/dev/null; true`
-Expected: startup logs include `crate 0.1.0 starting`. (PID capture avoids relying on `%1` job control in non-interactive shells.)
+Expected: web build + `CGO_ENABLED=0 ... -ldflags "-X main.version=0.1.0"` succeed; `./reverb` exists.
+Run: `go build -tags prod -ldflags "-X main.version=0.1.0" -o /tmp/reverb-ship ./cmd/reverb && /tmp/reverb-ship --port 0 --db /tmp/reverb-ship.db & pid=$!; sleep 1; kill "$pid" 2>/dev/null; true`
+Expected: startup logs include `reverb 0.1.0 starting`. (PID capture avoids relying on `%1` job control in non-interactive shells.)
 
 - [ ] **Step 2: Full test suite green (Go scoped + FE)**
 
@@ -1598,7 +1598,7 @@ Expected: `go test ./cmd/... ./internal/...` → all `ok` (≥ 208 Go tests incl
 
 - [ ] **Step 3: Docker build succeeds**
 
-Run: `docker build -t crate:test --build-arg VERSION=0.1.0 .`
+Run: `docker build -t reverb:test --build-arg VERSION=0.1.0 .`
 Expected: build succeeds. (If Docker is unavailable on the executor, the CI `docker` job from Task 7 is the authoritative check — note that explicitly.)
 
 - [ ] **Step 4: Compose parses clean**
@@ -1625,15 +1625,15 @@ Expected: empty. The release is the user's call.
 
 M5 is DONE when ALL of the following hold:
 
-- The build is version-stamped: `make build VERSION=x` produces a binary that logs `crate x starting` and serves `GET /api/v1/version` → `{"version":"x"}`.
-- A single multi-stage Docker image builds (`docker build`), runs as non-root, embeds the SPA, and bundles Python3 + ffmpeg + `spotdl==4.2.11`; `docker run … crate:test` serves `/api/v1/version`.
+- The build is version-stamped: `make build VERSION=x` produces a binary that logs `reverb x starting` and serves `GET /api/v1/version` → `{"version":"x"}`.
+- A single multi-stage Docker image builds (`docker build`), runs as non-root, embeds the SPA, and bundles Python3 + ffmpeg + `spotdl==4.2.11`; `docker run … reverb:test` serves `/api/v1/version`.
 - `docker-compose.yml` + `.env.example` exist; `docker compose config -q` is clean; secrets come only from `.env` (gitignored).
 - `internal/api/openapi.yaml` documents the real `/api/v1` surface and is served at `/api/v1/openapi.yaml` (200, `application/yaml`, contains `openapi: 3.0.3`).
 - A hermetic, fully-mocked Playwright `core-loop` spec passes via `npm run e2e` (login → search everywhere → download → flip to in-library → play).
 - `README.md` exists with the required sections (incl. **Legal & ethical use**), `LICENSE` is full AGPL-3.0, and `docs/deployment.md` covers reverse-proxy/TLS, volumes/backups, upgrades, and the spotDL pin.
 - CI (`.github/workflows/ci.yml`) keeps `backend` + `frontend` and adds `docker` + `e2e`; the release workflow (`.github/workflows/release.yml`) is committed but NOT triggered (no GitHub Release has been published).
 - No M0–M4 regressions: `make test` is fully green.
-- **Deferred to the user:** publishing a GitHub Release named `v0.1.0` to trigger the GHCR publish (pushes `ghcr.io/maxjb-xyz/crate:0.1.0` and `:latest`).
+- **Deferred to the user:** publishing a GitHub Release named `v0.1.0` to trigger the GHCR publish (pushes `ghcr.io/maxjb-xyz/reverb:0.1.0` and `:latest`).
 
 - [ ] **Step 9: Commit (if any final touch-ups were needed)**
 
@@ -1666,7 +1666,7 @@ content (the screenshots placeholder is explicitly required by the spec as a
 
 **3. Type consistency:** `api.Deps.Version` is defined in Task 1 (server.go) and
 consumed by `handleVersion` (Task 1) and asserted in `version_test.go` (Task 1);
-`main.version` is defined in `cmd/crate/version.go` (Task 1) and referenced by
+`main.version` is defined in `cmd/reverb/version.go` (Task 1) and referenced by
 both `main.go` and the Makefile/Dockerfile `-X main.version` (Tasks 1, 3). The
 e2e mock shapes (`SearchEnvelope`, `ExternalResult`, `DownloadJob`,
 `download.complete` frame `{type,payload}`) match `web/src/lib/types.ts` and the

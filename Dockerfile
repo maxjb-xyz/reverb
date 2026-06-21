@@ -24,7 +24,7 @@ COPY --from=web /app/web/dist ./internal/api/dist
 # Static, cgo-free, prod-embedded, version-stamped.
 RUN CGO_ENABLED=0 go build -tags prod \
       -ldflags "-X main.version=${VERSION}" \
-      -o /out/crate ./cmd/crate
+      -o /out/reverb ./cmd/reverb
 
 # ---------- Stage 3: runtime ----------
 FROM python:3.12-slim AS runtime
@@ -32,15 +32,15 @@ FROM python:3.12-slim AS runtime
 RUN apt-get update \
  && apt-get install -y --no-install-recommends ffmpeg \
  && rm -rf /var/lib/apt/lists/*
-# VERSION PIN: spotDL output formatting is fragile. Crate's spotdl adapter parses
+# VERSION PIN: spotDL output formatting is fragile. Reverb's spotdl adapter parses
 # progress with the regex `(\d{1,3})\s*%` in internal/download/spotdl/adapter.go.
 # Bumping this pin REQUIRES re-validating that regex against the new output.
 RUN pip install --no-cache-dir "spotdl==4.2.11"
 # Non-root user.
-RUN useradd --create-home --uid 10001 crate
-COPY --from=gobuild /out/crate /usr/local/bin/crate
-ENV CRATE_DB=/data/crate.db
+RUN useradd --create-home --uid 10001 reverb
+COPY --from=gobuild /out/reverb /usr/local/bin/reverb
+ENV REVERB_DB=/data/reverb.db
 VOLUME ["/data"]
 EXPOSE 8090
-USER crate
-ENTRYPOINT ["crate"]
+USER reverb
+ENTRYPOINT ["reverb"]

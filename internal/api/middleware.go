@@ -4,7 +4,7 @@ import (
 	"net/http"
 )
 
-const sessionCookie = "crate_session"
+const sessionCookie = "reverb_session"
 
 func (s *Server) tokenFromRequest(r *http.Request) string {
 	if c, err := r.Cookie(sessionCookie); err == nil {

@@ -1,4 +1,4 @@
-// Package core holds Crate's shared, serializable domain types. These cross the
+// Package core holds Reverb's shared, serializable domain types. These cross the
 // adapter boundary (LibraryAdapter, future SearchSource) and are emitted by the
 // REST API, so every exported field carries a stable camelCase JSON tag.
 package core
@@ -35,7 +35,7 @@ type Track struct {
 type Album struct {
 	ID         string  `json:"id"`
 	Name       string  `json:"name"`
-	ArtistID   string `json:"artistId"`
+	ArtistID   string  `json:"artistId"`
 	Artist     string  `json:"artist"`
 	CoverArtID string  `json:"coverArtId"`
 	Year       int     `json:"year"`
