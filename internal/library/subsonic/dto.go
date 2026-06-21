@@ -1,5 +1,40 @@
 package subsonic
 
+import (
+	"bytes"
+	"encoding/json"
+)
+
+// flexString unmarshals a field that may arrive as EITHER a JSON string or a JSON
+// array of strings, keeping the first value. OpenSubsonic returns multi-valued
+// fields (notably song.isrc on Navidrome) as arrays, while classic Subsonic
+// returns a plain string or omits the field — decoding an array into a plain
+// `string` fails the whole response (502s every search / song listing).
+type flexString string
+
+func (s *flexString) UnmarshalJSON(data []byte) error {
+	data = bytes.TrimSpace(data)
+	if len(data) == 0 || string(data) == "null" {
+		return nil
+	}
+	if data[0] == '[' {
+		var arr []string
+		if err := json.Unmarshal(data, &arr); err != nil {
+			return err
+		}
+		if len(arr) > 0 {
+			*s = flexString(arr[0])
+		}
+		return nil
+	}
+	var str string
+	if err := json.Unmarshal(data, &str); err != nil {
+		return err
+	}
+	*s = flexString(str)
+	return nil
+}
+
 // envelope wraps every Subsonic JSON response: {"subsonic-response": {...}}.
 type envelope struct {
 	Response subsonicResponse `json:"subsonic-response"`
@@ -27,22 +62,22 @@ type subsonicError struct {
 }
 
 type childDTO struct {
-	ID          string `json:"id"`
-	Parent      string `json:"parent"`
-	Title       string `json:"title"`
-	Album       string `json:"album"`
-	AlbumID     string `json:"albumId"`
-	Artist      string `json:"artist"`
-	ArtistID    string `json:"artistId"`
-	CoverArt    string `json:"coverArt"`
-	Track       int    `json:"track"`
-	DiscNumber  int    `json:"discNumber"`
-	Duration    int    `json:"duration"` // seconds
-	BitRate     int    `json:"bitRate"`
-	Suffix      string `json:"suffix"`
-	ContentType string `json:"contentType"`
-	IsDir       bool   `json:"isDir"`
-	Isrc        string `json:"isrc"` // OpenSubsonic extension; empty on classic Subsonic
+	ID          string     `json:"id"`
+	Parent      string     `json:"parent"`
+	Title       string     `json:"title"`
+	Album       string     `json:"album"`
+	AlbumID     string     `json:"albumId"`
+	Artist      string     `json:"artist"`
+	ArtistID    string     `json:"artistId"`
+	CoverArt    string     `json:"coverArt"`
+	Track       int        `json:"track"`
+	DiscNumber  int        `json:"discNumber"`
+	Duration    int        `json:"duration"` // seconds
+	BitRate     int        `json:"bitRate"`
+	Suffix      string     `json:"suffix"`
+	ContentType string     `json:"contentType"`
+	IsDir       bool       `json:"isDir"`
+	Isrc        flexString `json:"isrc"` // OpenSubsonic: string OR array; empty on classic Subsonic
 }
 
 type albumDTO struct {
