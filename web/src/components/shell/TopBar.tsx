@@ -47,19 +47,11 @@ export function TopBar() {
 
       {/* Center — home + search pill + browse */}
       <div className="flex items-center gap-2 flex-1 mx-4 min-w-0">
-        <button
-          type="button"
-          aria-label="Home"
+        <IconButton
+          name="home"
+          label="Home"
           onClick={() => navigate('/')}
-          className={[
-            'w-12 h-12 rounded-full bg-raised flex-none',
-            'flex items-center justify-center text-text-primary',
-            'hover:scale-105 transition-transform',
-            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
-          ].join(' ')}
-        >
-          <Icon name="home" className="w-5 h-5" />
-        </button>
+        />
 
         <button
           type="button"
@@ -86,9 +78,10 @@ export function TopBar() {
           <Button
             variant="ghost"
             size="sm"
+            aria-label="Downloads"
             onClick={() => togglePanel('downloads')}
           >
-            <span className="flex items-center gap-1.5" aria-label="Downloads">
+            <span className="flex items-center gap-1.5">
               <Icon name="dl" className="w-4 h-4" />
               <span>Downloads</span>
             </span>
@@ -96,7 +89,7 @@ export function TopBar() {
           {activeCount > 0 && (
             <span
               data-testid="downloads-badge"
-              className="absolute -top-1 -right-1 min-w-[15px] h-[15px] px-1 rounded-full bg-accent text-black text-[10px] font-extrabold grid place-items-center pointer-events-none"
+              className="absolute -top-1 -right-1 min-w-4 h-4 px-1 rounded-full bg-accent text-black text-xs font-extrabold grid place-items-center pointer-events-none"
             >
               {activeCount}
             </span>
@@ -108,12 +101,12 @@ export function TopBar() {
           <button
             type="button"
             aria-label="Account menu"
-            aria-haspopup="true"
+            aria-haspopup="menu"
             aria-expanded={menuOpen}
             onClick={() => setMenuOpen((o) => !o)}
             className={[
-              'w-8 h-8 rounded-full bg-gradient-to-br from-purple-600 to-indigo-500',
-              'flex items-center justify-center text-white font-extrabold text-sm',
+              'w-8 h-8 rounded-full bg-accent',
+              'flex items-center justify-center text-black font-extrabold text-sm',
               'hover:scale-105 transition-transform',
               'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
             ].join(' ')}

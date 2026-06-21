@@ -6,6 +6,7 @@ interface ButtonProps {
   disabled?: boolean
   onClick?: React.MouseEventHandler<HTMLButtonElement>
   type?: 'button' | 'submit' | 'reset'
+  'aria-label'?: string
   children: React.ReactNode
 }
 
@@ -26,12 +27,14 @@ export function Button({
   disabled = false,
   onClick,
   type = 'button',
+  'aria-label': ariaLabel,
   children,
 }: ButtonProps) {
   return (
     <button
       type={type}
       disabled={disabled}
+      aria-label={ariaLabel}
       onClick={disabled ? undefined : onClick}
       className={[
         'inline-flex items-center justify-center rounded-full transition-opacity',

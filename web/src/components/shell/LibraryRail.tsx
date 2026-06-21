@@ -34,7 +34,7 @@ export function LibraryRail() {
       {/* Header */}
       <div className="px-4 pt-4 pb-2">
         <div className="flex items-center">
-          <span className="flex items-center gap-2.5 font-bold text-[15px] text-text-primary">
+          <span className="flex items-center gap-2.5 font-bold text-base text-text-primary">
             <Icon name="browse" className="w-4 h-4 text-text-secondary" />
             Your Library
           </span>
@@ -82,10 +82,15 @@ export function LibraryRail() {
       {/* Sub-toolbar */}
       <div className="flex items-center px-4 pb-2 text-text-secondary">
         <IconButton name="sort" label="Sort" size="sm" />
-        <span className="ml-auto flex items-center gap-1.5 text-[13px] font-semibold text-text-primary cursor-pointer select-none">
+        <button
+          type="button"
+          aria-label="Sort"
+          onClick={() => { /* sort not wired yet */ }}
+          className="ml-auto flex items-center gap-1.5 text-sm font-semibold text-text-primary select-none hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded"
+        >
           Recents
           <Icon name="fwd" className="w-3.5 h-3.5 rotate-90" />
-        </span>
+        </button>
       </div>
 
       {/* List */}
@@ -93,7 +98,7 @@ export function LibraryRail() {
         {isLoading ? (
           <SkeletonRows />
         ) : filter === 'playlists' ? (
-          <PlaylistList items={playlists.data ?? []} current={current} />
+          <PlaylistList items={playlists.data ?? []} />
         ) : filter === 'albums' ? (
           <AlbumList items={albums.data ?? []} current={current} />
         ) : (
@@ -122,26 +127,23 @@ function SkeletonRows() {
 }
 
 // ---- Playlist list ----
-function PlaylistList({ items, current }: { items: Playlist[]; current: ReturnType<typeof usePlayer.getState>['current'] }) {
+function PlaylistList({ items }: { items: Playlist[] }) {
   if (items.length === 0) {
     return <EmptyState icon="queue" title="No playlists yet" hint="Create your first playlist to get started." />
   }
 
   return (
     <>
-      {items.map((p) => {
-        const isPlaying = current?.albumId === p.id || false // playlists matched loosely
-        return (
-          <LibItem
-            key={p.id}
-            coverSrc={coverUrl(p.coverArtId)}
-            name={p.name}
-            meta={`Playlist · ${p.songCount} songs`}
-            rounded="md"
-            isPlaying={isPlaying}
-          />
-        )
-      })}
+      {items.map((p) => (
+        <LibItem
+          key={p.id}
+          coverSrc={coverUrl(p.coverArtId)}
+          name={p.name}
+          meta={`Playlist · ${p.songCount} songs`}
+          rounded="md"
+          isPlaying={false} // no playlist-context signal on Track yet
+        />
+      ))}
     </>
   )
 }
@@ -225,7 +227,7 @@ function LibItem({ coverSrc, name, meta, rounded, isPlaying }: LibItemProps) {
         </div>
         <div className="flex items-center gap-1.5 mt-0.5">
           {isPlaying && <Equalizer />}
-          <span className="text-[12.5px] text-text-secondary truncate">{meta}</span>
+          <span className="text-xs text-text-secondary truncate">{meta}</span>
         </div>
       </div>
     </div>
