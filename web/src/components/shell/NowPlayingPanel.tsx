@@ -9,11 +9,13 @@
  *   4. "Next in queue" card — up-next tracks; click → jumpTo
  *   5. "About the artist" card — cover, name, "In your library · N albums"
  */
+import { useState } from 'react'
 import { usePlayer } from '../../lib/playerStore'
 import { useUI } from '../../lib/uiStore'
 import { coverUrl, useArtist } from '../../lib/libraryApi'
 import { Cover } from '../ui/Cover'
 import { IconButton } from '../ui/IconButton'
+import { AddToPlaylistMenu } from '../AddToPlaylistMenu'
 
 // ---------------------------------------------------------------------------
 // Artist card
@@ -55,6 +57,8 @@ export function NowPlayingPanel() {
   const queue = usePlayer((s) => s.queue)
   const index = usePlayer((s) => s.index)
   const jumpTo = usePlayer((s) => s.jumpTo)
+
+  const [addMenuOpen, setAddMenuOpen] = useState(false)
 
   if (rightPanel !== 'nowplaying') return null
 
@@ -100,13 +104,32 @@ export function NowPlayingPanel() {
         </div>
 
         {/* Title + artist */}
-        <div className="mt-4">
-          <div className="truncate text-xl font-extrabold leading-tight tracking-tight text-text-primary">
-            {current?.title ?? 'Nothing playing'}
+        <div className="mt-4 flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <div className="truncate text-xl font-extrabold leading-tight tracking-tight text-text-primary">
+              {current?.title ?? 'Nothing playing'}
+            </div>
+            <div className="mt-1 truncate text-sm text-text-secondary">
+              {current?.artist ?? ''}
+            </div>
           </div>
-          <div className="mt-1 truncate text-sm text-text-secondary">
-            {current?.artist ?? ''}
-          </div>
+          {current && (
+            <div className="relative flex-none">
+              <IconButton
+                name="plus"
+                label="Add to playlist"
+                size="sm"
+                active={addMenuOpen}
+                onClick={() => setAddMenuOpen((o) => !o)}
+              />
+              {addMenuOpen && (
+                <AddToPlaylistMenu
+                  trackId={current.id}
+                  onClose={() => setAddMenuOpen(false)}
+                />
+              )}
+            </div>
+          )}
         </div>
 
         {/* Next in queue */}

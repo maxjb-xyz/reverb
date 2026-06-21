@@ -183,6 +183,8 @@ func (s *Server) routes() {
 			pr.Get("/library/album/{id}", s.handleLibraryAlbum)
 			pr.Get("/library/albums", s.handleLibraryAlbums)
 			pr.Get("/library/playlists", s.handleLibraryPlaylists)
+			pr.Post("/library/playlists", s.handleCreatePlaylist)
+			pr.Post("/library/playlists/{id}/tracks", s.handleAddTracksToPlaylist)
 			pr.Get("/stream/{id}", s.handleStream)
 			pr.Get("/cover/{id}", s.handleCover)
 			pr.Get("/search/everywhere", s.handleEverywhere)

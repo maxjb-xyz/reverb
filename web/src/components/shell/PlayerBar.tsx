@@ -10,7 +10,7 @@
  * Wiring: usePlayer (playerStore) + useUI (uiStore). Keyboard shortcuts preserved
  * from the original PlayerBar (Space, Arrow{Left,Right}, Shift+Arrow{Left,Right}).
  */
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { usePlayer } from '../../lib/playerStore'
 import { useUI } from '../../lib/uiStore'
 import { coverUrl } from '../../lib/libraryApi'
@@ -20,6 +20,7 @@ import { rgbToCss } from '../../lib/palette'
 import { Cover } from '../ui/Cover'
 import { IconButton } from '../ui/IconButton'
 import { Icon } from '../ui/Icon'
+import { AddToPlaylistMenu } from '../AddToPlaylistMenu'
 
 // ---------------------------------------------------------------------------
 // SeekBar — thin 4 px track with a thumb that appears on hover, driven by
@@ -98,6 +99,8 @@ export function PlayerBar() {
   const togglePanel = useUI((s) => s.togglePanel)
   const rightPanel = useUI((s) => s.rightPanel)
 
+  const [addMenuOpen, setAddMenuOpen] = useState(false)
+
   const palette = useAlbumPalette(current?.coverArtId ? coverUrl(current.coverArtId, 80) : undefined)
 
   // Global keyboard shortcuts. Ignore when typing in an input/textarea.
@@ -163,6 +166,24 @@ export function PlayerBar() {
             {current?.artist ?? ''}
           </div>
         </div>
+
+        {current && (
+          <div className="relative flex-none">
+            <IconButton
+              name="plus"
+              label="Add to playlist"
+              size="sm"
+              active={addMenuOpen}
+              onClick={() => setAddMenuOpen((o) => !o)}
+            />
+            {addMenuOpen && (
+              <AddToPlaylistMenu
+                trackId={current.id}
+                onClose={() => setAddMenuOpen(false)}
+              />
+            )}
+          </div>
+        )}
       </div>
 
       {/* ── CENTER: transport + scrubber ────────────────────────────────── */}

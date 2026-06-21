@@ -82,6 +82,21 @@ describe('PlayerBar (shell)', () => {
     spy.mockRestore()
   })
 
+  // --- add-to-playlist control ---
+
+  it('shows the "Add to playlist" button when a track is current', () => {
+    render(<PlayerBar />)
+    expect(screen.getByRole('button', { name: /add to playlist/i })).toBeInTheDocument()
+  })
+
+  it('hides the "Add to playlist" button when nothing is playing', () => {
+    act(() => {
+      usePlayer.getState().playTrackList([], 0)
+    })
+    render(<PlayerBar />)
+    expect(screen.queryByRole('button', { name: /add to playlist/i })).not.toBeInTheDocument()
+  })
+
   // --- right-panel toggling ---
 
   it('Queue button toggles the nowplaying panel', () => {

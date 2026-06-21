@@ -17,7 +17,14 @@ import (
 )
 
 // fakeLibrary implements library.LibraryAdapter (+ browse interfaces) for tests.
-type fakeLibrary struct{ lastRange string }
+type fakeLibrary struct {
+	lastRange string
+
+	// playlist-mutation recorders
+	createdName     string
+	addedPlaylistID string
+	addedTrackIDs   []string
+}
 
 func (fakeLibrary) Type() string                             { return "library" }
 func (fakeLibrary) Name() string                             { return "fake" }
@@ -35,6 +42,15 @@ func (fakeLibrary) GetAlbum(ctx context.Context, id string) (core.Album, error) 
 }
 func (fakeLibrary) GetPlaylists(ctx context.Context) ([]core.Playlist, error) {
 	return []core.Playlist{{ID: "p1", Name: "Mix"}}, nil
+}
+func (f *fakeLibrary) CreatePlaylist(ctx context.Context, name string) (core.Playlist, error) {
+	f.createdName = name
+	return core.Playlist{ID: "p-new", Name: name}, nil
+}
+func (f *fakeLibrary) AddTracksToPlaylist(ctx context.Context, playlistID string, trackIDs []string) error {
+	f.addedPlaylistID = playlistID
+	f.addedTrackIDs = trackIDs
+	return nil
 }
 func (f *fakeLibrary) Stream(ctx context.Context, trackID string, opts core.StreamOpts, rangeHeader string) (core.StreamHandle, error) {
 	f.lastRange = rangeHeader
@@ -146,6 +162,94 @@ func TestLibraryArtistAlbumPlaylistsHandlers(t *testing.T) {
 		if !strings.Contains(rec.Body.String(), tc.want) {
 			t.Fatalf("%s body missing %q: %s", tc.path, tc.want, rec.Body.String())
 		}
+	}
+}
+
+func doAuthedBody(t *testing.T, srv *Server, method, target, body string, cookie *http.Cookie) *httptest.ResponseRecorder {
+	t.Helper()
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(method, target, strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(cookie)
+	srv.Handler().ServeHTTP(rec, req)
+	return rec
+}
+
+func TestCreatePlaylistHandler(t *testing.T) {
+	lib := &fakeLibrary{}
+	srv, cookie := libTestServer(t, lib)
+	rec := doAuthedBody(t, srv, http.MethodPost, "/api/v1/library/playlists", `{"name":"Road Trip"}`, cookie)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want 201: %s", rec.Code, rec.Body.String())
+	}
+	var pl core.Playlist
+	if err := json.Unmarshal(rec.Body.Bytes(), &pl); err != nil {
+		t.Fatal(err)
+	}
+	if pl.Name != "Road Trip" || pl.ID == "" {
+		t.Fatalf("playlist: %+v", pl)
+	}
+	if lib.createdName != "Road Trip" {
+		t.Fatalf("CreatePlaylist not called with name: %q", lib.createdName)
+	}
+}
+
+func TestCreatePlaylistHandlerRejectsEmptyName(t *testing.T) {
+	srv, cookie := libTestServer(t, &fakeLibrary{})
+	for _, body := range []string{`{"name":""}`, `{"name":"   "}`, `{}`} {
+		rec := doAuthedBody(t, srv, http.MethodPost, "/api/v1/library/playlists", body, cookie)
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("body %s: status = %d, want 400", body, rec.Code)
+		}
+	}
+}
+
+func TestAddTracksToPlaylistHandler(t *testing.T) {
+	lib := &fakeLibrary{}
+	srv, cookie := libTestServer(t, lib)
+	rec := doAuthedBody(t, srv, http.MethodPost, "/api/v1/library/playlists/p1/tracks", `{"trackIds":["t1","t2"]}`, cookie)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200: %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `"ok":true`) {
+		t.Fatalf("body missing ok: %s", rec.Body.String())
+	}
+	if lib.addedPlaylistID != "p1" {
+		t.Fatalf("playlistID = %q, want p1", lib.addedPlaylistID)
+	}
+	if len(lib.addedTrackIDs) != 2 || lib.addedTrackIDs[0] != "t1" || lib.addedTrackIDs[1] != "t2" {
+		t.Fatalf("trackIds = %v", lib.addedTrackIDs)
+	}
+}
+
+func TestAddTracksToPlaylistHandlerRejectsEmpty(t *testing.T) {
+	srv, cookie := libTestServer(t, &fakeLibrary{})
+	for _, body := range []string{`{"trackIds":[]}`, `{}`} {
+		rec := doAuthedBody(t, srv, http.MethodPost, "/api/v1/library/playlists/p1/tracks", body, cookie)
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("body %s: status = %d, want 400", body, rec.Code)
+		}
+	}
+}
+
+func TestPlaylistMutationsReturn503WhenNoLibrary(t *testing.T) {
+	st, _ := store.Open(t.TempDir() + "/np.db")
+	t.Cleanup(func() { st.Close() })
+	_ = st.Migrate()
+	authSvc := auth.NewService(st.Q(), time.Now)
+	_ = authSvc.SetAdminPassword(context.Background(), "pw")
+	tok, _ := authSvc.CreateSession(context.Background())
+	srv := NewServer(Deps{Auth: authSvc, Library: nil,
+		Search: registry.NewRegistry("search"), Downloader: registry.NewRegistry("downloader")})
+	cookie := &http.Cookie{Name: sessionCookie, Value: tok}
+
+	rec := doAuthedBody(t, srv, http.MethodPost, "/api/v1/library/playlists", `{"name":"x"}`, cookie)
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("create status = %d, want 503", rec.Code)
+	}
+	rec = doAuthedBody(t, srv, http.MethodPost, "/api/v1/library/playlists/p1/tracks", `{"trackIds":["t1"]}`, cookie)
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("add status = %d, want 503", rec.Code)
 	}
 }
 

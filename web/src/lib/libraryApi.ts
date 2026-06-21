@@ -55,3 +55,11 @@ export function usePlaylists() {
     queryFn: () => api.get<Playlist[]>('/library/playlists'),
   })
 }
+
+export function createPlaylist(name: string): Promise<Playlist> {
+  return api.post<Playlist>('/library/playlists', { name })
+}
+
+export function addTracksToPlaylist(id: string, trackIds: string[]): Promise<{ ok: boolean }> {
+  return api.post(`/library/playlists/${encodeURIComponent(id)}/tracks`, { trackIds })
+}

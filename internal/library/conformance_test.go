@@ -35,6 +35,12 @@ func (fakeAdapter) GetAlbum(ctx context.Context, id string) (core.Album, error) 
 func (fakeAdapter) GetPlaylists(ctx context.Context) ([]core.Playlist, error) {
 	return []core.Playlist{{ID: "p1", Name: "Mix"}}, nil
 }
+func (fakeAdapter) CreatePlaylist(ctx context.Context, name string) (core.Playlist, error) {
+	return core.Playlist{ID: "p-new", Name: name}, nil
+}
+func (fakeAdapter) AddTracksToPlaylist(ctx context.Context, playlistID string, trackIDs []string) error {
+	return nil
+}
 func (fakeAdapter) Stream(ctx context.Context, trackID string, opts core.StreamOpts, rangeHeader string) (core.StreamHandle, error) {
 	return core.StreamHandle{
 		Body:          io.NopCloser(strings.NewReader("audio-bytes")),

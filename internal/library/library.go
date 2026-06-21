@@ -19,6 +19,11 @@ type LibraryAdapter interface {
 	GetAlbum(ctx context.Context, id string) (core.Album, error)
 	GetPlaylists(ctx context.Context) ([]core.Playlist, error)
 
+	// CreatePlaylist creates an empty (or single-seed) playlist and returns it.
+	CreatePlaylist(ctx context.Context, name string) (core.Playlist, error)
+	// AddTracksToPlaylist appends the given library track IDs to a playlist.
+	AddTracksToPlaylist(ctx context.Context, playlistID string, trackIDs []string) error
+
 	// Stream forwards rangeHeader (the browser's inbound Range, may be "")
 	// to the upstream source and returns the upstream response for proxying.
 	Stream(ctx context.Context, trackID string, opts core.StreamOpts, rangeHeader string) (core.StreamHandle, error)

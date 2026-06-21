@@ -203,6 +203,36 @@ func (a *Adapter) GetPlaylists(ctx context.Context) ([]core.Playlist, error) {
 	return out, nil
 }
 
+// CreatePlaylist creates a new (empty) playlist via the Subsonic createPlaylist
+// endpoint and returns the created playlist. Subsonic echoes the new playlist in
+// the response; if the body omits it (older servers) we synthesize a minimal
+// playlist from the requested name so callers always get a usable result.
+func (a *Adapter) CreatePlaylist(ctx context.Context, name string) (core.Playlist, error) {
+	params := url.Values{}
+	params.Set("name", name)
+	var resp subsonicResponse
+	if err := a.client.GetJSON(ctx, "createPlaylist", params, &resp); err != nil {
+		return core.Playlist{}, err
+	}
+	if resp.Playlist != nil {
+		return mapPlaylist(resp.Playlist.playlistDTO), nil
+	}
+	// Older servers return only "ok" with no playlist body; surface name with an
+	// empty song count rather than failing the create.
+	return core.Playlist{Name: name, SongCount: 0}, nil
+}
+
+// AddTracksToPlaylist appends the given library track IDs to a playlist via the
+// Subsonic updatePlaylist endpoint (one songIdToAdd param per track).
+func (a *Adapter) AddTracksToPlaylist(ctx context.Context, playlistID string, trackIDs []string) error {
+	params := url.Values{}
+	params.Set("playlistId", playlistID)
+	for _, id := range trackIDs {
+		params.Add("songIdToAdd", id)
+	}
+	return a.client.GetJSON(ctx, "updatePlaylist", params, nil)
+}
+
 func (a *Adapter) Stream(ctx context.Context, trackID string, opts core.StreamOpts, rangeHeader string) (core.StreamHandle, error) {
 	params := url.Values{}
 	params.Set("id", trackID)
