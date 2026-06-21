@@ -146,7 +146,7 @@ export function PlayerBar() {
         <div className="pointer-events-none absolute inset-0 bg-black/20" />
       )}
 
-      {/* ── LEFT: cover + meta + heart ─────────────────────────────────── */}
+      {/* ── LEFT: cover + meta (hugs left; add-to-playlist control lands here) ─ */}
       <div className="relative z-10 flex items-center gap-3.5 pl-2">
         <Cover
           src={coverSrc}
@@ -155,7 +155,7 @@ export function PlayerBar() {
           rounded="md"
           className="shadow-cover flex-none"
         />
-        <div className="min-w-0 flex-1">
+        <div className="min-w-0">
           <div className="truncate text-sm font-semibold text-text-primary">
             {current ? current.title : 'Nothing playing'}
           </div>
@@ -163,12 +163,6 @@ export function PlayerBar() {
             {current?.artist ?? ''}
           </div>
         </div>
-        <IconButton
-          name="heart"
-          label="Like"
-          size="sm"
-          active={false}
-        />
       </div>
 
       {/* ── CENTER: transport + scrubber ────────────────────────────────── */}
@@ -223,9 +217,8 @@ export function PlayerBar() {
         <SeekBar />
       </div>
 
-      {/* ── RIGHT: utility icons + volume ───────────────────────────────── */}
+      {/* ── RIGHT: queue + volume ───────────────────────────────────────── */}
       <div className="relative z-10 flex items-center justify-end gap-3 pr-2">
-        <IconButton name="mic" label="Lyrics" size="sm" />
         <IconButton
           name="queue"
           label="Queue"
@@ -233,9 +226,8 @@ export function PlayerBar() {
           size="sm"
           onClick={() => togglePanel('nowplaying')}
         />
-        <IconButton name="device" label="Devices" size="sm" />
 
-        {/* Volume — icon + slider */}
+        {/* Volume — icon + slider (styled thumb + accent fill in index.css) */}
         <div className="flex items-center gap-1.5">
           <IconButton name="vol" label="Volume" size="sm" />
           <input
@@ -246,12 +238,12 @@ export function PlayerBar() {
             value={volume}
             aria-label="Volume"
             onChange={(e) => setVolume(Number(e.target.value))}
-            className="h-1 w-24 cursor-pointer appearance-none rounded-full bg-border-subtle accent-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+            className="rvb-range h-1 w-24 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+            style={{
+              background: `linear-gradient(to right, rgb(var(--color-accent)) ${volume * 100}%, var(--border-subtle) ${volume * 100}%)`,
+            }}
           />
         </div>
-
-        <IconButton name="mini" label="Mini player" size="sm" />
-        <IconButton name="full" label="Full screen" size="sm" />
       </div>
     </div>
   )

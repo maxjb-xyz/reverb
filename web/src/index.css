@@ -42,3 +42,28 @@ body { @apply bg-base text-text-secondary font-sans; margin: 0; -webkit-font-smo
     scroll-behavior: auto !important;
   }
 }
+
+/* Range slider (e.g. volume): a flat track with a visible, draggable white
+   thumb. The filled portion is painted via an inline linear-gradient on the
+   element's background so it tracks the value. */
+input[type='range'].rvb-range {
+  -webkit-appearance: none;
+  appearance: none;
+  cursor: pointer;
+}
+input[type='range'].rvb-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 12px;
+  width: 12px;
+  border-radius: 9999px;
+  background: #ffffff;
+  border: none;
+}
+input[type='range'].rvb-range::-moz-range-thumb {
+  height: 12px;
+  width: 12px;
+  border-radius: 9999px;
+  background: #ffffff;
+  border: none;
+}
