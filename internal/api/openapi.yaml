@@ -2,6 +2,11 @@ openapi: 3.0.3
 info:
   title: Crate API
   version: 0.1.0
+  description: >
+    Crate is a self-hosted music app unifying a Subsonic/Navidrome library,
+    Spotify search, and spotDL one-click download. All paths are served under
+    /api/v1. Session auth is a cookie issued by /setup/admin or /auth/login;
+    protected routes return 401 without it (unless auth is disabled via env).
 servers:
   - url: /api/v1
 paths:
@@ -9,17 +14,42 @@ paths:
     get:
       summary: Liveness probe
       responses: { "200": { description: ok } }
+  /version:
+    get:
+      summary: Build version
+      responses:
+        "200":
+          description: version string
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { version: { type: string } }
+  /openapi.yaml:
+    get:
+      summary: This OpenAPI document
+      responses: { "200": { description: yaml } }
   /setup/status:
     get:
       summary: Whether first-run setup is required
-      responses: { "200": { description: ok } }
+      responses: { "200": { description: "{ setupRequired: bool }" } }
   /setup/admin:
     post:
       summary: Set the admin password during first-run setup
-      responses: { "200": { description: session issued }, "409": { description: already set up } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, properties: { password: { type: string } }, required: [password] }
+      responses: { "200": { description: session issued }, "400": { description: password required }, "409": { description: already set up } }
   /auth/login:
     post:
       summary: Log in with the admin password
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, properties: { password: { type: string } }, required: [password] }
       responses: { "200": { description: session issued }, "401": { description: invalid } }
   /auth/logout:
     post:
@@ -33,3 +63,131 @@ paths:
     get:
       summary: Registered adapter types with config schemas and capabilities
       responses: { "200": { description: ok } }
+  /adapters:
+    get:
+      summary: List configured adapter instances (secrets redacted)
+      responses: { "200": { description: ok }, "401": { description: unauthorized } }
+    post:
+      summary: Create an adapter instance
+      responses: { "200": { description: created }, "400": { description: invalid } }
+  /adapters/{id}:
+    put:
+      summary: Update an adapter instance
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses: { "200": { description: updated }, "404": { description: not found } }
+    delete:
+      summary: Delete an adapter instance
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses: { "200": { description: deleted }, "404": { description: not found } }
+  /adapters/test:
+    post:
+      summary: Test an adapter configuration (TestConnection) without persisting
+      responses: { "200": { description: "{ ok: bool, error?: string }" } }
+  /settings:
+    get:
+      summary: Read app settings
+      responses: { "200": { description: ok } }
+    put:
+      summary: Update app settings (sets the restart-to-apply flag)
+      responses: { "200": { description: ok, pendingRestart flag included } }
+  /config/pending-restart:
+    get:
+      summary: Whether config changed since startup (restart-to-apply banner)
+      responses: { "200": { description: "{ pending: bool }" } }
+  /library/search:
+    get:
+      summary: Fast REST search of the local library (tracks/albums/artists)
+      parameters: [{ name: q, in: query, required: true, schema: { type: string } }]
+      responses: { "200": { description: SearchResults } }
+  /library/artists:
+    get:
+      summary: List library artists
+      responses: { "200": { description: ok } }
+  /library/artist/{id}:
+    get:
+      summary: One artist with albums
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses: { "200": { description: ok }, "404": { description: not found } }
+  /library/album/{id}:
+    get:
+      summary: One album with tracks
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses: { "200": { description: ok }, "404": { description: not found } }
+  /library/albums:
+    get:
+      summary: List albums
+      parameters: [{ name: type, in: query, required: false, schema: { type: string } }]
+      responses: { "200": { description: ok } }
+  /library/playlists:
+    get:
+      summary: List playlists
+      responses: { "200": { description: ok } }
+  /stream/{id}:
+    get:
+      summary: Stream/transcode-proxy a library track by id (Range supported)
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses: { "200": { description: audio bytes }, "206": { description: partial content }, "404": { description: not found } }
+  /cover/{id}:
+    get:
+      summary: Cover art proxy by id
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - { name: size, in: query, required: false, schema: { type: integer } }
+      responses: { "200": { description: image bytes } }
+  /search/everywhere:
+    get:
+      summary: >
+        Search-everywhere as Server-Sent Events. Streams one envelope per source
+        (text/event-stream); each event data is a JSON SearchEnvelope with
+        per-result library match status.
+      parameters:
+        - { name: q, in: query, required: true, schema: { type: string } }
+        - { name: type, in: query, required: false, schema: { type: string, enum: [track, album, artist] } }
+      responses:
+        "200":
+          description: SSE stream of search envelopes
+          content:
+            text/event-stream:
+              schema: { type: string }
+  /downloads:
+    get:
+      summary: List download jobs
+      responses: { "200": { description: array of DownloadJob } }
+    post:
+      summary: Enqueue a one-click download (deduped)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                source: { type: string }
+                externalId: { type: string }
+                artist: { type: string }
+                title: { type: string }
+                album: { type: string }
+                isrc: { type: string }
+                playWhenReady: { type: boolean }
+              required: [source, externalId, artist, title]
+      responses: { "200": { description: DownloadJob }, "400": { description: invalid } }
+  /downloads/{id}/cancel:
+    post:
+      summary: Cancel a queued/running download
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses: { "200": { description: ok }, "404": { description: not found } }
+  /downloads/{id}/retry:
+    post:
+      summary: Retry a failed/canceled download
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses: { "200": { description: DownloadJob }, "404": { description: not found } }
+  /ws:
+    get:
+      summary: >
+        WebSocket of live events. Each frame is JSON { type, payload } where type
+        is the EventBus topic (download.queued, download.progress,
+        download.complete, download.failed, library.updated). Used by the client
+        to flip a result to in-library, drive progress rings, and resync.
+      responses:
+        "101": { description: Switching Protocols (WebSocket upgrade) }
+        "401": { description: unauthorized }

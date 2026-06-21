@@ -3,7 +3,7 @@ package download
 import (
 	"testing"
 
-	"github.com/maximusjb/crate/internal/core"
+	"github.com/maxjb-xyz/crate/internal/core"
 )
 
 func TestDedupKeyStableAndNormalized(t *testing.T) {

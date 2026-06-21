@@ -35,6 +35,13 @@ export class SearchStream {
       }
     }
     this.source.onerror = () => {
+      // This endpoint is a ONE-SHOT result stream: the server emits one envelope
+      // per source, then closes the connection. A browser EventSource treats that
+      // close as a dropped connection and auto-reconnects (~every few seconds),
+      // which would re-run the ENTIRE search in a loop for as long as the results
+      // are shown. Close it ourselves so completion is final; the consumer re-opens
+      // a fresh stream when the query changes.
+      this.source.close()
       handlers.onError?.()
     }
   }

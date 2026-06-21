@@ -1,0 +1,28 @@
+# Build artifacts and dependencies (re-installed/rebuilt inside the image)
+web/node_modules
+web/dist
+internal/api/dist
+node_modules
+
+# Local data / databases
+data
+*.db
+
+# The locally built binary (the image builds its own)
+/crate
+
+# VCS, tooling, scratch
+.git
+.github
+.gitignore
+.superpowers
+.claude
+dev
+
+# Docs and plans (not needed to build the image)
+docs
+README.md
+reverb-plan.md
+
+# Secrets must never enter the build context
+.env

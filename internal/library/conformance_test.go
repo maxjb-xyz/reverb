@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/maximusjb/crate/internal/core"
-	"github.com/maximusjb/crate/internal/registry"
+	"github.com/maxjb-xyz/crate/internal/core"
+	"github.com/maxjb-xyz/crate/internal/registry"
 )
 
 // fakeAdapter is a minimal in-memory LibraryAdapter that satisfies the contract.

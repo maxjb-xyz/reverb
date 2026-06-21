@@ -38,14 +38,18 @@ export function dedupKey(r: ExternalResult): string {
 
 function appendSection(existing: ExternalResult[], incoming: ExternalResult[]): ExternalResult[] {
   const seen = new Set(existing.map(dedupKey))
-  const out = existing.slice() // preserve order; never reflow
+  let out: ExternalResult[] | null = null // allocate only when something new arrives
   for (const r of incoming) {
     const k = dedupKey(r)
     if (seen.has(k)) continue
     seen.add(k)
+    if (out === null) out = existing.slice() // preserve order; never reflow
     out.push(r)
   }
-  return out
+  // Same reference when nothing new was added, so re-delivered envelopes (e.g. an
+  // EventSource reconnect replaying the same frame) do not churn a new array and
+  // force needless re-renders of the result rows.
+  return out ?? existing
 }
 
 export function applyEnvelope(state: EverywhereState, env: SearchEnvelope): EverywhereState {
@@ -53,14 +57,33 @@ export function applyEnvelope(state: EverywhereState, env: SearchEnvelope): Ever
   const incAlbums = env.results.filter((r) => r.type === 'album')
   const incArtists = env.results.filter((r) => r.type === 'artist')
 
-  const sources = state.sources.some((s) => s.source === env.source)
-    ? state.sources.map((s) => (s.source === env.source ? { source: env.source, status: env.status } : s))
-    : [...state.sources, { source: env.source, status: env.status }]
+  const existingSrc = state.sources.find((s) => s.source === env.source)
+  const sources =
+    existingSrc && existingSrc.status === env.status
+      ? state.sources // unchanged source/status → keep the same reference
+      : existingSrc
+        ? state.sources.map((s) => (s.source === env.source ? { source: env.source, status: env.status } : s))
+        : [...state.sources, { source: env.source, status: env.status }]
+
+  const tracks = appendSection(state.tracks, incTracks)
+  const albums = appendSection(state.albums, incAlbums)
+  const artists = appendSection(state.artists, incArtists)
+
+  // Fully idempotent: if a re-delivered envelope changes nothing, return the SAME
+  // state reference so React/Zustand skip the re-render entirely.
+  if (
+    tracks === state.tracks &&
+    albums === state.albums &&
+    artists === state.artists &&
+    sources === state.sources
+  ) {
+    return state
+  }
 
   return {
-    tracks: appendSection(state.tracks, incTracks),
-    albums: appendSection(state.albums, incAlbums),
-    artists: appendSection(state.artists, incArtists),
+    tracks,
+    albums,
+    artists,
     sources,
     status: state.status, // envelope does not change streaming flag
   }
@@ -79,7 +102,10 @@ function reducer(state: EverywhereState, action: Action): EverywhereState {
     case 'startSearch':
       return { ...emptyEverywhere, status: 'streaming' }
     case 'finishSearch':
-      return { ...state, status: 'done' }
+      // Idempotent: return the SAME reference once done so a repeated finishSearch
+      // (e.g. EventSource firing onerror more than once) does not churn a new state
+      // object and force needless re-renders of the result rows.
+      return state.status === 'done' ? state : { ...state, status: 'done' }
     case 'envelope':
       return applyEnvelope(state, action.env)
   }

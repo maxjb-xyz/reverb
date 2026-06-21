@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/maximusjb/crate/internal/core"
+	"github.com/maxjb-xyz/crate/internal/core"
 )
 
 // Matcher pre-matches an external result against the library. Implemented by

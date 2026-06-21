@@ -8,21 +8,23 @@ import (
 	"os"
 	"time"
 
-	"github.com/maximusjb/crate/internal/api"
-	"github.com/maximusjb/crate/internal/auth"
-	"github.com/maximusjb/crate/internal/config"
-	"github.com/maximusjb/crate/internal/download"
-	"github.com/maximusjb/crate/internal/download/spotdl"
-	"github.com/maximusjb/crate/internal/events"
-	"github.com/maximusjb/crate/internal/library/subsonic"
-	"github.com/maximusjb/crate/internal/matching"
-	"github.com/maximusjb/crate/internal/registry"
-	"github.com/maximusjb/crate/internal/search"
-	"github.com/maximusjb/crate/internal/search/spotify"
-	"github.com/maximusjb/crate/internal/store"
+	"github.com/maxjb-xyz/crate/internal/api"
+	"github.com/maxjb-xyz/crate/internal/auth"
+	"github.com/maxjb-xyz/crate/internal/config"
+	"github.com/maxjb-xyz/crate/internal/download"
+	"github.com/maxjb-xyz/crate/internal/download/spotdl"
+	"github.com/maxjb-xyz/crate/internal/events"
+	"github.com/maxjb-xyz/crate/internal/library/subsonic"
+	"github.com/maxjb-xyz/crate/internal/matching"
+	"github.com/maxjb-xyz/crate/internal/registry"
+	"github.com/maxjb-xyz/crate/internal/search"
+	"github.com/maxjb-xyz/crate/internal/search/spotify"
+	"github.com/maxjb-xyz/crate/internal/store"
 )
 
 func main() {
+	log.Printf("crate %s starting", version)
+
 	cfg, err := config.Load(os.Args[1:], os.Getenv)
 	if err != nil {
 		log.Fatal(err)
@@ -126,6 +128,7 @@ func main() {
 		Events:      bus,
 		ConfigDirty: dirty,
 		Dev:         cfg.Dev,
+		Version:     version,
 	}
 	if aggregator != nil {
 		deps.SearchAggregator = aggregator

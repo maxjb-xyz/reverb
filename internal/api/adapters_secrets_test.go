@@ -3,7 +3,7 @@ package api
 import (
 	"testing"
 
-	"github.com/maximusjb/crate/internal/registry"
+	"github.com/maxjb-xyz/crate/internal/registry"
 )
 
 func schema() registry.ConfigSchema {

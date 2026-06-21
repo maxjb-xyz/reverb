@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/maximusjb/crate/internal/store"
-	"github.com/maximusjb/crate/internal/store/db"
+	"github.com/maxjb-xyz/crate/internal/store"
+	"github.com/maxjb-xyz/crate/internal/store/db"
 )
 
 func newTestService(t *testing.T) *Service {

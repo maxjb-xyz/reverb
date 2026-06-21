@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"regexp"
 
-	"github.com/maximusjb/crate/internal/store/db"
+	"github.com/maxjb-xyz/crate/internal/store/db"
 )
 
 const (

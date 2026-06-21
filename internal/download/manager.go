@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/maximusjb/crate/internal/core"
-	"github.com/maximusjb/crate/internal/events"
+	"github.com/maxjb-xyz/crate/internal/core"
+	"github.com/maxjb-xyz/crate/internal/events"
 )
 
 // JobStore is the persistence slice the Manager needs. *db.Queries does NOT

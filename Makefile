@@ -1,5 +1,7 @@
 .PHONY: gen test build web dev clean
 
+VERSION ?= dev
+
 gen:
 	@if command -v sqlc >/dev/null 2>&1; then sqlc generate; else go run github.com/sqlc-dev/sqlc/cmd/sqlc@v1.27.0 generate; fi
 
@@ -13,7 +15,7 @@ web:
 	cp -r web/dist internal/api/dist
 
 build: web
-	go build -tags prod -o crate ./cmd/crate
+	CGO_ENABLED=0 go build -tags prod -ldflags "-X main.version=$(VERSION)" -o crate ./cmd/crate
 
 dev:
 	@echo "Run in two shells:"

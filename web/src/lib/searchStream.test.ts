@@ -46,4 +46,18 @@ describe('SearchStream', () => {
     made!.onerror?.()
     expect(onError).toHaveBeenCalled()
   })
+
+  it('closes the source on error so the browser does not auto-reconnect-loop', () => {
+    // The /search/everywhere SSE is one-shot: the server closes after streaming all
+    // envelopes, which fires onerror. If we did not close here, EventSource would
+    // reconnect and re-run the search forever. Closing makes completion final.
+    let made: StubSource | null = null
+    new SearchStream('q', 'track', { onEnvelope: () => {}, onError: () => {} }, (url) => {
+      made = new StubSource(url)
+      return made
+    })
+    expect(made!.closed).toBe(false)
+    made!.onerror?.()
+    expect(made!.closed).toBe(true)
+  })
 })

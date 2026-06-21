@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/maximusjb/crate/internal/auth"
-	"github.com/maximusjb/crate/internal/registry"
-	"github.com/maximusjb/crate/internal/store"
+	"github.com/maxjb-xyz/crate/internal/auth"
+	"github.com/maxjb-xyz/crate/internal/registry"
+	"github.com/maxjb-xyz/crate/internal/store"
 )
 
 // testDirty is a minimal ConfigDirty for tests.

@@ -3,7 +3,7 @@ package api
 import (
 	"strings"
 
-	"github.com/maximusjb/crate/internal/registry"
+	"github.com/maxjb-xyz/crate/internal/registry"
 )
 
 // secretSentinel is the placeholder returned for a SET secret. The browser never

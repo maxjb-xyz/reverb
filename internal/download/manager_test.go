@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/maximusjb/crate/internal/core"
-	"github.com/maximusjb/crate/internal/events"
-	"github.com/maximusjb/crate/internal/registry"
+	"github.com/maxjb-xyz/crate/internal/core"
+	"github.com/maxjb-xyz/crate/internal/events"
+	"github.com/maxjb-xyz/crate/internal/registry"
 )
 
 // ---- fakes ----

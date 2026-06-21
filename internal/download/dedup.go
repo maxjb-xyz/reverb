@@ -4,8 +4,8 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 
-	"github.com/maximusjb/crate/internal/core"
-	"github.com/maximusjb/crate/internal/matching"
+	"github.com/maxjb-xyz/crate/internal/core"
+	"github.com/maxjb-xyz/crate/internal/matching"
 )
 
 // dedupSep is the unit-separator rune (␟) joining the normalized fields, matching

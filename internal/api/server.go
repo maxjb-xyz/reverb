@@ -6,13 +6,13 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
-	"github.com/maximusjb/crate/internal/auth"
-	"github.com/maximusjb/crate/internal/core"
-	"github.com/maximusjb/crate/internal/events"
-	"github.com/maximusjb/crate/internal/library"
-	"github.com/maximusjb/crate/internal/registry"
-	"github.com/maximusjb/crate/internal/search"
-	"github.com/maximusjb/crate/internal/store/db"
+	"github.com/maxjb-xyz/crate/internal/auth"
+	"github.com/maxjb-xyz/crate/internal/core"
+	"github.com/maxjb-xyz/crate/internal/events"
+	"github.com/maxjb-xyz/crate/internal/library"
+	"github.com/maxjb-xyz/crate/internal/registry"
+	"github.com/maxjb-xyz/crate/internal/search"
+	"github.com/maxjb-xyz/crate/internal/store/db"
 )
 
 // Streamer is the subset of *search.Aggregator the SSE handler needs.
@@ -65,6 +65,7 @@ type Deps struct {
 	Adapters         AdapterStore
 	ConfigDirty      ConfigDirty
 	Dev              bool
+	Version          string
 }
 
 type Server struct {
@@ -91,6 +92,7 @@ func (s *Server) routes() {
 		r.Post("/auth/login", s.handleLogin)
 		r.Post("/auth/logout", s.handleLogout)
 		r.Get("/openapi.yaml", s.handleOpenAPI)
+		r.Get("/version", s.handleVersion)
 
 		// protected
 		r.Group(func(pr chi.Router) {

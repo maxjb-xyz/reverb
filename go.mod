@@ -1,4 +1,4 @@
-module github.com/maximusjb/crate
+module github.com/maxjb-xyz/crate
 
 go 1.23
 
