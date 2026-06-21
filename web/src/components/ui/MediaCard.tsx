@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import { Cover } from './Cover'
+import { Icon } from './Icon'
 import { coverUrl } from '../../lib/libraryApi'
 
 interface MediaCardProps {
@@ -71,14 +72,7 @@ export function MediaCard({
               'focus-visible:opacity-100 focus-visible:translate-y-0',
             ].join(' ')}
           >
-            {/* Play triangle */}
-            <svg
-              viewBox="0 0 24 24"
-              className="w-4 h-4 fill-current"
-              aria-hidden="true"
-            >
-              <path d="M6 4l14 8-14 8z" />
-            </svg>
+            <Icon name="play" className="w-4 h-4" />
           </button>
         )}
       </div>
