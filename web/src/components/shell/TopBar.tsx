@@ -12,18 +12,28 @@ export function TopBar() {
   const activeCount = useDownloads((s) => s.active().length)
   const query = useSearch((s) => s.query)
   const setQuery = useSearch((s) => s.setQuery)
+  const setMode = useSearch((s) => s.setMode)
 
   // Typeahead dropdown — typing only updates the shared query; submitting
   // (Enter) navigates to the full /search results page.
   const [suggestOpen, setSuggestOpen] = useState(false)
+  // Whether the library preview returned no matches (drives "search everywhere").
+  const [previewEmpty, setPreviewEmpty] = useState(false)
   const searchRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
-  function submitSearch(e: React.FormEvent) {
-    e.preventDefault()
+  function goToResults() {
+    // The dropdown's hint promises "search everywhere" when the library has no
+    // matches — honor it by switching to Everywhere before opening the results.
+    if (query.trim() !== '' && previewEmpty) setMode('everywhere')
     navigate('/search')
     setSuggestOpen(false)
     inputRef.current?.blur()
+  }
+
+  function submitSearch(e: React.FormEvent) {
+    e.preventDefault()
+    goToResults()
   }
 
   // Close the suggestion dropdown on outside click (mousedown, like the avatar menu).
@@ -114,12 +124,9 @@ export function TopBar() {
           {suggestOpen && query.trim() !== '' && (
             <SearchSuggest
               query={query}
-              onNavigateAll={() => {
-                navigate('/search')
-                setSuggestOpen(false)
-                inputRef.current?.blur()
-              }}
+              onNavigateAll={goToResults}
               onClose={() => setSuggestOpen(false)}
+              onEmptyChange={setPreviewEmpty}
             />
           )}
         </div>

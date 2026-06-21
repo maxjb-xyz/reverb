@@ -9,6 +9,9 @@ interface SearchSuggestProps {
   query: string
   onNavigateAll: () => void
   onClose: () => void
+  /** Reports whether the current query has NO library matches, so the TopBar can
+   *  send Enter / "See all" to Everywhere mode (honoring the hint copy). */
+  onEmptyChange?: (empty: boolean) => void
 }
 
 // Small debounce so we don't fire a REST query on every keystroke.
@@ -32,7 +35,7 @@ const MAX_ARTISTS = 3
  * and artists. Mirrors the Escape-to-close pattern of DownloadPopover; the
  * TopBar owns the outside-click + open/close state.
  */
-export function SearchSuggest({ query, onNavigateAll, onClose }: SearchSuggestProps) {
+export function SearchSuggest({ query, onNavigateAll, onClose, onEmptyChange }: SearchSuggestProps) {
   const navigate = useNavigate()
   const debouncedQuery = useDebounced(query, 200)
   const lib = useLibrarySearch(debouncedQuery)
@@ -54,6 +57,12 @@ export function SearchSuggest({ query, onNavigateAll, onClose }: SearchSuggestPr
   // Loading on the *current* query (not a stale render of the previous one).
   const loading = lib.isFetching && debouncedQuery.trim() !== ''
   const hasResults = tracks.length > 0 || albums.length > 0 || artists.length > 0
+  // The query resolved with no library matches → Enter should search everywhere.
+  const noLibraryMatches = !loading && !hasResults && debouncedQuery.trim() !== ''
+
+  useEffect(() => {
+    onEmptyChange?.(noLibraryMatches)
+  }, [noLibraryMatches, onEmptyChange])
 
   function playTrack(t: Track) {
     usePlayer.getState().playTrackList([t], 0)
@@ -154,7 +163,7 @@ export function SearchSuggest({ query, onNavigateAll, onClose }: SearchSuggestPr
             <Icon name="search" className="text-base" />
           </span>
           <span className="min-w-0 flex-1 truncate text-sm font-semibold text-text-primary">
-            See all results for &ldquo;{query}&rdquo;
+            {noLibraryMatches ? 'Search everywhere for' : 'See all results for'} &ldquo;{query}&rdquo;
           </span>
         </button>
       </div>
