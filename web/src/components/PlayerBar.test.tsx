@@ -4,6 +4,8 @@ import { PlayerBar } from './PlayerBar'
 import { usePlayer, engine } from '../lib/playerStore'
 import { useUI } from '../lib/uiStore'
 import type { Track } from '../lib/types'
+import { useAlbumPalette } from '../lib/useAlbumPalette'
+vi.mock('../lib/useAlbumPalette', () => ({ useAlbumPalette: vi.fn(() => null) }))
 
 function track(id: string): Track {
   return {
@@ -196,5 +198,30 @@ describe('PlayerBar', () => {
       eng.durationMs = 0
       eng.emit()
     })
+  })
+})
+
+describe('PlayerBar dynamic tint', () => {
+  beforeEach(() => {
+    act(() => {
+      usePlayer.getState().playTrackList([track('1')], 0)
+      useUI.getState().closePanel()
+    })
+    vi.mocked(useAlbumPalette).mockReset()
+  })
+
+  it('applies the dominant-color fill + contrast text when a palette is present', () => {
+    vi.mocked(useAlbumPalette).mockReturnValue({ rgb: [200, 30, 40], text: '#FFFFFF', scrim: false })
+    render(<PlayerBar />)
+    const bar = screen.getByTestId('player-bar')
+    expect(bar.style.backgroundColor).toBe('rgb(200, 30, 40)')
+    expect(bar.style.color).toBe('rgb(255, 255, 255)')
+  })
+
+  it('falls back to the static look when there is no palette', () => {
+    vi.mocked(useAlbumPalette).mockReturnValue(null)
+    render(<PlayerBar />)
+    const bar = screen.getByTestId('player-bar')
+    expect(bar.style.backgroundColor).toBe('')
   })
 })
