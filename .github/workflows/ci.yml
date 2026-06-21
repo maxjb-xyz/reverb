@@ -23,3 +23,38 @@ jobs:
       - run: npx tsc --noEmit
       - run: npm run test
       - run: npm run build
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          load: true
+          tags: crate:ci
+          build-args: |
+            VERSION=${{ github.sha }}
+      - name: Smoke-test the image
+        run: |
+          docker run -d --name crate-ci -p 18090:8090 crate:ci --db /tmp/ci.db
+          for i in $(seq 1 20); do
+            if curl -fsS http://localhost:18090/api/v1/version; then ok=1; break; fi
+            sleep 1
+          done
+          docker logs crate-ci
+          test "${ok:-0}" = "1"
+          curl -fsS http://localhost:18090/api/v1/version | grep "${GITHUB_SHA}"
+          docker rm -f crate-ci
+  e2e:
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: web } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '22' }
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run e2e
