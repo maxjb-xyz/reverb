@@ -1,23 +1,42 @@
 import { useState, useRef, useEffect } from 'react'
-import { useNavigate, useLocation } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import { IconButton, Button, Icon, Logo } from '../ui'
+import { SearchSuggest } from '../search/SearchSuggest'
 import { useUI } from '../../lib/uiStore'
 import { useDownloads } from '../../lib/downloadStore'
 import { useSearch } from '../../lib/searchStore'
 
 export function TopBar() {
   const navigate = useNavigate()
-  const location = useLocation()
   const togglePanel = useUI((s) => s.togglePanel)
   const activeCount = useDownloads((s) => s.active().length)
   const query = useSearch((s) => s.query)
   const setQuery = useSearch((s) => s.setQuery)
 
-  // Typing routes to /search (once) and keeps the query live there.
-  function onSearchChange(value: string) {
-    setQuery(value)
-    if (location.pathname !== '/search') navigate('/search')
+  // Typeahead dropdown — typing only updates the shared query; submitting
+  // (Enter) navigates to the full /search results page.
+  const [suggestOpen, setSuggestOpen] = useState(false)
+  const searchRef = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  function submitSearch(e: React.FormEvent) {
+    e.preventDefault()
+    navigate('/search')
+    setSuggestOpen(false)
+    inputRef.current?.blur()
   }
+
+  // Close the suggestion dropdown on outside click (mousedown, like the avatar menu).
+  useEffect(() => {
+    if (!suggestOpen) return
+    function handler(e: MouseEvent) {
+      if (searchRef.current && !searchRef.current.contains(e.target as Node)) {
+        setSuggestOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [suggestOpen])
 
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
@@ -69,23 +88,40 @@ export function TopBar() {
           onClick={() => navigate('/')}
         />
 
-        <div
-          className={[
-            'flex items-center gap-3 h-12 px-4 rounded-full bg-input w-full min-w-0 max-w-md',
-            'border border-transparent focus-within:border-border-subtle',
-            'focus-within:ring-2 focus-within:ring-accent transition-colors',
-          ].join(' ')}
-        >
-          <Icon name="search" className="w-4 h-4 flex-none text-text-secondary" />
-          <input
-            type="text"
-            aria-label="Search"
-            value={query}
-            onChange={(e) => onSearchChange(e.target.value)}
-            onFocus={() => { if (location.pathname !== '/search') navigate('/search') }}
-            placeholder="Search your library — or everywhere"
-            className="w-full min-w-0 bg-transparent text-sm font-medium text-text-primary placeholder:text-text-secondary outline-none"
-          />
+        <div ref={searchRef} className="relative w-full min-w-0 max-w-md">
+          <form
+            onSubmit={submitSearch}
+            role="search"
+            className={[
+              'flex items-center gap-3 h-12 px-4 rounded-full bg-input w-full min-w-0',
+              'border border-transparent focus-within:border-border-subtle',
+              'focus-within:ring-2 focus-within:ring-accent transition-colors',
+            ].join(' ')}
+          >
+            <Icon name="search" className="w-4 h-4 flex-none text-text-secondary" />
+            <input
+              ref={inputRef}
+              type="text"
+              aria-label="Search"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              onFocus={() => setSuggestOpen(true)}
+              placeholder="Search your library — or everywhere"
+              className="w-full min-w-0 bg-transparent text-sm font-medium text-text-primary placeholder:text-text-secondary outline-none"
+            />
+          </form>
+
+          {suggestOpen && query.trim() !== '' && (
+            <SearchSuggest
+              query={query}
+              onNavigateAll={() => {
+                navigate('/search')
+                setSuggestOpen(false)
+                inputRef.current?.blur()
+              }}
+              onClose={() => setSuggestOpen(false)}
+            />
+          )}
         </div>
       </div>
 

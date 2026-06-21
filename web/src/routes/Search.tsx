@@ -135,19 +135,31 @@ export default function Search() {
   if (q.trim() === '') {
     return (
       <div className="space-y-6">
-        <SearchBar q={q} onChange={setQ} mode={mode} onMode={setMode} />
-        <EmptyState
-          icon="search"
-          title="Find your music"
-          hint="Type an artist, album, or track name to search your library or discover new music everywhere."
-        />
+        {/* Mobile-only input — the TopBar has no search bar on mobile. */}
+        <MobileSearchInput q={q} onChange={setQ} mode={mode} />
+        <div className="py-16">
+          <EmptyState
+            icon="search"
+            title="Find your music"
+            hint="Type an artist, album, or track name to search your library or discover new music everywhere."
+          />
+        </div>
       </div>
     )
   }
 
   return (
-    <div className="space-y-6">
-      <SearchBar q={q} onChange={setQ} mode={mode} onMode={setMode} />
+    <div className="space-y-8">
+      {/* Mobile-only input — the TopBar has no search bar on mobile. */}
+      <MobileSearchInput q={q} onChange={setQ} mode={mode} />
+
+      {/* Results header — title + scope toggle, intentional and aligned. */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="truncate text-xl font-extrabold text-text-primary">
+          Results for &ldquo;{q}&rdquo;
+        </h1>
+        <Segmented options={MODE_OPTIONS} value={mode} onChange={setMode} />
+      </div>
 
       {/* ── Library mode ──────────────────────────────────────────────────── */}
       {mode === 'library' && (
@@ -349,31 +361,41 @@ export default function Search() {
   )
 }
 
-// ── SearchBar sub-component ───────────────────────────────────────────────────
+// ── Mobile-only search input ──────────────────────────────────────────────────
+//
+// On desktop the TopBar typeahead IS the input, so the page renders no input of
+// its own. On mobile the TopBar hides its search bar (it's `hidden md:flex`),
+// so the Search page carries the input — wrapped in `md:hidden`. The placeholder
+// stays mode-conditional. The scope toggle now lives in the results header.
 
-interface SearchBarProps {
+interface MobileSearchInputProps {
   q: string
   onChange: (v: string) => void
   mode: Mode
-  onMode: (m: Mode) => void
 }
 
-function SearchBar({ q, onChange, mode, onMode }: SearchBarProps) {
+function MobileSearchInput({ q, onChange, mode }: MobileSearchInputProps) {
   const placeholder = mode === 'everywhere' ? 'Search everywhere' : 'Search your library'
   return (
-    <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+    <div className="md:hidden">
       <label className="sr-only" htmlFor="search-input">
         Search
       </label>
-      <input
-        id="search-input"
-        autoFocus
-        value={q}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-        className="w-full max-w-xl rounded-full bg-raised px-4 py-2 text-sm text-text-primary outline-none ring-1 ring-border-subtle placeholder:text-text-muted focus-visible:ring-2 focus-visible:ring-accent"
-      />
-      <Segmented options={MODE_OPTIONS} value={mode} onChange={onMode} />
+      <div className="relative">
+        <Icon
+          name="search"
+          className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-text-secondary"
+          aria-hidden="true"
+        />
+        <input
+          id="search-input"
+          autoFocus
+          value={q}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={placeholder}
+          className="w-full rounded-full bg-raised py-3 pl-11 pr-4 text-sm text-text-primary outline-none ring-1 ring-border-subtle placeholder:text-text-muted focus-visible:ring-2 focus-visible:ring-accent"
+        />
+      </div>
     </div>
   )
 }

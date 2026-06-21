@@ -94,6 +94,9 @@ describe('Search (library mode)', () => {
 
   it('shows My Library tab as selected by default', () => {
     render(wrap(<Search />))
+    // The scope toggle lives in the results header, which renders once a query
+    // is present — type first, then assert the default-selected tab.
+    fireEvent.change(screen.getByPlaceholderText(/search your library/i), { target: { value: 'found' } })
     const tab = screen.getByRole('tab', { name: /my library/i })
     expect(tab).toHaveAttribute('aria-selected', 'true')
   })
@@ -251,9 +254,24 @@ describe('Search (everywhere mode)', () => {
   })
 
   it('placeholder is mode-conditional: Everywhere mode shows "Search everywhere"', async () => {
+    // The scope toggle renders in the results header once a query is present, so
+    // we must type first — which means Everywhere mode opens a real SSE stream.
+    // Stub EventSource so no network is touched.
+    class StubES {
+      onmessage: ((ev: { data: string }) => void) | null = null
+      onerror: (() => void) | null = null
+      url: string
+      constructor(url: string) { this.url = url }
+      close() {}
+    }
+    vi.stubGlobal('EventSource', StubES as unknown as typeof EventSource)
+
     render(wrap(<Search />))
+    fireEvent.change(screen.getByPlaceholderText(/search/i), { target: { value: 'x' } })
     clickTab(/everywhere/i)
     expect(screen.getByPlaceholderText('Search everywhere')).toBeInTheDocument()
+
+    vi.unstubAllGlobals()
   })
 
   it('I2 — timeout chip: source with status timeout renders timeout label and warning tone', async () => {

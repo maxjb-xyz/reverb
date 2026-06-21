@@ -58,12 +58,22 @@ describe('TopBar', () => {
     expect(mockNavigate).toHaveBeenCalledWith('/')
   })
 
-  it('typing in the search input routes to /search and updates the shared query', () => {
+  it('typing in the search input updates the shared query but does NOT navigate', () => {
     renderBar()
     const input = screen.getByRole('textbox', { name: /search/i })
     fireEvent.change(input, { target: { value: 'daft punk' } })
-    expect(mockNavigate).toHaveBeenCalledWith('/search')
+    // Typing is now a live typeahead — it must NOT route to /search.
+    expect(mockNavigate).not.toHaveBeenCalled()
     expect(useSearch.getState().query).toBe('daft punk')
+  })
+
+  it('submitting the search form (Enter) navigates to /search', () => {
+    renderBar()
+    const input = screen.getByRole('textbox', { name: /search/i })
+    fireEvent.change(input, { target: { value: 'daft punk' } })
+    // Submitting the enclosing form (Enter) is what navigates now.
+    fireEvent.submit(input)
+    expect(mockNavigate).toHaveBeenCalledWith('/search')
   })
 
   it('downloads button calls togglePanel("downloads")', () => {
