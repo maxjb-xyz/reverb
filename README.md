@@ -46,22 +46,22 @@ No clone or build needed — Compose pulls the published image:
 mkdir reverb && cd reverb
 curl -O https://raw.githubusercontent.com/maxjb-xyz/reverb/main/docker-compose.yml
 curl -o .env https://raw.githubusercontent.com/maxjb-xyz/reverb/main/.env.example
-# In .env: set secrets, set PUID/PGID to your `id -u`/`id -g`, and point
-# MUSIC_DIR at your music library (defaults to ./music).
+# edit .env to set your secrets (see Configuration)
 docker compose up -d        # pulls ghcr.io/maxjb-xyz/reverb and runs on http://localhost:8090
 ```
 
-Reverb runs as your `PUID:PGID` and stores the DB in `./data` and music in
-`MUSIC_DIR` on your **host filesystem** (not a Docker volume), so your library
-server can scan the same files. Pin a version with `REVERB_VERSION=0.1.0` in
-`.env` (defaults to `latest`). Prefer to build from source? See
-[Development & contributing](#development--contributing).
+That's it — no permission setup. The DB lives in `./data` and music in `./music`
+on your **host filesystem** (point `./music` at an existing library by editing the
+volume line in `docker-compose.yml`). **spotDL is bundled and pre-configured as the
+downloader**, so downloading works immediately. Pin a version with
+`REVERB_VERSION=0.1.0` in `.env` (defaults to `latest`). Prefer to build from
+source? See [Development & contributing](#development--contributing).
 
 Open http://localhost:8090 and complete the **first-run wizard**: set an admin
-password (unless you set `REVERB_ADMIN_PASSWORD` in `.env`), then add your
-library, search, and downloader adapters in Settings. Point the spotDL
-downloader's `output_dir` at `/music` so downloads land where your library
-scans. Full details: [docs/deployment.md](docs/deployment.md).
+password (unless you set `REVERB_ADMIN_PASSWORD` in `.env`), then connect your
+**library** (Subsonic/Navidrome) and **search** (Spotify) adapters in Settings.
+The **downloader (spotDL) is already configured** — nothing to set up. Full
+details: [docs/deployment.md](docs/deployment.md).
 
 ## Configuration reference
 

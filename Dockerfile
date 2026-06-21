@@ -28,20 +28,22 @@ RUN CGO_ENABLED=0 go build -tags prod \
 
 # ---------- Stage 3: runtime ----------
 FROM python:3.12-slim AS runtime
-# ffmpeg is a spotDL runtime dependency; gosu drops root -> the PUID/PGID user.
+# ffmpeg is a spotDL runtime dependency.
 RUN apt-get update \
- && apt-get install -y --no-install-recommends ffmpeg gosu \
+ && apt-get install -y --no-install-recommends ffmpeg \
  && rm -rf /var/lib/apt/lists/*
 # VERSION PIN: spotDL output formatting is fragile. Reverb's spotdl adapter parses
 # progress with the regex `(\d{1,3})\s*%` in internal/download/spotdl/adapter.go.
 # Bumping this pin REQUIRES re-validating that regex against the new output.
 RUN pip install --no-cache-dir "spotdl==4.2.11"
 COPY --from=gobuild /out/reverb /usr/local/bin/reverb
-COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
-RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 ENV REVERB_DB=/data/reverb.db
+# spotDL is bundled and used as the default downloader out of the box; it writes
+# into /music (the bind-mounted host library). Reverb auto-configures it when no
+# downloader is set, so no Settings step is needed.
+ENV REVERB_DOWNLOAD_DIR=/music
 EXPOSE 8090
-# The entrypoint starts as root only to fix /data ownership, then drops to the
-# PUID:PGID host user via gosu and execs Reverb (so the process runs non-root and
-# bind-mounted host folders — your music library, ./data — work without chown).
-ENTRYPOINT ["docker-entrypoint.sh"]
+# Runs as root for a zero-config setup: it can read/write the bind-mounted host
+# folders (./data, your music library) regardless of their ownership. Downloaded
+# files are therefore owned by root on the host.
+ENTRYPOINT ["reverb"]
