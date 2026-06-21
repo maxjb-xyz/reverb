@@ -113,17 +113,15 @@ func redactArgs(args []string) string {
 // the scan picks it up — the exact filename is spotDL's concern).
 func (a *Adapter) Start(ctx context.Context, req core.DownloadRequest, onProgress func(int)) (string, error) {
 	query := strings.TrimSpace(req.Artist + " - " + req.Title)
-	// Own Spotify app credentials (when configured) go before the operation so
-	// spotDL authenticates with them instead of its rate-limited shared default.
-	var args []string
+	// spotDL's CLI is `spotdl [options] <operation> <query>`. It does NOT accept a
+	// "--" end-of-options separator (it reports it as an unrecognized argument), so
+	// every option — credentials and --output — must come BEFORE the "download"
+	// operation, with the query as the trailing positional.
+	args := []string{}
 	if a.clientID != "" && a.clientSecret != "" {
 		args = append(args, "--client-id", a.clientID, "--client-secret", a.clientSecret)
 	}
-	// Options (e.g. --output) MUST come before the "--" separator; everything
-	// AFTER "--" is positional, so spotDL would otherwise read "--output" and the
-	// dir as extra search queries. "--" then protects the query itself from being
-	// parsed as a flag (e.g. a title like "- Something").
-	args = append(args, "download", "--output", a.outputDir, "--", query)
+	args = append(args, "--output", a.outputDir, "download", query)
 
 	log.Printf("spotdl: exec %s %s", a.binary, redactArgs(args))
 

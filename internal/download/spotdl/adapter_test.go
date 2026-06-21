@@ -181,31 +181,30 @@ func TestStartOmitsCredentialsWhenUnset(t *testing.T) {
 	}
 }
 
-func TestStartOutputFlagPrecedesSeparator(t *testing.T) {
-	// Regression: --output must come BEFORE "--"; otherwise spotDL parses
-	// "--output" and the dir as extra positional queries.
+func TestStartArgStructure(t *testing.T) {
+	// Regression: spotDL has NO "--" separator (it rejects it). Options (incl.
+	// --output) precede the "download" operation; the query is the trailing arg.
 	r := &fakeRunner{lines: []string{`Downloaded: ok`}}
 	a := newAdapter(t, r)
 	_, _ = a.Start(context.Background(), core.DownloadRequest{Artist: "A", Title: "T"}, func(int) {})
-	outIdx, sepIdx := -1, -1
+
+	outIdx, dlIdx := -1, -1
 	for i, arg := range r.gotArgs {
+		if arg == "--" {
+			t.Fatalf("must not pass a -- separator (spotDL rejects it): %v", r.gotArgs)
+		}
 		switch arg {
 		case "--output":
 			outIdx = i
-		case "--":
-			sepIdx = i
+		case "download":
+			dlIdx = i
 		}
 	}
-	if outIdx < 0 || sepIdx < 0 {
-		t.Fatalf("missing --output or -- separator: %v", r.gotArgs)
+	if outIdx < 0 || dlIdx < 0 || outIdx > dlIdx {
+		t.Fatalf("--output must precede the download operation: %v", r.gotArgs)
 	}
-	if outIdx > sepIdx {
-		t.Fatalf("--output must precede the -- separator: %v", r.gotArgs)
-	}
-	// Only the query is positional after the separator.
-	after := r.gotArgs[sepIdx+1:]
-	if len(after) != 1 || after[0] != "A - T" {
-		t.Fatalf("expected only the query after --, got %v", after)
+	if n := len(r.gotArgs); n == 0 || r.gotArgs[n-1] != "A - T" {
+		t.Fatalf("query must be the trailing arg: %v", r.gotArgs)
 	}
 }
 
