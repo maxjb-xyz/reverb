@@ -2,6 +2,7 @@ package download
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"sync"
@@ -63,6 +64,10 @@ type Config struct {
 	DebounceWindow time.Duration
 	ScanPollEvery  time.Duration
 	ScanPollMax    time.Duration
+	// JobTimeout caps how long a single download may run before it is killed and
+	// marked failed — so a stuck/rate-limited downloader (e.g. spotDL backing off
+	// for 24h) can't pin a worker forever.
+	JobTimeout time.Duration
 }
 
 func (c Config) withDefaults() Config {
@@ -77,6 +82,9 @@ func (c Config) withDefaults() Config {
 	}
 	if c.ScanPollMax <= 0 {
 		c.ScanPollMax = 30 * time.Second
+	}
+	if c.JobTimeout <= 0 {
+		c.JobTimeout = 15 * time.Minute
 	}
 	return c
 }
@@ -316,7 +324,7 @@ func (m *Manager) process(id string) {
 		}
 	}
 	m.mu.Lock()
-	jctx, cancel := context.WithCancel(ctx)
+	jctx, cancel := context.WithTimeout(ctx, m.cfg.JobTimeout)
 	m.cancels[id] = cancel
 	m.mu.Unlock()
 	defer func() {
@@ -383,21 +391,31 @@ func (m *Manager) process(id string) {
 
 	cur, _, _ := m.store.Get(ctx, id)
 	if serr != nil {
-		// A canceled ctx => canceled status; any other error => failed.
-		if jctx.Err() == context.Canceled {
+		switch {
+		case errors.Is(jctx.Err(), context.DeadlineExceeded):
+			// Hit the per-job timeout (e.g. a downloader backing off for hours).
+			cur.Status = core.DownloadFailed
+			cur.Error = fmt.Sprintf("timed out after %s", m.cfg.JobTimeout)
+			cur.FinishedAt = m.clock.Now().Unix()
+			_ = m.store.Update(ctx, cur)
+			m.publishEvent(TopicFailed, cur, cur.Error)
+			log.Printf("download timed out: %q (job %s) after %s", cur.Title, shortID(id), m.cfg.JobTimeout)
+			return
+		case jctx.Err() == context.Canceled:
 			cur.Status = core.DownloadCanceled
 			cur.FinishedAt = m.clock.Now().Unix()
 			_ = m.store.Update(ctx, cur)
 			m.publishEvent(TopicFailed, cur, "canceled")
 			return
+		default:
+			cur.Status = core.DownloadFailed
+			cur.Error = serr.Error()
+			cur.FinishedAt = m.clock.Now().Unix()
+			_ = m.store.Update(ctx, cur)
+			m.publishEvent(TopicFailed, cur, serr.Error())
+			log.Printf("download failed: %q (job %s) — %v", cur.Title, shortID(id), serr)
+			return
 		}
-		cur.Status = core.DownloadFailed
-		cur.Error = serr.Error()
-		cur.FinishedAt = m.clock.Now().Unix()
-		_ = m.store.Update(ctx, cur)
-		m.publishEvent(TopicFailed, cur, serr.Error())
-		log.Printf("download failed: %q (job %s) — %v", cur.Title, shortID(id), serr)
-		return
 	}
 
 	cur.Status = core.DownloadCompleted
