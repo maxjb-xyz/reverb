@@ -7,10 +7,8 @@ import {
   updateAdapter,
   deleteAdapter,
   type AdapterInstance,
-  type AvailableAdapter,
 } from '../lib/adaptersApi'
 import { AdapterSection } from '../components/admin/AdapterSection'
-import { AdapterForm } from '../components/AdapterForm'
 import { Chip, Skeleton, EmptyState } from '../components/ui'
 
 type Tab = 'providers' | 'server' | 'users'
@@ -25,22 +23,31 @@ function stripIsSet(config: Record<string, unknown>): Record<string, unknown> {
   return out
 }
 
-interface EditingState {
-  section: string
-  instance?: AdapterInstance
-  add?: AvailableAdapter
-}
-
 export default function Admin() {
   const qc = useQueryClient()
   const adapters = useAdapters()
   const available = useAvailableAdapters()
 
   const [tab, setTab] = useState<Tab>('providers')
-  const [editing, setEditing] = useState<EditingState | null>(null)
 
   function refresh() {
     void qc.invalidateQueries({ queryKey: ['adapters', 'list'] })
+  }
+
+  // CRUD — every mutation applies live (the server hot-reloads the active services).
+  async function onCreate(type: string, name: string, config: Record<string, unknown>) {
+    await createAdapter({ type, name, enabled: true, priority: 0, config })
+    refresh()
+  }
+
+  async function onUpdate(inst: AdapterInstance, config: Record<string, unknown>) {
+    await updateAdapter(inst.id, {
+      name: inst.name,
+      enabled: inst.enabled,
+      priority: inst.priority,
+      config,
+    })
+    refresh()
   }
 
   async function onToggle(inst: AdapterInstance) {
@@ -68,18 +75,6 @@ export default function Admin() {
     refresh()
   }
 
-  function onTest(inst: AdapterInstance) {
-    // Open edit form — AdapterForm has built-in Test Connection
-    const avail = available.data ?? []
-    const schema = avail.find((a) => a.name === inst.name)?.configSchema ?? { fields: [] }
-    setEditing({ section: inst.type, instance: inst })
-    void schema
-  }
-
-  function onEdit(inst: AdapterInstance) {
-    setEditing({ section: inst.type, instance: inst })
-  }
-
   const list = adapters.data ?? []
   const avail = available.data ?? []
   const isLoading = adapters.isLoading || available.isLoading
@@ -91,13 +86,6 @@ export default function Admin() {
   const libraryAvail = avail.filter((a) => a.type === 'library')
   const searchAvail = avail.filter((a) => a.type === 'search')
   const downloaderAvail = avail.filter((a) => a.type === 'downloader')
-
-  // Determine the schema + name for the edit/add form
-  const editingSchema =
-    editing?.add?.configSchema ??
-    avail.find((a) => a.name === editing?.instance?.name)?.configSchema ??
-    { fields: [] }
-  const editingName = editing?.add?.name ?? editing?.instance?.name ?? ''
 
   return (
     <div className="max-w-4xl space-y-6 pb-8">
@@ -133,16 +121,12 @@ export default function Admin() {
             <>
               <AdapterSection
                 title="Library providers"
-                subtitle="Scans your local music files"
+                subtitle="Where your music collection lives"
                 type="library"
                 instances={libraryInstances}
                 available={libraryAvail}
-                onAdd={() => {
-                  const choice = libraryAvail[0]
-                  if (choice) setEditing({ section: 'library', add: choice })
-                }}
-                onTest={onTest}
-                onEdit={onEdit}
+                onCreate={(name, config) => onCreate('library', name, config)}
+                onUpdate={onUpdate}
                 onToggle={(inst) => void onToggle(inst)}
                 onRemove={(id) => void onRemove(id)}
               />
@@ -153,12 +137,8 @@ export default function Admin() {
                 type="search"
                 instances={searchInstances}
                 available={searchAvail}
-                onAdd={() => {
-                  const choice = searchAvail[0]
-                  if (choice) setEditing({ section: 'search', add: choice })
-                }}
-                onTest={onTest}
-                onEdit={onEdit}
+                onCreate={(name, config) => onCreate('search', name, config)}
+                onUpdate={onUpdate}
                 onToggle={(inst) => void onToggle(inst)}
                 onRemove={(id) => void onRemove(id)}
                 onReorder={(inst, delta) => void onReorder(inst, delta)}
@@ -170,72 +150,13 @@ export default function Admin() {
                 type="downloader"
                 instances={downloaderInstances}
                 available={downloaderAvail}
-                onAdd={() => {
-                  const choice = downloaderAvail[0]
-                  if (choice) setEditing({ section: 'downloader', add: choice })
-                }}
-                onTest={onTest}
-                onEdit={onEdit}
+                onCreate={(name, config) => onCreate('downloader', name, config)}
+                onUpdate={onUpdate}
                 onToggle={(inst) => void onToggle(inst)}
                 onRemove={(id) => void onRemove(id)}
                 onReorder={(inst, delta) => void onReorder(inst, delta)}
               />
             </>
-          )}
-
-          {/* Add / Edit form — centered modal so it's visible right where the
-              action was taken (it used to render off-screen at the page bottom). */}
-          {editing && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-              <div
-                className="absolute inset-0 bg-black/60 animate-fade-in"
-                aria-hidden="true"
-                onClick={() => setEditing(null)}
-              />
-              <div
-                role="dialog"
-                aria-modal="true"
-                aria-label={editing.add ? `Add ${editingName}` : `Edit ${editingName}`}
-                className="relative w-full max-w-md rounded-xl border border-border-subtle bg-raised p-6 space-y-4 shadow-pop animate-scale-in"
-              >
-                <h3 className="text-base font-extrabold text-text-primary">
-                  {editing.add ? `Add ${editingName}` : `Edit ${editingName}`}
-                </h3>
-                <AdapterForm
-                  name={editingName}
-                  schema={editingSchema}
-                  initial={editing.instance?.config}
-                  submitLabel={editing.add ? 'Add' : 'Save'}
-                  onSubmit={async (config) => {
-                    if (editing.add) {
-                      await createAdapter({
-                        type: editing.section,
-                        name: editingName,
-                        enabled: true,
-                        priority: 0,
-                        config,
-                      })
-                    } else if (editing.instance) {
-                      await updateAdapter(editing.instance.id, {
-                        name: editing.instance.name,
-                        enabled: editing.instance.enabled,
-                        priority: editing.instance.priority,
-                        config,
-                      })
-                    }
-                    setEditing(null)
-                    refresh()
-                  }}
-                />
-                <button
-                  type="button"
-                  onClick={() => setEditing(null)}
-                  className="text-sm text-text-muted hover:text-text-secondary transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
           )}
         </div>
       )}

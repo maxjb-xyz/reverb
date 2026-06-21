@@ -95,15 +95,15 @@ describe('Admin', () => {
   })
 
   // ── Add library opens AdapterForm ────────────────────────────────────────────
-  it('clicking "Add library" opens the AdapterForm dialog', () => {
+  it('clicking "Add library" opens the inline AdapterForm (single provider auto-selected)', () => {
     mockUseAvailableAdapters.mockReturnValue({
       data: [makeAvailable({ type: 'library', name: 'LocalFS' })],
       isLoading: false,
     })
     wrap(<Admin />)
     fireEvent.click(screen.getByRole('button', { name: /add library/i }))
-    expect(screen.getByRole('dialog')).toBeInTheDocument()
-    // AdapterForm renders the field from the configSchema
+    // Inline (not a modal): the chosen provider's config form appears in place.
+    expect(screen.getByText('Add LocalFS')).toBeInTheDocument()
     expect(screen.getByLabelText(/path/i)).toBeInTheDocument()
   })
 
@@ -172,15 +172,15 @@ describe('Admin', () => {
   })
 
   // ── Cancel closes form ────────────────────────────────────────────────────────
-  it('Cancel button closes the AdapterForm', () => {
+  it('Cancel button closes the inline AdapterForm', () => {
     mockUseAvailableAdapters.mockReturnValue({
       data: [makeAvailable({ type: 'library', name: 'LocalFS' })],
       isLoading: false,
     })
     wrap(<Admin />)
     fireEvent.click(screen.getByRole('button', { name: /add library/i }))
-    expect(screen.getByRole('dialog')).toBeInTheDocument()
+    expect(screen.getByLabelText(/path/i)).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: /cancel/i }))
-    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(screen.queryByLabelText(/path/i)).toBeNull()
   })
 })

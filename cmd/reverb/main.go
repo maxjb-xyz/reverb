@@ -50,6 +50,10 @@ func main() {
 		log.Printf("WARNING: auth is DISABLED (REVERB_AUTH_DISABLED) — all routes are unauthenticated; use only on a trusted LAN")
 	}
 
+	// spotDL is bundled with the image, so present it as a configured downloader
+	// out of the box (no manual setup) when none exists yet.
+	seedBundledDownloader(context.Background(), st.Q(), os.Getenv)
+
 	// Registries (explicit registration at the composition root — no init() side-effects).
 	libraryReg := registry.NewRegistry("library")
 	libraryReg.Register("subsonic", func() registry.Plugin { return subsonic.New() })
