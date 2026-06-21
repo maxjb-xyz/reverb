@@ -325,6 +325,7 @@ ui:
 - SUB/WAVE: Either a plugin to extend functionality or just absorb the codebase itself. Or equivalent functionality.
 - Desktop Apps (Windows, Mac, and Linux): Built with Tauri?
 - Mobile Apps
+- SSO/OIDC
 
 ---
 

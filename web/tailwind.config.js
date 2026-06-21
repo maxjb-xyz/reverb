@@ -23,9 +23,9 @@ export default {
         'text-primary': 'var(--text-primary)',
         'text-secondary': 'var(--text-secondary)',
         'text-muted': 'var(--text-muted)',
-        success: 'var(--status-success)',
-        warning: 'var(--status-warning)',
-        error: 'var(--status-error)',
+        success: 'rgb(var(--status-success) / <alpha-value>)',
+        warning: 'rgb(var(--status-warning) / <alpha-value>)',
+        error: 'rgb(var(--status-error) / <alpha-value>)',
       },
       fontFamily: {
         sans: ['"Figtree Variable"', 'Figtree', 'system-ui', '-apple-system', 'sans-serif'],

@@ -20,9 +20,9 @@
   --text-muted: #8a8a8a;
 
   /* semantic status (fixed — never the accent) */
-  --status-success: #1ed760;
-  --status-warning: #f5c518;
-  --status-error: #ff6b6b;
+  --status-success: 30 215 96;   /* #1ed760 */
+  --status-warning: 245 197 24;  /* #f5c518 */
+  --status-error: 255 107 107;   /* #ff6b6b */
 
   /* dynamic album wash — set live by the palette service; defaults to surface (invisible) */
   --album-wash: 18 18 18;
