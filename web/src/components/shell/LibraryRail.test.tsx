@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { LibraryRail } from './LibraryRail'
 import { usePlayer } from '../../lib/playerStore'
@@ -36,12 +36,16 @@ function track(id: string): Track {
   }
 }
 
-function renderRail() {
+function renderRail(initialPath = '/') {
   const qc = new QueryClient()
   return render(
     <QueryClientProvider client={qc}>
-      <MemoryRouter>
-        <LibraryRail />
+      <MemoryRouter initialEntries={[initialPath]}>
+        <Routes>
+          <Route path="*" element={<LibraryRail />} />
+          <Route path="/album/:id" element={<div data-testid="album-page" />} />
+          <Route path="/artist/:id" element={<div data-testid="artist-page" />} />
+        </Routes>
       </MemoryRouter>
     </QueryClientProvider>,
   )
@@ -110,5 +114,34 @@ describe('LibraryRail', () => {
     expect(screen.getByRole('link', { name: /search/i })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /library/i })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /settings/i })).toBeInTheDocument()
+  })
+
+  it('clicking an album row navigates to /album/:id', () => {
+    renderRail()
+    fireEvent.click(screen.getByRole('button', { name: /albums/i }))
+    const albumBtn = screen.getByRole('button', { name: 'Dark Side' })
+    expect(albumBtn).toBeInTheDocument()
+    fireEvent.click(albumBtn)
+    expect(screen.getByTestId('album-page')).toBeInTheDocument()
+  })
+
+  it('clicking an artist row navigates to /artist/:id', () => {
+    renderRail()
+    fireEvent.click(screen.getByRole('button', { name: /artists/i }))
+    const artistBtn = screen.getByRole('button', { name: 'Pink Floyd' })
+    expect(artistBtn).toBeInTheDocument()
+    fireEvent.click(artistBtn)
+    expect(screen.getByTestId('artist-page')).toBeInTheDocument()
+  })
+
+  it('playlist rows are not interactive (no button role, no onClick navigation)', () => {
+    renderRail()
+    // Playlists are shown by default; rows should not have role=button
+    const playlistNames = ['Chill Mix', 'Road Trip']
+    for (const name of playlistNames) {
+      expect(screen.getByText(name)).toBeInTheDocument()
+      // The row element should not be a button
+      expect(screen.queryByRole('button', { name })).not.toBeInTheDocument()
+    }
   })
 })

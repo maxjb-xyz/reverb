@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { NavLink } from 'react-router-dom'
+import { NavLink, useNavigate } from 'react-router-dom'
 import { IconButton, Chip, Cover, Skeleton, EmptyState, Equalizer, Icon } from '../ui'
 import { usePlaylists, useArtists, useAlbums, coverUrl } from '../../lib/libraryApi'
 import { usePlayer } from '../../lib/playerStore'
@@ -150,6 +150,7 @@ function PlaylistList({ items }: { items: Playlist[] }) {
 
 // ---- Album list ----
 function AlbumList({ items, current }: { items: Album[]; current: ReturnType<typeof usePlayer.getState>['current'] }) {
+  const navigate = useNavigate()
   if (items.length === 0) {
     return <EmptyState icon="browse" title="No albums yet" hint="Your downloaded albums will appear here." />
   }
@@ -166,6 +167,7 @@ function AlbumList({ items, current }: { items: Album[]; current: ReturnType<typ
             meta={`Album · ${al.artist}`}
             rounded="md"
             isPlaying={isPlaying}
+            onClick={() => navigate(`/album/${al.id}`)}
           />
         )
       })}
@@ -175,6 +177,7 @@ function AlbumList({ items, current }: { items: Album[]; current: ReturnType<typ
 
 // ---- Artist list ----
 function ArtistList({ items, current }: { items: Artist[]; current: ReturnType<typeof usePlayer.getState>['current'] }) {
+  const navigate = useNavigate()
   if (items.length === 0) {
     return <EmptyState icon="mic" title="No artists yet" hint="Artists from your downloads appear here." />
   }
@@ -191,6 +194,7 @@ function ArtistList({ items, current }: { items: Artist[]; current: ReturnType<t
             meta={`Artist · ${ar.albumCount} album${ar.albumCount !== 1 ? 's' : ''}`}
             rounded="full"
             isPlaying={isPlaying}
+            onClick={() => navigate(`/artist/${ar.id}`)}
           />
         )
       })}
@@ -205,16 +209,12 @@ interface LibItemProps {
   meta: string
   rounded: 'md' | 'full'
   isPlaying: boolean
+  onClick?: () => void
 }
 
-function LibItem({ coverSrc, name, meta, rounded, isPlaying }: LibItemProps) {
-  return (
-    <div
-      className={[
-        'flex items-center gap-3 p-2 rounded-md cursor-pointer transition-colors',
-        isPlaying ? 'bg-raised' : 'hover:bg-raised',
-      ].join(' ')}
-    >
+function LibItem({ coverSrc, name, meta, rounded, isPlaying, onClick }: LibItemProps) {
+  const inner = (
+    <>
       <Cover src={coverSrc} alt={name} size={48} rounded={rounded} />
       <div className="flex-1 min-w-0">
         <div
@@ -230,6 +230,34 @@ function LibItem({ coverSrc, name, meta, rounded, isPlaying }: LibItemProps) {
           <span className="text-xs text-text-secondary truncate">{meta}</span>
         </div>
       </div>
+    </>
+  )
+
+  if (onClick) {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        aria-label={name}
+        className={[
+          'w-full flex items-center gap-3 p-2 rounded-md cursor-pointer transition-colors text-left',
+          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
+          isPlaying ? 'bg-raised' : 'hover:bg-raised',
+        ].join(' ')}
+      >
+        {inner}
+      </button>
+    )
+  }
+
+  return (
+    <div
+      className={[
+        'flex items-center gap-3 p-2 rounded-md transition-colors',
+        isPlaying ? 'bg-raised' : '',
+      ].join(' ')}
+    >
+      {inner}
     </div>
   )
 }
