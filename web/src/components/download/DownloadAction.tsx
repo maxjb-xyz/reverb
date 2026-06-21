@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Badge, ProgressRing, Icon, Button } from '../ui'
 import { DownloadPopover } from './DownloadPopover'
 import { useDownloads } from '../../lib/downloadStore'
-import { postDownload, retryDownload } from '../../lib/downloadApi'
+import { postDownload, retryDownload, reqFromResult } from '../../lib/downloadApi'
 import { useAdapters } from '../../lib/adaptersApi'
 import type { ExternalResult } from '../../lib/types'
 
@@ -38,16 +38,7 @@ export function DownloadAction({ result, onPlay }: Props) {
   // ── helper: enqueue with an optional downloader name ──────────────────────
   function enqueue(downloaderName?: string) {
     setOptimistic(true)
-    postDownload({
-      source: result.source,
-      externalId: result.externalId,
-      artist: result.artist,
-      title: result.title,
-      album: result.album,
-      isrc: result.isrc,
-      durationMs: result.durationMs,
-      downloader: downloaderName,
-    })
+    postDownload(reqFromResult(result, downloaderName))
       .then((j) => useDownloads.getState().upsert(j))
       .catch(() => setOptimistic(false))
   }
@@ -147,12 +138,10 @@ export function DownloadAction({ result, onPlay }: Props) {
   }
 
   // ── 6. Available (≥1 downloader, no active job) ───────────────────────────
+  // Just the Download button — the redundant "Available" badge only widened the
+  // row's right slot (and shifted the album column as the state changed).
   return (
-    <span className="relative inline-flex items-center gap-2">
-      <Badge kind="available">
-        <Icon name="dl" className="text-xs" />
-        Available
-      </Badge>
+    <span className="relative inline-flex items-center justify-end gap-2">
       <Button
         variant="secondary"
         size="sm"

@@ -1,5 +1,5 @@
 import { api } from './api'
-import type { DownloadJob } from './types'
+import type { DownloadJob, ExternalResult } from './types'
 
 export interface CreateDownloadReq {
   source: string
@@ -11,6 +11,21 @@ export interface CreateDownloadReq {
   durationMs?: number
   downloader?: string
   playWhenReady?: boolean
+}
+
+// reqFromResult builds a download request from a search result. `downloader` is
+// optional — omitting it lets the server pick via the fallback chain.
+export function reqFromResult(r: ExternalResult, downloader?: string): CreateDownloadReq {
+  return {
+    source: r.source,
+    externalId: r.externalId,
+    artist: r.artist,
+    title: r.title,
+    album: r.album,
+    isrc: r.isrc,
+    durationMs: r.durationMs,
+    downloader,
+  }
 }
 
 export function postDownload(req: CreateDownloadReq): Promise<DownloadJob> {

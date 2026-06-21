@@ -3,7 +3,7 @@ import { useLibrarySearch } from '../lib/libraryApi'
 import { useEverywhere } from '../lib/everywhereStore'
 import { usePlayer } from '../lib/playerStore'
 import { useSearch } from '../lib/searchStore'
-import { postDownload } from '../lib/downloadApi'
+import { postDownload, reqFromResult } from '../lib/downloadApi'
 import { useDownloads } from '../lib/downloadStore'
 import { DownloadAction } from '../components/download/DownloadAction'
 import {
@@ -285,10 +285,17 @@ export default function Search() {
                       key={`${r.source}:${r.externalId}`}
                       track={displayTrack}
                       coverSrc={r.coverUrl || undefined}
+                      rightWidth="8.5rem"
                       active={!!matchedId && currentTrackId === matchedId}
                       onPlay={() => {
                         if (syntheticTrack) {
                           playTrackList([syntheticTrack], 0)
+                        } else {
+                          // Not in your library yet — clicking the song downloads it
+                          // (server picks the downloader via the fallback chain).
+                          postDownload(reqFromResult(r))
+                            .then((j) => useDownloads.getState().upsert(j))
+                            .catch(() => {})
                         }
                       }}
                       right={

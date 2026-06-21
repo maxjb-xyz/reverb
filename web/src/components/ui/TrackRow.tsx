@@ -14,9 +14,14 @@ interface TrackRowProps {
   /** Direct cover image URL (e.g. an external Spotify image). Overrides the
    *  library coverArtId proxy URL — external results have a URL, not a cover id. */
   coverSrc?: string
+  /** Fixed grid width for the right slot. Default 'auto' sizes to content — but
+   *  when the right content changes width (e.g. a download badge cycling through
+   *  states), 'auto' reflows the title/album columns. Pass a fixed width to keep
+   *  them anchored. */
+  rightWidth?: string
 }
 
-export function TrackRow({ track, index, active = false, onPlay, right, coverSrc }: TrackRowProps) {
+export function TrackRow({ track, index, active = false, onPlay, right, coverSrc, rightWidth = 'auto' }: TrackRowProps) {
   const src = coverSrc ?? (track.coverArtId ? coverUrl(track.coverArtId, 80) : undefined)
 
   return (
@@ -29,7 +34,7 @@ export function TrackRow({ track, index, active = false, onPlay, right, coverSrc
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
         active ? 'text-accent' : 'text-text-primary',
       ].join(' ')}
-      style={{ gridTemplateColumns: '26px 40px 1fr 1fr auto 44px' }}
+      style={{ gridTemplateColumns: `26px 40px 1fr 1fr ${rightWidth} 44px` }}
     >
       {/* Lead: index or Equalizer when active */}
       <span className="grid place-items-center text-sm font-bold text-text-muted">

@@ -28,6 +28,16 @@ const postDownloadMock = vi.fn(
 vi.mock('../../lib/downloadApi', () => ({
   postDownload: (req: unknown) => postDownloadMock(req),
   retryDownload: vi.fn(() => Promise.resolve()),
+  reqFromResult: (r: { source: string; externalId: string; artist: string; title: string; album: string; isrc?: string; durationMs?: number }, downloader?: string) => ({
+    source: r.source,
+    externalId: r.externalId,
+    artist: r.artist,
+    title: r.title,
+    album: r.album,
+    isrc: r.isrc,
+    durationMs: r.durationMs,
+    downloader,
+  }),
 }))
 
 // Mock adaptersApi — controlled per test via useAdaptersMock
