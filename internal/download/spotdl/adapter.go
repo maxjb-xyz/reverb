@@ -10,6 +10,7 @@ package spotdl
 import (
 	"context"
 	"fmt"
+	"log"
 	"regexp"
 	"strconv"
 	"strings"
@@ -92,8 +93,15 @@ func (a *Adapter) Start(ctx context.Context, req core.DownloadRequest, onProgres
 	// even if it starts with "-" (e.g. a title like "- Something").
 	args := []string{"download", "--", query, "--output", a.outputDir}
 
+	log.Printf("spotdl: exec %s %s", a.binary, strings.Join(args, " "))
+
 	sawProgress := false
 	rerr := a.runner.Run(ctx, a.binary, args, func(line string) {
+		// Echo spotDL's own output (stdout+stderr) so a slow/stuck/failing
+		// download is diagnosable from the Reverb logs.
+		if s := strings.TrimSpace(line); s != "" {
+			log.Printf("spotdl> %s", s)
+		}
 		if m := progressRe.FindStringSubmatch(line); m != nil {
 			if p, err := strconv.Atoi(m[1]); err == nil && p >= 0 && p <= 100 {
 				sawProgress = true
@@ -104,10 +112,12 @@ func (a *Adapter) Start(ctx context.Context, req core.DownloadRequest, onProgres
 		// Unparseable line: ignore (graceful degradation).
 	})
 	if rerr != nil {
+		log.Printf("spotdl: %q failed: %v", query, rerr)
 		return "", fmt.Errorf("spotdl download %q: %w", query, rerr)
 	}
 	if !sawProgress {
 		onProgress(-1) // indeterminate: spotDL gave no parseable percentage
 	}
+	log.Printf("spotdl: %q finished (output_dir=%s)", query, a.outputDir)
 	return a.outputDir, nil
 }

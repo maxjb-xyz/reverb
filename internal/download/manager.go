@@ -354,6 +354,23 @@ func (m *Manager) process(id string) {
 	m.publishEvent(TopicProgress, job, "")
 	log.Printf("download running: %q (job %s via %s)", job.Title, shortID(id), dl.Name())
 
+	// Heartbeat: while the download runs, log every 30s so a long-running or stuck
+	// job is visibly alive (with elapsed time). Stops as soon as Start returns.
+	hbStop := make(chan struct{})
+	go func() {
+		start := time.Now()
+		tk := time.NewTicker(30 * time.Second)
+		defer tk.Stop()
+		for {
+			select {
+			case <-hbStop:
+				return
+			case <-tk.C:
+				log.Printf("download still running: %q (job %s, %s elapsed)", job.Title, shortID(id), time.Since(start).Round(time.Second))
+			}
+		}
+	}()
+
 	outPath, serr := dl.Start(jctx, req, func(p int) {
 		m.mu.Lock()
 		cur, _, _ := m.store.Get(ctx, id)
@@ -362,6 +379,7 @@ func (m *Manager) process(id string) {
 		m.mu.Unlock()
 		m.publishEvent(TopicProgress, cur, "")
 	})
+	close(hbStop)
 
 	cur, _, _ := m.store.Get(ctx, id)
 	if serr != nil {

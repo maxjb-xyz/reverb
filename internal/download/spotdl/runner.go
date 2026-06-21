@@ -2,10 +2,29 @@ package spotdl
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"io"
 	"os/exec"
 )
+
+// scanLinesCR splits on EITHER '\n' or '\r'. spotDL/yt-dlp render progress by
+// rewriting the same line with a carriage return (no newline), so the default
+// bufio scanner would buffer those updates until a '\n' finally arrives — making
+// live progress and output invisible. Splitting on '\r' too lets each update
+// surface as it happens.
+func scanLinesCR(data []byte, atEOF bool) (advance int, token []byte, err error) {
+	if atEOF && len(data) == 0 {
+		return 0, nil, nil
+	}
+	if i := bytes.IndexAny(data, "\r\n"); i >= 0 {
+		return i + 1, data[:i], nil
+	}
+	if atEOF {
+		return len(data), data, nil
+	}
+	return 0, nil, nil // need more data
+}
 
 // Runner streams a process's combined stdout/stderr line-by-line. Abstracted so
 // the parser is unit-testable with canned output and no real downloads occur.
@@ -35,6 +54,7 @@ func (r ExecRunner) Run(ctx context.Context, name string, args []string, onLine 
 	}()
 	sc := bufio.NewScanner(pr)
 	sc.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	sc.Split(scanLinesCR)
 	for sc.Scan() {
 		onLine(sc.Text())
 	}
