@@ -7,8 +7,8 @@ package library
 import (
 	"context"
 
-	"github.com/maximusjb/crate/internal/core"
-	"github.com/maximusjb/crate/internal/registry"
+	"github.com/maxjb-xyz/crate/internal/core"
+	"github.com/maxjb-xyz/crate/internal/registry"
 )
 
 type LibraryAdapter interface {

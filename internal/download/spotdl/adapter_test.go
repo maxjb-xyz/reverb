@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/maximusjb/crate/internal/core"
-	"github.com/maximusjb/crate/internal/download"
+	"github.com/maxjb-xyz/crate/internal/core"
+	"github.com/maxjb-xyz/crate/internal/download"
 )
 
 // fakeRunner replays canned stdout lines (incl. one malformed line) and records

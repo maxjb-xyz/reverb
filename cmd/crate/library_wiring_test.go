@@ -5,9 +5,9 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/maximusjb/crate/internal/library"
-	"github.com/maximusjb/crate/internal/registry"
-	"github.com/maximusjb/crate/internal/store/db"
+	"github.com/maxjb-xyz/crate/internal/library"
+	"github.com/maxjb-xyz/crate/internal/registry"
+	"github.com/maxjb-xyz/crate/internal/store/db"
 )
 
 // stubLib captures the config passed to Init so we can assert env override + parse.

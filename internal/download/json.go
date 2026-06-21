@@ -3,7 +3,7 @@ package download
 import (
 	"encoding/json"
 
-	"github.com/maximusjb/crate/internal/core"
+	"github.com/maxjb-xyz/crate/internal/core"
 )
 
 func jsonUnmarshal(s string, v any) error { return json.Unmarshal([]byte(s), v) }

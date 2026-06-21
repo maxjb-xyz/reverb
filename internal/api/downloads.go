@@ -4,7 +4,7 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/maximusjb/crate/internal/core"
+	"github.com/maxjb-xyz/crate/internal/core"
 )
 
 // createDownloadBody is the POST /downloads request DTO.

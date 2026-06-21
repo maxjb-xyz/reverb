@@ -4,9 +4,9 @@ import (
 	"encoding/json"
 	"log"
 
-	"github.com/maximusjb/crate/internal/registry"
-	"github.com/maximusjb/crate/internal/search"
-	"github.com/maximusjb/crate/internal/store/db"
+	"github.com/maxjb-xyz/crate/internal/registry"
+	"github.com/maxjb-xyz/crate/internal/search"
+	"github.com/maxjb-xyz/crate/internal/store/db"
 )
 
 // buildSearchSources instantiates every ENABLED adapter_instance of type

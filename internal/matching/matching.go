@@ -4,8 +4,8 @@ import (
 	"context"
 	"database/sql"
 
-	"github.com/maximusjb/crate/internal/core"
-	"github.com/maximusjb/crate/internal/store/db"
+	"github.com/maxjb-xyz/crate/internal/core"
+	"github.com/maxjb-xyz/crate/internal/store/db"
 )
 
 // DurationToleranceMs is the max |external-library| duration delta accepted by

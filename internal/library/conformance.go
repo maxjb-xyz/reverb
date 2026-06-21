@@ -5,7 +5,7 @@ import (
 	"io"
 	"testing"
 
-	"github.com/maximusjb/crate/internal/core"
+	"github.com/maxjb-xyz/crate/internal/core"
 )
 
 // RunConformance exercises the LibraryAdapter contract. Call it from each

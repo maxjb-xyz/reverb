@@ -3,9 +3,9 @@ package main
 import (
 	"testing"
 
-	"github.com/maximusjb/crate/internal/download/spotdl"
-	"github.com/maximusjb/crate/internal/registry"
-	"github.com/maximusjb/crate/internal/store/db"
+	"github.com/maxjb-xyz/crate/internal/download/spotdl"
+	"github.com/maxjb-xyz/crate/internal/registry"
+	"github.com/maxjb-xyz/crate/internal/store/db"
 )
 
 func env(m map[string]string) func(string) string {

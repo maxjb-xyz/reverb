@@ -10,12 +10,12 @@ import (
 
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
-	"github.com/maximusjb/crate/internal/auth"
-	"github.com/maximusjb/crate/internal/core"
-	"github.com/maximusjb/crate/internal/download"
-	"github.com/maximusjb/crate/internal/events"
-	"github.com/maximusjb/crate/internal/registry"
-	"github.com/maximusjb/crate/internal/store"
+	"github.com/maxjb-xyz/crate/internal/auth"
+	"github.com/maxjb-xyz/crate/internal/core"
+	"github.com/maxjb-xyz/crate/internal/download"
+	"github.com/maxjb-xyz/crate/internal/events"
+	"github.com/maxjb-xyz/crate/internal/registry"
+	"github.com/maxjb-xyz/crate/internal/store"
 )
 
 func wsTestServer(t *testing.T) (*httptest.Server, *events.Bus, string) {
