@@ -39,10 +39,23 @@ function queuedJob() {
   }
 }
 
+// The completed job (after the WS download.complete frame) — resolves to a library track.
+function completedJob() {
+  return { ...queuedJob(), status: 'completed', progress: 100, libraryTrackId, finishedAt: Date.now() / 1000 }
+}
+
+// downloadState is the single source of truth for the mocked download list. GET
+// /downloads serves it so the realtime onOpen RESYNC is always consistent with the
+// POST + the WS completion. Without this, the one resync (getDownloads) can resolve
+// AFTER ws.complete() and setAll([]) would wipe the completed job — flipping the row
+// back out of the library mid-test. Mutated by POST /downloads and by ws.complete().
+const downloadState: { jobs: ReturnType<typeof queuedJob>[] } = { jobs: [] }
+
 // installApiMocks intercepts every /api/v1/* HTTP call. `authed` is a mutable box
 // so the session flips to authenticated after login (the app calls
 // /setup/status then /me on load, and reloads after POST /auth/login).
 export async function installApiMocks(page: Page, authed: { value: boolean }) {
+  downloadState.jobs = [] // reset per test
   await page.route('**/api/v1/setup/status', (route: Route) =>
     route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ setupRequired: false }) }),
   )
@@ -58,11 +71,22 @@ export async function installApiMocks(page: Page, authed: { value: boolean }) {
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true }) })
   })
 
-  // Everywhere search: a finite SSE body delivers the data: frame to onmessage then
-  // closes; EventSource auto-reconnects and the persistent route re-fulfills the same
-  // body — harmless because everywhereStore.appendSection dedups by dedupKey. Do NOT
-  // "fix" this by switching to a hanging body: that would make onmessage never fire.
+  // Everywhere search SSE. A finite text/event-stream body delivers the data: frame
+  // to onmessage, then the stream ends. A browser EventSource treats that end as a
+  // dropped connection and reconnects — and under Playwright's route.fulfill that
+  // reconnect can happen in a tight loop, re-dispatching the envelope and churning
+  // the result rows (detaching them mid-click). We serve the real envelope ONCE,
+  // then answer every reconnect with HTTP 204, which per the EventSource spec tells
+  // the client to STOP reconnecting — so the rows settle and stay clickable.
+  // (Production correctness is handled separately: SearchStream.onerror closes the
+  // one-shot stream so the real server's normal close never triggers a reconnect.)
+  // Do NOT switch to a hanging body — onmessage would never fire under fulfill.
+  let everywhereServed = false
   await page.route('**/api/v1/search/everywhere**', (route: Route) => {
+    if (everywhereServed) {
+      return route.fulfill({ status: 204, body: '' })
+    }
+    everywhereServed = true
     const envelope = { source: 'spotify', status: 'ok', results: [externalTrack] }
     const body = `data: ${JSON.stringify(envelope)}\n\n`
     return route.fulfill({ status: 200, contentType: 'text/event-stream', body })
@@ -73,16 +97,17 @@ export async function installApiMocks(page: Page, authed: { value: boolean }) {
     route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ tracks: [], albums: [], artists: [] }) }),
   )
 
-  // GET /downloads: return EMPTY array so the result row starts with a visible
-  // Download button (not pre-completed). POST /downloads enqueues and returns the
-  // queued job; the WS completion frame (sent by ws.complete() after the click)
-  // then flips the row to in-library.
+  // /downloads is STATEFUL via downloadState so the realtime onOpen resync stays
+  // consistent with the POST + WS completion. GET starts empty (row shows a visible
+  // Download button). POST enqueues the queued job. ws.complete() later sets the
+  // state to the completed job AND sends the WS frame, so even if the single resync
+  // resolves after completion it returns [completed] — never wiping the flip.
   await page.route('**/api/v1/downloads', (route: Route) => {
     if (route.request().method() === 'POST') {
+      downloadState.jobs = [queuedJob()]
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(queuedJob()) })
     }
-    // GET /downloads (WS onOpen resync) → empty: no pre-existing jobs.
-    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([]) })
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(downloadState.jobs) })
   })
 
   // Stream proxy → tiny audio body so the <audio> src resolves (no real media).
@@ -119,6 +144,9 @@ export async function installWsMock(page: Page): Promise<WsTrigger> {
         const deadline = Date.now() + 5000
         const poll = () => {
           if (capturedWs) {
+            // Reflect the completion in the resync source too, so any in-flight or
+            // later GET /downloads returns the completed job rather than wiping it.
+            downloadState.jobs = [completedJob()]
             const frame = {
               type: 'download.complete',
               payload: {
