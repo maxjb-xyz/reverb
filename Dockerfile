@@ -37,13 +37,19 @@ RUN apt-get update \
 # Bumping this pin REQUIRES re-validating that regex against the new output.
 RUN pip install --no-cache-dir "spotdl==4.2.11"
 COPY --from=gobuild /out/reverb /usr/local/bin/reverb
+# Non-root user (uid 1000 — the typical first host user, so a bind-mounted music
+# library you own is writable with no setup). Create + own /data and /music BEFORE
+# the VOLUME declaration so the `reverb-data` named volume inherits this ownership
+# and the DB opens with zero host-side config.
+RUN useradd --create-home --uid 1000 reverb \
+ && mkdir -p /data /music \
+ && chown -R reverb:reverb /data /music
 ENV REVERB_DB=/data/reverb.db
 # spotDL is bundled and used as the default downloader out of the box; it writes
 # into /music (the bind-mounted host library). Reverb auto-configures it when no
 # downloader is set, so no Settings step is needed.
 ENV REVERB_DOWNLOAD_DIR=/music
+VOLUME ["/data"]
 EXPOSE 8090
-# Runs as root for a zero-config setup: it can read/write the bind-mounted host
-# folders (./data, your music library) regardless of their ownership. Downloaded
-# files are therefore owned by root on the host.
+USER reverb
 ENTRYPOINT ["reverb"]
