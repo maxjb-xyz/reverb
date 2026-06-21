@@ -103,7 +103,7 @@ Tokens live in `web/src/index.css` as CSS variables and are surfaced to Tailwind
 `4` (inputs, small chips) · `6–8` (cards, panels, covers) · `999` (pills, buttons, search bar) · `50%` (avatars, play buttons, progress dots).
 
 ### 6.5 Typography
-- **Family:** a Circular-like geometric sans as the Spotify-Circular stand-in. Recommendation: **Figtree** (used in mockups; close to Circular's friendly geometric feel, open-licensed, self-hostable). One family across the app — *not* the plan's Inter+Bricolage pairing, because faithful Spotify uses a single type family. *(Confirmable in review — §12.)* Self-host the font files (no FOUT, no third-party fetch at runtime).
+- **Family:** **Decided: Figtree** — a Circular-like geometric sans as the Spotify-Circular stand-in (close to Circular's friendly geometric feel, open-licensed, self-hostable). One family across the app — *not* the plan's Inter+Bricolage pairing, because faithful Spotify uses a single type family. Self-host the font files (no FOUT, no third-party fetch at runtime).
 - **Weights:** 400 / 500 / 600 / 700 / 800 / 900.
 - **Scale:** display 48/900 (-0.02em) · h1 30/900 (-0.02em) · h2 24/800 (-0.01em) · h3 19/800 · body 14–15 (600 for labels, 400 for prose) · small 12.5–13 · micro 11 (700, uppercase, 0.1em tracking for section eyebrows). Tight tracking on large headings is part of the Spotify feel.
 
@@ -206,8 +206,11 @@ Tabs: **Providers** / **Server** / **Users**. Providers split into three section
 - **Downloaders** (fallback chain) — spotDL ready, Lidarr as a settable #2; Edit/Remove.
 - AdapterCards show status pills (Connected/Ready/Restart-pending/Not configured) using semantic colors; a **restart-to-apply banner** when `config/pending-restart` is true; redacted secrets shown as set/last-4.
 
-### 9.8 Setup wizard (`/setup`) & Login (`/login`)
-Branded, dark, token-driven. **Login must be verified working end-to-end** (the reported blocker). Setup is the same multi-step flow (admin password → library → search → downloader) restyled, with Test-connection per step and a clear path into the app.
+### 9.8 Login, onboarding & account flows (`/login`, `/setup`)
+Fully revamped as part of this overhaul — these are the first impression and are currently both broken and unstyled. Token-driven, dark, branded (Reverb wordmark, centered card over a subtle album-wash/gradient backdrop), with proper field states, inline validation, and clear error messaging.
+- **Login** (`/login`): password entry; must be **verified working end-to-end** (the §11 Phase 1 blocker). Honest, specific error copy ("Incorrect password" vs. "Can't reach the server") — never a bare "unauthorized".
+- **First-run onboarding** (`/setup`): the multi-step wizard (admin password → library → search → downloader) restyled into a polished, progress-indicated flow with Test-connection per step, sensible skip-and-configure-later, and a clean hand-off into the app — no dead-end "restart, then log in" wall; guide the user through it.
+- **Accounts:** creation/management under Admin → Users (multi-user leans Phase 2, but the visual treatment accommodates it now); password change under User Settings → Account.
 
 ### 9.9 Download tray
 Slide-over/overlay listing active/queued/completed/failed jobs with progress, Retry, Cancel, and the failure→fallback action from §9.2. Reachable from the top-bar Downloads control (badge = active count). Failed jobs show a **descriptive, human-readable reason** mapped from `DownloadJob.Error` (raw error available on expand for debugging), plus Retry and "Try <next downloader>". Generic failure copy ("Failed", "Error") is banned — if the backend only gives us a terse error, we still frame it with the track + downloader context so the user knows *what* failed and *what to do*.
@@ -245,7 +248,7 @@ Keep `web/src/lib/*` (stores, `api.ts`, `audioEngine.ts`, `realtime.ts`, `search
 | Text "Loading…" | Skeletons, empty states, toasts |
 
 **Suggested phasing** (sequenced fully in the implementation plan via writing-plans):
-1. **Fix auth/login first (first commit).** Reproduce the "can't get past login" blocker, fix it (setup-flow confusion *or* a real auth bug), and verify login + first-run setup end-to-end. Nothing else is verifiable until this works, so it precedes all visual work. May touch the backend (the sanctioned §2 exception).
+1. **Fix auth/login first (first commit).** **Symptom:** clicking Login returns "unauthorized", a burst of `/me`/settings requests fire, and the setup/login UI reappears in a loop instead of entering the app. **Near-certain root cause (confirm by reproduction):** the session cookie is set `Secure: !dev` ([internal/api/middleware.go:46](../../../internal/api/middleware.go#L46)), so on a non-dev build served over plain `http://` (LAN IP / no TLS) the browser silently drops it; the next authed request (`/me`, [web/src/lib/session.ts:19](../../../web/src/lib/session.ts#L19)) 401s and the guard ([web/src/App.tsx:21](../../../web/src/App.tsx#L21)) bounces back to Login/Setup. **Fix direction:** derive `Secure` from the real request scheme / `X-Forwarded-Proto` (or an explicit config flag) so http LAN works while https stays secure; also have the guard distinguish "unauthenticated" from "server error". Verify login + first-run setup end-to-end. Use **systematic-debugging** to confirm the cause before changing code. Sanctioned §2 backend exception.
 2. **Foundation** — tokens, fonts, icon set, UI primitives (§7), accent plumbing. (Unblocks everything; visible nowhere yet.)
 3. **Shell** — TopBar, Library rail, right panel, Player bar, responsive; restyle login/setup onto the new tokens.
 4. **Home + Library browse + Album/Artist** — feed and browse surfaces.
@@ -255,11 +258,9 @@ Keep `web/src/lib/*` (stores, `api.ts`, `audioEngine.ts`, `realtime.ts`, `search
 
 ## 12. Decisions
 
-**Resolved in review:** default accent = **red `#F0354B`** (indigo + presets available); right panel **closed by default**; login fix is **Phase 1, first commit**; dynamic album background is **default on** and elevated into the identity (§6.9); Home feed needs **no backend change** (§9.1, verified against code).
+**All resolved:** type family = **Figtree**; default accent = **red `#F0354B`** (indigo + presets available); right panel **closed by default**; login fix is **Phase 1, first commit** with a near-certain root cause already identified (§11); dynamic album background **default on**, elevated into the identity (§6.9); Home feed needs **no backend change** (§9.1, verified against code); login/onboarding/account flows are **in scope for the revamp** (§9.8).
 
-**Still open:**
-1. **Type family:** single Circular-like family (Figtree, recommended) for full Spotify fidelity, vs. the plan's Inter + Bricolage Grotesque pairing. Leaning Figtree — flag if you'd rather keep the plan's pairing.
-2. **Login root cause:** reproduced and diagnosed in Phase 1. If you already know whether it's setup-flow confusion vs. an auth bug, that shortcuts step 1.
+Nothing outstanding — ready to sequence into an implementation plan.
 
 ## 13. Risks
 
