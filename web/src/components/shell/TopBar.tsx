@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { IconButton, Button, Icon } from '../ui'
+import { IconButton, Button, Icon, Logo } from '../ui'
 import { useUI } from '../../lib/uiStore'
 import { useDownloads } from '../../lib/downloadStore'
 import { useSearch } from '../../lib/searchStore'
@@ -42,9 +42,9 @@ export function TopBar() {
   return (
     <header className="flex items-center justify-between px-4 h-16 bg-surface">
       {/* Mobile wordmark — desktop shows the history nav + search instead */}
-      <span className="select-none text-lg font-bold tracking-tight text-text-primary md:hidden">
-        Reverb<span className="text-accent">.</span>
-      </span>
+      <div className="md:hidden">
+        <Logo className="h-7 w-auto" fallbackClassName="text-lg" />
+      </div>
 
       {/* Left — history nav (desktop only) */}
       <div className="hidden items-center gap-2 md:flex">

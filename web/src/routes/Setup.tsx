@@ -5,6 +5,7 @@ import { useAvailableAdapters, createAdapter, type AvailableAdapter } from '../l
 import { AdapterForm } from '../components/AdapterForm'
 import { Button } from '../components/ui/Button'
 import { Icon } from '../components/ui/Icon'
+import { Logo } from '../components/ui/Logo'
 
 type Step = 'password' | 'library' | 'search' | 'downloader' | 'done'
 
@@ -40,10 +41,8 @@ function Shell({ children }: { children: React.ReactNode }) {
       />
       <div className="relative w-full max-w-md mx-4">
         {/* Wordmark */}
-        <div className="mb-8 flex items-center justify-center select-none">
-          <span className="text-2xl font-bold tracking-tight text-text-primary">
-            Reverb<span className="text-accent">.</span>
-          </span>
+        <div className="mb-8 flex items-center justify-center">
+          <Logo className="h-9 w-auto" fallbackClassName="text-2xl" />
         </div>
         <div className="rounded-2xl bg-surface shadow-pop border border-border-subtle p-8 space-y-6">
           {children}
