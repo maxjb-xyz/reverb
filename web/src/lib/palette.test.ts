@@ -53,6 +53,10 @@ describe('contrastTextColor', () => {
   it('clearly dark color does not need a scrim', () => {
     expect(contrastTextColor([20, 20, 30]).scrim).toBe(false)
   })
+  it('saturated dark red sits below the scrim band', () => {
+    // luminance ~0.1336 < 0.18 -> no scrim despite mid-saturation (guards the band lower bound)
+    expect(contrastTextColor([200, 30, 40]).scrim).toBe(false)
+  })
 })
 
 describe('dominantColorFromPixels', () => {
