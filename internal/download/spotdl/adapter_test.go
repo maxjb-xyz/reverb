@@ -181,6 +181,40 @@ func TestStartOmitsCredentialsWhenUnset(t *testing.T) {
 	}
 }
 
+func TestStartStageProgress(t *testing.T) {
+	// --simple-tui emits stage labels (no %); they must map to coarse progress so
+	// the ring moves instead of sitting at 0.
+	r := &fakeRunner{lines: []string{
+		`Processing query: Bread Beatz - Alejandro`,
+		`Bread Beatz - Alejandro: Downloading`,
+		`Bread Beatz - Alejandro: Embedding metadata`,
+		`Bread Beatz - Alejandro: Done`,
+		`1/1 complete`,
+	}}
+	a := newAdapter(t, r)
+	var seen []int
+	out, err := a.Start(context.Background(), core.DownloadRequest{Artist: "Bread Beatz", Title: "Alejandro"}, func(p int) {
+		seen = append(seen, p)
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if out == "" {
+		t.Fatal("expected an output path")
+	}
+	has := func(v int) bool {
+		for _, p := range seen {
+			if p == v {
+				return true
+			}
+		}
+		return false
+	}
+	if !has(25) || !has(90) || !has(100) {
+		t.Fatalf("expected stage progress to include 25/90/100, got %v", seen)
+	}
+}
+
 func TestStartArgStructure(t *testing.T) {
 	// Regression: spotDL has NO "--" separator (it rejects it). Options (incl.
 	// --output) precede the "download" operation; the query is the trailing arg.

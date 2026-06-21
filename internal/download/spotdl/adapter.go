@@ -29,6 +29,21 @@ var progressRe = regexp.MustCompile(`(\d{1,3})\s*%`)
 // though the process exits 0 (per-song failures don't change the exit code).
 var failureRe = regexp.MustCompile(`AudioProviderError|YT-DLP download error|LookupError|DownloaderError`)
 
+// stageProgress maps spotDL's --simple-tui STAGE labels to coarse progress. When
+// piped, spotDL prints stages ("...: Downloading", "...: Embedding metadata",
+// "...: Done") rather than a percentage, so there is no per-% to parse — these
+// give honest, monotonic movement instead of a stuck ring. A real "NN%" line, if
+// one ever appears (e.g. under a PTY), still wins via progressRe.
+var stageProgress = []struct {
+	re  *regexp.Regexp
+	pct int
+}{
+	{regexp.MustCompile(`(?i):\s*Downloading\b`), 25},
+	{regexp.MustCompile(`(?i):\s*Converting\b`), 60},
+	{regexp.MustCompile(`(?i):\s*Embedding\b`), 90},
+	{regexp.MustCompile(`(?i):\s*Done\b`), 100},
+}
+
 // Adapter implements download.Downloader for spotDL.
 type Adapter struct {
 	runner       Runner
@@ -157,6 +172,14 @@ func (a *Adapter) Start(ctx context.Context, req core.DownloadRequest, onProgres
 			if p, err := strconv.Atoi(m[1]); err == nil && p >= 0 && p <= 100 {
 				sawProgress = true
 				onProgress(p)
+				return
+			}
+		}
+		// No percentage — fall back to stage-based progress.
+		for _, st := range stageProgress {
+			if st.re.MatchString(line) {
+				sawProgress = true
+				onProgress(st.pct)
 				return
 			}
 		}
