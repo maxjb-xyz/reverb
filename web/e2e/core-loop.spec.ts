@@ -35,7 +35,9 @@ test('core loop: login -> search everywhere -> download -> in-library -> play', 
   //    one not-in-library track.
   await expect(page.getByRole('tab', { name: 'Everywhere' })).toBeVisible()
   await page.getByRole('tab', { name: 'Everywhere' }).click()
-  await expect(page.getByText(externalTrack.title)).toBeVisible()
+  // exact:true so we match the track row's title span, not the "Results for
+  // \"Test Anthem\"" results header (which also contains the title).
+  await expect(page.getByText(externalTrack.title, { exact: true })).toBeVisible()
 
   // The Download button is present (row is NOT in library — GET /downloads was []).
   // Use exact: true to avoid matching the TrackRow's full accessible name which also
