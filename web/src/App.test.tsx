@@ -6,6 +6,7 @@ import * as session from './lib/session'
 import type { SessionStatus } from './lib/session'
 
 vi.mock('./lib/session')
+vi.mock('./lib/useAlbumPalette', () => ({ useAlbumPalette: () => null }))
 
 function mockStatus(s: SessionStatus) {
   vi.mocked(session.useSessionStatus).mockReturnValue(s)
