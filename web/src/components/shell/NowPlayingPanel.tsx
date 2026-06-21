@@ -99,17 +99,14 @@ export function NowPlayingPanel() {
           />
         </div>
 
-        {/* Title + artist + heart */}
-        <div className="mt-4 flex items-start gap-2.5">
-          <div className="min-w-0 flex-1">
-            <div className="truncate text-xl font-extrabold leading-tight tracking-tight text-text-primary">
-              {current?.title ?? 'Nothing playing'}
-            </div>
-            <div className="mt-1 truncate text-sm text-text-secondary">
-              {current?.artist ?? ''}
-            </div>
+        {/* Title + artist */}
+        <div className="mt-4">
+          <div className="truncate text-xl font-extrabold leading-tight tracking-tight text-text-primary">
+            {current?.title ?? 'Nothing playing'}
           </div>
-          <IconButton name="heart" label="Like" size="sm" active={false} />
+          <div className="mt-1 truncate text-sm text-text-secondary">
+            {current?.artist ?? ''}
+          </div>
         </div>
 
         {/* Next in queue */}

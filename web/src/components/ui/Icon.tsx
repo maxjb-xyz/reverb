@@ -31,6 +31,7 @@ export type IconName =
   | 'up'
   | 'down'
   | 'chevron-down'
+  | 'music'
 
 /**
  * Per-icon descriptor.
@@ -266,6 +267,16 @@ const icons: Record<IconName, IconDef> = {
   // chevron-down: slightly heavier downward chevron for overlay close
   'chevron-down': {
     content: <path d="M6 9l6 6 6-6" />,
+  },
+  // music: beamed eighth notes — the album-art placeholder glyph
+  music: {
+    content: (
+      <>
+        <path d="M9 18V5l12-2v13" />
+        <circle cx="6" cy="18" r="3" />
+        <circle cx="18" cy="16" r="3" />
+      </>
+    ),
   },
 }
 

@@ -40,7 +40,7 @@ export function Cover({ src, alt, size = 48, rounded = 'md', className }: CoverP
           data-testid="cover-placeholder"
           className="absolute inset-0 flex items-center justify-center text-text-muted"
         >
-          <Icon name="play" className="w-1/2 h-1/2 opacity-30" />
+          <Icon name="music" className="w-2/5 h-2/5 opacity-40" />
         </div>
       ) : (
         <>
