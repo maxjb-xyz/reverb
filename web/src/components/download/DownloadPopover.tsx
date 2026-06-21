@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { Icon } from '../ui'
 
 interface Downloader {
@@ -13,19 +13,65 @@ interface DownloadPopoverProps {
   onClose: () => void
 }
 
+const FOCUSABLE = 'button, [href], input, [tabindex]:not([tabindex="-1"])'
+
 export function DownloadPopover({
   downloaders,
   trackTitle,
   onPick,
   onClose,
 }: DownloadPopoverProps) {
-  // Esc closes
+  const panelRef = useRef<HTMLDivElement>(null)
+
+  // Focus trap + Esc close
   useEffect(() => {
-    function handleKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') onClose()
+    const previouslyFocused = document.activeElement as HTMLElement | null
+
+    // Move focus to first focusable element inside the panel
+    const panel = panelRef.current
+    if (panel) {
+      const focusable = Array.from(panel.querySelectorAll<HTMLElement>(FOCUSABLE))
+      focusable[0]?.focus()
     }
+
+    function handleKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') {
+        onClose()
+        return
+      }
+
+      if (e.key === 'Tab' && panelRef.current) {
+        const focusable = Array.from(
+          panelRef.current.querySelectorAll<HTMLElement>(FOCUSABLE),
+        ).filter((el) => !el.hasAttribute('disabled'))
+
+        if (focusable.length === 0) return
+
+        const first = focusable[0]
+        const last = focusable[focusable.length - 1]
+
+        if (e.shiftKey) {
+          // Shift+Tab on first → wrap to last
+          if (document.activeElement === first) {
+            e.preventDefault()
+            last.focus()
+          }
+        } else {
+          // Tab on last → wrap to first
+          if (document.activeElement === last) {
+            e.preventDefault()
+            first.focus()
+          }
+        }
+      }
+    }
+
     document.addEventListener('keydown', handleKey)
-    return () => document.removeEventListener('keydown', handleKey)
+    return () => {
+      document.removeEventListener('keydown', handleKey)
+      // Restore focus to the element that was focused before the popover opened
+      previouslyFocused?.focus()
+    }
   }, [onClose])
 
   return (
@@ -40,6 +86,7 @@ export function DownloadPopover({
 
       {/* Popover panel */}
       <div
+        ref={panelRef}
         role="dialog"
         aria-modal="true"
         aria-label={`Download "${trackTitle}"`}

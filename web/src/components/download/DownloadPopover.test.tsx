@@ -104,4 +104,87 @@ describe('DownloadPopover', () => {
     fireEvent.click(screen.getByRole('dialog'))
     expect(onClose).not.toHaveBeenCalled()
   })
+
+  // ── 7. focus trap: focus starts on first option ───────────────────────────
+  it('moves focus to the first downloader button when opened', () => {
+    render(
+      <DownloadPopover
+        downloaders={downloaders}
+        trackTitle="Bones"
+        onPick={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    )
+
+    const firstButton = screen.getByRole('button', { name: /spotDL/i })
+    expect(document.activeElement).toBe(firstButton)
+  })
+
+  // ── 8. focus trap: Tab on last focusable wraps to first ───────────────────
+  it('wraps Tab from the last focusable element back to the first', () => {
+    render(
+      <DownloadPopover
+        downloaders={downloaders}
+        trackTitle="Bones"
+        onPick={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    )
+
+    const buttons = screen.getAllByRole('button')
+    const lastButton = buttons[buttons.length - 1]
+
+    // Simulate focus on the last button then Tab
+    lastButton.focus()
+    expect(document.activeElement).toBe(lastButton)
+
+    fireEvent.keyDown(document, { key: 'Tab', shiftKey: false })
+
+    expect(document.activeElement).toBe(buttons[0])
+  })
+
+  // ── 9. focus trap: Shift+Tab on first focusable wraps to last ─────────────
+  it('wraps Shift+Tab from the first focusable element to the last', () => {
+    render(
+      <DownloadPopover
+        downloaders={downloaders}
+        trackTitle="Bones"
+        onPick={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    )
+
+    const buttons = screen.getAllByRole('button')
+    const firstButton = buttons[0]
+    const lastButton = buttons[buttons.length - 1]
+
+    // Focus is already on firstButton after mount; fire Shift+Tab
+    firstButton.focus()
+    fireEvent.keyDown(document, { key: 'Tab', shiftKey: true })
+
+    expect(document.activeElement).toBe(lastButton)
+  })
+
+  // ── 10. focus restore: previously-focused element regains focus on close ──
+  it('restores focus to the previously-focused element on unmount', () => {
+    const trigger = document.createElement('button')
+    trigger.textContent = 'Open'
+    document.body.appendChild(trigger)
+    trigger.focus()
+    expect(document.activeElement).toBe(trigger)
+
+    const { unmount } = render(
+      <DownloadPopover
+        downloaders={downloaders}
+        trackTitle="Bones"
+        onPick={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    )
+
+    unmount()
+
+    expect(document.activeElement).toBe(trigger)
+    document.body.removeChild(trigger)
+  })
 })
