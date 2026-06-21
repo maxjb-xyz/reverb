@@ -1,34 +1,35 @@
 import { useState } from 'react'
 
 interface LogoProps {
-  /** Size utilities for the image, e.g. "h-8 w-auto". */
-  className?: string
-  /** Text-size utility for the fallback wordmark, e.g. "text-2xl". */
-  fallbackClassName?: string
+  /** Height utility for the icon mark, e.g. "h-8 w-auto". */
+  iconClassName?: string
+  /** Text-size utility for the wordmark, e.g. "text-2xl". */
+  textClassName?: string
 }
 
 /**
- * Brand logo. Renders `/logo.svg` (drop your file at `web/public/logo.svg`). If
- * that file is missing or fails to load it falls back to the text wordmark, so
- * the UI never shows a broken image before the asset is added.
+ * Brand lockup: the Reverb mark + the "Reverb." wordmark. Uses the light icon
+ * variant (`/Reverb-Light.svg`, white strokes) so it reads on the dark UI. If
+ * the icon asset is missing it shows the wordmark alone — never a broken image.
+ * The original `/logo.svg` (dark strokes) is kept for the favicon / light chrome.
  */
-export function Logo({ className = 'h-8 w-auto', fallbackClassName = 'text-2xl' }: LogoProps) {
-  const [failed, setFailed] = useState(false)
-
-  if (failed) {
-    return (
-      <span className={`select-none font-bold tracking-tight text-text-primary ${fallbackClassName}`}>
-        Reverb<span className="text-accent">.</span>
-      </span>
-    )
-  }
+export function Logo({ iconClassName = 'h-8 w-auto', textClassName = 'text-2xl' }: LogoProps) {
+  const [iconOk, setIconOk] = useState(true)
 
   return (
-    <img
-      src="/logo.svg"
-      alt="Reverb"
-      className={`select-none ${className}`}
-      onError={() => setFailed(true)}
-    />
+    <span className="inline-flex select-none items-center gap-2">
+      {iconOk && (
+        <img
+          src="/Reverb-Light.svg"
+          alt=""
+          aria-hidden="true"
+          className={iconClassName}
+          onError={() => setIconOk(false)}
+        />
+      )}
+      <span className={`font-bold tracking-tight text-text-primary ${textClassName}`}>
+        Reverb<span className="text-accent">.</span>
+      </span>
+    </span>
   )
 }

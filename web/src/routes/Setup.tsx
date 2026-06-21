@@ -42,7 +42,7 @@ function Shell({ children }: { children: React.ReactNode }) {
       <div className="relative w-full max-w-md mx-4">
         {/* Wordmark */}
         <div className="mb-8 flex items-center justify-center">
-          <Logo className="h-9 w-auto" fallbackClassName="text-2xl" />
+          <Logo iconClassName="h-9 w-auto" textClassName="text-2xl" />
         </div>
         <div className="rounded-2xl bg-surface shadow-pop border border-border-subtle p-8 space-y-6">
           {children}
