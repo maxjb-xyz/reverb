@@ -43,3 +43,39 @@ func TestBuildDownloadersEnvOverrideAndSkipOnBadConfig(t *testing.T) {
 		t.Fatalf("want 1 downloader (env-supplied dir), got %d", len(out))
 	}
 }
+
+func TestBuildDownloadersBundledSpotdlDefault(t *testing.T) {
+	reg := registry.NewRegistry("downloader")
+	reg.Register("spotdl", func() registry.Plugin { return spotdl.New() })
+	// No downloader instance configured + REVERB_DOWNLOAD_DIR set (as the image
+	// sets it) → the bundled spotDL default is injected.
+	instances := []db.AdapterInstance{{Type: "library", Name: "subsonic", Enabled: 1, ConfigJson: `{}`}}
+	out := buildDownloaders(reg, instances, env(map[string]string{"REVERB_DOWNLOAD_DIR": "/music"}))
+	if len(out) != 1 || out[0].Name() != "spotdl" {
+		t.Fatalf("want 1 bundled spotdl default, got %d", len(out))
+	}
+}
+
+func TestBuildDownloadersNoDefaultWhenInstancePresent(t *testing.T) {
+	reg := registry.NewRegistry("downloader")
+	reg.Register("spotdl", func() registry.Plugin { return spotdl.New() })
+	// A DISABLED downloader instance means the user manages it → do NOT inject the
+	// bundled default even though no downloader ends up enabled.
+	instances := []db.AdapterInstance{
+		{Type: "downloader", Name: "spotdl", Enabled: 0, ConfigJson: `{"output_dir":"/music"}`},
+	}
+	out := buildDownloaders(reg, instances, env(map[string]string{"REVERB_DOWNLOAD_DIR": "/music"}))
+	if len(out) != 0 {
+		t.Fatalf("want 0 (respect user's disabled instance), got %d", len(out))
+	}
+}
+
+func TestBuildDownloadersNoDefaultWithoutDir(t *testing.T) {
+	reg := registry.NewRegistry("downloader")
+	reg.Register("spotdl", func() registry.Plugin { return spotdl.New() })
+	// No env (e.g. local dev) → no bundled default, unchanged behavior.
+	out := buildDownloaders(reg, nil, env(nil))
+	if len(out) != 0 {
+		t.Fatalf("want 0 without REVERB_DOWNLOAD_DIR, got %d", len(out))
+	}
+}

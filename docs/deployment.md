@@ -18,50 +18,36 @@ docker compose up -d      # pulls the image and starts Reverb on :8090
 ```
 
 Open http://localhost:8090 and complete the first-run wizard (set an admin
-password unless you provided `REVERB_ADMIN_PASSWORD` in `.env`), then add your
-adapters in Settings:
+password unless you provided `REVERB_ADMIN_PASSWORD` in `.env`), then connect:
 
 - **Library** (Subsonic/Navidrome): point it at your existing server.
 - **Search** (Spotify): set the Client ID in Settings; the Client Secret comes
   from `REVERB_SPOTIFY_CLIENT_SECRET` in `.env`.
-- **Downloader** (spotDL): set `output_dir` to `/music`.
+- **Downloader**: nothing to do — **spotDL is bundled and pre-configured** to
+  write into `/music`.
 
-## Folders & permissions (PUID/PGID)
+## Folders
 
-Reverb bind-mounts two host folders:
+Reverb bind-mounts two host folders (declared in `docker-compose.yml`):
 
 - `./data` → `/data` — app state + the SQLite DB (`/data/reverb.db`).
-- `MUSIC_DIR` → `/music` — your music library (where downloads land and your
-  library server scans). Point `MUSIC_DIR` at an existing library (e.g.
-  `/srv/music` or a NAS mount) in `.env`; it defaults to `./music`.
+- `./music` → `/music` — your music library, where spotDL downloads land and your
+  library server scans. To use an existing library, change `./music` to its path
+  (e.g. `/srv/music:/music`).
 
-The container starts as root only to fix `/data` ownership, then **drops to the
-`PUID:PGID` user** (via `gosu`) and runs Reverb non-root. Set `PUID`/`PGID` in
-`.env` to the owner of your folders so the DB is writable and downloads land with
-the right ownership:
-
-```bash
-id -u   # -> PUID
-id -g   # -> PGID
-```
-
-`/data` is chowned to `PUID:PGID` automatically on start, so it works even if
-Docker created `./data` as root. `/music` is **not** chowned (it may be a large
-existing library you don't want re-owned) — it must already be writable by
-`PUID:PGID`. If `PUID` doesn't match your music dir's owner, downloads fail with
-permission errors; fix by setting `PUID` to that owner or adding it to the dir's
-group. (If `/data` is unwritable you'll see `unable to open database file ... (14)`,
-SQLITE_CANTOPEN, in a restart loop — almost always a `PUID` mismatch.)
+The container **runs as root**, so it reads/writes these bind mounts regardless of
+their ownership — no `chown`, no `PUID`/`PGID`, nothing to configure. The one
+tradeoff: files spotDL downloads into `./music` are owned by `root` on the host (a
+library server scanning them still reads them fine; you'll just need `sudo` to
+move/delete them by hand).
 
 ## The shared music folder
 
-Reverb's spotDL downloader writes into `/music`. For downloads to appear in your
-library, your Subsonic/Navidrome server MUST scan the SAME folder. The provided
-`docker-compose.yml` bind-mounts `MUSIC_DIR` into Reverb and (in the commented
-Navidrome service) the same folder read-only into Navidrome. After a download
-completes, Reverb triggers a library scan and the track becomes playable. Run
-Navidrome with the same `PUID:PGID` (or at least read access) so it can read the
-files Reverb writes.
+For downloads to appear in your library, your Subsonic/Navidrome server MUST scan
+the SAME `/music` folder. The provided `docker-compose.yml` bind-mounts `./music`
+into Reverb and (in the commented Navidrome service) the same folder read-only
+into Navidrome. After a download completes, Reverb triggers a library scan and the
+track becomes playable.
 
 ## Reverse proxy + TLS
 

@@ -16,9 +16,14 @@ import (
 // already in fallback-chain order. Per-source failures warn-and-skip.
 func buildDownloaders(reg *registry.Registry, instances []db.AdapterInstance, getenv func(string) string) []download.Downloader {
 	out := []download.Downloader{}
+	hasDownloaderInstance := false
 	for i := range instances {
 		inst := instances[i]
-		if inst.Type != "downloader" || inst.Enabled != 1 {
+		if inst.Type != "downloader" {
+			continue
+		}
+		hasDownloaderInstance = true
+		if inst.Enabled != 1 {
 			continue
 		}
 		plugin, err := reg.Create(inst.Name)
@@ -55,5 +60,45 @@ func buildDownloaders(reg *registry.Registry, instances []db.AdapterInstance, ge
 		}
 		out = append(out, dl)
 	}
+
+	// Bundled default: the image ships spotDL + ffmpeg, so when the user has not
+	// configured any downloader, fall back to a spotDL instance writing to
+	// REVERB_DOWNLOAD_DIR (the Docker image sets this to /music). This makes
+	// downloads work out of the box with zero setup. We only inject the default
+	// when there is NO downloader instance at all — if the user configured (or
+	// deliberately disabled) one, that choice is respected. Gated on the env being
+	// set so local/dev runs without it are unaffected.
+	if len(out) == 0 && !hasDownloaderInstance {
+		if dir := getenv("REVERB_DOWNLOAD_DIR"); dir != "" {
+			if dl := buildDefaultSpotdl(reg, dir, getenv); dl != nil {
+				out = append(out, dl)
+			}
+		}
+	}
 	return out
+}
+
+// buildDefaultSpotdl constructs the bundled spotDL downloader (output_dir=dir).
+// Returns nil (with a log line) if spotDL can't be created/initialised, e.g. a
+// build/registry without it — never fatal.
+func buildDefaultSpotdl(reg *registry.Registry, dir string, getenv func(string) string) download.Downloader {
+	plugin, err := reg.Create("spotdl")
+	if err != nil {
+		log.Printf("bundled spotdl downloader unavailable: %v", err)
+		return nil
+	}
+	dl, ok := plugin.(download.Downloader)
+	if !ok {
+		return nil
+	}
+	cfg := map[string]any{"output_dir": dir}
+	if p := getenv("REVERB_SPOTDL_PATH"); p != "" {
+		cfg["binary_path"] = p
+	}
+	if err := dl.Init(cfg); err != nil {
+		log.Printf("bundled spotdl downloader unavailable: %v", err)
+		return nil
+	}
+	log.Printf("using bundled spotdl downloader (output_dir=%s)", dir)
+	return dl
 }

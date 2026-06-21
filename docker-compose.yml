@@ -14,27 +14,17 @@ services:
     #   context: .
     #   args:
     #     VERSION: "${REVERB_VERSION:-dev}"
-    environment:
-      # Run Reverb as the host user/group that owns the folders below, so the DB
-      # is writable and downloads land on your filesystem with the right owner.
-      # Set these to your `id -u` / `id -g` (defaults to 1000:1000).
-      PUID: "${PUID:-1000}"
-      PGID: "${PGID:-1000}"
     ports:
       - "8090:8090"
     env_file:
       - .env
     volumes:
-      # App state + SQLite DB on the host (handy for backups). The entrypoint
-      # chowns /data to PUID:PGID on start, so this works even if Docker created
-      # ./data as root.
+      # App state + SQLite DB (kept on the host so it's easy to back up).
       - ./data:/data
-      # Your music library on the host — this is where spotDL downloads land and
-      # where your library server scans. Point MUSIC_DIR at an existing library
-      # (e.g. /srv/music or a NAS mount) in .env; it must be owned by / writable
-      # by PUID:PGID. In Reverb's Settings, set the spotDL adapter's `output_dir`
-      # to /music. Defaults to ./music next to this file.
-      - ${MUSIC_DIR:-./music}:/music
+      # Your music library. spotDL downloads land here and your library server
+      # scans it. To use an EXISTING library, change ./music to its path, e.g.
+      #   - /srv/music:/music
+      - ./music:/music
     restart: unless-stopped
 
   # ---------------------------------------------------------------------------
@@ -49,6 +39,6 @@ services:
   #   environment:
   #     ND_LOGLEVEL: info
   #   volumes:
-  #     - ${MUSIC_DIR:-./music}:/music:ro
+  #     - ./music:/music:ro
   #     - ./navidrome-data:/data
   #   restart: unless-stopped
