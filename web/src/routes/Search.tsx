@@ -137,7 +137,14 @@ export default function Search() {
       <div className="space-y-6">
         {/* Mobile-only input — the TopBar has no search bar on mobile. */}
         <MobileSearchInput q={q} onChange={setQ} mode={mode} />
-        <div className="py-16">
+
+        {/* Scope toggle is always available so you can pick where to search. */}
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h1 className="text-xl font-extrabold text-text-primary">Search</h1>
+          <Segmented options={MODE_OPTIONS} value={mode} onChange={setMode} />
+        </div>
+
+        <div className="py-12">
           <EmptyState
             icon="search"
             title="Find your music"

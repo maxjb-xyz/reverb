@@ -24,15 +24,17 @@ test('core loop: login -> search everywhere -> download -> in-library -> play', 
   await page.getByRole('button', { name: 'Log in' }).click()
   await initialResync
 
-  // 3) After reload we land on / (Home). Navigate to /search, then switch to Everywhere.
-  //    The Segmented control renders each option as role="tab" inside a role="tablist".
-  await page.goto('/search')
+  // 3) After reload we land on / (Home). Drive the search from the persistent
+  //    TopBar input (the desktop search bar); Enter opens the full /search page.
+  const topSearch = page.getByPlaceholder(/or everywhere/)
+  await topSearch.fill(externalTrack.title)
+  await topSearch.press('Enter')
+
+  // 4) The Segmented scope toggle is always visible on /search; switch to
+  //    Everywhere (role="tab" inside a role="tablist"). The SSE mock then returns
+  //    one not-in-library track.
   await expect(page.getByRole('tab', { name: 'Everywhere' })).toBeVisible()
   await page.getByRole('tab', { name: 'Everywhere' }).click()
-
-  // 4) Search; the SSE mock returns one not-in-library track.
-  //    After switching to Everywhere the placeholder becomes "Search everywhere" (no ellipsis).
-  await page.getByPlaceholder('Search everywhere').fill(externalTrack.title)
   await expect(page.getByText(externalTrack.title)).toBeVisible()
 
   // The Download button is present (row is NOT in library — GET /downloads was []).

@@ -70,23 +70,30 @@ func TestWSStreamsPublishedEvents(t *testing.T) {
 		JobID: "j1", Status: core.DownloadRunning, Progress: 42, Source: "spotify", ExternalID: "sp1",
 	}}
 
-	// The handler subscribes asynchronously after the handshake. Rather than a
-	// fixed sleep, retry the publish in a short loop until a frame arrives,
-	// using a per-attempt read deadline so an early publish (before the
-	// subscription is live) doesn't lose the only event.
+	// The handler subscribes asynchronously after the handshake, so an early
+	// publish (before the subscription is live) would be missed. Re-publish on a
+	// ticker from a goroutine and do ONE read on the full context. We must NOT use
+	// a short per-read deadline: under coder/websocket a deadline-cancelled read
+	// closes the connection, so the first timeout would kill the socket and every
+	// retry would then fail with "use of closed network connection".
+	stopPublish := make(chan struct{})
+	go func() {
+		tk := time.NewTicker(20 * time.Millisecond)
+		defer tk.Stop()
+		for {
+			select {
+			case <-stopPublish:
+				return
+			case <-tk.C:
+				bus.Publish(progress)
+			}
+		}
+	}()
+	bus.Publish(progress)
+
 	var frame wsFrame
-	for i := 0; i < 50; i++ {
-		bus.Publish(progress)
-		readCtx, readCancel := context.WithTimeout(ctx, 50*time.Millisecond)
-		err = wsjson.Read(readCtx, c, &frame)
-		readCancel()
-		if err == nil {
-			break
-		}
-		if ctx.Err() != nil {
-			break
-		}
-	}
+	err = wsjson.Read(ctx, c, &frame)
+	close(stopPublish)
 	if err != nil {
 		t.Fatalf("read frame: %v", err)
 	}
