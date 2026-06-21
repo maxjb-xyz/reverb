@@ -14,7 +14,7 @@ export function Sidebar() {
   const activeCount = useDownloads((s) => s.active().length)
 
   return (
-    <nav className="w-56 shrink-0 border-r border-neutral-800 p-4 space-y-1">
+    <nav className="hidden w-56 shrink-0 border-r border-neutral-800 p-4 space-y-1 md:block">
       <div className="text-xl font-bold mb-4 text-accent">Crate</div>
       {items.map((i) => (
         <NavLink
