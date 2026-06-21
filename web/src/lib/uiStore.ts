@@ -9,6 +9,12 @@ interface UIStore {
   openPanel(p: Exclude<RightPanel, null>): void
   closePanel(): void
   togglePanel(p: Exclude<RightPanel, null>): void
+  // nowPlayingOpen drives the MOBILE fullscreen now-playing overlay (M4b). It is the
+  // single source of truth — the desktop player bar never reads it.
+  nowPlayingOpen: boolean
+  openNowPlaying(): void
+  closeNowPlaying(): void
+  toggleNowPlaying(): void
 }
 
 export const useUI = create<UIStore>((set, get) => ({
@@ -16,4 +22,8 @@ export const useUI = create<UIStore>((set, get) => ({
   openPanel: (p) => set({ rightPanel: p }),
   closePanel: () => set({ rightPanel: null }),
   togglePanel: (p) => set({ rightPanel: get().rightPanel === p ? null : p }),
+  nowPlayingOpen: false,
+  openNowPlaying: () => set({ nowPlayingOpen: true }),
+  closeNowPlaying: () => set({ nowPlayingOpen: false }),
+  toggleNowPlaying: () => set({ nowPlayingOpen: !get().nowPlayingOpen }),
 }))
