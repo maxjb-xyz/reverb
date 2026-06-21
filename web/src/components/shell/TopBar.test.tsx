@@ -4,6 +4,7 @@ import { MemoryRouter } from 'react-router-dom'
 import { TopBar } from './TopBar'
 import { useUI } from '../../lib/uiStore'
 import { useDownloads } from '../../lib/downloadStore'
+import { useSearch } from '../../lib/searchStore'
 import type { DownloadJob } from '../../lib/types'
 
 // Mock useNavigate so we can assert navigation
@@ -39,6 +40,7 @@ describe('TopBar', () => {
     vi.mocked(global.fetch).mockClear()
     useUI.setState({ rightPanel: null })
     useDownloads.setState({ jobs: {} })
+    useSearch.setState({ query: '', mode: 'library' })
   })
 
   it('renders all required accessible controls', () => {
@@ -46,7 +48,7 @@ describe('TopBar', () => {
     expect(screen.getByRole('button', { name: /back/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /forward/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /home/i })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /search/i })).toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: /search/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /downloads/i })).toBeInTheDocument()
   })
 
@@ -56,10 +58,12 @@ describe('TopBar', () => {
     expect(mockNavigate).toHaveBeenCalledWith('/')
   })
 
-  it('search button navigates to /search', () => {
+  it('typing in the search input routes to /search and updates the shared query', () => {
     renderBar()
-    fireEvent.click(screen.getByRole('button', { name: /search/i }))
+    const input = screen.getByRole('textbox', { name: /search/i })
+    fireEvent.change(input, { target: { value: 'daft punk' } })
     expect(mockNavigate).toHaveBeenCalledWith('/search')
+    expect(useSearch.getState().query).toBe('daft punk')
   })
 
   it('downloads button calls togglePanel("downloads")', () => {

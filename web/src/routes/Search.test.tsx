@@ -4,7 +4,12 @@ import { MemoryRouter } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import Search from './Search'
 import { engine } from '../lib/playerStore'
+import { useSearch } from '../lib/searchStore'
 import { makeTrack, makeAlbum } from '../test/factories'
+
+// Search query/mode now live in a shared store; reset it before every test so
+// one test's mode (e.g. 'everywhere') doesn't leak into the next.
+beforeEach(() => useSearch.setState({ query: '', mode: 'library' }))
 
 const postDownloadMock = vi.fn((_req: unknown) => Promise.resolve({ id: 'j-album', status: 'queued' } as never))
 vi.mock('../lib/downloadApi', () => ({

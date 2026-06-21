@@ -1,13 +1,23 @@
 import { useState, useRef, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { IconButton, Button, Icon } from '../ui'
 import { useUI } from '../../lib/uiStore'
 import { useDownloads } from '../../lib/downloadStore'
+import { useSearch } from '../../lib/searchStore'
 
 export function TopBar() {
   const navigate = useNavigate()
+  const location = useLocation()
   const togglePanel = useUI((s) => s.togglePanel)
   const activeCount = useDownloads((s) => s.active().length)
+  const query = useSearch((s) => s.query)
+  const setQuery = useSearch((s) => s.setQuery)
+
+  // Typing routes to /search (once) and keeps the query live there.
+  function onSearchChange(value: string) {
+    setQuery(value)
+    if (location.pathname !== '/search') navigate('/search')
+  }
 
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
@@ -53,20 +63,24 @@ export function TopBar() {
           onClick={() => navigate('/')}
         />
 
-        <button
-          type="button"
-          aria-label="Search"
-          onClick={() => navigate('/search')}
+        <div
           className={[
             'flex items-center gap-3 h-12 px-4 rounded-full bg-input w-full min-w-0 max-w-md',
-            'text-text-secondary text-sm font-medium text-left',
-            'hover:bg-raised-hover border border-transparent hover:border-border-subtle',
-            'transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
+            'border border-transparent focus-within:border-border-subtle',
+            'focus-within:ring-2 focus-within:ring-accent transition-colors',
           ].join(' ')}
         >
-          <Icon name="search" className="w-4 h-4 flex-none" />
-          <span className="truncate">Search your library — or everywhere</span>
-        </button>
+          <Icon name="search" className="w-4 h-4 flex-none text-text-secondary" />
+          <input
+            type="text"
+            aria-label="Search"
+            value={query}
+            onChange={(e) => onSearchChange(e.target.value)}
+            onFocus={() => { if (location.pathname !== '/search') navigate('/search') }}
+            placeholder="Search your library — or everywhere"
+            className="w-full min-w-0 bg-transparent text-sm font-medium text-text-primary placeholder:text-text-secondary outline-none"
+          />
+        </div>
       </div>
 
       {/* Right — downloads + avatar */}

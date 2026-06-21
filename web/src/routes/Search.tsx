@@ -1,8 +1,8 @@
-import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useLibrarySearch } from '../lib/libraryApi'
 import { useEverywhere } from '../lib/everywhereStore'
 import { usePlayer } from '../lib/playerStore'
+import { useSearch } from '../lib/searchStore'
 import { postDownload } from '../lib/downloadApi'
 import { useDownloads } from '../lib/downloadStore'
 import { DownloadAction } from '../components/download/DownloadAction'
@@ -112,8 +112,10 @@ function TrackSkeletons() {
 // ── Main component ─────────────────────────────────────────────────────────────
 
 export default function Search() {
-  const [q, setQ] = useState('')
-  const [mode, setMode] = useState<Mode>('library')
+  const q = useSearch((s) => s.query)
+  const setQ = useSearch((s) => s.setQuery)
+  const mode = useSearch((s) => s.mode)
+  const setMode = useSearch((s) => s.setMode)
 
   const playTrackList = usePlayer((s) => s.playTrackList)
   const currentTrackId = usePlayer((s) => s.current?.id)
