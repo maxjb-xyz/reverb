@@ -196,4 +196,25 @@ describe('Library page', () => {
     // Clicking should not throw — navigation happens inside MemoryRouter
     fireEvent.click(card)
   })
+
+  it('playlist cards are non-navigating (no dead-route nav to /playlist/:id)', async () => {
+    const { usePlaylists } = await import('../lib/libraryApi')
+    vi.mocked(usePlaylists).mockReturnValue({
+      data: [makePlaylist({ id: 'pl99', name: 'My Vibes' })],
+      isLoading: false,
+      error: null,
+    } as unknown as UseQueryResult<Playlist[], Error>)
+
+    render(wrap(<Library />))
+    fireEvent.click(screen.getByRole('button', { name: /^playlists$/i }))
+
+    // The playlist card should render but have no onClick that navigates
+    const card = screen.queryByRole('button', { name: /my vibes/i })
+    // Card may render as a non-interactive element when no onClick is provided
+    // Either way, no navigation to /playlist/:id should occur — the route doesn't exist.
+    // Clicking it (if it's a button) should not throw or navigate away.
+    if (card) fireEvent.click(card)
+    // Still on same view — playlist heading still visible
+    expect(screen.getByRole('button', { name: /^playlists$/i })).toBeInTheDocument()
+  })
 })

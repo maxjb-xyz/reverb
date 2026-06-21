@@ -132,7 +132,6 @@ export default function Library() {
                   subtitle={`${pl.songCount} track${pl.songCount !== 1 ? 's' : ''}`}
                   coverId={pl.coverArtId || undefined}
                   rounded="md"
-                  onClick={() => navigate(`/playlist/${pl.id}`)}
                 />
               ))}
             </div>

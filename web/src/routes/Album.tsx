@@ -9,6 +9,8 @@ export default function Album() {
   const { id = '' } = useParams()
   const { data: album, isLoading, isError } = useAlbum(id)
   const playTrackList = usePlayer((s) => s.playTrackList)
+  const toggleShuffle = usePlayer((s) => s.toggleShuffle)
+  const shuffle = usePlayer((s) => s.shuffle)
 
   if (isLoading) {
     return (
@@ -90,7 +92,11 @@ export default function Album() {
               <IconButton
                 name="shuffle"
                 label={`Shuffle ${album.name}`}
-                onClick={() => tracks.length && playTrackList(tracks, 0)}
+                onClick={() => {
+                  if (!tracks.length) return
+                  if (!shuffle) toggleShuffle()
+                  playTrackList(tracks, 0)
+                }}
                 disabled={tracks.length === 0}
               />
               <IconButton name="heart" label={`Like ${album.name}`} />

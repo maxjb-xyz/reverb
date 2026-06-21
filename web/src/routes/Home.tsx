@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useAlbums, usePlaylists, coverUrl } from '../lib/libraryApi'
 import { useDownloads } from '../lib/downloadStore'
 import { usePlayer } from '../lib/playerStore'
+import { api } from '../lib/api'
 import {
   Chip,
   Carousel,
@@ -118,8 +119,9 @@ export default function Home() {
     .filter((j) => j.status === 'completed')
     .sort((a, b) => b.finishedAt - a.finishedAt)
 
-  // Player state
-  const { current, playTrackList } = usePlayer()
+  // Player state — use selectors to avoid re-renders on every scrubber tick
+  const current = usePlayer((s) => s.current)
+  const playTrackList = usePlayer((s) => s.playTrackList)
 
   // ------------------------------------------------------------------
   // Derived data
@@ -149,14 +151,15 @@ export default function Home() {
     // playlists don't have a route yet — no-op
   }
 
-  function handleHeroPlay() {
-    if (!heroAlbum?.tracks?.length) return
-    playTrackList(heroAlbum.tracks, 0)
+  async function handleHeroPlay() {
+    if (!heroAlbum) return
+    const full = await api.get<Album>(`/library/album/${heroAlbum.id}`)
+    if (full.tracks?.length) playTrackList(full.tracks, 0)
   }
 
-  function handleAlbumPlay(album: Album) {
-    if (!album.tracks?.length) return
-    playTrackList(album.tracks, 0)
+  async function handleAlbumPlay(album: Album) {
+    const full = await api.get<Album>(`/library/album/${album.id}`)
+    if (full.tracks?.length) playTrackList(full.tracks, 0)
   }
 
   // ------------------------------------------------------------------

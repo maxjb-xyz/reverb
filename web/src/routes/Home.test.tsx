@@ -72,11 +72,17 @@ vi.mock('../lib/libraryApi', async (importOriginal) => {
 })
 
 vi.mock('../lib/playerStore', () => ({
-  usePlayer: vi.fn(() => ({
-    current: null,
-    playTrackList: vi.fn(),
-  })),
+  usePlayer: vi.fn((selector: (s: { current: null; playTrackList: ReturnType<typeof vi.fn> }) => unknown) => {
+    const state = { current: null, playTrackList: vi.fn() }
+    return typeof selector === 'function' ? selector(state) : state
+  }),
   engine: { subscribe: vi.fn(() => () => {}), getState: vi.fn(() => ({})) },
+}))
+
+vi.mock('../lib/api', () => ({
+  api: {
+    get: vi.fn(async () => ({ id: 'al1', tracks: [] })),
+  },
 }))
 
 // ------------------------------------------------------------------

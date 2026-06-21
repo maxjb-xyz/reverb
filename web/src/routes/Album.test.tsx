@@ -6,10 +6,11 @@ import Album from './Album'
 import { makeTrack, makeAlbum } from '../test/factories'
 
 const mockPlayTrackList = vi.fn()
+const mockToggleShuffle = vi.fn()
 
 vi.mock('../lib/playerStore', () => ({
-  usePlayer: (selector: (s: { playTrackList: typeof mockPlayTrackList; current: null }) => unknown) =>
-    selector({ playTrackList: mockPlayTrackList, current: null }),
+  usePlayer: (selector: (s: { playTrackList: typeof mockPlayTrackList; toggleShuffle: typeof mockToggleShuffle; shuffle: boolean; current: null }) => unknown) =>
+    selector({ playTrackList: mockPlayTrackList, toggleShuffle: mockToggleShuffle, shuffle: false, current: null }),
 }))
 
 const stubTrack1 = makeTrack({ id: 't1', title: 'Track One', artist: 'Artist A', durationMs: 60000, trackNumber: 1 })
@@ -53,6 +54,7 @@ describe('Album page', () => {
   afterEach(() => {
     vi.unstubAllGlobals()
     mockPlayTrackList.mockReset()
+    mockToggleShuffle.mockReset()
   })
 
   it('renders loading skeleton while fetching', () => {
@@ -90,6 +92,14 @@ describe('Album page', () => {
     // Click the text "Track Two" which lives inside the TrackRow button
     fireEvent.click(screen.getByText('Track Two'))
     expect(mockPlayTrackList).toHaveBeenCalledWith(stubAlbum.tracks, 1)
+  })
+
+  it('shuffle button enables shuffle then plays from index 0', async () => {
+    wrapper(<Album />)
+    await waitFor(() => expect(screen.getByText('Great Album')).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: /shuffle great album/i }))
+    expect(mockToggleShuffle).toHaveBeenCalledTimes(1)
+    expect(mockPlayTrackList).toHaveBeenCalledWith(stubAlbum.tracks, 0)
   })
 
   it('shows EmptyState when album not found', async () => {
