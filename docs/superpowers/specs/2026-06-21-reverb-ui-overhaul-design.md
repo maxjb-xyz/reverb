@@ -16,7 +16,7 @@ This is a redesign of MVP Phase 1 surfaces. It deliberately lays the structural 
 
 ## 2. Non-Goals
 
-- No new backend features or API changes (consume the existing API as mapped in §10).
+- No new backend *features* or API surface — consume the existing API (§10). **In-scope carve-outs:** fixing the auth/login blocker (§11 Phase 1) and any small correctness fix needed to unblock a Phase-1 surface. Net-new endpoints are out of scope; the Home feed was checked and needs none (§9.1).
 - No Phase 2 features (full discography artist pages, playlist sync, Lidarr two-way sync). The shell must *accommodate* them, not implement them.
 - No light theme (dark-first; light is roadmap).
 - No standalone music server, mobile native apps, or social features.
@@ -49,10 +49,11 @@ The single most important constraint: **vehemently avoid the "vibe-coded slop" l
 These were confirmed interactively before this spec:
 
 1. **Faithful Spotify layout**, not a creative reinterpretation. Three-pane shell: global top bar, "Your Library" left rail, center feed, right Now-Playing panel, bottom player bar.
-2. **Accent is a configurable setting**, not a brand lock. The whole UI tints from one CSS variable (`--color-accent`). Default moves from today's red to the plan's **indigo-violet `#7C6AF7`**; red and a curated preset set remain one click away in User Settings. *(This default is the one item to confirm in review — see §12.)*
+2. **Accent is a configurable setting**, not a brand lock. The whole UI tints from one CSS variable (`--color-accent`). **Default stays today's red `#F0354B`.** The plan's indigo-violet `#7C6AF7` and a curated preset set are one click away in User Settings.
 3. **User Settings and Admin are separate pages** (`/settings` vs `/admin`). Admin is gated.
 4. **Admin providers split by type** into three sections: Library providers (single), Search providers (priority-ordered), Downloaders (fallback chain).
 5. **Optimistic download model** for search results (§9.2). The plan's three-tier `✓ / ↓ / no-icon` collapses to two real row states because pre-flight downloadability is information we don't have; nuance moves to the click (popover) and the queue (failure handling).
+6. **Fix login before any visual work.** The auth/login flow is reproduced, fixed, and verified as the *first* commit — building the shell on an unverifiable login is the wrong order (§11 Phase 1).
 
 ## 5. Information Architecture
 
@@ -91,7 +92,7 @@ Tokens live in `web/src/index.css` as CSS variables and are surfaced to Tailwind
 | `--text-muted` | `#6a6a6a`–`#8a8a8a` | Tertiary, disabled |
 
 ### 6.2 Color — accent & semantics
-- `--color-accent` — **configurable**, default `#7C6AF7`. Drives: primary buttons, In-Library/Downloaded content states, active nav, progress fill on hover, toggles, focus rings, selection. Stored space-separated for Tailwind alpha (`124 106 247`). `--color-accent-press` = a darkened derivative.
+- `--color-accent` — **configurable**, default **red `#F0354B`** (today's default, kept). Drives: primary buttons, In-Library/Downloaded content states, active nav, progress fill on hover, toggles, focus rings, selection. Stored space-separated for Tailwind alpha (`240 53 75`). `--color-accent-press` = a darkened derivative. Indigo `#7C6AF7`, green, amber, cyan, pink ship as presets.
 - **Status colors are fixed and semantic** (never the accent), reserved for system health so they stay legible regardless of the user's accent: success/connected `#1ed760`, warning/restart-pending `#f5c518`, error/failed `#ff6b6b`.
 - **Rule:** content-state = accent; system-health = semantic. (Avoids the accent and a status green fighting.)
 
@@ -118,6 +119,9 @@ A single custom SVG icon set (stroke 2, 24-viewbox, `currentColor`), shipped as 
 
 ### 6.8 Elevation
 A short, fixed shadow set: `0` (flat panels) · cover/card `0 8px 18px -8px rgba(0,0,0,.6)` · floating play `0 8px 16px rgba(0,0,0,.35)` · popover/sheet `0 24px 60px rgba(0,0,0,.6)`. No reflexive `shadow-lg`.
+
+### 6.9 Dynamic album background (configurable)
+A first-class part of the identity, not just a toggle. When enabled (default **on**), surfaces are washed with the dominant color of the currently-playing (or focused) album, extracted by the existing palette service (`web/src/lib/palette*`, `useAlbumPalette`). This is also what makes the Spotify-faithful top-of-panel color wash *real* rather than a hardcoded gradient — Spotify's own washes are album-derived. The extracted color feeds a CSS variable consumed at low opacity over `--bg-surface` by (a) the top-of-center contextual wash, (b) the Now-Playing panel, and optionally (c) the player bar — kept subtle and legible. User-controllable via the **Dynamic album background** toggle (§9.6, persisted to `/settings`). Honors `prefers-reduced-motion` (cross-fades disabled) and degrades to flat surfaces when off or when no palette is available.
 
 ## 7. Component System (primitives)
 
@@ -154,7 +158,7 @@ Primitives live in `web/src/components/ui/`; surface-specific compositions stay 
 - Three `#121212` rounded panels float on `#000` with `8px` gaps; each scrolls independently.
 - **Top bar:** back/forward; centered Home button + pill search ("Search your library — or everywhere") + Browse; right side **Downloads** activity (badge count) + avatar menu.
 - **Left rail ("Your Library"):** header + filter chips (Playlists / Albums / Artists) + search-within + sort; scrollable item list with cover, name, "Type · owner", and the currently-playing item highlighted in accent with an equalizer glyph.
-- **Right panel:** Now Playing (cover, title/artist, like) + "Next in queue" + an "About the artist" block (Phase-1: library facts; Phase-2-ready for full bios). Collapsible; on narrow widths it becomes an overlay. The download tray is reachable from the top-bar Downloads control.
+- **Right panel:** Now Playing (cover, title/artist, like) + "Next in queue" + an "About the artist" block (Phase-1: library facts; Phase-2-ready for full bios). **Closed by default**, opened via the Now-Playing/queue toggle in the player bar; on narrow widths it opens as an overlay. The download tray is reachable from the top-bar Downloads control.
 - **Player bar:** left (cover/title/artist/like) · center (shuffle, prev, play, next, repeat + scrubber with times) · right (lyrics, queue, devices, volume, mini-player, fullscreen).
 
 ### 8.1 Responsive
@@ -167,6 +171,8 @@ Primitives live in `web/src/components/ui/`; surface-specific compositions stay 
 ### 9.1 Home (`/`) — new
 Spotify-faithful feed: top filter chips (All / Music / Downloads) → shortcut grid (8 compact tiles, currently-playing tile shows equalizer) → a "Just added to your library" hero → "Jump back in" carousel → **"Recently downloaded"** carousel (Reverb's identity, surfaced Spotify-style). Sourced from library browse endpoints (`newest`, `recent`, `frequent`) and the download history.
 
+**Backend verified — no change needed:** `GET /api/v1/library/albums?type=` passes `type` straight through to the Subsonic adapter's `GetAlbumsBrowse` → `getAlbumList2` ([internal/api/library.go](../../../internal/api/library.go), [internal/library/subsonic/adapter.go:279](../../../internal/library/subsonic/adapter.go#L279)), so `newest` / `recent` / `frequent` / `alphabeticalByName` all work today; "Recently downloaded" uses `GET /downloads`. **Caveat:** `recent` (recently played) and `frequent` (most played) depend on Navidrome having play history — so Home **hides empty sections** and uses designed empty states rather than assuming data exists. If a fresh install has nothing to show, Home gracefully degrades to "Recently added" + "Recently downloaded" only.
+
 ### 9.2 Search (`/search`) — the core loop
 - Search bar + `My Library` / `Everywhere` segmented toggle.
 - **Source chips** showing live aggregator status (Your Library ✓, Spotify ✓, MusicBrainz off) driven by SSE envelopes.
@@ -178,7 +184,7 @@ Spotify-faithful feed: top filter chips (All / Music / Downloads) → shortcut g
   - **Downloaded** — transient accent check (content-state, per §6.2), then settles to In Library.
   - **No downloader** — the only non-actionable case: disabled, "No downloader," with a pointer to Admin → Downloaders.
 - **On click:** one downloader → queues immediately; multiple → the plan's **download popover** (choose source, recommended pre-selected, "we'll fetch the closest match").
-- **On failure:** surfaced in the **download tray** (not the search list) with an honest message + Retry / fall through to the next downloader.
+- **On failure:** surfaced in the **download tray** (not the search list). Messages are **specific and actionable**, derived from the job's actual error (`DownloadJob.Error`) — e.g. "No matching source found for 'Bones' on spotDL", "spotDL exited (code 1)", "Timed out reaching Spotify" — never a bare "Failed". Actions: Retry, or fall through to the next downloader in the chain.
 - Albums show In Library / "7 / 12" / "Download all" affordances (Phase-2-ready).
 
 ### 9.3 Album (`/album/:id`)
@@ -191,7 +197,7 @@ Phase-1 depth: header (image, name, library facts), top tracks, albums-in-librar
 Filter chips (Albums / Artists / Playlists); responsive cover grids using MediaCard; designed empty state when the library is unconfigured/empty.
 
 ### 9.6 User Settings (`/settings`)
-Tabs: **Appearance** (accent swatches incl. red[default-today]/indigo[new default]/presets + custom hex; dynamic-album-background toggle; theme=Dark) · **Playback** (gapless/crossfade, stream quality, normalization — wired to what the engine supports) · **Account** (change password, logout). Available to any signed-in user.
+Tabs: **Appearance** (accent swatches incl. red[default]/indigo/presets + custom hex; dynamic-album-background toggle [default on]; theme=Dark) · **Playback** (gapless/crossfade, stream quality, normalization — wired to what the engine supports) · **Account** (change password, logout). Available to any signed-in user.
 
 ### 9.7 Admin (`/admin`) — gated
 Tabs: **Providers** / **Server** / **Users**. Providers split into three sections, each with header, count, and "Add":
@@ -204,7 +210,7 @@ Tabs: **Providers** / **Server** / **Users**. Providers split into three section
 Branded, dark, token-driven. **Login must be verified working end-to-end** (the reported blocker). Setup is the same multi-step flow (admin password → library → search → downloader) restyled, with Test-connection per step and a clear path into the app.
 
 ### 9.9 Download tray
-Slide-over/overlay listing active/queued/completed/failed jobs with progress, Retry, Cancel, and the failure→fallback action from §9.2. Reachable from the top-bar Downloads control (badge = active count).
+Slide-over/overlay listing active/queued/completed/failed jobs with progress, Retry, Cancel, and the failure→fallback action from §9.2. Reachable from the top-bar Downloads control (badge = active count). Failed jobs show a **descriptive, human-readable reason** mapped from `DownloadJob.Error` (raw error available on expand for debugging), plus Retry and "Try <next downloader>". Generic failure copy ("Failed", "Error") is banned — if the backend only gives us a terse error, we still frame it with the track + downloader context so the user knows *what* failed and *what to do*.
 
 ## 10. API Mapping (no backend changes)
 
@@ -227,7 +233,7 @@ Keep `web/src/lib/*` (stores, `api.ts`, `audioEngine.ts`, `realtime.ts`, `search
 
 | Today | Target |
 |---|---|
-| `tailwind.config.js` + `index.css` (accent + base only) | Full token layer (§6); accent default → indigo |
+| `tailwind.config.js` + `index.css` (accent + base only) | Full token layer (§6); accent stays red, presets added |
 | Emoji icons | Custom SVG icon set (§6.7) |
 | `Sidebar.tsx` | "Your Library" rail (chips, item list, playing highlight) |
 | No global top bar | New `TopBar` (home/search/browse/downloads/avatar) |
@@ -239,19 +245,21 @@ Keep `web/src/lib/*` (stores, `api.ts`, `audioEngine.ts`, `realtime.ts`, `search
 | Text "Loading…" | Skeletons, empty states, toasts |
 
 **Suggested phasing** (sequenced fully in the implementation plan via writing-plans):
-1. **Foundation** — tokens, fonts, icon set, UI primitives (§7), accent plumbing. (Unblocks everything; visible nowhere yet.)
-2. **Shell** — TopBar, Library rail, right panel, Player bar, responsive. Fix & verify **login/setup** here.
-3. **Home + Library browse + Album/Artist** — feed and browse surfaces.
-4. **Search + download loop** — unified results, badge model, popover, tray, failure handling.
-5. **Settings + Admin** — user vs admin split, provider sections, restart banner.
-6. **Polish pass** — states audit, motion, a11y, squint-test against Spotify.
+1. **Fix auth/login first (first commit).** Reproduce the "can't get past login" blocker, fix it (setup-flow confusion *or* a real auth bug), and verify login + first-run setup end-to-end. Nothing else is verifiable until this works, so it precedes all visual work. May touch the backend (the sanctioned §2 exception).
+2. **Foundation** — tokens, fonts, icon set, UI primitives (§7), accent plumbing. (Unblocks everything; visible nowhere yet.)
+3. **Shell** — TopBar, Library rail, right panel, Player bar, responsive; restyle login/setup onto the new tokens.
+4. **Home + Library browse + Album/Artist** — feed and browse surfaces.
+5. **Search + download loop** — unified results, badge model, popover, tray, descriptive failures.
+6. **Settings + Admin** — user vs admin split, provider sections, restart banner.
+7. **Polish pass** — states audit, motion, a11y, squint-test against Spotify.
 
-## 12. Open Questions / Decisions to Confirm
+## 12. Decisions
 
-1. **Default accent:** ship default = indigo `#7C6AF7` (recommended, per plan), with red + presets available? Or keep red as default and add indigo as a preset?
-2. **Type family:** single Circular-like family (Figtree, recommended) for full Spotify fidelity, vs. the plan's Inter + Bricolage Grotesque pairing?
-3. **Login blocker:** is "couldn't get past login" a setup-flow confusion (needs first-run setup) or a real auth bug? Phase 2 of implementation will reproduce and fix; flag if you already know the cause.
-4. **Right panel default:** open by default (Spotify-like) or collapsed to maximize center on first run?
+**Resolved in review:** default accent = **red `#F0354B`** (indigo + presets available); right panel **closed by default**; login fix is **Phase 1, first commit**; dynamic album background is **default on** and elevated into the identity (§6.9); Home feed needs **no backend change** (§9.1, verified against code).
+
+**Still open:**
+1. **Type family:** single Circular-like family (Figtree, recommended) for full Spotify fidelity, vs. the plan's Inter + Bricolage Grotesque pairing. Leaning Figtree — flag if you'd rather keep the plan's pairing.
+2. **Login root cause:** reproduced and diagnosed in Phase 1. If you already know whether it's setup-flow confusion vs. an auth bug, that shortcuts step 1.
 
 ## 13. Risks
 
