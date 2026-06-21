@@ -8,6 +8,7 @@ export interface CreateDownloadReq {
   title: string
   album: string
   isrc?: string
+  durationMs?: number
   downloader?: string
   playWhenReady?: boolean
 }

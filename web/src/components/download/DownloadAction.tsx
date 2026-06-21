@@ -45,6 +45,7 @@ export function DownloadAction({ result, onPlay }: Props) {
       title: result.title,
       album: result.album,
       isrc: result.isrc,
+      durationMs: result.durationMs,
       downloader: downloaderName,
     })
       .then((j) => useDownloads.getState().upsert(j))

@@ -20,6 +20,9 @@ type DownloadRequest struct {
 	Title         string `json:"title"`
 	Album         string `json:"album"`
 	ISRC          string `json:"isrc,omitempty"`
+	// DurationMs from the originating search result; forwarded into the
+	// post-download re-match so the fuzzy rung can disambiguate by length.
+	DurationMs    int    `json:"durationMs,omitempty"`
 	Downloader    string `json:"downloader,omitempty"`
 	PlayWhenReady bool   `json:"playWhenReady"`
 }
@@ -44,6 +47,7 @@ type DownloadJob struct {
 	Title          string         `json:"title,omitempty"`
 	Album          string         `json:"album,omitempty"`
 	ISRC           string         `json:"isrc,omitempty"`
+	DurationMs     int            `json:"durationMs,omitempty"`
 	PlayWhenReady  bool           `json:"playWhenReady"`
 	CreatedAt      int64          `json:"createdAt"`
 	StartedAt      int64          `json:"startedAt"`

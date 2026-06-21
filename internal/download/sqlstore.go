@@ -59,6 +59,7 @@ func toCore(r db.DownloadJob) (core.DownloadJob, error) {
 	j.Title = req.Title
 	j.Album = req.Album
 	j.ISRC = req.ISRC
+	j.DurationMs = req.DurationMs
 	j.PlayWhenReady = req.PlayWhenReady
 	return j, nil
 }

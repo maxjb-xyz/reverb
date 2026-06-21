@@ -508,6 +508,7 @@ func (m *Manager) runScan() {
 		res, merr := m.rematcher.Match(ctx, core.ExternalResult{
 			Source: j.Source, ExternalID: j.ExternalID, Type: core.EntityTrack,
 			Title: j.Title, Artist: j.Artist, Album: j.Album, ISRC: j.ISRC,
+			DurationMs: j.DurationMs,
 		})
 		if merr != nil || res.Status != core.MatchInLibrary {
 			continue

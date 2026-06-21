@@ -15,6 +15,7 @@ type createDownloadBody struct {
 	Title         string `json:"title"`
 	Album         string `json:"album"`
 	ISRC          string `json:"isrc"`
+	DurationMs    int    `json:"durationMs"`
 	Downloader    string `json:"downloader"`
 	PlayWhenReady bool   `json:"playWhenReady"`
 }
@@ -41,6 +42,7 @@ func (s *Server) handleCreateDownload(w http.ResponseWriter, r *http.Request) {
 		Title:         body.Title,
 		Album:         body.Album,
 		ISRC:          body.ISRC,
+		DurationMs:    body.DurationMs,
 		Downloader:    body.Downloader,
 		PlayWhenReady: body.PlayWhenReady,
 	})
