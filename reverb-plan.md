@@ -327,6 +327,7 @@ ui:
 - Mobile Apps
 - SSO/OIDC
 - Custom themed player bars (tron lightcycle, lightsaber, etc.)
+- Device control: control devices logged into your account
 
 ---
 
