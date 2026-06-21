@@ -119,9 +119,11 @@ func (a *Adapter) Start(ctx context.Context, req core.DownloadRequest, onProgres
 	if a.clientID != "" && a.clientSecret != "" {
 		args = append(args, "--client-id", a.clientID, "--client-secret", a.clientSecret)
 	}
-	// "--" ensures spotDL treats the query as a positional argument, not a flag,
-	// even if it starts with "-" (e.g. a title like "- Something").
-	args = append(args, "download", "--", query, "--output", a.outputDir)
+	// Options (e.g. --output) MUST come before the "--" separator; everything
+	// AFTER "--" is positional, so spotDL would otherwise read "--output" and the
+	// dir as extra search queries. "--" then protects the query itself from being
+	// parsed as a flag (e.g. a title like "- Something").
+	args = append(args, "download", "--output", a.outputDir, "--", query)
 
 	log.Printf("spotdl: exec %s %s", a.binary, redactArgs(args))
 
