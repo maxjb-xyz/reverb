@@ -22,6 +22,9 @@ function useDownloaders() {
 
 export function DownloadAction({ result, onPlay }: Props) {
   const [popoverOpen, setPopoverOpen] = useState(false)
+  // Optimistic: flip to "Downloading" the instant the user clicks, before the
+  // POST round-trips. The real job (from the store) takes over once it lands.
+  const [optimistic, setOptimistic] = useState(false)
 
   const job = useDownloads((s) => s.byExternal(result.source, result.externalId))
   const downloaders = useDownloaders()
@@ -34,7 +37,8 @@ export function DownloadAction({ result, onPlay }: Props) {
 
   // ── helper: enqueue with an optional downloader name ──────────────────────
   function enqueue(downloaderName?: string) {
-    void postDownload({
+    setOptimistic(true)
+    postDownload({
       source: result.source,
       externalId: result.externalId,
       artist: result.artist,
@@ -42,7 +46,9 @@ export function DownloadAction({ result, onPlay }: Props) {
       album: result.album,
       isrc: result.isrc,
       downloader: downloaderName,
-    }).then((j) => useDownloads.getState().upsert(j))
+    })
+      .then((j) => useDownloads.getState().upsert(j))
+      .catch(() => setOptimistic(false))
   }
 
   function handleDownloadClick(e: React.MouseEvent) {
@@ -81,8 +87,11 @@ export function DownloadAction({ result, onPlay }: Props) {
   }
 
   // ── 2. Active (running or queued) ─────────────────────────────────────────
-  if (job?.status === 'running' || job?.status === 'queued') {
-    const isIndeterminate = job.status === 'queued' || job.progress < 0
+  // Also covers the optimistic state (clicked, server not yet acknowledged) so
+  // the row reads "Downloading" immediately. progress <= 0 stays indeterminate so
+  // a just-started (running, 0%) job spins rather than showing an empty ring.
+  if ((optimistic && !job) || job?.status === 'running' || job?.status === 'queued') {
+    const isIndeterminate = !job || job.status === 'queued' || job.progress <= 0
     return (
       <span className="inline-flex items-center gap-2">
         <ProgressRing

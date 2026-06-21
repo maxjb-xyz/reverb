@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useQueryClient } from '@tanstack/react-query'
 import { IconButton, Chip, Cover, Skeleton, EmptyState, Equalizer, Icon } from '../ui'
-import { usePlaylists, useArtists, useAlbums, coverUrl } from '../../lib/libraryApi'
+import { usePlaylists, useArtists, useAlbums, coverUrl, createPlaylist } from '../../lib/libraryApi'
 import { usePlayer } from '../../lib/playerStore'
 import type { Playlist, Album, Artist } from '../../lib/types'
 
@@ -9,7 +10,9 @@ type Filter = 'playlists' | 'albums' | 'artists'
 
 export function LibraryRail() {
   const navigate = useNavigate()
+  const qc = useQueryClient()
   const [filter, setFilter] = useState<Filter>('playlists')
+  const [creating, setCreating] = useState(false)
   const current = usePlayer((s) => s.current)
 
   const playlists = usePlaylists()
@@ -23,6 +26,22 @@ export function LibraryRail() {
     artists
 
   const isLoading = activeQuery.isLoading
+
+  // Create a playlist in the library, then refresh + switch to the Playlists tab.
+  // Requires a connected library provider (no-op if it isn't configured).
+  async function handleCreatePlaylist() {
+    if (creating) return
+    setCreating(true)
+    try {
+      await createPlaylist('New Playlist')
+      await qc.invalidateQueries({ queryKey: ['library', 'playlists'] })
+      setFilter('playlists')
+    } catch {
+      // Needs a connected library provider; nothing to do otherwise.
+    } finally {
+      setCreating(false)
+    }
+  }
 
   return (
     <aside className="flex flex-col min-h-0 bg-surface rounded-lg overflow-hidden">
@@ -39,8 +58,13 @@ export function LibraryRail() {
             Your Library
           </button>
           <div className="ml-auto flex gap-1.5 text-text-secondary">
-            <IconButton name="plus" label="Add to library" size="sm" />
-            <IconButton name="expand" label="Expand library" size="sm" />
+            <IconButton
+              name="plus"
+              label="Create playlist"
+              size="sm"
+              disabled={creating}
+              onClick={() => void handleCreatePlaylist()}
+            />
           </div>
         </div>
       </div>
@@ -56,20 +80,6 @@ export function LibraryRail() {
         <Chip selected={filter === 'artists'} onClick={() => setFilter('artists')}>
           Artists
         </Chip>
-      </div>
-
-      {/* Sub-toolbar */}
-      <div className="flex items-center px-4 pb-2 text-text-secondary">
-        <IconButton name="sort" label="Sort" size="sm" />
-        <button
-          type="button"
-          aria-label="Sort"
-          onClick={() => { /* sort not wired yet */ }}
-          className="ml-auto flex items-center gap-1.5 text-sm font-semibold text-text-primary select-none hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded"
-        >
-          Recents
-          <Icon name="fwd" className="w-3.5 h-3.5 rotate-90" />
-        </button>
       </div>
 
       {/* List */}
