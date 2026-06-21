@@ -326,6 +326,7 @@ ui:
 - Desktop Apps (Windows, Mac, and Linux): Built with Tauri?
 - Mobile Apps
 - SSO/OIDC
+- Custom themed player bars (tron lightcycle, lightsaber, etc.)
 
 ---
 
