@@ -1,100 +1,196 @@
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
-import { useLibrarySearch, coverUrl } from '../lib/libraryApi'
-import { TrackRow } from '../components/TrackRow'
+import { useNavigate } from 'react-router-dom'
+import { useLibrarySearch } from '../lib/libraryApi'
 import { useEverywhere } from '../lib/everywhereStore'
-import { ExternalRow } from '../components/ExternalRow'
-import { SourceChips } from '../components/SourceChips'
+import { usePlayer } from '../lib/playerStore'
+import { DownloadAction } from '../components/download/DownloadAction'
+import {
+  Segmented,
+  TrackRow,
+  MediaCard,
+  Badge,
+  EmptyState,
+  Skeleton,
+} from '../components/ui'
+import type { SourceStatus } from '../lib/everywhereStore'
+import type { ExternalResult, EnvelopeStatus, Track } from '../lib/types'
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
 
 type Mode = 'library' | 'everywhere'
+
+const MODE_OPTIONS: { value: Mode; label: string }[] = [
+  { value: 'library', label: 'My Library' },
+  { value: 'everywhere', label: 'Everywhere' },
+]
+
+function sourceTone(status: EnvelopeStatus): 'success' | 'warning' | 'error' {
+  if (status === 'ok') return 'success'
+  if (status === 'timeout') return 'warning'
+  return 'error'
+}
+
+function sourceLabel(s: SourceStatus): string {
+  const name = s.source.charAt(0).toUpperCase() + s.source.slice(1)
+  if (s.status === 'ok') return `${name} ✓`
+  if (s.status === 'timeout') return `${name} timed out`
+  return `${name} error`
+}
+
+/** Minimal library Track synthesised from an external result + matched library id. */
+function trackFromMatch(r: ExternalResult, libraryTrackId: string): Track {
+  return {
+    id: libraryTrackId,
+    title: r.title,
+    albumId: '',
+    album: r.album,
+    artistId: '',
+    artist: r.artist,
+    coverArtId: r.coverArtId ?? '',
+    trackNumber: 0,
+    discNumber: 0,
+    durationMs: r.durationMs,
+    bitRate: 0,
+    suffix: '',
+    contentType: '',
+    isrc: r.isrc,
+  }
+}
+
+// ── Source chips ──────────────────────────────────────────────────────────────
+
+function SourceChipsRow({ sources }: { sources: SourceStatus[] }) {
+  if (sources.length === 0) return null
+  return (
+    <div className="flex flex-wrap items-center gap-2" aria-label="Source status">
+      {sources.map((s) => (
+        <Badge key={s.source} kind="status" tone={sourceTone(s.status)}>
+          {sourceLabel(s)}
+        </Badge>
+      ))}
+    </div>
+  )
+}
+
+// ── Section header ────────────────────────────────────────────────────────────
+
+function SectionHeading({ children }: { children: React.ReactNode }) {
+  return (
+    <h2 className="mb-2 text-sm font-bold uppercase tracking-wider text-text-muted">
+      {children}
+    </h2>
+  )
+}
+
+// ── Library-mode skeleton ─────────────────────────────────────────────────────
+
+function TrackSkeletons() {
+  return (
+    <div className="space-y-1" aria-busy="true" aria-label="Loading tracks">
+      {Array.from({ length: 5 }).map((_, i) => (
+        <Skeleton key={i} className="h-12 w-full" />
+      ))}
+    </div>
+  )
+}
+
+// ── Main component ─────────────────────────────────────────────────────────────
 
 export default function Search() {
   const [q, setQ] = useState('')
   const [mode, setMode] = useState<Mode>('library')
 
-  // Library mode: a single fast REST query (TanStack Query), unchanged from M1.
+  const playTrackList = usePlayer((s) => s.playTrackList)
+  const currentTrackId = usePlayer((s) => s.current?.id)
+  const navigate = useNavigate()
+
+  // Library mode: TanStack Query REST call
   const lib = useLibrarySearch(mode === 'library' ? q : '')
-  // Everywhere mode: SSE stream accumulated into stable sections (distinct transport).
+
+  // Everywhere mode: SSE stream via reducer (transport stays entirely in useEverywhere)
   const everywhere = useEverywhere(q, 'track', mode === 'everywhere')
 
-  const tracks = lib.data?.tracks ?? []
-  const albums = lib.data?.albums ?? []
-  const artists = lib.data?.artists ?? []
+  const libTracks = lib.data?.tracks ?? []
+  const libAlbums = lib.data?.albums ?? []
+  const libArtists = lib.data?.artists ?? []
+
+  // ── Empty-query prompt ──────────────────────────────────────────────────────
+  if (q.trim() === '') {
+    return (
+      <div className="space-y-6">
+        <SearchBar q={q} onChange={setQ} mode={mode} onMode={setMode} />
+        <EmptyState
+          icon="search"
+          title="Find your music"
+          hint="Type an artist, album, or track name to search your library or discover new music everywhere."
+        />
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-3">
-        <input
-          autoFocus
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder="Search your library…"
-          className="w-full max-w-xl rounded bg-neutral-900 px-4 py-2 outline-none ring-1 ring-neutral-800 focus:ring-accent"
-        />
-        <div className="flex overflow-hidden rounded-full ring-1 ring-neutral-800">
-          <button
-            type="button"
-            onClick={() => setMode('library')}
-            className={`px-3 py-1 text-sm ${mode === 'library' ? 'bg-accent text-white' : 'text-neutral-400 hover:text-neutral-200'}`}
-          >
-            My Library
-          </button>
-          <button
-            type="button"
-            onClick={() => setMode('everywhere')}
-            className={`px-3 py-1 text-sm ${mode === 'everywhere' ? 'bg-accent text-white' : 'text-neutral-400 hover:text-neutral-200'}`}
-          >
-            Everywhere
-          </button>
-        </div>
-      </div>
+      <SearchBar q={q} onChange={setQ} mode={mode} onMode={setMode} />
 
-      {q.trim() === '' && <p className="text-neutral-500">Type to search.</p>}
-
+      {/* ── Library mode ──────────────────────────────────────────────────── */}
       {mode === 'library' && (
         <>
-          {lib.isFetching && <p className="text-neutral-500">Searching…</p>}
-          {tracks.length > 0 && (
-            <section>
-              <h2 className="mb-2 text-lg font-bold">Tracks</h2>
+          {lib.isFetching && <TrackSkeletons />}
+
+          {!lib.isFetching && libTracks.length === 0 && libAlbums.length === 0 && libArtists.length === 0 && lib.isFetched && (
+            <EmptyState
+              icon="search"
+              title="No results"
+              hint={`Nothing in your library matches "${q}". Try Everywhere to discover it.`}
+            />
+          )}
+
+          {libTracks.length > 0 && (
+            <section aria-label="Songs">
+              <SectionHeading>Songs</SectionHeading>
               <div className="space-y-0.5">
-                {tracks.map((t, i) => (
-                  <TrackRow key={t.id} track={t} index={i} queue={tracks} />
+                {libTracks.map((t, i) => (
+                  <TrackRow
+                    key={t.id}
+                    track={t}
+                    index={i}
+                    active={currentTrackId === t.id}
+                    onPlay={() => playTrackList(libTracks, i)}
+                  />
                 ))}
               </div>
             </section>
           )}
-          {albums.length > 0 && (
-            <section>
-              <h2 className="mb-2 text-lg font-bold">Albums</h2>
+
+          {libAlbums.length > 0 && (
+            <section aria-label="Albums">
+              <SectionHeading>Albums</SectionHeading>
               <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-                {albums.map((al) => (
-                  <Link key={al.id} to={`/album/${al.id}`} className="group">
-                    {al.coverArtId ? (
-                      <img src={coverUrl(al.coverArtId, 300)} alt="" className="aspect-square w-full rounded object-cover" />
-                    ) : (
-                      <div className="aspect-square w-full rounded bg-neutral-800" />
-                    )}
-                    <div className="mt-1 truncate text-sm font-medium group-hover:text-accent">{al.name}</div>
-                    <div className="truncate text-xs text-neutral-400">{al.artist}</div>
-                  </Link>
+                {libAlbums.map((al) => (
+                  <MediaCard
+                    key={al.id}
+                    title={al.name}
+                    subtitle={al.artist}
+                    coverId={al.coverArtId}
+                    onClick={() => navigate(`/album/${al.id}`)}
+                  />
                 ))}
               </div>
             </section>
           )}
-          {artists.length > 0 && (
-            <section>
-              <h2 className="mb-2 text-lg font-bold">Artists</h2>
+
+          {libArtists.length > 0 && (
+            <section aria-label="Artists">
+              <SectionHeading>Artists</SectionHeading>
               <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
-                {artists.map((ar) => (
-                  <Link key={ar.id} to={`/artist/${ar.id}`} className="group text-center">
-                    {ar.coverArtId ? (
-                      <img src={coverUrl(ar.coverArtId, 300)} alt="" className="aspect-square w-full rounded-full object-cover" />
-                    ) : (
-                      <div className="aspect-square w-full rounded-full bg-neutral-800" />
-                    )}
-                    <div className="mt-1 truncate text-sm font-medium group-hover:text-accent">{ar.name}</div>
-                  </Link>
+                {libArtists.map((ar) => (
+                  <MediaCard
+                    key={ar.id}
+                    title={ar.name}
+                    coverId={ar.coverArtId}
+                    rounded="full"
+                    onClick={() => navigate(`/artist/${ar.id}`)}
+                  />
                 ))}
               </div>
             </section>
@@ -102,63 +198,145 @@ export default function Search() {
         </>
       )}
 
-      {mode === 'everywhere' && everywhere.status === 'streaming' && (
-        <p className="text-neutral-500 text-sm">Searching…</p>
-      )}
-
-      {mode === 'everywhere' && q.trim() !== '' && (
+      {/* ── Everywhere mode ────────────────────────────────────────────────── */}
+      {mode === 'everywhere' && (
         <>
-          <SourceChips sources={everywhere.sources} />
-          {/* Stable sections: results append within each section, never reflow. */}
-          <section>
-            <h2 className="mb-2 text-lg font-bold">Tracks</h2>
-            {everywhere.tracks.length === 0 ? (
-              <p className="text-neutral-500">Searching sources…</p>
+          {/* Source chips */}
+          <SourceChipsRow sources={everywhere.sources} />
+
+          {/* Streaming hint — shows while at least one envelope is in flight */}
+          {everywhere.status === 'streaming' && (
+            <p className="text-xs text-text-muted" aria-live="polite">
+              Searching sources…
+            </p>
+          )}
+
+          {/* Songs */}
+          <section aria-label="Songs">
+            <SectionHeading>Songs</SectionHeading>
+            {everywhere.tracks.length === 0 && everywhere.status === 'streaming' ? (
+              <TrackSkeletons />
+            ) : everywhere.tracks.length === 0 ? (
+              <p className="text-sm text-text-muted">No tracks found.</p>
             ) : (
               <div className="space-y-0.5">
-                {everywhere.tracks.map((r) => (
-                  <ExternalRow key={`${r.source}:${r.externalId}`} result={r} />
-                ))}
+                {everywhere.tracks.map((r) => {
+                  const matchedId =
+                    (r.match?.status === 'in_library' && r.match.libraryTrackId) || ''
+                  const syntheticTrack = matchedId ? trackFromMatch(r, matchedId) : null
+
+                  // For display in TrackRow we need a Track shape. We always render
+                  // a synthetic Track — the right slot carries the DownloadAction.
+                  const displayTrack: Track = syntheticTrack ?? {
+                    id: `${r.source}:${r.externalId}`,
+                    title: r.title,
+                    albumId: '',
+                    album: r.album,
+                    artistId: '',
+                    artist: r.artist,
+                    coverArtId: r.coverArtId ?? '',
+                    trackNumber: 0,
+                    discNumber: 0,
+                    durationMs: r.durationMs,
+                    bitRate: 0,
+                    suffix: '',
+                    contentType: '',
+                    isrc: r.isrc,
+                  }
+
+                  return (
+                    <TrackRow
+                      key={`${r.source}:${r.externalId}`}
+                      track={displayTrack}
+                      active={!!matchedId && currentTrackId === matchedId}
+                      onPlay={() => {
+                        if (syntheticTrack) {
+                          playTrackList([syntheticTrack], 0)
+                        }
+                      }}
+                      right={
+                        <DownloadAction
+                          result={r}
+                          onPlay={(libraryTrackId) => {
+                            playTrackList([trackFromMatch(r, libraryTrackId)], 0)
+                          }}
+                        />
+                      }
+                    />
+                  )
+                })}
               </div>
             )}
           </section>
+
+          {/* Albums */}
           {everywhere.albums.length > 0 && (
-            <section>
-              <h2 className="mb-2 text-lg font-bold">Albums</h2>
+            <section aria-label="Albums">
+              <SectionHeading>Albums</SectionHeading>
               <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
                 {everywhere.albums.map((r) => (
-                  <div key={`${r.source}:${r.externalId}`} className="group">
-                    {r.coverUrl ? (
-                      <img src={r.coverUrl} alt="" className="aspect-square w-full rounded object-cover" />
-                    ) : (
-                      <div className="aspect-square w-full rounded bg-neutral-800" />
-                    )}
-                    <div className="mt-1 truncate text-sm font-medium">{r.title}</div>
-                    <div className="truncate text-xs text-neutral-400">{r.artist}</div>
-                  </div>
+                  <MediaCard
+                    key={`${r.source}:${r.externalId}`}
+                    title={r.title}
+                    subtitle={r.artist}
+                    badge={
+                      r.match?.status === 'in_library' ? (
+                        <Badge kind="in-library">
+                          In Library
+                        </Badge>
+                      ) : undefined
+                    }
+                  />
                 ))}
               </div>
             </section>
           )}
+
+          {/* Artists */}
           {everywhere.artists.length > 0 && (
-            <section>
-              <h2 className="mb-2 text-lg font-bold">Artists</h2>
+            <section aria-label="Artists">
+              <SectionHeading>Artists</SectionHeading>
               <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
                 {everywhere.artists.map((r) => (
-                  <div key={`${r.source}:${r.externalId}`} className="group text-center">
-                    {r.coverUrl ? (
-                      <img src={r.coverUrl} alt="" className="aspect-square w-full rounded-full object-cover" />
-                    ) : (
-                      <div className="aspect-square w-full rounded-full bg-neutral-800" />
-                    )}
-                    <div className="mt-1 truncate text-sm font-medium">{r.title}</div>
-                  </div>
+                  <MediaCard
+                    key={`${r.source}:${r.externalId}`}
+                    title={r.title}
+                    rounded="full"
+                  />
                 ))}
               </div>
             </section>
           )}
         </>
       )}
+    </div>
+  )
+}
+
+// ── SearchBar sub-component ───────────────────────────────────────────────────
+
+interface SearchBarProps {
+  q: string
+  onChange: (v: string) => void
+  mode: Mode
+  onMode: (m: Mode) => void
+}
+
+function SearchBar({ q, onChange, mode, onMode }: SearchBarProps) {
+  return (
+    <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+      <label className="sr-only" htmlFor="search-input">
+        Search
+      </label>
+      <input
+        id="search-input"
+        autoFocus
+        value={q}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder="Search your library…"
+        className="w-full max-w-xl rounded-full bg-raised px-4 py-2 text-sm text-text-primary outline-none ring-1 ring-border-subtle placeholder:text-text-muted focus-visible:ring-2 focus-visible:ring-accent"
+      />
+      <Segmented options={MODE_OPTIONS} value={mode} onChange={onMode} />
     </div>
   )
 }

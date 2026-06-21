@@ -64,6 +64,7 @@ export function DownloadAction({ result, onPlay }: Props) {
     return (
       <button
         type="button"
+        title="In Library"
         aria-label={`Play ${result.title}`}
         onClick={(e) => {
           e.stopPropagation()

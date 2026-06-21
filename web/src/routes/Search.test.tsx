@@ -18,6 +18,19 @@ function wrap(ui: React.ReactNode) {
   )
 }
 
+// Helper: click the Everywhere tab in the Segmented control (role="tab")
+function clickTab(name: RegExp | string) {
+  fireEvent.click(screen.getByRole('tab', { name }))
+}
+
+describe('Search (empty query)', () => {
+  it('shows an EmptyState prompt when no query is typed', () => {
+    render(wrap(<Search />))
+    // "Find your music" is the EmptyState title
+    expect(screen.getByText(/find your music/i)).toBeInTheDocument()
+  })
+})
+
 describe('Search (library mode)', () => {
   beforeEach(() => {
     vi.stubGlobal(
@@ -54,6 +67,12 @@ describe('Search (library mode)', () => {
     expect(spy).toHaveBeenCalledWith([stubTrack], 0)
     spy.mockRestore()
   })
+
+  it('shows My Library tab as selected by default', () => {
+    render(wrap(<Search />))
+    const tab = screen.getByRole('tab', { name: /my library/i })
+    expect(tab).toHaveAttribute('aria-selected', 'true')
+  })
 })
 
 describe('Search (everywhere mode)', () => {
@@ -74,7 +93,7 @@ describe('Search (everywhere mode)', () => {
 
     render(wrap(<Search />))
     fireEvent.change(screen.getByPlaceholderText(/search/i), { target: { value: 'echoes' } })
-    fireEvent.click(screen.getByRole('button', { name: /everywhere/i }))
+    clickTab(/everywhere/i)
 
     act(() => {
       inst!.onmessage?.({
@@ -89,8 +108,87 @@ describe('Search (everywhere mode)', () => {
     })
 
     await waitFor(() => expect(screen.getByText('Echoes')).toBeInTheDocument())
+    // Source chip shows "Spotify ✓" for ok status
     expect(screen.getByText(/Spotify ✓/)).toBeInTheDocument()
+    // In-library track shows a "In Library" button with title
     expect(screen.getByTitle(/in library/i)).toBeInTheDocument()
+
+    vi.unstubAllGlobals()
+  })
+
+  it('source chips render correct tone: error status shows error badge', async () => {
+    let inst: { onmessage: ((ev: { data: string }) => void) | null; onerror: (() => void) | null; close(): void } | null = null
+    class StubES {
+      onmessage: ((ev: { data: string }) => void) | null = null
+      onerror: (() => void) | null = null
+      url: string
+      constructor(url: string) {
+        this.url = url
+        inst = this
+      }
+      close() {}
+    }
+    vi.stubGlobal('EventSource', StubES as unknown as typeof EventSource)
+
+    render(wrap(<Search />))
+    fireEvent.change(screen.getByPlaceholderText(/search/i), { target: { value: 'test' } })
+    clickTab(/everywhere/i)
+
+    act(() => {
+      inst!.onmessage?.({
+        data: JSON.stringify({ source: 'spotify', status: 'error', results: [] }),
+      })
+    })
+
+    await waitFor(() => expect(screen.getByText(/Spotify error/i)).toBeInTheDocument())
+
+    vi.unstubAllGlobals()
+  })
+
+  it('external not-in-library track renders a Download affordance', async () => {
+    let inst: { onmessage: ((ev: { data: string }) => void) | null; onerror: (() => void) | null; close(): void } | null = null
+    class StubES {
+      onmessage: ((ev: { data: string }) => void) | null = null
+      onerror: (() => void) | null = null
+      url: string
+      constructor(url: string) {
+        this.url = url
+        inst = this
+      }
+      close() {}
+    }
+    vi.stubGlobal('EventSource', StubES as unknown as typeof EventSource)
+    // Stub adapters API so DownloadAction renders with no-downloader state
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        if (url.includes('/adapters')) {
+          return new Response(JSON.stringify([]), { status: 200, headers: { 'Content-Type': 'application/json' } })
+        }
+        return new Response('{}', { status: 404 })
+      }),
+    )
+
+    render(wrap(<Search />))
+    fireEvent.change(screen.getByPlaceholderText(/search/i), { target: { value: 'newtrack' } })
+    clickTab(/everywhere/i)
+
+    act(() => {
+      inst!.onmessage?.({
+        data: JSON.stringify({
+          source: 'spotify',
+          status: 'ok',
+          results: [
+            { source: 'spotify', externalId: 'sp2', title: 'New Track', artist: 'Y', album: 'Z', durationMs: 180000, type: 'track', match: { status: 'not_in_library', libraryTrackId: '', method: 'none', confidence: 0 } },
+          ],
+        }),
+      })
+    })
+
+    await waitFor(() => expect(screen.getByText('New Track')).toBeInTheDocument())
+    // DownloadAction renders some download affordance (no-downloader badge or download button)
+    // It should NOT show "In Library"
+    expect(screen.queryByTitle(/in library/i)).not.toBeInTheDocument()
 
     vi.unstubAllGlobals()
   })
@@ -112,7 +210,7 @@ describe('Search (everywhere mode)', () => {
 
     render(wrap(<Search />))
     fireEvent.change(screen.getByPlaceholderText(/search/i), { target: { value: 'first' } })
-    fireEvent.click(screen.getByRole('button', { name: /everywhere/i }))
+    clickTab(/everywhere/i)
 
     // Capture the first instance and spy on it
     const firstInst = inst!
@@ -153,7 +251,7 @@ describe('Search (everywhere mode)', () => {
 
     render(wrap(<Search />))
     fireEvent.change(screen.getByPlaceholderText(/search/i), { target: { value: 'echoes' } })
-    fireEvent.click(screen.getByRole('button', { name: /everywhere/i }))
+    clickTab(/everywhere/i)
 
     // Emit one envelope so Everywhere UI is visible
     act(() => {
@@ -171,7 +269,7 @@ describe('Search (everywhere mode)', () => {
 
     // Switch back to Library
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: /my library/i }))
+      clickTab(/my library/i)
     })
 
     // External Everywhere rows should be gone; library input placeholder still present
