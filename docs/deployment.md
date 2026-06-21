@@ -26,32 +26,42 @@ adapters in Settings:
   from `REVERB_SPOTIFY_CLIENT_SECRET` in `.env`.
 - **Downloader** (spotDL): set `output_dir` to `/music`.
 
-## Volumes & permissions
+## Folders & permissions (PUID/PGID)
 
-The Reverb container runs as a **non-root user (uid 10001)**. The provided
-`docker-compose.yml` uses **named volumes** (`reverb-data`, `reverb-music`) which
-are created with that ownership automatically — so the SQLite DB opens and
-downloads write with **no host-side setup**.
+Reverb bind-mounts two host folders:
 
-> If you instead bind-mount a host directory (e.g. to back the DB up directly or
-> to use an existing music library), that host directory is owned by root/your
-> host user, and the container **cannot** open the DB or write downloads until you
-> make it writable by uid 10001:
-> ```bash
-> sudo chown -R 10001:10001 ./data ./music
-> ```
-> Symptom if you skip this: `unable to open database file ... (14)` (SQLITE_CANTOPEN)
-> in a restart loop.
+- `./data` → `/data` — app state + the SQLite DB (`/data/reverb.db`).
+- `MUSIC_DIR` → `/music` — your music library (where downloads land and your
+  library server scans). Point `MUSIC_DIR` at an existing library (e.g.
+  `/srv/music` or a NAS mount) in `.env`; it defaults to `./music`.
 
-## The shared music volume
+The container starts as root only to fix `/data` ownership, then **drops to the
+`PUID:PGID` user** (via `gosu`) and runs Reverb non-root. Set `PUID`/`PGID` in
+`.env` to the owner of your folders so the DB is writable and downloads land with
+the right ownership:
+
+```bash
+id -u   # -> PUID
+id -g   # -> PGID
+```
+
+`/data` is chowned to `PUID:PGID` automatically on start, so it works even if
+Docker created `./data` as root. `/music` is **not** chowned (it may be a large
+existing library you don't want re-owned) — it must already be writable by
+`PUID:PGID`. If `PUID` doesn't match your music dir's owner, downloads fail with
+permission errors; fix by setting `PUID` to that owner or adding it to the dir's
+group. (If `/data` is unwritable you'll see `unable to open database file ... (14)`,
+SQLITE_CANTOPEN, in a restart loop — almost always a `PUID` mismatch.)
+
+## The shared music folder
 
 Reverb's spotDL downloader writes into `/music`. For downloads to appear in your
-library, your Subsonic/Navidrome server MUST scan the SAME volume. The provided
-`docker-compose.yml` shares the `reverb-music` named volume between Reverb and
-(in the commented Navidrome service) Navidrome (`reverb-music:/music:ro`). After a
-download completes, Reverb triggers a library scan and the track becomes
-playable. To use an existing host library instead, bind-mount it and chown it to
-uid 10001 as shown above.
+library, your Subsonic/Navidrome server MUST scan the SAME folder. The provided
+`docker-compose.yml` bind-mounts `MUSIC_DIR` into Reverb and (in the commented
+Navidrome service) the same folder read-only into Navidrome. After a download
+completes, Reverb triggers a library scan and the track becomes playable. Run
+Navidrome with the same `PUID:PGID` (or at least read access) so it can read the
+files Reverb writes.
 
 ## Reverse proxy + TLS
 
@@ -93,22 +103,17 @@ server {
 
 ## Backups
 
-- The `reverb-data` volume holds the SQLite database (`/data/reverb.db`, set via
-  `REVERB_DB`) plus app state — the only stateful Reverb data worth backing up.
-- The `reverb-music` volume holds downloaded audio (shared with the library server).
+- `./data` holds the SQLite database (`/data/reverb.db`) plus app state — the only
+  stateful Reverb data worth backing up.
+- Your `MUSIC_DIR` holds the downloaded audio (managed by your library server).
 
-**Backup the DB** by copying it out of the named volume (cold copy is simplest):
+Since `./data` is a host folder, a cold backup is just a copy:
 
 ```bash
 docker compose stop reverb
-docker run --rm -v reverb_reverb-data:/data -v "$PWD/backups:/backup" \
-  busybox cp /data/reverb.db /backup/reverb-$(date +%F).db
+cp ./data/reverb.db ./backups/reverb-$(date +%F).db
 docker compose start reverb
 ```
-
-(The volume is named `<project>_reverb-data`; `reverb_reverb-data` when the compose
-project directory is `reverb`. Run `docker volume ls` to confirm.) If you bind-mount
-`./data` instead, just `cp ./data/reverb.db ./backups/`.
 
 ## Upgrades
 

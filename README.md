@@ -46,12 +46,15 @@ No clone or build needed — Compose pulls the published image:
 mkdir reverb && cd reverb
 curl -O https://raw.githubusercontent.com/maxjb-xyz/reverb/main/docker-compose.yml
 curl -o .env https://raw.githubusercontent.com/maxjb-xyz/reverb/main/.env.example
-# edit .env to set your secrets (see Configuration)
+# In .env: set secrets, set PUID/PGID to your `id -u`/`id -g`, and point
+# MUSIC_DIR at your music library (defaults to ./music).
 docker compose up -d        # pulls ghcr.io/maxjb-xyz/reverb and runs on http://localhost:8090
 ```
 
-Pin a specific version with `REVERB_VERSION=0.1.0` in `.env` (defaults to
-`latest`). Prefer to build from source instead? See
+Reverb runs as your `PUID:PGID` and stores the DB in `./data` and music in
+`MUSIC_DIR` on your **host filesystem** (not a Docker volume), so your library
+server can scan the same files. Pin a version with `REVERB_VERSION=0.1.0` in
+`.env` (defaults to `latest`). Prefer to build from source? See
 [Development & contributing](#development--contributing).
 
 Open http://localhost:8090 and complete the **first-run wizard**: set an admin
