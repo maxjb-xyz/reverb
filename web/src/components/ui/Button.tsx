@@ -11,7 +11,7 @@ interface ButtonProps {
 }
 
 const variantClasses: Record<NonNullable<ButtonProps['variant']>, string> = {
-  primary: 'bg-accent text-black hover:opacity-90',
+  primary: 'bg-accent text-on-accent hover:opacity-90',
   secondary: 'border border-border-subtle text-text-primary bg-transparent hover:bg-raised-hover',
   ghost: 'text-text-secondary bg-transparent hover:text-text-primary',
 }

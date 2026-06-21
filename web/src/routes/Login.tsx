@@ -71,7 +71,7 @@ export default function Login() {
             )}
 
             <Button type="submit" variant="primary" size="md" disabled={loading} aria-label="Log in">
-              <span className="w-full text-center">{loading ? 'Logging in…' : 'Log in'}</span>
+              <span className="w-full text-center">{loading ? 'Logging in...' : 'Log in'}</span>
             </Button>
           </form>
         </div>

@@ -14,6 +14,7 @@ export default {
       },
       colors: {
         accent: 'rgb(var(--color-accent) / <alpha-value>)',
+        'on-accent': 'rgb(var(--on-accent) / <alpha-value>)',
         base: 'var(--bg-base)',
         surface: 'var(--bg-surface)',
         raised: 'var(--bg-raised)',

@@ -7,7 +7,7 @@ describe('Chip', () => {
     render(<Chip selected>Playlists</Chip>)
     const chip = screen.getByText('Playlists')
     expect(chip.className).toMatch(/bg-text-primary/)
-    expect(chip.className).toMatch(/text-base/)
+    expect(chip.className).toMatch(/text-on-accent/)
   })
 
   it('applies unselected classes when not selected', () => {

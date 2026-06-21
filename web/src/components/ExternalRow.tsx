@@ -4,6 +4,7 @@ import { formatDuration } from '../lib/types'
 import { usePlayer } from '../lib/playerStore'
 import { useDownloads } from '../lib/downloadStore'
 import { postDownload } from '../lib/downloadApi'
+import { Icon } from './ui/Icon'
 
 interface Props {
   result: ExternalResult
@@ -36,7 +37,7 @@ function ProgressRing({ progress }: { progress: number }) {
   const label = progress >= 0 ? `Downloading ${progress}%` : 'Downloading'
   if (progress < 0) {
     return (
-      <span aria-label={label} title={label} className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-neutral-600 border-t-accent" />
+      <span aria-label={label} title={label} className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-border-subtle border-t-accent" />
     )
   }
   const deg = Math.round((progress / 100) * 360)
@@ -76,12 +77,12 @@ export function ExternalRow({ result }: Props) {
   const cover = result.coverUrl ? (
     <img src={result.coverUrl} alt="" className="h-9 w-9 rounded object-cover" />
   ) : (
-    <div className="h-9 w-9 rounded bg-neutral-800" />
+    <div className="h-9 w-9 rounded bg-raised-hover" />
   )
 
   let action: ReactNode
   if (inLibrary) {
-    action = <span title="In library" className="text-accent">✓</span>
+    action = <span title="In library" className="text-accent"><Icon name="check" className="w-4 h-4" /></span>
   } else if (active) {
     action = <ProgressRing progress={job!.progress} />
   } else {
@@ -93,9 +94,9 @@ export function ExternalRow({ result }: Props) {
           e.stopPropagation()
           onDownload()
         }}
-        className="text-neutral-400 hover:text-accent"
+        className="text-text-muted hover:text-accent"
       >
-        ↓
+        <Icon name="dl" className="w-4 h-4" />
       </button>
     )
   }
@@ -105,10 +106,10 @@ export function ExternalRow({ result }: Props) {
       {cover}
       <span className="flex-1 truncate">
         <span className="block truncate text-sm font-medium">{result.title}</span>
-        <span className="block truncate text-xs text-neutral-400">{result.artist}</span>
+        <span className="block truncate text-xs text-text-secondary">{result.artist}</span>
       </span>
       {action}
-      <span className="w-12 text-right text-xs text-neutral-500">{formatDuration(result.durationMs)}</span>
+      <span className="w-12 text-right text-xs text-text-muted">{formatDuration(result.durationMs)}</span>
     </>
   )
 
@@ -117,11 +118,11 @@ export function ExternalRow({ result }: Props) {
       <button
         type="button"
         onClick={() => playTrackList([trackFromMatch(result, matchedTrackId)], 0)}
-        className="group flex w-full items-center gap-3 rounded px-2 py-1.5 text-left text-neutral-200 hover:bg-neutral-800"
+        className="group flex w-full items-center gap-3 rounded px-2 py-1.5 text-left text-text-primary hover:bg-raised-hover"
       >
         {body}
       </button>
     )
   }
-  return <div className="flex w-full items-center gap-3 rounded px-2 py-1.5 text-neutral-300">{body}</div>
+  return <div className="flex w-full items-center gap-3 rounded px-2 py-1.5 text-text-secondary">{body}</div>
 }

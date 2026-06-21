@@ -1,4 +1,4 @@
-import { Badge, Button, Toggle } from '../ui'
+import { Badge, Button, Toggle, Icon } from '../ui'
 import type { AdapterInstance } from '../../lib/adaptersApi'
 import { SECRET_SENTINEL } from '../../lib/adaptersApi'
 
@@ -96,7 +96,7 @@ export function AdapterCard({
             onClick={() => onReorder(instance, -1)}
             className="flex h-5 w-5 items-center justify-center rounded text-text-muted transition-colors hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
           >
-            &#8593;
+            <Icon name="up" className="w-3 h-3" />
           </button>
           <button
             type="button"
@@ -104,7 +104,7 @@ export function AdapterCard({
             onClick={() => onReorder(instance, 1)}
             className="flex h-5 w-5 items-center justify-center rounded text-text-muted transition-colors hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
           >
-            &#8595;
+            <Icon name="down" className="w-3 h-3" />
           </button>
         </div>
       )}

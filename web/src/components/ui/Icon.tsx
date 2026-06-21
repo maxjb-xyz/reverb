@@ -28,6 +28,9 @@ export type IconName =
   | 'x'
   | 'warn'
   | 'retry'
+  | 'up'
+  | 'down'
+  | 'chevron-down'
 
 /**
  * Per-icon descriptor.
@@ -251,6 +254,18 @@ const icons: Record<IconName, IconDef> = {
         <path d="M3 3v5h5" />
       </>
     ),
+  },
+  // up: caret/chevron pointing up
+  up: {
+    content: <path d="M18 15l-6-6-6 6" />,
+  },
+  // down: caret/chevron pointing down
+  down: {
+    content: <path d="M6 9l6 6 6-6" />,
+  },
+  // chevron-down: slightly heavier downward chevron for overlay close
+  'chevron-down': {
+    content: <path d="M6 9l6 6 6-6" />,
   },
 }
 

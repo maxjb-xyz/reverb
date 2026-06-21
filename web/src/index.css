@@ -24,6 +24,9 @@
   --status-warning: 245 197 24;  /* #f5c518 */
   --status-error: 255 107 107;   /* #ff6b6b */
 
+  /* text/icons sitting ON the accent fill (black channels → black on red) */
+  --on-accent: 0 0 0;
+
   /* dynamic album wash — set live by the palette service; defaults to surface (invisible) */
   --album-wash: 18 18 18;
 }

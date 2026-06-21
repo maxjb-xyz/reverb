@@ -16,7 +16,7 @@ export function Chip({ selected = false, onClick, children }: ChipProps) {
         'transition-colors cursor-pointer whitespace-nowrap',
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
         selected
-          ? 'bg-text-primary text-base'
+          ? 'bg-text-primary text-on-accent'
           : 'bg-raised text-text-primary hover:bg-raised-hover',
       ].join(' ')}
     >

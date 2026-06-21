@@ -8,9 +8,9 @@ describe('Button', () => {
     expect(screen.getByRole('button', { name: 'Go' }).className).toMatch(/bg-accent/)
   })
 
-  it('applies black text on primary', () => {
+  it('applies on-accent text on primary', () => {
     render(<Button variant="primary">Go</Button>)
-    expect(screen.getByRole('button', { name: 'Go' }).className).toMatch(/text-black/)
+    expect(screen.getByRole('button', { name: 'Go' }).className).toMatch(/text-on-accent/)
   })
 
   it('applies secondary bordered style', () => {

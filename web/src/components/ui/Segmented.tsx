@@ -33,7 +33,7 @@ export function Segmented<T extends string | number>({
               'px-4 py-1.5 rounded-full text-sm font-semibold transition-colors',
               'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
               isSelected
-                ? 'bg-accent text-black'
+                ? 'bg-accent text-on-accent'
                 : 'text-text-secondary hover:text-text-primary',
             ].join(' ')}
           >

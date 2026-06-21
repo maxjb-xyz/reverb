@@ -47,7 +47,7 @@ export function NowPlayingOverlay() {
             'transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
           ].join(' ')}
         >
-          <Icon name="fwd" className="w-5 h-5 rotate-90" />
+          <Icon name="chevron-down" className="w-5 h-5" />
         </button>
         <span className="text-xs font-semibold uppercase tracking-widest text-text-muted">
           Now Playing

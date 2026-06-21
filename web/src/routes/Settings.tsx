@@ -87,7 +87,7 @@ export default function Settings() {
       {tab === 'account' && (
         <div className="space-y-6">
           <div className="flex items-center gap-5 py-5 border-b border-border-subtle">
-            <div className="w-12 h-12 rounded-full bg-accent flex items-center justify-center text-black font-extrabold text-lg flex-none">
+            <div className="w-12 h-12 rounded-full bg-accent flex items-center justify-center text-on-accent font-extrabold text-lg flex-none">
               R
             </div>
             <div className="flex-1 min-w-0">

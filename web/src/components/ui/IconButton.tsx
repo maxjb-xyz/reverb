@@ -9,6 +9,7 @@ interface IconButtonProps {
   disabled?: boolean
   onClick?: React.MouseEventHandler<HTMLButtonElement>
   size?: 'sm' | 'md'
+  className?: string
 }
 
 export function IconButton({
@@ -18,6 +19,7 @@ export function IconButton({
   disabled = false,
   onClick,
   size = 'md',
+  className,
 }: IconButtonProps) {
   const sizeClass = size === 'sm' ? 'w-7 h-7 text-base' : 'w-8 h-8 text-lg'
 
@@ -33,7 +35,8 @@ export function IconButton({
         'disabled:opacity-40 disabled:cursor-not-allowed',
         active ? 'text-accent' : 'text-text-secondary hover:text-text-primary',
         sizeClass,
-      ].join(' ')}
+        className,
+      ].filter(Boolean).join(' ')}
     >
       <Icon name={name} />
     </button>

@@ -50,7 +50,7 @@ export function MobileTabNav() {
       >
         <Icon name="dl" className="w-5 h-5" />
         {activeCount > 0 && (
-          <span className="absolute right-1 top-0 min-w-4 h-4 px-1 rounded-full bg-accent text-black text-xs font-extrabold grid place-items-center pointer-events-none">
+          <span className="absolute right-1 top-0 min-w-4 h-4 px-1 rounded-full bg-accent text-on-accent text-xs font-extrabold grid place-items-center pointer-events-none">
             {activeCount}
           </span>
         )}

@@ -29,7 +29,7 @@ describe('Segmented', () => {
     render(<Segmented options={options} value="library" onChange={vi.fn()} />)
     const activeTab = screen.getByRole('tab', { name: 'My Library' })
     expect(activeTab.className).toMatch(/bg-accent/)
-    expect(activeTab.className).toMatch(/text-black/)
+    expect(activeTab.className).toMatch(/text-on-accent/)
   })
 
   it('calls onChange with the new value when a tab is clicked', () => {

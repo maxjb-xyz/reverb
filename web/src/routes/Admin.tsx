@@ -265,7 +265,7 @@ export default function Admin() {
       {/* ── Users tab ── */}
       {tab === 'users' && (
         <EmptyState
-          icon="search"
+          icon="browse"
           title="Single-admin for now"
           hint="Multi-user support is on the roadmap — for now Reverb has one admin account."
         />

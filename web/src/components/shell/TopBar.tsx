@@ -89,7 +89,7 @@ export function TopBar() {
           {activeCount > 0 && (
             <span
               data-testid="downloads-badge"
-              className="absolute -top-1 -right-1 min-w-4 h-4 px-1 rounded-full bg-accent text-black text-xs font-extrabold grid place-items-center pointer-events-none"
+              className="absolute -top-1 -right-1 min-w-4 h-4 px-1 rounded-full bg-accent text-on-accent text-xs font-extrabold grid place-items-center pointer-events-none"
             >
               {activeCount}
             </span>
@@ -106,7 +106,7 @@ export function TopBar() {
             onClick={() => setMenuOpen((o) => !o)}
             className={[
               'w-8 h-8 rounded-full bg-accent',
-              'flex items-center justify-center text-black font-extrabold text-sm',
+              'flex items-center justify-center text-on-accent font-extrabold text-sm',
               'hover:scale-105 transition-transform',
               'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
             ].join(' ')}

@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import type { ConfigField, ConfigSchema } from '../lib/adaptersApi'
 import { testAdapter } from '../lib/adaptersApi'
+import { Icon } from './ui/Icon'
 
 export interface AdapterFormProps {
   name: string
@@ -84,7 +85,7 @@ export function AdapterForm({ name, schema, initial, submitLabel = 'Save', onSub
       {schema.fields.map((f) => (
         <div key={f.key} className="space-y-1">
           <div className="flex items-center gap-1">
-            <label htmlFor={`field-${f.key}`} className="block text-sm text-neutral-300">
+            <label htmlFor={`field-${f.key}`} className="block text-sm text-text-primary">
               {f.label}
             </label>
             {f.required && <span className="text-accent text-sm" aria-hidden="true">*</span>}
@@ -104,10 +105,10 @@ export function AdapterForm({ name, schema, initial, submitLabel = 'Save', onSub
                 value={String(values[f.key] ?? '')}
                 onChange={(e) => set(f.key, e.target.value)}
                 placeholder={f.secret && secretIsSet[f.key] ? 'Leave blank to keep current value' : ''}
-                className="w-full rounded bg-neutral-900 border border-neutral-700 px-3 py-2"
+                className="w-full rounded bg-input border border-border-subtle px-3 py-2"
               />
               {f.secret && secretIsSet[f.key] && (
-                <p className="text-xs text-neutral-500">Leave blank to keep the current value.</p>
+                <p className="text-xs text-text-muted">Leave blank to keep the current value.</p>
               )}
             </>
           )}
@@ -116,14 +117,14 @@ export function AdapterForm({ name, schema, initial, submitLabel = 'Save', onSub
 
       {submitError && <p className="text-sm text-accent">{submitError}</p>}
       <div className="flex items-center gap-3 pt-1">
-        <button type="submit" disabled={submitting} className="rounded bg-accent px-4 py-2 font-medium text-black disabled:opacity-50">
+        <button type="submit" disabled={submitting} className="rounded bg-accent px-4 py-2 font-medium text-on-accent disabled:opacity-50">
           {submitLabel}
         </button>
-        <button type="button" onClick={runTest} disabled={testState.status === 'testing'} className="rounded border border-neutral-700 px-4 py-2 text-neutral-200 hover:bg-neutral-800">
-          {testState.status === 'testing' ? 'Testing…' : 'Test Connection'}
+        <button type="button" onClick={runTest} disabled={testState.status === 'testing'} className="rounded border border-border-subtle px-4 py-2 text-text-primary hover:bg-raised-hover">
+          {testState.status === 'testing' ? 'Testing...' : 'Test Connection'}
         </button>
-        {testState.status === 'ok' && <span className="text-sm text-green-400">✓ Connection OK</span>}
-        {testState.status === 'error' && <span className="text-sm text-accent">✗ {testState.msg}</span>}
+        {testState.status === 'ok' && <span className="flex items-center gap-1 text-sm text-success"><Icon name="check" className="w-4 h-4" /> Connection OK</span>}
+        {testState.status === 'error' && <span className="flex items-center gap-1 text-sm text-accent"><Icon name="x" className="w-4 h-4" /> {testState.msg}</span>}
       </div>
     </form>
   )
