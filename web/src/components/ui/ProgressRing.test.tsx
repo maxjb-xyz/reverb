@@ -94,12 +94,12 @@ describe('ProgressRing', () => {
     expect(svg.getAttribute('aria-busy')).toBe('true')
   })
 
-  it('indeterminate arc has motion-safe:animate-spin class (spins unless reduced-motion)', () => {
+  it('indeterminate spins the whole svg in place (motion-safe:animate-spin, unless reduced-motion)', () => {
     const { container } = render(<ProgressRing value={0} indeterminate />)
-    const circles = container.querySelectorAll('circle')
-    const arc = circles[1]
-    const className = arc.getAttribute('class') ?? ''
-    expect(className).toContain('motion-safe:animate-spin')
+    // The SVG spins around its own box center so the arc rotates in place; the
+    // inner arc no longer carries its own (off-center) spin transform.
+    const svg = container.querySelector('svg')!
+    expect(svg.getAttribute('class') ?? '').toContain('motion-safe:animate-spin')
   })
 
   it('indeterminate uses custom size', () => {

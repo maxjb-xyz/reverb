@@ -3,6 +3,7 @@ package download
 import (
 	"context"
 	"fmt"
+	"log"
 	"sync"
 	"time"
 
@@ -10,6 +11,14 @@ import (
 	"github.com/maxjb-xyz/reverb/internal/core"
 	"github.com/maxjb-xyz/reverb/internal/events"
 )
+
+// shortID trims a job UUID for compact log lines.
+func shortID(id string) string {
+	if len(id) > 8 {
+		return id[:8]
+	}
+	return id
+}
 
 // JobStore is the persistence slice the Manager needs. *db.Queries does NOT
 // satisfy this directly (it speaks db.DownloadJob); the composition root adapts
@@ -126,6 +135,7 @@ func (m *Manager) Start() {
 		m.wg.Add(1)
 		go m.worker()
 	}
+	log.Printf("download manager: %d worker(s) started, %d downloader(s) available", m.cfg.Workers, len(m.downloaders))
 }
 
 // Stop signals workers to drain and waits for them. It ALSO cancels any pending
@@ -220,6 +230,7 @@ func (m *Manager) Enqueue(ctx context.Context, req core.DownloadRequest) (core.D
 	}
 	m.reqs[job.ID] = req
 	m.publishEvent(TopicQueued, job, "")
+	log.Printf("download queued: %q by %q (job %s, downloader %s)", job.Title, job.Artist, shortID(job.ID), job.DownloaderName)
 	id := job.ID
 
 	// Unlock BEFORE dispatching to the queue. Workers re-acquire m.mu inside the
@@ -328,6 +339,7 @@ func (m *Manager) process(id string) {
 		cur.Error = "downloader not registered"
 		_ = m.store.Update(ctx, cur)
 		m.publishEvent(TopicFailed, cur, cur.Error)
+		log.Printf("download failed: %q — downloader %q not registered", job.Title, job.DownloaderName)
 		return
 	}
 
@@ -340,6 +352,7 @@ func (m *Manager) process(id string) {
 	job.StartedAt = m.clock.Now().Unix()
 	_ = m.store.Update(ctx, job)
 	m.publishEvent(TopicProgress, job, "")
+	log.Printf("download running: %q (job %s via %s)", job.Title, shortID(id), dl.Name())
 
 	outPath, serr := dl.Start(jctx, req, func(p int) {
 		m.mu.Lock()
@@ -365,6 +378,7 @@ func (m *Manager) process(id string) {
 		cur.FinishedAt = m.clock.Now().Unix()
 		_ = m.store.Update(ctx, cur)
 		m.publishEvent(TopicFailed, cur, serr.Error())
+		log.Printf("download failed: %q (job %s) — %v", cur.Title, shortID(id), serr)
 		return
 	}
 
@@ -374,6 +388,7 @@ func (m *Manager) process(id string) {
 	cur.FinishedAt = m.clock.Now().Unix()
 	_ = m.store.Update(ctx, cur)
 	m.publishEvent(TopicComplete, cur, "")
+	log.Printf("download completed: %q (job %s) -> %s", cur.Title, shortID(id), outPath)
 
 	// Clear the rehydrated request now the download is done.
 	m.mu.Lock()

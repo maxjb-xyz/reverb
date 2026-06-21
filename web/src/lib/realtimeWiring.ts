@@ -94,4 +94,17 @@ export function useRealtime(makeSocket?: (url: string) => WebSocketLike): void {
     // playTrackList is stable (zustand action); makeSocket is test-only/stable.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [qc])
+
+  // Polling fallback: while any download is active, refresh the job list on an
+  // interval. The WebSocket is the primary channel, but a reverse proxy that
+  // doesn't upgrade WebSocket connections would otherwise leave the UI frozen at
+  // the optimistic "queued" state — this keeps it accurate regardless.
+  const activeCount = useDownloads((s) => s.active().length)
+  useEffect(() => {
+    if (activeCount === 0) return
+    const t = setInterval(() => {
+      void getDownloads().then((jobs) => useDownloads.getState().setAll(jobs))
+    }, 3000)
+    return () => clearInterval(t)
+  }, [activeCount])
 }

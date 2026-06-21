@@ -20,6 +20,10 @@ export function ProgressRing({ value, size = 36, indeterminate = false }: Progre
 
   if (indeterminate) {
     return (
+      // Spin the whole SVG around its box center (the visual center of the ring)
+      // so the arc rotates IN PLACE. Spinning the inner <circle> instead needs a
+      // transform-origin that fights the SVG transform attribute and makes the arc
+      // orbit/translate ("rise up from below"). Motion respects prefers-reduced-motion.
       <svg
         width={size}
         height={size}
@@ -27,6 +31,7 @@ export function ProgressRing({ value, size = 36, indeterminate = false }: Progre
         aria-label="Loading"
         role="img"
         aria-busy="true"
+        className="motion-safe:animate-spin"
       >
         {/* Track ring */}
         <circle
@@ -38,7 +43,7 @@ export function ProgressRing({ value, size = 36, indeterminate = false }: Progre
           strokeWidth={3}
           className="text-raised"
         />
-        {/* Spinning partial arc — motion disabled via global prefers-reduced-motion rule */}
+        {/* Partial arc (static rotation positions its start; the SVG does the spinning) */}
         <circle
           cx={cx}
           cy={cy}
@@ -49,8 +54,7 @@ export function ProgressRing({ value, size = 36, indeterminate = false }: Progre
           strokeLinecap="round"
           strokeDasharray={`${INDETERMINATE_DASH} ${INDETERMINATE_OFFSET}`}
           transform={`rotate(-90 ${cx} ${cy})`}
-          className="origin-center text-accent motion-safe:animate-spin"
-          style={{ transformBox: 'fill-box', transformOrigin: '50% 50%' }}
+          className="text-accent"
         />
       </svg>
     )
