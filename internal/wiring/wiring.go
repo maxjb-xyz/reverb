@@ -154,6 +154,13 @@ func BuildDownloaders(reg *registry.Registry, instances []db.AdapterInstance, ge
 			if d := getenv("REVERB_DOWNLOAD_DIR"); d != "" {
 				cfg["output_dir"] = d
 			}
+			// Reuse the same Spotify app creds as the search source (env wins).
+			if id := getenv("REVERB_SPOTIFY_CLIENT_ID"); id != "" {
+				cfg["client_id"] = id
+			}
+			if sec := getenv("REVERB_SPOTIFY_CLIENT_SECRET"); sec != "" {
+				cfg["client_secret"] = sec
+			}
 		}
 
 		if err := dl.Init(cfg); err != nil {
@@ -196,6 +203,12 @@ func buildDefaultSpotdl(reg *registry.Registry, dir string, getenv func(string) 
 	cfg := map[string]any{"output_dir": dir}
 	if p := getenv("REVERB_SPOTDL_PATH"); p != "" {
 		cfg["binary_path"] = p
+	}
+	if id := getenv("REVERB_SPOTIFY_CLIENT_ID"); id != "" {
+		cfg["client_id"] = id
+	}
+	if sec := getenv("REVERB_SPOTIFY_CLIENT_SECRET"); sec != "" {
+		cfg["client_secret"] = sec
 	}
 	if err := dl.Init(cfg); err != nil {
 		log.Printf("bundled spotdl downloader unavailable: %v", err)

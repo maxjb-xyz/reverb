@@ -138,6 +138,59 @@ func TestStartPassesOutputDirAndQuery(t *testing.T) {
 	}
 }
 
+func TestStartPassesSpotifyCredentials(t *testing.T) {
+	r := &fakeRunner{lines: []string{`Downloaded: ok`}}
+	a := New().WithRunner(r)
+	if err := a.Init(map[string]any{
+		"output_dir": "/tmp/music", "binary_path": "spotdl",
+		"client_id": "myid", "client_secret": "mysecret",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	_, _ = a.Start(context.Background(), core.DownloadRequest{Artist: "A", Title: "T"}, func(int) {})
+
+	idIdx, secIdx, dlIdx := -1, -1, -1
+	for i, arg := range r.gotArgs {
+		switch arg {
+		case "--client-id":
+			if i+1 < len(r.gotArgs) && r.gotArgs[i+1] == "myid" {
+				idIdx = i
+			}
+		case "--client-secret":
+			if i+1 < len(r.gotArgs) && r.gotArgs[i+1] == "mysecret" {
+				secIdx = i
+			}
+		case "download":
+			dlIdx = i
+		}
+	}
+	if idIdx < 0 || secIdx < 0 {
+		t.Fatalf("credentials not passed: %v", r.gotArgs)
+	}
+	if idIdx > dlIdx || secIdx > dlIdx {
+		t.Fatalf("credentials must precede the download operation: %v", r.gotArgs)
+	}
+}
+
+func TestStartOmitsCredentialsWhenUnset(t *testing.T) {
+	r := &fakeRunner{lines: []string{`Downloaded: ok`}}
+	a := newAdapter(t, r) // output_dir + binary only, no creds
+	_, _ = a.Start(context.Background(), core.DownloadRequest{Artist: "A", Title: "T"}, func(int) {})
+	if strings.Contains(strings.Join(r.gotArgs, " "), "--client-") {
+		t.Fatalf("credentials should be omitted when unset: %v", r.gotArgs)
+	}
+}
+
+func TestRedactArgsMasksSecret(t *testing.T) {
+	got := redactArgs([]string{"--client-id", "id", "--client-secret", "supersecret", "download"})
+	if strings.Contains(got, "supersecret") {
+		t.Fatalf("secret leaked into log line: %q", got)
+	}
+	if !strings.Contains(got, "--client-secret ****") {
+		t.Fatalf("secret not masked: %q", got)
+	}
+}
+
 func TestSpotdlConformance(t *testing.T) {
 	// Conformance Start must report progress + return an output path: feed a
 	// runner that yields a progress line and a completion line.

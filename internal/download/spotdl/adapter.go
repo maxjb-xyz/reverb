@@ -27,9 +27,11 @@ var progressRe = regexp.MustCompile(`(\d{1,3})\s*%`)
 
 // Adapter implements download.Downloader for spotDL.
 type Adapter struct {
-	runner    Runner
-	outputDir string
-	binary    string
+	runner       Runner
+	outputDir    string
+	binary       string
+	clientID     string
+	clientSecret string
 }
 
 func New() *Adapter {
@@ -49,6 +51,8 @@ func (a *Adapter) ConfigSchema() registry.ConfigSchema {
 	return registry.ConfigSchema{Fields: []registry.ConfigField{
 		{Key: "output_dir", Label: "Output directory", Type: "string", Required: true},
 		{Key: "binary_path", Label: "spotDL binary path", Type: "string", Required: false},
+		{Key: "client_id", Label: "Spotify Client ID", Type: "string", Required: false},
+		{Key: "client_secret", Label: "Spotify Client Secret", Type: "string", Required: false, Secret: true},
 	}}
 }
 
@@ -61,6 +65,14 @@ func (a *Adapter) Init(cfg map[string]any) error {
 	}
 	if v, ok := cfg["binary_path"].(string); ok && v != "" {
 		a.binary = v
+	}
+	// Optional own Spotify app credentials — spotDL's bundled/shared client gets
+	// rate-limited (429 + long backoff); using your own avoids that.
+	if v, ok := cfg["client_id"].(string); ok {
+		a.clientID = v
+	}
+	if v, ok := cfg["client_secret"].(string); ok {
+		a.clientSecret = v
 	}
 	if a.runner == nil {
 		a.runner = ExecRunner{}
@@ -83,17 +95,35 @@ func (a *Adapter) CanDownload(ctx context.Context, req core.DownloadRequest) (bo
 	return req.Title != "" && req.Artist != "", nil
 }
 
+// redactArgs renders args for logging with the --client-secret value masked.
+func redactArgs(args []string) string {
+	out := make([]string, len(args))
+	copy(out, args)
+	for i := 1; i < len(out); i++ {
+		if out[i-1] == "--client-secret" {
+			out[i] = "****"
+		}
+	}
+	return strings.Join(out, " ")
+}
+
 // Start shells out to spotDL and streams progress. Unparseable lines degrade to
 // unknown progress (onProgress(-1) once), never an error. On success it returns
 // the output directory as the path hint (spotDL writes the file under output_dir;
 // the scan picks it up — the exact filename is spotDL's concern).
 func (a *Adapter) Start(ctx context.Context, req core.DownloadRequest, onProgress func(int)) (string, error) {
 	query := strings.TrimSpace(req.Artist + " - " + req.Title)
+	// Own Spotify app credentials (when configured) go before the operation so
+	// spotDL authenticates with them instead of its rate-limited shared default.
+	var args []string
+	if a.clientID != "" && a.clientSecret != "" {
+		args = append(args, "--client-id", a.clientID, "--client-secret", a.clientSecret)
+	}
 	// "--" ensures spotDL treats the query as a positional argument, not a flag,
 	// even if it starts with "-" (e.g. a title like "- Something").
-	args := []string{"download", "--", query, "--output", a.outputDir}
+	args = append(args, "download", "--", query, "--output", a.outputDir)
 
-	log.Printf("spotdl: exec %s %s", a.binary, strings.Join(args, " "))
+	log.Printf("spotdl: exec %s %s", a.binary, redactArgs(args))
 
 	sawProgress := false
 	rerr := a.runner.Run(ctx, a.binary, args, func(line string) {

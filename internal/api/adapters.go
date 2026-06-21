@@ -243,6 +243,12 @@ func overlayEnvSecrets(name string, cfg map[string]any) {
 		if v := os.Getenv("REVERB_DOWNLOAD_DIR"); v != "" {
 			cfg["output_dir"] = v
 		}
+		if v := os.Getenv("REVERB_SPOTIFY_CLIENT_ID"); v != "" {
+			cfg["client_id"] = v
+		}
+		if v := os.Getenv("REVERB_SPOTIFY_CLIENT_SECRET"); v != "" {
+			cfg["client_secret"] = v
+		}
 	}
 }
 
