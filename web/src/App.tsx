@@ -17,6 +17,15 @@ const queryClient = new QueryClient({
 function Routed() {
   const s = useSessionStatus()
   if (s.loading) return <div className="p-6 text-neutral-500">Loading…</div>
+  if (s.error)
+    return (
+      <div className="p-6 text-neutral-400">
+        Can't reach the Reverb server.{' '}
+        <button onClick={() => window.location.reload()} className="underline">
+          Retry
+        </button>
+      </div>
+    )
   if (s.setupRequired) return <Setup />
   if (!s.authenticated) return <Login />
   return (

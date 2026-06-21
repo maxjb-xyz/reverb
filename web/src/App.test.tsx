@@ -13,7 +13,7 @@ function mockStatus(s: SessionStatus) {
 }
 
 test('authenticated renders the app shell', () => {
-  mockStatus({ loading: false, setupRequired: false, authenticated: true })
+  mockStatus({ loading: false, setupRequired: false, authenticated: true, error: false })
   render(
     <MemoryRouter initialEntries={['/search']}>
       <App />
@@ -23,7 +23,7 @@ test('authenticated renders the app shell', () => {
 })
 
 test('setupRequired renders the setup page', () => {
-  mockStatus({ loading: false, setupRequired: true, authenticated: false })
+  mockStatus({ loading: false, setupRequired: true, authenticated: false, error: false })
   render(
     <MemoryRouter>
       <App />
@@ -33,7 +33,7 @@ test('setupRequired renders the setup page', () => {
 })
 
 test('unauthenticated renders the login page', () => {
-  mockStatus({ loading: false, setupRequired: false, authenticated: false })
+  mockStatus({ loading: false, setupRequired: false, authenticated: false, error: false })
   render(
     <MemoryRouter>
       <App />
