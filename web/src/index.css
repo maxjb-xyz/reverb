@@ -3,9 +3,39 @@
 @tailwind utilities;
 
 :root {
-  /* default accent: red #F0354B as space-separated RGB channels */
+  /* accent — configurable; default red #F0354B as space-separated RGB channels */
   --color-accent: 240 53 75;
+
+  /* surfaces (fixed) */
+  --bg-base: #000000;        /* gaps between panels */
+  --bg-surface: #121212;     /* panels */
+  --bg-raised: #181818;      /* cards */
+  --bg-raised-hover: #1f1f1f;
+  --bg-input: #1f1f1f;
+  --border-subtle: #242424;
+
+  /* text (fixed) */
+  --text-primary: #ffffff;
+  --text-secondary: #b3b3b3;
+  --text-muted: #8a8a8a;
+
+  /* semantic status (fixed — never the accent) */
+  --status-success: #1ed760;
+  --status-warning: #f5c518;
+  --status-error: #ff6b6b;
+
+  /* dynamic album wash — set live by the palette service; defaults to surface (invisible) */
+  --album-wash: 18 18 18;
 }
 
 html, body, #root { height: 100%; }
-body { @apply bg-base text-neutral-200; margin: 0; }
+body { @apply bg-base text-text-secondary font-sans; margin: 0; -webkit-font-smoothing: antialiased; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .001ms !important;
+    scroll-behavior: auto !important;
+  }
+}

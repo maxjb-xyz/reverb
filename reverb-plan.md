@@ -322,7 +322,9 @@ ui:
 
 - Reverb Wrapped: End of year review.
 - Discover Weekly: Grabs songs you'd be interested in from your downloader. Needs an algorithm backend.
-- SUB/WAVE: either a plugin to extend functionality or just absorb the codebase itself. Or equivalent functionality.
+- SUB/WAVE: Either a plugin to extend functionality or just absorb the codebase itself. Or equivalent functionality.
+- Desktop Apps (Windows, Mac, and Linux): Built with Tauri?
+- Mobile Apps
 
 ---
 
