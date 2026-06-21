@@ -19,10 +19,7 @@ export function useAlbumPalette(coverUrl: string | undefined): AlbumPalette | nu
   const [palette, setPalette] = useState<AlbumPalette | null>(null)
 
   useEffect(() => {
-    if (!enabled || !coverUrl) {
-      setPalette(null)
-      return
-    }
+    if (!enabled || !coverUrl) return
     let active = true
     getPalette(coverUrl)
       .then((rgb) => {
@@ -37,5 +34,10 @@ export function useAlbumPalette(coverUrl: string | undefined): AlbumPalette | nu
     }
   }, [enabled, coverUrl])
 
+  // Derive the gated/empty result rather than writing null into state from the effect
+  // (avoids an extra render and the react-hooks/set-state-in-effect lint): when the
+  // setting is off or there is no cover, the palette is always null regardless of any
+  // previously-resolved value.
+  if (!enabled || !coverUrl) return null
   return palette
 }
