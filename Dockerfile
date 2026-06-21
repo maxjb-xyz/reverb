@@ -36,8 +36,13 @@ RUN apt-get update \
 # progress with the regex `(\d{1,3})\s*%` in internal/download/spotdl/adapter.go.
 # Bumping this pin REQUIRES re-validating that regex against the new output.
 RUN pip install --no-cache-dir "spotdl==4.2.11"
-# Non-root user.
-RUN useradd --create-home --uid 10001 reverb
+# Non-root user. Create + own the data/music dirs BEFORE the VOLUME declaration
+# (changes to a volume path made AFTER `VOLUME` are discarded), so a fresh named
+# volume inherits reverb's ownership and the non-root process can open the SQLite
+# DB / write downloads without any host-side chown.
+RUN useradd --create-home --uid 10001 reverb \
+ && mkdir -p /data /music \
+ && chown -R reverb:reverb /data /music
 COPY --from=gobuild /out/reverb /usr/local/bin/reverb
 ENV REVERB_DB=/data/reverb.db
 VOLUME ["/data"]

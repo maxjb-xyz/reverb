@@ -20,16 +20,25 @@ services:
       - .env
     volumes:
       # SQLite DB + app state (REVERB_DB defaults to /data/reverb.db in the image).
-      - ./data:/data
-      # Shared music dir. Set the spotDL adapter's `output_dir` to /music in the
-      # Settings UI so downloads land where the library scans.
-      - ./music:/music
+      # A named volume "just works": it inherits the image's reverb (uid 10001)
+      # ownership, so the non-root process can create the DB. A host bind mount
+      # (./data:/data) would instead be owned by root/your host user and the
+      # container could NOT open the DB — if you prefer a bind mount, first run
+      # `sudo chown -R 10001:10001 ./data`.
+      - reverb-data:/data
+      # Music dir spotDL downloads into. Set the spotDL adapter's `output_dir` to
+      # /music in the Settings UI so downloads land where the library scans.
+      # Using a named volume (shared with the navidrome service below) avoids
+      # host-permission issues. To point Reverb at an EXISTING host library,
+      # replace this with a bind mount writable by uid 10001, e.g.:
+      #   - /srv/music:/music   # then: sudo chown -R 10001:10001 /srv/music
+      - reverb-music:/music
     restart: unless-stopped
 
   # ---------------------------------------------------------------------------
-  # Optional: a Navidrome that scans the SAME ./music volume. Uncomment to run
-  # the full pairing. In Reverb's Settings UI add a Subsonic library adapter with
-  # base URL http://navidrome:4533 (and REVERB_LIBRARY_PASSWORD in .env).
+  # Optional: a Navidrome that scans the SAME reverb-music volume. Uncomment to
+  # run the full pairing. In Reverb's Settings UI add a Subsonic library adapter
+  # with base URL http://navidrome:4533 (and REVERB_LIBRARY_PASSWORD in .env).
   # ---------------------------------------------------------------------------
   # navidrome:
   #   image: deluan/navidrome:latest
@@ -38,6 +47,11 @@ services:
   #   environment:
   #     ND_LOGLEVEL: info
   #   volumes:
-  #     - ./music:/music:ro
-  #     - ./navidrome-data:/data
+  #     - reverb-music:/music:ro
+  #     - navidrome-data:/data
   #   restart: unless-stopped
+
+volumes:
+  reverb-data:
+  reverb-music:
+  # navidrome-data:   # uncomment alongside the navidrome service above
