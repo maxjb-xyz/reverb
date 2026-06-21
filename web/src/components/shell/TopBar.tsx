@@ -41,8 +41,13 @@ export function TopBar() {
 
   return (
     <header className="flex items-center justify-between px-4 h-16 bg-surface">
-      {/* Left — history nav */}
-      <div className="flex items-center gap-2">
+      {/* Mobile wordmark — desktop shows the history nav + search instead */}
+      <span className="select-none text-lg font-bold tracking-tight text-text-primary md:hidden">
+        Reverb<span className="text-accent">.</span>
+      </span>
+
+      {/* Left — history nav (desktop only) */}
+      <div className="hidden items-center gap-2 md:flex">
         <IconButton
           name="back"
           label="Back"
@@ -55,8 +60,9 @@ export function TopBar() {
         />
       </div>
 
-      {/* Center — home + centered search pill */}
-      <div className="flex items-center justify-center gap-2 flex-1 mx-4 min-w-0">
+      {/* Center — home + centered search pill (desktop only; mobile uses the
+          Search tab in the bottom nav) */}
+      <div className="hidden items-center justify-center gap-2 flex-1 mx-4 min-w-0 md:flex">
         <IconButton
           name="home"
           label="Home"
@@ -85,8 +91,8 @@ export function TopBar() {
 
       {/* Right — downloads + avatar */}
       <div className="flex items-center gap-3 flex-none">
-        {/* Downloads button with badge */}
-        <div className="relative">
+        {/* Downloads button with badge (desktop only; mobile uses the bottom nav) */}
+        <div className="relative hidden md:block">
           <Button
             variant="ghost"
             size="sm"
@@ -134,6 +140,18 @@ export function TopBar() {
                 'py-1 z-50',
               ].join(' ')}
             >
+              <button
+                role="menuitem"
+                type="button"
+                onClick={() => { setMenuOpen(false); navigate('/settings') }}
+                className={[
+                  'w-full text-left px-4 py-2 text-sm text-text-primary',
+                  'hover:bg-raised-hover transition-colors',
+                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-inset',
+                ].join(' ')}
+              >
+                Settings
+              </button>
               <button
                 role="menuitem"
                 type="button"

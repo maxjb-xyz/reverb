@@ -2,19 +2,26 @@ import { NavLink } from 'react-router-dom'
 import { useUI } from '../lib/uiStore'
 import { useDownloads } from '../lib/downloadStore'
 import { Icon } from './ui/Icon'
+import type { IconName } from './ui/Icon'
 
-const tabs = [
-  { to: '/search', label: 'Search' },
-  { to: '/library', label: 'Library' },
-  { to: '/settings', label: 'Settings' },
+// Bottom tab bar shown only < md. Icon-first (Settings lives in the avatar menu).
+const tabs: { to: string; label: string; icon: IconName; end?: boolean }[] = [
+  { to: '/', label: 'Home', icon: 'home', end: true },
+  { to: '/search', label: 'Search', icon: 'search' },
+  { to: '/library', label: 'Library', icon: 'browse' },
 ]
 
-// MobileTabNav is the bottom tab bar shown only < md. Routes are identical to
-// desktop; this is purely alternate chrome. Tap targets are ≥44px.
 export function MobileTabNav() {
   const togglePanel = useUI((s) => s.togglePanel)
   const rightPanel = useUI((s) => s.rightPanel)
   const activeCount = useDownloads((s) => s.active().length)
+
+  const itemClass = (active: boolean) =>
+    [
+      'flex min-h-[48px] min-w-[44px] flex-1 flex-col items-center justify-center gap-0.5 rounded px-1 py-1',
+      'transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
+      active ? 'text-accent' : 'text-text-secondary hover:text-text-primary',
+    ].join(' ')
 
   return (
     <nav
@@ -25,16 +32,12 @@ export function MobileTabNav() {
         <NavLink
           key={t.to}
           to={t.to}
+          end={t.end}
           aria-label={t.label}
-          className={({ isActive }) =>
-            [
-              'flex min-h-[44px] min-w-[44px] flex-1 items-center justify-center rounded px-2 py-2 text-sm font-semibold',
-              'transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
-              isActive ? 'text-accent' : 'text-text-secondary hover:text-text-primary',
-            ].join(' ')
-          }
+          className={({ isActive }) => itemClass(isActive)}
         >
-          {t.label}
+          <Icon name={t.icon} className="text-xl" />
+          <span className="text-[10px] font-semibold leading-none">{t.label}</span>
         </NavLink>
       ))}
 
@@ -42,15 +45,12 @@ export function MobileTabNav() {
         type="button"
         aria-label="Downloads"
         onClick={() => togglePanel('downloads')}
-        className={[
-          'relative flex min-h-[44px] min-w-[44px] flex-1 items-center justify-center rounded px-2 py-2 text-sm font-semibold',
-          'transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
-          rightPanel === 'downloads' ? 'text-accent' : 'text-text-secondary hover:text-text-primary',
-        ].join(' ')}
+        className={`relative ${itemClass(rightPanel === 'downloads')}`}
       >
-        <Icon name="dl" className="w-5 h-5" />
+        <Icon name="dl" className="text-xl" />
+        <span className="text-[10px] font-semibold leading-none">Downloads</span>
         {activeCount > 0 && (
-          <span className="absolute right-1 top-0 min-w-4 h-4 px-1 rounded-full bg-accent text-on-accent text-xs font-extrabold grid place-items-center pointer-events-none">
+          <span className="absolute right-2 top-0 grid h-4 min-w-4 place-items-center rounded-full bg-accent px-1 text-xs font-extrabold text-on-accent pointer-events-none">
             {activeCount}
           </span>
         )}

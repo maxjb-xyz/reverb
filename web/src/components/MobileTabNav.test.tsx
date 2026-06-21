@@ -19,11 +19,17 @@ describe('MobileTabNav', () => {
     useDownloads.setState({ jobs: {} })
   })
 
-  it('renders Search, Library, and Settings tabs', () => {
+  it('renders Home, Search, and Library tabs (Settings lives in the avatar menu)', () => {
     renderNav()
+    expect(screen.getByRole('link', { name: /home/i })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /search/i })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /library/i })).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: /settings/i })).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: /settings/i })).not.toBeInTheDocument()
+  })
+
+  it('the Home tab points at /', () => {
+    renderNav()
+    expect(screen.getByRole('link', { name: /home/i })).toHaveAttribute('href', '/')
   })
 
   it('includes a dedicated Search tab pointing at /search', () => {
@@ -40,6 +46,6 @@ describe('MobileTabNav', () => {
   it('tap targets are at least 44px', () => {
     renderNav()
     const search = screen.getByRole('link', { name: /search/i })
-    expect(search.className).toMatch(/min-h-\[44px\]/)
+    expect(search.className).toMatch(/min-h-\[48px\]/)
   })
 })
