@@ -14,7 +14,8 @@ import (
 // The handler returns when the aggregator closes its channel or the client
 // disconnects (r.Context().Done()).
 func (s *Server) handleEverywhere(w http.ResponseWriter, r *http.Request) {
-	if s.deps.SearchAggregator == nil {
+	agg := s.searchAggregator()
+	if agg == nil {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "no search sources configured"})
 		return
 	}
@@ -45,7 +46,7 @@ func (s *Server) handleEverywhere(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	flusher.Flush()
 
-	ch := s.deps.SearchAggregator.Stream(r.Context(), q, et)
+	ch := agg.Stream(r.Context(), q, et)
 	for {
 		select {
 		case <-r.Context().Done():

@@ -67,16 +67,10 @@ export function deleteAdapter(id: string): Promise<{ ok: boolean; pendingRestart
 export function testAdapter(name: string, config: Record<string, unknown>): Promise<TestResult> {
   return api.post<TestResult>('/adapters/test', { name, config })
 }
-export function getPendingRestart(): Promise<{ pendingRestart: boolean }> {
-  return api.get<{ pendingRestart: boolean }>('/config/pending-restart')
-}
 
 export function useAvailableAdapters() {
   return useQuery({ queryKey: ['adapters', 'available'], queryFn: listAvailable })
 }
 export function useAdapters() {
   return useQuery({ queryKey: ['adapters', 'list'], queryFn: listAdapters })
-}
-export function usePendingRestart() {
-  return useQuery({ queryKey: ['config', 'pending-restart'], queryFn: getPendingRestart })
 }

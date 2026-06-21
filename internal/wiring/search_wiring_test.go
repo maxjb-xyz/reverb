@@ -1,4 +1,4 @@
-package main
+package wiring
 
 import (
 	"context"
@@ -34,8 +34,8 @@ type stubFailSource struct {
 
 func (s *stubFailSource) Init(_ map[string]any) error { return errors.New("init failure") }
 
-// compile-time assertion: buildSearchSources returns the aggregator's expected input type.
-var _ []search.SearchSource = buildSearchSources(nil, nil, nil)
+// compile-time assertion: BuildSearchSources returns the aggregator's expected input type.
+var _ []search.SearchSource = BuildSearchSources(nil, nil, nil)
 
 func TestBuildSearchSourcesAppliesEnvSecret(t *testing.T) {
 	reg := registry.NewRegistry("search")
@@ -48,7 +48,7 @@ func TestBuildSearchSourcesAppliesEnvSecret(t *testing.T) {
 	}}
 	env := map[string]string{"REVERB_SPOTIFY_CLIENT_SECRET": "env-secret"}
 
-	got := buildSearchSources(reg, instances, func(k string) string { return env[k] })
+	got := BuildSearchSources(reg, instances, func(k string) string { return env[k] })
 	if len(got) != 1 {
 		t.Fatalf("want 1 source, got %d", len(got))
 	}
@@ -67,7 +67,7 @@ func TestBuildSearchSourcesSkipsDisabledAndNonSearch(t *testing.T) {
 		{ID: "s1", Type: "search", Name: "spotify", Enabled: 0},
 		{ID: "l1", Type: "library", Name: "subsonic", Enabled: 1},
 	}
-	got := buildSearchSources(reg, instances, func(string) string { return "" })
+	got := BuildSearchSources(reg, instances, func(string) string { return "" })
 	if len(got) != 0 {
 		t.Fatalf("want 0 sources, got %d", len(got))
 	}
@@ -86,7 +86,7 @@ func TestBuildSearchSourcesInitFailSkips(t *testing.T) {
 		{ID: "g1", Type: "search", Name: "good-source", Enabled: 1},
 	}
 
-	got := buildSearchSources(reg, instances, func(string) string { return "" })
+	got := BuildSearchSources(reg, instances, func(string) string { return "" })
 	if len(got) != 1 {
 		t.Fatalf("want 1 source (good-source only), got %d", len(got))
 	}

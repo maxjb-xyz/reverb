@@ -3,7 +3,6 @@ import { useQueryClient } from '@tanstack/react-query'
 import {
   useAdapters,
   useAvailableAdapters,
-  usePendingRestart,
   createAdapter,
   updateAdapter,
   deleteAdapter,
@@ -11,7 +10,6 @@ import {
   type AvailableAdapter,
 } from '../lib/adaptersApi'
 import { AdapterSection } from '../components/admin/AdapterSection'
-import { RestartBanner } from '../components/admin/RestartBanner'
 import { AdapterForm } from '../components/AdapterForm'
 import { Chip, Skeleton, EmptyState } from '../components/ui'
 
@@ -37,14 +35,12 @@ export default function Admin() {
   const qc = useQueryClient()
   const adapters = useAdapters()
   const available = useAvailableAdapters()
-  const pending = usePendingRestart()
 
   const [tab, setTab] = useState<Tab>('providers')
   const [editing, setEditing] = useState<EditingState | null>(null)
 
   function refresh() {
     void qc.invalidateQueries({ queryKey: ['adapters', 'list'] })
-    void qc.invalidateQueries({ queryKey: ['config', 'pending-restart'] })
   }
 
   async function onToggle(inst: AdapterInstance) {
@@ -87,7 +83,6 @@ export default function Admin() {
   const list = adapters.data ?? []
   const avail = available.data ?? []
   const isLoading = adapters.isLoading || available.isLoading
-  const pendingRestart = pending.data?.pendingRestart ?? false
 
   const libraryInstances = list.filter((a) => a.type === 'library')
   const searchInstances = list.filter((a) => a.type === 'search')
@@ -125,8 +120,6 @@ export default function Admin() {
       {/* ── Providers tab ── */}
       {tab === 'providers' && (
         <div className="space-y-8">
-          <RestartBanner show={pendingRestart} />
-
           {isLoading ? (
             <div className="space-y-4" aria-label="Loading providers">
               <Skeleton className="h-6 w-40" />
@@ -152,7 +145,6 @@ export default function Admin() {
                 onEdit={onEdit}
                 onToggle={(inst) => void onToggle(inst)}
                 onRemove={(id) => void onRemove(id)}
-                pendingRestart={pendingRestart}
               />
 
               <AdapterSection
@@ -170,7 +162,6 @@ export default function Admin() {
                 onToggle={(inst) => void onToggle(inst)}
                 onRemove={(id) => void onRemove(id)}
                 onReorder={(inst, delta) => void onReorder(inst, delta)}
-                pendingRestart={pendingRestart}
               />
 
               <AdapterSection
@@ -188,7 +179,6 @@ export default function Admin() {
                 onToggle={(inst) => void onToggle(inst)}
                 onRemove={(id) => void onRemove(id)}
                 onReorder={(inst, delta) => void onReorder(inst, delta)}
-                pendingRestart={pendingRestart}
               />
             </>
           )}
@@ -256,14 +246,13 @@ export default function Admin() {
           <div className="rounded-lg border border-border-subtle bg-raised p-6 space-y-3">
             <h2 className="text-base font-extrabold text-text-primary">Server info</h2>
             <p className="text-sm text-text-secondary">
-              Reverb is running. Configuration changes take effect after a restart.
+              Reverb is running. Configuration changes take effect immediately.
             </p>
             <div className="space-y-2 pt-1">
               <div className="text-sm font-bold text-text-primary">Applying config changes</div>
               <p className="text-xs text-text-secondary">
-                After adding, editing, or removing providers, restart the Reverb server process to
-                pick up the new configuration. The banner at the top of the Providers tab will
-                remind you when a restart is needed.
+                Adding, editing, or removing providers applies live — Reverb rebuilds the active
+                library, search, and downloader the moment you save. No restart required.
               </p>
             </div>
           </div>

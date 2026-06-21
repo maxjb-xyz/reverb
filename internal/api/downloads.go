@@ -20,7 +20,8 @@ type createDownloadBody struct {
 }
 
 func (s *Server) handleCreateDownload(w http.ResponseWriter, r *http.Request) {
-	if s.deps.Downloads == nil {
+	dl := s.downloads()
+	if dl == nil {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "no downloader configured"})
 		return
 	}
@@ -33,7 +34,7 @@ func (s *Server) handleCreateDownload(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "externalId is required"})
 		return
 	}
-	job, err := s.deps.Downloads.Enqueue(r.Context(), core.DownloadRequest{
+	job, err := dl.Enqueue(r.Context(), core.DownloadRequest{
 		Source:        body.Source,
 		ExternalID:    body.ExternalID,
 		Artist:        body.Artist,
@@ -51,11 +52,12 @@ func (s *Server) handleCreateDownload(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleListDownloads(w http.ResponseWriter, r *http.Request) {
-	if s.deps.Downloads == nil {
+	dl := s.downloads()
+	if dl == nil {
 		writeJSON(w, http.StatusOK, []core.DownloadJob{})
 		return
 	}
-	jobs, err := s.deps.Downloads.List(r.Context())
+	jobs, err := dl.List(r.Context())
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not list downloads"})
 		return
@@ -67,12 +69,13 @@ func (s *Server) handleListDownloads(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleCancelDownload(w http.ResponseWriter, r *http.Request) {
-	if s.deps.Downloads == nil {
+	dl := s.downloads()
+	if dl == nil {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "no downloader configured"})
 		return
 	}
 	id := chi.URLParam(r, "id")
-	if err := s.deps.Downloads.Cancel(r.Context(), id); err != nil {
+	if err := dl.Cancel(r.Context(), id); err != nil {
 		writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": err.Error()})
 		return
 	}
@@ -80,12 +83,13 @@ func (s *Server) handleCancelDownload(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleRetryDownload(w http.ResponseWriter, r *http.Request) {
-	if s.deps.Downloads == nil {
+	dl := s.downloads()
+	if dl == nil {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "no downloader configured"})
 		return
 	}
 	id := chi.URLParam(r, "id")
-	job, err := s.deps.Downloads.Retry(r.Context(), id)
+	job, err := dl.Retry(r.Context(), id)
 	if err != nil {
 		writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": err.Error()})
 		return

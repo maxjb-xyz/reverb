@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"log"
 	"net/http"
 	"os"
 	"time"
@@ -87,12 +88,6 @@ func (s *Server) toDTO(inst db.AdapterInstance) adapterInstanceDTO {
 	}
 }
 
-func (s *Server) markDirty() {
-	if s.deps.ConfigDirty != nil {
-		s.deps.ConfigDirty.Set()
-	}
-}
-
 func (s *Server) handleListAdapters(w http.ResponseWriter, r *http.Request) {
 	if s.deps.Adapters == nil {
 		writeJSON(w, http.StatusOK, []adapterInstanceDTO{})
@@ -138,9 +133,13 @@ func (s *Server) handleCreateAdapter(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not create adapter"})
 		return
 	}
-	s.markDirty()
+	// Apply live: rebuild and swap the active services. The DB change has already
+	// persisted; a rebuild failure is logged but still reported as success.
+	if err := s.reload(r.Context()); err != nil {
+		log.Printf("WARNING: adapter create persisted but live reload failed: %v", err)
+	}
 	inst, _ := s.deps.Adapters.GetAdapterInstance(r.Context(), id)
-	writeJSONPending(w, http.StatusCreated, s.toDTO(inst), s.dirtyNow())
+	writeJSONPending(w, http.StatusCreated, s.toDTO(inst), false)
 }
 
 func (s *Server) handleUpdateAdapter(w http.ResponseWriter, r *http.Request) {
@@ -179,9 +178,11 @@ func (s *Server) handleUpdateAdapter(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not update adapter"})
 		return
 	}
-	s.markDirty()
+	if err := s.reload(r.Context()); err != nil {
+		log.Printf("WARNING: adapter update persisted but live reload failed: %v", err)
+	}
 	inst, _ := s.deps.Adapters.GetAdapterInstance(r.Context(), id)
-	writeJSONPending(w, http.StatusOK, s.toDTO(inst), s.dirtyNow())
+	writeJSONPending(w, http.StatusOK, s.toDTO(inst), false)
 }
 
 func (s *Server) handleDeleteAdapter(w http.ResponseWriter, r *http.Request) {
@@ -194,12 +195,10 @@ func (s *Server) handleDeleteAdapter(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not delete adapter"})
 		return
 	}
-	s.markDirty()
-	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "pendingRestart": s.dirtyNow()})
-}
-
-func (s *Server) dirtyNow() bool {
-	return s.deps.ConfigDirty != nil && s.deps.ConfigDirty.Dirty()
+	if err := s.reload(r.Context()); err != nil {
+		log.Printf("WARNING: adapter delete persisted but live reload failed: %v", err)
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "pendingRestart": false})
 }
 
 type testAdapterBody struct {

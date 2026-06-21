@@ -150,7 +150,7 @@ export default function Setup() {
           <div className="space-y-1">
             <h1 className="text-xl font-bold text-text-primary">You're all set</h1>
             <p className="text-sm text-text-secondary">
-              Setup complete. Restart Reverb so your library, search, and downloader become active, then log in.
+              Setup complete. Your library, search, and downloader are ready.
             </p>
           </div>
           <Button type="button" variant="primary" size="md" onClick={() => window.location.reload()}>

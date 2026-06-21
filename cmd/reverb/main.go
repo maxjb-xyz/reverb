@@ -15,11 +15,10 @@ import (
 	"github.com/maxjb-xyz/reverb/internal/download/spotdl"
 	"github.com/maxjb-xyz/reverb/internal/events"
 	"github.com/maxjb-xyz/reverb/internal/library/subsonic"
-	"github.com/maxjb-xyz/reverb/internal/matching"
 	"github.com/maxjb-xyz/reverb/internal/registry"
-	"github.com/maxjb-xyz/reverb/internal/search"
 	"github.com/maxjb-xyz/reverb/internal/search/spotify"
 	"github.com/maxjb-xyz/reverb/internal/store"
+	"github.com/maxjb-xyz/reverb/internal/wiring"
 )
 
 func main() {
@@ -59,82 +58,48 @@ func main() {
 	downloaderReg := registry.NewRegistry("downloader")
 	downloaderReg.Register("spotdl", func() registry.Plugin { return spotdl.New() })
 
-	// Build the active library adapter from the enabled adapter_instance row.
-	instances, err := st.Q().ListAdapterInstances(context.Background())
-	if err != nil {
-		log.Fatal(err)
-	}
-	libAdapter, err := buildLibraryAdapter(context.Background(), libraryReg, instances, os.Getenv)
-	if err != nil {
-		libAdapter = nil
-		log.Printf("WARNING: library adapter not available: %v", err)
-	} else if libAdapter == nil {
-		log.Printf("no library adapter configured (add one via settings)")
-	} else {
-		log.Printf("library adapter active: %s", libAdapter.Name())
-	}
-
-	// Build active search sources + the matching service + the aggregator.
-	sources := buildSearchSources(searchReg, instances, os.Getenv)
-	var aggregator *search.Aggregator
-	if len(sources) > 0 {
-		var matcher search.Matcher
-		if libAdapter != nil {
-			matcher = matching.NewService(libAdapter, st.Q(), st.LibraryVersion)
-		}
-		aggregator = search.NewAggregator(sources, matcher, 8*time.Second)
-		log.Printf("search sources active: %d", len(sources))
-	} else {
-		log.Printf("no search sources configured (add one via settings)")
-	}
-
 	// EventBus backs both the WS endpoint and the Manager's typed events.
 	bus := events.New()
 
 	dirty := &atomicDirty{}
 
-	// Build the download Manager from enabled downloader instances.
-	var manager *download.Manager
-	downloaders := buildDownloaders(downloaderReg, instances, os.Getenv)
-	if len(downloaders) > 0 && libAdapter != nil {
-		var rematcher download.Rematcher
-		rematcher = matching.NewService(libAdapter, st.Q(), st.LibraryVersion)
-		manager = download.NewManager(
-			download.Config{Workers: 2, DebounceWindow: 5 * time.Second},
-			downloaders,
-			download.NewSQLStore(st.Q()),
-			bus,
-			libAdapter,           // ScanController (StartScan/ScanStatus)
-			rematcher,            // Rematcher
-			st,                   // VersionBumper (LibraryVersion/SetLibraryVersion)
-			download.RealClock{}, // production clock
-		)
-		manager.Start()
-		defer manager.Stop()
-		log.Printf("download manager active: %d downloader(s)", len(downloaders))
-	} else if len(downloaders) > 0 {
-		log.Printf("WARNING: downloaders configured but no library adapter — download manager disabled")
-	} else {
-		log.Printf("no downloaders configured (add one via settings)")
+	// The Builder constructs the active library/search/download services from the
+	// current enabled adapter_instance rows. It is used for the initial build here
+	// and reused by the API server to rebuild live on any adapter mutation.
+	builder := wiring.NewBuilder(
+		libraryReg, searchReg, downloaderReg,
+		st.Q(), st, bus, download.RealClock{}, os.Getenv,
+	)
+
+	bundle, err := builder.Build(context.Background())
+	if err != nil {
+		log.Fatal(err)
+	}
+	if bundle.Manager != nil {
+		bundle.Manager.Start()
+		defer bundle.Manager.Stop()
 	}
 
 	deps := api.Deps{
 		Auth:        authSvc,
-		Library:     libAdapter,
+		Library:     bundle.Library,
 		Lib:         libraryReg,
 		Search:      searchReg,
 		Downloader:  downloaderReg,
 		Adapters:    st.Q(),
 		Events:      bus,
 		ConfigDirty: dirty,
+		Reload:      &serviceReloader{builder: builder},
 		Dev:         cfg.Dev,
 		Version:     version,
 	}
-	if aggregator != nil {
-		deps.SearchAggregator = aggregator
+	// Guard against the "non-nil interface wrapping a nil pointer" trap: only set
+	// the interface fields when the concrete service is actually present.
+	if bundle.Aggregator != nil {
+		deps.SearchAggregator = bundle.Aggregator
 	}
-	if manager != nil {
-		deps.Downloads = manager
+	if bundle.Manager != nil {
+		deps.Downloads = bundle.Manager
 	}
 	srv := api.NewServer(deps)
 

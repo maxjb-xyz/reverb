@@ -21,8 +21,17 @@ func TestCreateThenListRedactsSecret(t *testing.T) {
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("create status = %d: %s", rec.Code, rec.Body.String())
 	}
-	if !dirty.Dirty() {
-		t.Fatal("create must flip the config-dirty flag")
+	// Adapter changes apply live (no restart): the config-dirty flag must NOT be
+	// flipped and the response must report pendingRestart=false.
+	if dirty.Dirty() {
+		t.Fatal("create must NOT flip the config-dirty flag (changes apply live)")
+	}
+	var createResp struct {
+		PendingRestart bool `json:"pendingRestart"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &createResp)
+	if createResp.PendingRestart {
+		t.Fatal("pendingRestart must be false (changes apply live)")
 	}
 
 	rec = do(t, srv, cookie, http.MethodGet, "/api/v1/adapters", "")

@@ -14,11 +14,12 @@ import (
 // Content-Length, Accept-Ranges, and Content-Range. Subsonic credentials never
 // reach the browser.
 func (s *Server) handleStream(w http.ResponseWriter, r *http.Request) {
-	if !s.libraryReady(w) {
+	lib, ok := s.libraryReady(w)
+	if !ok {
 		return
 	}
 	id := chi.URLParam(r, "id")
-	handle, err := s.deps.Library.Stream(r.Context(), id, core.StreamOpts{}, r.Header.Get("Range"))
+	handle, err := lib.Stream(r.Context(), id, core.StreamOpts{}, r.Header.Get("Range"))
 	if err != nil {
 		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
 		return
@@ -48,12 +49,13 @@ func (s *Server) handleStream(w http.ResponseWriter, r *http.Request) {
 
 // handleCover proxies cover art from the library adapter.
 func (s *Server) handleCover(w http.ResponseWriter, r *http.Request) {
-	if !s.libraryReady(w) {
+	lib, ok := s.libraryReady(w)
+	if !ok {
 		return
 	}
 	id := chi.URLParam(r, "id")
 	size, _ := strconv.Atoi(r.URL.Query().Get("size"))
-	cover, err := s.deps.Library.CoverArt(r.Context(), id, size)
+	cover, err := lib.CoverArt(r.Context(), id, size)
 	if err != nil {
 		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
 		return

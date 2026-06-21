@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"net/http"
+	"sync"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -26,12 +27,15 @@ type EventSubscriber interface {
 	Subscribe(topic string) (<-chan events.Event, func())
 }
 
-// DownloadManager is the subset of *download.Manager the API needs.
+// DownloadManager is the subset of *download.Manager the API needs. Stop is used
+// by the live-reload path to shut down the previous Manager after a new one has
+// been swapped in.
 type DownloadManager interface {
 	Enqueue(ctx context.Context, req core.DownloadRequest) (core.DownloadJob, error)
 	List(ctx context.Context) ([]core.DownloadJob, error)
 	Cancel(ctx context.Context, jobID string) error
 	Retry(ctx context.Context, jobID string) (core.DownloadJob, error)
+	Stop()
 }
 
 // AdapterStore is the persistence slice the adapter + settings handlers need.
@@ -46,11 +50,20 @@ type AdapterStore interface {
 	UpsertSetting(ctx context.Context, arg db.UpsertSettingParams) error
 }
 
-// ConfigDirty tracks whether adapter/settings config changed since startup. The
-// restart-to-apply UX reads this so it can show a "Restart to apply" banner.
+// ConfigDirty tracks whether settings config changed since startup. Adapter
+// mutations now apply live (no restart), so this is retained only for any
+// non-adapter settings flow; the adapter handlers never set it.
 type ConfigDirty interface {
 	Set()
 	Dirty() bool
+}
+
+// ServiceReloader rebuilds the active library/search/download services from the
+// current DB state and returns them. The returned Manager (if any) is already
+// Started; the server Stops the previous one after swapping the new one in.
+// A nil interface result means "no service of that kind is configured".
+type ServiceReloader interface {
+	Reload(ctx context.Context) (lib library.LibraryAdapter, search Streamer, downloads DownloadManager, err error)
 }
 
 type Deps struct {
@@ -64,6 +77,7 @@ type Deps struct {
 	Events           EventSubscriber
 	Adapters         AdapterStore
 	ConfigDirty      ConfigDirty
+	Reload           ServiceReloader
 	Dev              bool
 	Version          string
 }
@@ -71,12 +85,68 @@ type Deps struct {
 type Server struct {
 	deps   Deps
 	router chi.Router
+
+	// live holds the currently active services. Handlers read them through the
+	// getters under the RLock; reload swaps them under the write lock so adapter
+	// mutations take effect without a restart.
+	mu   sync.RWMutex
+	live struct {
+		library   library.LibraryAdapter
+		search    Streamer
+		downloads DownloadManager
+	}
 }
 
 func NewServer(deps Deps) *Server {
 	s := &Server{deps: deps, router: chi.NewRouter()}
+	s.live.library = deps.Library
+	s.live.search = deps.SearchAggregator
+	s.live.downloads = deps.Downloads
 	s.routes()
 	return s
+}
+
+// library / searchAggregator / downloads return the currently active service
+// under the read lock. Any may be nil when nothing of that kind is configured.
+func (s *Server) library() library.LibraryAdapter {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.live.library
+}
+
+func (s *Server) searchAggregator() Streamer {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.live.search
+}
+
+func (s *Server) downloads() DownloadManager {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.live.downloads
+}
+
+// reload rebuilds the active services from the current DB state and atomically
+// swaps them in. The previous download Manager is Stopped after the swap so
+// in-flight reads never see a stopped Manager. A no-op when no reloader is wired.
+func (s *Server) reload(ctx context.Context) error {
+	if s.deps.Reload == nil {
+		return nil
+	}
+	lib, srch, dl, err := s.deps.Reload.Reload(ctx)
+	if err != nil {
+		return err
+	}
+	s.mu.Lock()
+	old := s.live.downloads
+	s.live.library, s.live.search, s.live.downloads = lib, srch, dl
+	s.mu.Unlock()
+	// Stop the previous Manager only after the new one is swapped in, and never
+	// stop a nil or unchanged Manager.
+	if old != nil && old != dl {
+		old.Stop()
+	}
+	return nil
 }
 
 func (s *Server) Handler() http.Handler { return s.router }

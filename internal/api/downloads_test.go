@@ -46,6 +46,7 @@ func (m *fakeManager) Retry(_ context.Context, id string) (core.DownloadJob, err
 	m.retried = append(m.retried, id)
 	return core.DownloadJob{ID: id, Status: core.DownloadQueued, Attempts: 1}, nil
 }
+func (m *fakeManager) Stop() {}
 
 func downloadTestServer(t *testing.T, mgr DownloadManager) (*Server, *http.Cookie) {
 	t.Helper()

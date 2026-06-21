@@ -10,7 +10,6 @@ interface AdapterCardProps {
   onRemove: (id: string) => void
   onReorder?: (instance: AdapterInstance, delta: number) => void
   order?: number
-  pendingRestart?: boolean
 }
 
 /**
@@ -34,13 +33,11 @@ function buildConfigSummary(config: Record<string, unknown>): string {
   return parts.join(' · ')
 }
 
-/** Derive status label and tone from enabled state and optional pending restart. */
+/** Derive status label and tone from enabled state. */
 function deriveStatus(
-  enabled: boolean,
-  pendingRestart: boolean
+  enabled: boolean
 ): { label: string; tone: 'success' | 'warning' | 'error' | undefined } {
   if (!enabled) return { label: 'Disabled', tone: undefined }
-  if (pendingRestart) return { label: 'Restart pending', tone: 'warning' }
   return { label: 'Connected', tone: 'success' }
 }
 
@@ -52,9 +49,8 @@ export function AdapterCard({
   onRemove,
   onReorder,
   order,
-  pendingRestart = false,
 }: AdapterCardProps) {
-  const { label: statusLabel, tone: statusTone } = deriveStatus(instance.enabled, pendingRestart)
+  const { label: statusLabel, tone: statusTone } = deriveStatus(instance.enabled)
   const configSummary = buildConfigSummary(instance.config)
   const logoLetter = instance.name.charAt(0).toUpperCase()
 

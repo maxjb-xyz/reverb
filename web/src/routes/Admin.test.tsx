@@ -8,7 +8,6 @@ import Admin from './Admin'
 // ── Mock adaptersApi ──────────────────────────────────────────────────────────
 const mockUseAdapters = vi.fn()
 const mockUseAvailableAdapters = vi.fn()
-const mockUsePendingRestart = vi.fn()
 const mockCreateAdapter = vi.fn()
 const mockUpdateAdapter = vi.fn()
 const mockDeleteAdapter = vi.fn()
@@ -16,7 +15,6 @@ const mockDeleteAdapter = vi.fn()
 vi.mock('../lib/adaptersApi', () => ({
   useAdapters: () => mockUseAdapters(),
   useAvailableAdapters: () => mockUseAvailableAdapters(),
-  usePendingRestart: () => mockUsePendingRestart(),
   createAdapter: (...args: unknown[]) => mockCreateAdapter(...args),
   updateAdapter: (...args: unknown[]) => mockUpdateAdapter(...args),
   deleteAdapter: (...args: unknown[]) => mockDeleteAdapter(...args),
@@ -46,7 +44,6 @@ const makeAvailable = (overrides = {}) => ({
 function setupDefaultMocks() {
   mockUseAdapters.mockReturnValue({ data: [], isLoading: false })
   mockUseAvailableAdapters.mockReturnValue({ data: [], isLoading: false })
-  mockUsePendingRestart.mockReturnValue({ data: { pendingRestart: false } })
 }
 
 function wrap(ui: ReactElement) {
@@ -132,26 +129,20 @@ describe('Admin', () => {
     )
   })
 
-  // ── RestartBanner ────────────────────────────────────────────────────────────
-  it('shows RestartBanner when usePendingRestart returns true', () => {
-    mockUsePendingRestart.mockReturnValue({ data: { pendingRestart: true } })
-    wrap(<Admin />)
-    expect(screen.getByRole('alert')).toBeInTheDocument()
-    expect(screen.getByText(/restart reverb/i)).toBeInTheDocument()
-  })
-
-  it('does not show RestartBanner when pendingRestart is false', () => {
-    mockUsePendingRestart.mockReturnValue({ data: { pendingRestart: false } })
+  // ── Live apply (no restart banner) ───────────────────────────────────────────
+  it('never shows a restart-to-apply banner (changes apply live)', () => {
     wrap(<Admin />)
     expect(screen.queryByRole('alert')).toBeNull()
+    expect(screen.queryByText(/restart reverb/i)).toBeNull()
   })
 
   // ── Server tab ───────────────────────────────────────────────────────────────
-  it('Server tab shows server info content', () => {
+  it('Server tab shows server info with live-apply copy', () => {
     wrap(<Admin />)
     fireEvent.click(screen.getByRole('button', { name: /server/i }))
     expect(screen.getByRole('heading', { name: /server info/i })).toBeInTheDocument()
     expect(screen.getByText(/applying config changes/i)).toBeInTheDocument()
+    expect(screen.getByText(/no restart required/i)).toBeInTheDocument()
   })
 
   // ── Users tab — honest EmptyState ────────────────────────────────────────────

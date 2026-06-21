@@ -70,9 +70,9 @@ func TestAdapterLifecycleSmoke(t *testing.T) {
 		t.Fatalf("want empty after delete, got %d", len(list))
 	}
 
-	// 6. config is dirty (restart-to-apply)
-	if !dirty.Dirty() {
-		t.Fatal("config should be dirty after mutations")
+	// 6. adapter changes apply live: the config-dirty flag is never flipped.
+	if dirty.Dirty() {
+		t.Fatal("config-dirty flag must stay clean — adapter changes apply live")
 	}
 
 	// 7. settings GET returns defaults

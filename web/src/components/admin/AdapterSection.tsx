@@ -14,7 +14,6 @@ interface AdapterSectionProps {
   onToggle: (instance: AdapterInstance) => void
   onRemove: (id: string) => void
   onReorder?: (instance: AdapterInstance, delta: number) => void
-  pendingRestart?: boolean
 }
 
 const EMPTY_MESSAGES: Record<string, string> = {
@@ -49,7 +48,6 @@ export function AdapterSection({
   onToggle,
   onRemove,
   onReorder,
-  pendingRestart = false,
 }: AdapterSectionProps) {
   const ordered = sortInstances(type, instances)
   const showOrder = type === 'search' || type === 'downloader'
@@ -96,7 +94,6 @@ export function AdapterSection({
                 onToggle={onToggle}
                 onRemove={onRemove}
                 onReorder={onReorder}
-                pendingRestart={pendingRestart}
               />
             </li>
           ))}
