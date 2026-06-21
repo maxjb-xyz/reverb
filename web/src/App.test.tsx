@@ -7,6 +7,7 @@ import type { SessionStatus } from './lib/session'
 
 vi.mock('./lib/session')
 vi.mock('./lib/useAlbumPalette', () => ({ useAlbumPalette: () => null }))
+vi.mock('./lib/realtimeWiring', () => ({ useRealtime: () => {} }))
 
 function mockStatus(s: SessionStatus) {
   vi.mocked(session.useSessionStatus).mockReturnValue(s)
@@ -19,7 +20,8 @@ test('authenticated renders the app shell', () => {
       <App />
     </MemoryRouter>,
   )
-  expect(screen.getByText('Reverb')).toBeInTheDocument()
+  // AppShell is present (Sidebar removed; shell identified by its testid)
+  expect(screen.getByTestId('app-shell-root')).toBeInTheDocument()
 })
 
 test('setupRequired renders the setup page', () => {

@@ -1,14 +1,13 @@
 import { NavLink } from 'react-router-dom'
 import { useUI } from '../lib/uiStore'
 import { useDownloads } from '../lib/downloadStore'
+import { Icon } from './ui/Icon'
 
 const tabs = [
   { to: '/search', label: 'Search' },
   { to: '/library', label: 'Library' },
   { to: '/settings', label: 'Settings' },
 ]
-
-const tabClass = 'flex min-h-[44px] min-w-[44px] flex-1 items-center justify-center rounded px-2 py-2 text-sm'
 
 // MobileTabNav is the bottom tab bar shown only < md. Routes are identical to
 // desktop; this is purely alternate chrome. Tap targets are ≥44px.
@@ -20,25 +19,40 @@ export function MobileTabNav() {
   return (
     <nav
       data-testid="mobile-tab-nav"
-      className="flex shrink-0 items-stretch gap-1 border-t border-neutral-800 bg-base/95 px-1 py-1 backdrop-blur md:hidden"
+      className="flex shrink-0 items-stretch gap-1 border-t border-border-subtle bg-surface/95 px-1 py-1 backdrop-blur md:hidden"
     >
       {tabs.map((t) => (
         <NavLink
           key={t.to}
           to={t.to}
-          className={({ isActive }) => `${tabClass} ${isActive ? 'text-accent' : 'text-neutral-300'}`}
+          aria-label={t.label}
+          className={({ isActive }) =>
+            [
+              'flex min-h-[44px] min-w-[44px] flex-1 items-center justify-center rounded px-2 py-2 text-sm font-semibold',
+              'transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
+              isActive ? 'text-accent' : 'text-text-secondary hover:text-text-primary',
+            ].join(' ')
+          }
         >
           {t.label}
         </NavLink>
       ))}
+
       <button
         type="button"
+        aria-label="Downloads"
         onClick={() => togglePanel('downloads')}
-        className={`${tabClass} relative ${rightPanel === 'downloads' ? 'text-accent' : 'text-neutral-300'}`}
+        className={[
+          'relative flex min-h-[44px] min-w-[44px] flex-1 items-center justify-center rounded px-2 py-2 text-sm font-semibold',
+          'transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
+          rightPanel === 'downloads' ? 'text-accent' : 'text-text-secondary hover:text-text-primary',
+        ].join(' ')}
       >
-        Downloads
+        <Icon name="dl" className="w-5 h-5" />
         {activeCount > 0 && (
-          <span className="absolute right-1 top-0 rounded-full bg-accent px-1.5 text-xs text-white">{activeCount}</span>
+          <span className="absolute right-1 top-0 min-w-4 h-4 px-1 rounded-full bg-accent text-black text-xs font-extrabold grid place-items-center pointer-events-none">
+            {activeCount}
+          </span>
         )}
       </button>
     </nav>

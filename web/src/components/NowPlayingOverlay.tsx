@@ -4,6 +4,8 @@ import { coverUrl } from '../lib/libraryApi'
 import { formatDuration } from '../lib/types'
 import { useAlbumPalette } from '../lib/useAlbumPalette'
 import { rgbToCss } from '../lib/palette'
+import { Cover } from './ui/Cover'
+import { Icon } from './ui/Icon'
 
 // NowPlayingOverlay is the mobile fullscreen now-playing view (iOS-Music style),
 // toggled from the mini player. It reuses the SAME playerStore — no duplicate state.
@@ -22,8 +24,10 @@ export function NowPlayingOverlay() {
   if (!open) return null
 
   const ambient = palette
-    ? { background: `linear-gradient(180deg, ${rgbToCss(palette.rgb, 0.45)} 0%, rgb(13 13 15) 70%)`, color: palette.text }
+    ? { background: `linear-gradient(180deg, ${rgbToCss(palette.rgb, 0.45)} 0%, var(--bg-base) 70%)`, color: palette.text }
     : undefined
+
+  const pct = durationMs > 0 ? (currentTimeMs / durationMs) * 100 : 0
 
   return (
     <div
@@ -31,50 +35,99 @@ export function NowPlayingOverlay() {
       className="fixed inset-0 z-40 flex flex-col bg-base p-6 md:hidden"
       style={ambient}
     >
+      {/* Header row — close + label */}
       <div className="flex items-center justify-between">
         <button
           type="button"
           aria-label="Close now playing"
           onClick={close}
-          className="flex h-11 w-11 items-center justify-center rounded-full text-2xl"
+          className={[
+            'flex h-11 w-11 items-center justify-center rounded-full',
+            'text-text-secondary hover:text-text-primary',
+            'transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
+          ].join(' ')}
         >
-          ⌄
+          <Icon name="fwd" className="w-5 h-5 rotate-90" />
         </button>
-        <div className="text-xs uppercase tracking-wide opacity-70">Now Playing</div>
-        <div className="h-11 w-11" />
+        <span className="text-xs font-semibold uppercase tracking-widest text-text-muted">
+          Now Playing
+        </span>
+        <div className="h-11 w-11" aria-hidden="true" />
       </div>
 
+      {/* Cover + meta */}
       <div className="flex flex-1 flex-col items-center justify-center gap-6">
-        {current?.coverArtId ? (
-          <img src={coverUrl(current.coverArtId, 600)} alt="" className="aspect-square w-full max-w-xs rounded-lg object-cover shadow-2xl" />
-        ) : (
-          <div className="aspect-square w-full max-w-xs rounded-lg bg-neutral-800" />
-        )}
+        <div className="w-full max-w-xs">
+          <Cover
+            src={current?.coverArtId ? coverUrl(current.coverArtId, 600) : undefined}
+            alt={current?.title ?? 'Nothing playing'}
+            size="full"
+            rounded="md"
+            className="aspect-square shadow-pop"
+          />
+        </div>
         <div className="w-full max-w-xs text-center">
-          <div className="truncate text-xl font-bold">{current ? current.title : 'Nothing playing'}</div>
-          <div className="truncate text-sm opacity-80">{current?.artist ?? ''}</div>
+          <div className="truncate text-xl font-bold text-text-primary">
+            {current ? current.title : 'Nothing playing'}
+          </div>
+          <div className="truncate text-sm text-text-secondary mt-1">{current?.artist ?? ''}</div>
         </div>
       </div>
 
-      <div className="mb-2 flex items-center justify-between text-xs tabular-nums opacity-80">
-        <span>{formatDuration(currentTimeMs)}</span>
-        <span>{formatDuration(durationMs)}</span>
+      {/* Seek bar */}
+      <div className="mb-2 max-w-xs mx-auto w-full">
+        <div className="mb-1 flex items-center justify-between text-xs tabular-nums text-text-muted">
+          <span>{formatDuration(currentTimeMs)}</span>
+          <span>{formatDuration(durationMs)}</span>
+        </div>
+        <div className="h-1 w-full rounded-full bg-border-subtle">
+          <div
+            className="h-full rounded-full bg-text-primary"
+            style={{ width: `${pct}%` }}
+          />
+        </div>
       </div>
 
-      <div className="mb-6 flex items-center justify-center gap-8">
-        <button type="button" aria-label="Previous" onClick={prev} className="flex h-11 w-11 items-center justify-center text-2xl">
-          ⏮
+      {/* Transport controls */}
+      <div className="mb-6 flex items-center justify-center gap-8 max-w-xs mx-auto w-full">
+        <button
+          type="button"
+          aria-label="Previous"
+          onClick={prev}
+          className={[
+            'flex h-11 w-11 items-center justify-center rounded-full',
+            'text-text-secondary hover:text-text-primary',
+            'transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
+          ].join(' ')}
+        >
+          <Icon name="prev" className="w-6 h-6" />
         </button>
+
         <button
           type="button"
           aria-label={playing ? 'Pause' : 'Play'}
           onClick={toggle}
-          className="flex h-16 w-16 items-center justify-center rounded-full bg-white text-2xl text-black"
+          className={[
+            'flex h-16 w-16 items-center justify-center rounded-full',
+            'bg-text-primary text-surface',
+            'transition-transform hover:scale-105 active:scale-95',
+            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
+          ].join(' ')}
         >
-          {playing ? '⏸' : '▶'}
+          <Icon name={playing ? 'pause' : 'play'} className="w-7 h-7" />
         </button>
-        <button type="button" aria-label="Next" onClick={next} className="flex h-11 w-11 items-center justify-center text-2xl">
-          ⏭
+
+        <button
+          type="button"
+          aria-label="Next"
+          onClick={next}
+          className={[
+            'flex h-11 w-11 items-center justify-center rounded-full',
+            'text-text-secondary hover:text-text-primary',
+            'transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
+          ].join(' ')}
+        >
+          <Icon name="next" className="w-6 h-6" />
         </button>
       </div>
     </div>

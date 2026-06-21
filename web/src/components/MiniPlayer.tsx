@@ -3,10 +3,12 @@ import { useUI } from '../lib/uiStore'
 import { coverUrl } from '../lib/libraryApi'
 import { useAlbumPalette } from '../lib/useAlbumPalette'
 import { rgbToCss } from '../lib/palette'
+import { Cover } from './ui/Cover'
+import { Icon } from './ui/Icon'
 
-// MiniPlayer is the mobile-only compact player (shown < md), sitting above the tab
-// nav. Tapping the bar expands to the fullscreen now-playing overlay; the play/pause
-// button is a separate ≥44px target that does NOT expand.
+// MiniPlayer is the mobile-only compact player (shown < md), sitting above the
+// tab nav. Tapping the bar expands to the fullscreen now-playing overlay; the
+// play/pause button is a separate ≥44px target that does NOT expand.
 export function MiniPlayer() {
   const current = usePlayer((s) => s.current)
   const playing = usePlayer((s) => s.playing)
@@ -19,7 +21,7 @@ export function MiniPlayer() {
   return (
     <div
       data-testid="mini-player"
-      className="flex items-center gap-3 border-t border-neutral-800 px-3 py-2 md:hidden"
+      className="flex items-center gap-3 border-t border-border-subtle px-3 py-2 md:hidden bg-surface"
       style={palette ? { backgroundColor: rgbToCss(palette.rgb), color: palette.text } : undefined}
     >
       <button
@@ -27,25 +29,33 @@ export function MiniPlayer() {
         data-testid="mini-player-expand"
         aria-label="Expand player"
         onClick={openNowPlaying}
-        className="flex min-w-0 flex-1 items-center gap-3 text-left"
+        className="flex min-w-0 flex-1 items-center gap-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded"
       >
-        {current.coverArtId ? (
-          <img src={coverUrl(current.coverArtId, 80)} alt="" className="h-10 w-10 rounded object-cover" />
-        ) : (
-          <div className="h-10 w-10 rounded bg-neutral-800" />
-        )}
+        <Cover
+          src={current.coverArtId ? coverUrl(current.coverArtId, 80) : undefined}
+          alt={current.title}
+          size={40}
+          rounded="md"
+          className="flex-none"
+        />
         <div className="min-w-0">
-          <div className="truncate text-sm font-medium">{current.title}</div>
-          <div className="truncate text-xs opacity-80">{current.artist}</div>
+          <div className="truncate text-sm font-semibold text-text-primary">{current.title}</div>
+          <div className="truncate text-xs text-text-secondary">{current.artist}</div>
         </div>
       </button>
+
       <button
         type="button"
         aria-label={playing ? 'Pause' : 'Play'}
         onClick={toggle}
-        className="flex h-11 w-11 items-center justify-center rounded-full bg-white text-black"
+        className={[
+          'flex h-11 w-11 items-center justify-center rounded-full',
+          'bg-text-primary text-surface',
+          'transition-transform hover:scale-105 active:scale-95',
+          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
+        ].join(' ')}
       >
-        {playing ? '⏸' : '▶'}
+        <Icon name={playing ? 'pause' : 'play'} className="w-5 h-5" />
       </button>
     </div>
   )

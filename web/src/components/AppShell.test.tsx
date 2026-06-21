@@ -12,6 +12,17 @@ vi.mock('../lib/realtimeWiring', () => ({ useRealtime: () => {} }))
 import { useAlbumPalette } from '../lib/useAlbumPalette'
 vi.mock('../lib/useAlbumPalette', () => ({ useAlbumPalette: vi.fn(() => null) }))
 
+// Suppress library API fetches in tests
+vi.mock('../lib/libraryApi', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../lib/libraryApi')>()
+  return {
+    ...actual,
+    usePlaylists: () => ({ isLoading: false, data: [] }),
+    useAlbums: () => ({ isLoading: false, data: [] }),
+    useArtists: () => ({ isLoading: false, data: [] }),
+  }
+})
+
 function track(id: string): Track {
   return {
     id, title: 'Song ' + id, albumId: 'al', album: 'Album', artistId: 'ar', artist: 'Artist',
@@ -21,7 +32,7 @@ function track(id: string): Track {
 }
 
 function renderShell() {
-  const qc = new QueryClient()
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
     <QueryClientProvider client={qc}>
       <MemoryRouter>
@@ -34,20 +45,51 @@ function renderShell() {
 describe('AppShell', () => {
   beforeEach(() => {
     useDownloads.setState({ jobs: {} })
-    useUI.setState({ rightPanel: 'downloads', nowPlayingOpen: false })
+    useUI.setState({ rightPanel: null, nowPlayingOpen: false })
     vi.mocked(useAlbumPalette).mockReset()
     vi.mocked(useAlbumPalette).mockReturnValue(null)
   })
 
-  it('mounts the Download Tray when the right panel is downloads', () => {
+  it('TopBar is always present', () => {
     renderShell()
+    // TopBar renders a header element
+    expect(screen.getByRole('banner')).toBeInTheDocument()
+  })
+
+  it('LibraryRail is in the DOM (hidden on mobile via CSS)', () => {
+    renderShell()
+    // LibraryRail has "Your Library" label
+    expect(screen.getByText('Your Library')).toBeInTheDocument()
+  })
+
+  it('PlayerBar is in the DOM (hidden on mobile via CSS)', () => {
+    renderShell()
+    expect(screen.getByTestId('player-bar')).toBeInTheDocument()
+  })
+
+  it('right column is ABSENT when rightPanel is null (default)', () => {
+    useUI.setState({ rightPanel: null })
+    renderShell()
+    expect(screen.queryByTestId('right-panel-column')).not.toBeInTheDocument()
+  })
+
+  it('right column renders NowPlayingPanel when rightPanel is nowplaying', () => {
+    act(() => { usePlayer.getState().playTrackList([track('1')], 0) })
+    useUI.setState({ rightPanel: 'nowplaying' })
+    renderShell()
+    expect(screen.getByTestId('right-panel-column')).toBeInTheDocument()
+    expect(screen.getByTestId('now-playing-panel')).toBeInTheDocument()
+  })
+
+  it('right column renders DownloadTray when rightPanel is downloads', () => {
+    useUI.setState({ rightPanel: 'downloads' })
+    renderShell()
+    expect(screen.getByTestId('right-panel-column')).toBeInTheDocument()
     expect(screen.getByText('Download Tray')).toBeInTheDocument()
   })
 
-  it('renders the desktop sidebar and the mobile tab nav (chrome swaps via CSS)', () => {
+  it('mobile chrome (MobileTabNav) is in the DOM', () => {
     renderShell()
-    // Both chromes are in the DOM; Tailwind hidden/md: classes decide visibility.
-    expect(screen.getByTestId('app-shell-root')).toBeInTheDocument()
     expect(screen.getByTestId('mobile-tab-nav')).toBeInTheDocument()
   })
 
@@ -60,7 +102,7 @@ describe('AppShell', () => {
     expect(root.style.background).not.toBe('')
   })
 
-  it('uses the static background when dynamic_background is off (no palette)', () => {
+  it('uses the static background when no palette (dynamic_background off)', () => {
     vi.mocked(useAlbumPalette).mockReturnValue(null)
     renderShell()
     const root = screen.getByTestId('app-shell-root')

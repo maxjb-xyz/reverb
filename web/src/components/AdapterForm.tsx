@@ -116,7 +116,7 @@ export function AdapterForm({ name, schema, initial, submitLabel = 'Save', onSub
 
       {submitError && <p className="text-sm text-accent">{submitError}</p>}
       <div className="flex items-center gap-3 pt-1">
-        <button type="submit" disabled={submitting} className="rounded bg-accent px-4 py-2 font-medium text-white disabled:opacity-50">
+        <button type="submit" disabled={submitting} className="rounded bg-accent px-4 py-2 font-medium text-black disabled:opacity-50">
           {submitLabel}
         </button>
         <button type="button" onClick={runTest} disabled={testState.status === 'testing'} className="rounded border border-neutral-700 px-4 py-2 text-neutral-200 hover:bg-neutral-800">
