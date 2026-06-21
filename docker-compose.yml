@@ -1,0 +1,42 @@
+# Production-ish single-host deployment for Crate.
+#
+# Crate writes downloads (via spotDL) into the shared /music volume. Point your
+# Subsonic/Navidrome library adapter at the SAME music so downloads appear in the
+# library after a scan. See the commented `navidrome` service below for a ready
+# pairing. Secrets come ONLY from .env (copy .env.example -> .env).
+
+services:
+  crate:
+    build:
+      context: .
+      args:
+        VERSION: "${CRATE_VERSION:-dev}"
+    # Or pull a published image instead of building:
+    # image: ghcr.io/maxjb-xyz/crate:latest
+    ports:
+      - "8090:8090"
+    env_file:
+      - .env
+    volumes:
+      # SQLite DB + app state (CRATE_DB defaults to /data/crate.db in the image).
+      - ./data:/data
+      # Shared music dir. Set the spotDL adapter's `output_dir` to /music in the
+      # Settings UI so downloads land where the library scans.
+      - ./music:/music
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # Optional: a Navidrome that scans the SAME ./music volume. Uncomment to run
+  # the full pairing. In Crate's Settings UI add a Subsonic library adapter with
+  # base URL http://navidrome:4533 (and CRATE_LIBRARY_PASSWORD in .env).
+  # ---------------------------------------------------------------------------
+  # navidrome:
+  #   image: deluan/navidrome:latest
+  #   ports:
+  #     - "4533:4533"
+  #   environment:
+  #     ND_LOGLEVEL: info
+  #   volumes:
+  #     - ./music:/music:ro
+  #     - ./navidrome-data:/data
+  #   restart: unless-stopped
