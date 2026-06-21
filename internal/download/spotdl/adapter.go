@@ -25,6 +25,10 @@ var _ download.Downloader = (*Adapter)(nil)
 // progressRe extracts an integer percentage from a stdout line, e.g. "...: 80%".
 var progressRe = regexp.MustCompile(`(\d{1,3})\s*%`)
 
+// failureRe matches the fatal spotDL errors that mean no file was produced even
+// though the process exits 0 (per-song failures don't change the exit code).
+var failureRe = regexp.MustCompile(`AudioProviderError|YT-DLP download error|LookupError|DownloaderError`)
+
 // Adapter implements download.Downloader for spotDL.
 type Adapter struct {
 	runner       Runner
@@ -115,22 +119,39 @@ func (a *Adapter) Start(ctx context.Context, req core.DownloadRequest, onProgres
 	query := strings.TrimSpace(req.Artist + " - " + req.Title)
 	// spotDL's CLI is `spotdl [options] <operation> <query>`. It does NOT accept a
 	// "--" end-of-options separator (it reports it as an unrecognized argument), so
-	// every option — credentials and --output — must come BEFORE the "download"
-	// operation, with the query as the trailing positional.
+	// every option must come BEFORE the "download" operation, query trailing.
+	//
+	// --output is a FILENAME TEMPLATE, not just a directory. A bare directory is
+	// unreliable — spotDL falls back to its default (the current working
+	// directory), which is why downloads "completed" yet never appeared in the
+	// output dir. Give it an explicit "<dir>/{artists} - {title}.{output-ext}"
+	// template so the file is written into outputDir with a sane name.
+	//
+	// --simple-tui makes spotDL emit plain, pipe-friendly progress lines; its rich
+	// TUI is suppressed when stdout is not a terminal (our case), which is why the
+	// terminal shows a progress bar but our captured output didn't.
+	outputTemplate := strings.TrimRight(a.outputDir, "/") + "/{artists} - {title}.{output-ext}"
 	args := []string{}
 	if a.clientID != "" && a.clientSecret != "" {
 		args = append(args, "--client-id", a.clientID, "--client-secret", a.clientSecret)
 	}
-	args = append(args, "--output", a.outputDir, "download", query)
+	args = append(args, "--simple-tui", "--output", outputTemplate, "download", query)
 
 	log.Printf("spotdl: exec %s %s", a.binary, redactArgs(args))
 
 	sawProgress := false
+	var failure string // first fatal error line spotDL emitted, if any
 	rerr := a.runner.Run(ctx, a.binary, args, func(line string) {
 		// Echo spotDL's own output (stdout+stderr) so a slow/stuck/failing
 		// download is diagnosable from the Reverb logs.
 		if s := strings.TrimSpace(line); s != "" {
 			log.Printf("spotdl> %s", s)
+		}
+		// spotDL exits 0 even when a song fails to download (it just logs the
+		// error and moves on), so the exit code alone would report a non-existent
+		// file as a success. Detect the fatal markers and surface them as an error.
+		if failure == "" && failureRe.MatchString(line) {
+			failure = strings.TrimSpace(line)
 		}
 		if m := progressRe.FindStringSubmatch(line); m != nil {
 			if p, err := strconv.Atoi(m[1]); err == nil && p >= 0 && p <= 100 {
@@ -144,6 +165,10 @@ func (a *Adapter) Start(ctx context.Context, req core.DownloadRequest, onProgres
 	if rerr != nil {
 		log.Printf("spotdl: %q failed: %v", query, rerr)
 		return "", fmt.Errorf("spotdl download %q: %w", query, rerr)
+	}
+	if failure != "" {
+		log.Printf("spotdl: %q failed: %s", query, failure)
+		return "", fmt.Errorf("spotdl download %q: %s", query, failure)
 	}
 	if !sawProgress {
 		onProgress(-1) // indeterminate: spotDL gave no parseable percentage

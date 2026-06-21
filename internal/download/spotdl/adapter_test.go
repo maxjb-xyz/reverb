@@ -206,6 +206,30 @@ func TestStartArgStructure(t *testing.T) {
 	if n := len(r.gotArgs); n == 0 || r.gotArgs[n-1] != "A - T" {
 		t.Fatalf("query must be the trailing arg: %v", r.gotArgs)
 	}
+	// --output must be a filename TEMPLATE under the output dir (a bare dir is
+	// unreliable and spotDL falls back to its CWD).
+	outVal := r.gotArgs[outIdx+1]
+	if !strings.HasPrefix(outVal, "/tmp/music/") || !strings.Contains(outVal, "{output-ext}") {
+		t.Fatalf("--output must be a template under the output dir, got %q", outVal)
+	}
+}
+
+func TestStartTreatsAudioErrorAsFailure(t *testing.T) {
+	// spotDL exits 0 but logs AudioProviderError when the audio download fails
+	// (e.g. YouTube needs Deno). Start must surface that as an error so the job is
+	// marked failed, not falsely "completed" with no file.
+	r := &fakeRunner{lines: []string{
+		`Processing query: A - T`,
+		`AudioProviderError: YT-DLP download error - https://music.youtube.com/watch?v=x`,
+	}}
+	a := newAdapter(t, r)
+	out, err := a.Start(context.Background(), core.DownloadRequest{Artist: "A", Title: "T"}, func(int) {})
+	if err == nil {
+		t.Fatalf("expected an error when spotDL logs AudioProviderError, got out=%q, nil err", out)
+	}
+	if out != "" {
+		t.Fatalf("expected empty path on failure, got %q", out)
+	}
 }
 
 func TestRedactArgsMasksSecret(t *testing.T) {

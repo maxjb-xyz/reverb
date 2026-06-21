@@ -32,6 +32,12 @@ FROM python:3.12-slim AS runtime
 RUN apt-get update \
  && apt-get install -y --no-install-recommends ffmpeg \
  && rm -rf /var/lib/apt/lists/*
+# Deno: current YouTube requires a JS runtime to solve its nsig/signature
+# challenge. Without it, yt-dlp (and therefore spotDL) fails every download with
+# "AudioProviderError: YT-DLP download error" and writes no file — spotDL itself
+# prints "Some YouTube downloads require Deno". The official deno:bin image exists
+# solely to be COPY'd in; /usr/local/bin is on PATH so yt-dlp finds it.
+COPY --from=denoland/deno:bin /deno /usr/local/bin/deno
 # Keep spotDL ITSELF current — that's the real fix for downloads "stuck at 0% /
 # hangs on Processing query". That stage is ytmusicapi (the YouTube Music API),
 # whose fix shipped in ytmusicapi 1.11.1 — gated behind spotdl >= 4.4.3. So the old

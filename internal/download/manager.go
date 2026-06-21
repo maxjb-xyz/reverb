@@ -467,6 +467,7 @@ func (m *Manager) runScan() {
 		return
 	}
 	if err := m.scanner.StartScan(ctx); err != nil {
+		log.Printf("library scan after download failed: %v", err)
 		return
 	}
 	// Poll ScanStatus until idle or the poll budget elapses.
