@@ -32,10 +32,18 @@ FROM python:3.12-slim AS runtime
 RUN apt-get update \
  && apt-get install -y --no-install-recommends ffmpeg \
  && rm -rf /var/lib/apt/lists/*
-# VERSION PIN: spotDL output formatting is fragile. Reverb's spotdl adapter parses
-# progress with the regex `(\d{1,3})\s*%` in internal/download/spotdl/adapter.go.
-# Bumping this pin REQUIRES re-validating that regex against the new output.
-RUN pip install --no-cache-dir "spotdl==4.2.11"
+# Keep spotDL ITSELF current — that's the real fix for downloads "stuck at 0% /
+# hangs on Processing query". That stage is ytmusicapi (the YouTube Music API),
+# whose fix shipped in ytmusicapi 1.11.1 — gated behind spotdl >= 4.4.3. So the old
+# 4.2.11 pin literally couldn't get the fix; bumping spotDL pulls a compatible
+# ytmusicapi + yt-dlp. Pinned to a known-good latest via build arg for
+# reproducibility — bump SPOTDL_VERSION + rebuild when downloads break again.
+# yt-dlp (the actual download step) is additionally floated, since it goes stale
+# between spotDL releases. Progress parsing degrades gracefully, so a spotDL
+# output-format drift just falls back to an indeterminate spinner (never breaks).
+ARG SPOTDL_VERSION=4.5.0
+RUN pip install --no-cache-dir "spotdl==${SPOTDL_VERSION}" \
+ && pip install --no-cache-dir --upgrade yt-dlp
 COPY --from=gobuild /out/reverb /usr/local/bin/reverb
 # Non-root user (uid 1000 — the typical first host user, so a bind-mounted music
 # library you own is writable with no setup). Create + own /data and /music BEFORE
