@@ -4,13 +4,15 @@ import { render, screen, fireEvent } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { AccentSwatches } from './AccentSwatches'
 
+const mockMutate = vi.fn()
+
 vi.mock('../lib/settingsApi', () => ({
   useSettings: vi.fn(() => ({ data: { accentColor: '#F0354B', dynamicBackground: true } })),
-  putSettings: vi.fn(() => Promise.resolve({ accentColor: '#F0354B', dynamicBackground: true })),
+  useUpdateSettings: vi.fn(() => ({ mutate: mockMutate })),
   applyAccent: vi.fn(),
 }))
 
-import { useSettings, putSettings, applyAccent } from '../lib/settingsApi'
+import { useSettings, applyAccent } from '../lib/settingsApi'
 
 function wrap(ui: ReactElement) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -20,6 +22,7 @@ function wrap(ui: ReactElement) {
 describe('AccentSwatches', () => {
   beforeEach(() => {
     vi.mocked(useSettings).mockReturnValue({ data: { accentColor: '#F0354B', dynamicBackground: true } } as ReturnType<typeof useSettings>)
+    mockMutate.mockClear()
   })
   afterEach(() => vi.clearAllMocks())
 
@@ -45,11 +48,11 @@ describe('AccentSwatches', () => {
     expect(indigoBtn).toHaveAttribute('aria-pressed', 'false')
   })
 
-  it('selecting a preset calls applyAccent and putSettings with its hex', async () => {
+  it('selecting a preset calls applyAccent and mutates settings with its hex', async () => {
     wrap(<AccentSwatches />)
     fireEvent.click(screen.getByRole('button', { name: /indigo/i }))
     expect(applyAccent).toHaveBeenCalledWith('#7C6AF7')
-    expect(putSettings).toHaveBeenCalledWith({ accentColor: '#7C6AF7' })
+    expect(mockMutate).toHaveBeenCalledWith({ accentColor: '#7C6AF7' })
   })
 
   it('reveals a hex input when the custom swatch is clicked', () => {
@@ -59,13 +62,13 @@ describe('AccentSwatches', () => {
     expect(screen.getByPlaceholderText('#000000')).toBeInTheDocument()
   })
 
-  it('typing a valid hex in the custom input calls applyAccent and putSettings', () => {
+  it('typing a valid hex in the custom input calls applyAccent and mutates settings', () => {
     wrap(<AccentSwatches />)
     fireEvent.click(screen.getByRole('button', { name: /custom accent color/i }))
     const input = screen.getByPlaceholderText('#000000')
     fireEvent.change(input, { target: { value: '#abcdef' } })
     expect(applyAccent).toHaveBeenCalledWith('#abcdef')
-    expect(putSettings).toHaveBeenCalledWith({ accentColor: '#abcdef' })
+    expect(mockMutate).toHaveBeenCalledWith({ accentColor: '#abcdef' })
   })
 
   it('does not call applyAccent for incomplete hex', () => {
@@ -83,5 +86,20 @@ describe('AccentSwatches', () => {
     expect(indigoBtn).toHaveAttribute('aria-pressed', 'true')
     const redBtn = screen.getByRole('button', { name: /red \(default\)/i })
     expect(redBtn).toHaveAttribute('aria-pressed', 'false')
+  })
+
+  it('initializes custom hex input to current accent when it is not a preset', () => {
+    vi.mocked(useSettings).mockReturnValue({ data: { accentColor: '#123456', dynamicBackground: true } } as ReturnType<typeof useSettings>)
+    wrap(<AccentSwatches />)
+    fireEvent.click(screen.getByRole('button', { name: /custom accent color/i }))
+    const input = screen.getByPlaceholderText('#000000') as HTMLInputElement
+    expect(input.value).toBe('#123456')
+  })
+
+  it('initializes custom hex to #000000 when current accent is a preset', () => {
+    wrap(<AccentSwatches />)
+    fireEvent.click(screen.getByRole('button', { name: /custom accent color/i }))
+    const input = screen.getByPlaceholderText('#000000') as HTMLInputElement
+    expect(input.value).toBe('#000000')
   })
 })

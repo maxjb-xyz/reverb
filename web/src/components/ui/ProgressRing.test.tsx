@@ -75,4 +75,42 @@ describe('ProgressRing', () => {
     const transform = progressCircle.getAttribute('transform') ?? ''
     expect(transform).toMatch(/rotate\(-?90/)
   })
+
+  // ── indeterminate variant ──────────────────────────────────────────────────
+
+  it('renders a partial arc when indeterminate=true', () => {
+    const { container } = render(<ProgressRing value={0} indeterminate />)
+    const circles = container.querySelectorAll('circle')
+    const arc = circles[1]
+    const dasharray = arc.getAttribute('stroke-dasharray') ?? ''
+    // Should contain two numbers (dash gap), not just one (full dasharray)
+    expect(dasharray).toMatch(/[\d.]+\s+[\d.]+/)
+  })
+
+  it('indeterminate arc has aria-label "Loading" and aria-busy', () => {
+    const { container } = render(<ProgressRing value={0} indeterminate />)
+    const svg = container.querySelector('svg')!
+    expect(svg.getAttribute('aria-label')).toBe('Loading')
+    expect(svg.getAttribute('aria-busy')).toBe('true')
+  })
+
+  it('indeterminate arc has motion-safe:animate-spin class (spins unless reduced-motion)', () => {
+    const { container } = render(<ProgressRing value={0} indeterminate />)
+    const circles = container.querySelectorAll('circle')
+    const arc = circles[1]
+    const className = arc.getAttribute('class') ?? ''
+    expect(className).toContain('motion-safe:animate-spin')
+  })
+
+  it('indeterminate uses custom size', () => {
+    const { container } = render(<ProgressRing value={0} size={24} indeterminate />)
+    const svg = container.querySelector('svg')!
+    expect(svg.getAttribute('width')).toBe('24')
+  })
+
+  it('non-indeterminate ring does not have aria-busy', () => {
+    const { container } = render(<ProgressRing value={50} />)
+    const svg = container.querySelector('svg')!
+    expect(svg.getAttribute('aria-busy')).toBeNull()
+  })
 })

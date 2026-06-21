@@ -82,10 +82,14 @@ export function DownloadAction({ result, onPlay }: Props) {
 
   // ── 2. Active (running or queued) ─────────────────────────────────────────
   if (job?.status === 'running' || job?.status === 'queued') {
-    const progress = job.progress >= 0 ? job.progress : 0
+    const isIndeterminate = job.status === 'queued' || job.progress < 0
     return (
       <span className="inline-flex items-center gap-2">
-        <ProgressRing value={progress} size={24} />
+        <ProgressRing
+          value={isIndeterminate ? 0 : job.progress}
+          size={24}
+          indeterminate={isIndeterminate}
+        />
         <Badge kind="downloading">Downloading</Badge>
       </span>
     )

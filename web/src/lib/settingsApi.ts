@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from './api'
 
 export interface AppSettings {
@@ -36,4 +36,15 @@ export function putSettings(b: Partial<AppSettings>): Promise<AppSettings> {
 
 export function useSettings() {
   return useQuery({ queryKey: ['settings'], queryFn: getSettings })
+}
+
+/** Mutation hook: saves a partial settings patch and invalidates the settings cache. */
+export function useUpdateSettings() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (patch: Partial<AppSettings>) => putSettings(patch),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['settings'] })
+    },
+  })
 }

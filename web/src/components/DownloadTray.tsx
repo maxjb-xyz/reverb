@@ -179,8 +179,12 @@ function JobRow({ j, downloaders }: { j: DownloadJob; downloaders: AdapterInstan
         </div>
 
         {/* Progress ring for active jobs */}
-        {j.status === 'running' && (
-          <ProgressRing value={j.progress >= 0 ? j.progress : 0} size={28} />
+        {(j.status === 'running' || j.status === 'queued') && (
+          <ProgressRing
+            value={j.progress >= 0 ? j.progress : 0}
+            size={28}
+            indeterminate={j.status === 'queued' || j.progress < 0}
+          />
         )}
 
         {/* Action buttons */}

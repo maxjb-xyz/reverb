@@ -1,17 +1,60 @@
 interface ProgressRingProps {
   value: number // 0-100
   size?: number
+  indeterminate?: boolean
 }
 
 const RADIUS = 15
 const CIRCUMFERENCE = 2 * Math.PI * RADIUS // ≈ 94.25
 
-export function ProgressRing({ value, size = 36 }: ProgressRingProps) {
+// Partial arc for indeterminate state: ~75% of circumference
+const INDETERMINATE_DASH = CIRCUMFERENCE * 0.75
+const INDETERMINATE_OFFSET = CIRCUMFERENCE * 0.25
+
+export function ProgressRing({ value, size = 36, indeterminate = false }: ProgressRingProps) {
   const clampedValue = Math.min(100, Math.max(0, value))
   const dashoffset = CIRCUMFERENCE * (1 - clampedValue / 100)
   // The SVG viewBox is 0 0 36 36 with center at 18,18 and r=15
   const cx = 18
   const cy = 18
+
+  if (indeterminate) {
+    return (
+      <svg
+        width={size}
+        height={size}
+        viewBox="0 0 36 36"
+        aria-label="Loading"
+        role="img"
+        aria-busy="true"
+      >
+        {/* Track ring */}
+        <circle
+          cx={cx}
+          cy={cy}
+          r={RADIUS}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={3}
+          className="text-raised"
+        />
+        {/* Spinning partial arc — motion disabled via global prefers-reduced-motion rule */}
+        <circle
+          cx={cx}
+          cy={cy}
+          r={RADIUS}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={3}
+          strokeLinecap="round"
+          strokeDasharray={`${INDETERMINATE_DASH} ${INDETERMINATE_OFFSET}`}
+          transform={`rotate(-90 ${cx} ${cy})`}
+          className="origin-center text-accent motion-safe:animate-spin"
+          style={{ transformBox: 'fill-box', transformOrigin: '50% 50%' }}
+        />
+      </svg>
+    )
+  }
 
   return (
     <svg

@@ -246,7 +246,7 @@ export function PlayerBar() {
             value={volume}
             aria-label="Volume"
             onChange={(e) => setVolume(Number(e.target.value))}
-            className="h-1 w-24 cursor-pointer appearance-none rounded-full bg-border-subtle accent-accent"
+            className="h-1 w-24 cursor-pointer appearance-none rounded-full bg-border-subtle accent-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
           />
         </div>
 

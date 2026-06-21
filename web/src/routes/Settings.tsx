@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Chip, Toggle } from '../components/ui'
 import { Button } from '../components/ui'
 import { AccentSwatches } from '../components/AccentSwatches'
-import { useSettings, putSettings } from '../lib/settingsApi'
+import { useSettings, useUpdateSettings } from '../lib/settingsApi'
 import { api } from '../lib/api'
 
 type Tab = 'appearance' | 'account'
@@ -10,6 +10,7 @@ type Tab = 'appearance' | 'account'
 export default function Settings() {
   const [tab, setTab] = useState<Tab>('appearance')
   const settings = useSettings()
+  const updateSettings = useUpdateSettings()
 
   async function handleLogout() {
     await api.post('/auth/logout')
@@ -62,7 +63,7 @@ export default function Settings() {
                 checked={settings.data?.dynamicBackground ?? true}
                 label="Dynamic album background"
                 onChange={(v) => {
-                  void putSettings({ dynamicBackground: v })
+                  updateSettings.mutate({ dynamicBackground: v })
                 }}
               />
             </div>

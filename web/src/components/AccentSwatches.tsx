@@ -1,6 +1,6 @@
-import { useState, useId } from 'react'
+import { useState, useId, useMemo } from 'react'
 import { Icon } from './ui'
-import { useSettings, putSettings, applyAccent } from '../lib/settingsApi'
+import { useSettings, useUpdateSettings, applyAccent } from '../lib/settingsApi'
 
 interface Swatch {
   hex: string
@@ -27,15 +27,22 @@ function hexesMatch(a: string, b: string): boolean {
 export function AccentSwatches() {
   const settings = useSettings()
   const currentAccent = settings.data?.accentColor ?? '#F0354B'
+  const updateSettings = useUpdateSettings()
+
+  // Initialize custom hex to the current accent when it isn't a preset
+  const defaultCustomHex = useMemo(() => {
+    const isPreset = PRESETS.some((p) => hexesMatch(p.hex, currentAccent))
+    return isPreset ? '#000000' : normalizeHex(currentAccent)
+  }, [currentAccent])
 
   const [customOpen, setCustomOpen] = useState(false)
-  const [customValue, setCustomValue] = useState('#000000')
+  const [customValue, setCustomValue] = useState(defaultCustomHex)
 
   const inputId = useId()
 
   function selectColor(hex: string) {
     applyAccent(hex)
-    void putSettings({ accentColor: hex })
+    updateSettings.mutate({ accentColor: hex })
   }
 
   function handleCustomChange(e: React.ChangeEvent<HTMLInputElement>) {

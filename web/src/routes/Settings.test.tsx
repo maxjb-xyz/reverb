@@ -4,8 +4,11 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import Settings from './Settings'
 
+const mockMutate = vi.fn()
+
 vi.mock('../lib/settingsApi', () => ({
   useSettings: vi.fn(() => ({ data: { accentColor: '#F0354B', dynamicBackground: true } })),
+  useUpdateSettings: vi.fn(() => ({ mutate: mockMutate })),
   putSettings: vi.fn(() => Promise.resolve({ accentColor: '#F0354B', dynamicBackground: true })),
   applyAccent: vi.fn(),
 }))
@@ -30,7 +33,6 @@ vi.mock('../lib/api', () => ({
   },
 }))
 
-import { putSettings } from '../lib/settingsApi'
 import { api } from '../lib/api'
 
 function wrap(ui: ReactElement) {
@@ -40,6 +42,7 @@ function wrap(ui: ReactElement) {
 
 describe('Settings', () => {
   beforeEach(() => {
+    mockMutate.mockClear()
     // Stub window.location.reload so tests don't actually reload
     Object.defineProperty(window, 'location', {
       value: { ...window.location, reload: vi.fn() },
@@ -70,12 +73,12 @@ describe('Settings', () => {
     expect(screen.getByRole('switch', { name: /dynamic album background/i })).toBeInTheDocument()
   })
 
-  it('toggling dynamic background calls putSettings', async () => {
+  it('toggling dynamic background calls useUpdateSettings mutate', async () => {
     wrap(<Settings />)
     const toggle = screen.getByRole('switch', { name: /dynamic album background/i })
     fireEvent.click(toggle)
     await waitFor(() =>
-      expect(putSettings).toHaveBeenCalledWith({ dynamicBackground: false })
+      expect(mockMutate).toHaveBeenCalledWith({ dynamicBackground: false })
     )
   })
 

@@ -108,21 +108,24 @@ describe('DownloadAction', () => {
   })
 
   // ── 3. job running indeterminate ──────────────────────────────────────────
-  it('running job with progress -1 → indeterminate ring (value=0)', () => {
+  it('running job with progress -1 → indeterminate ring (aria-label "Loading")', () => {
     useDownloads.getState().upsert(makeJob({ status: 'running', progress: -1 }))
     render(<DownloadAction result={makeResult()} onPlay={onPlay} />)
 
-    // ProgressRing with value=0 (indeterminate passed as 0) or the label says 0%
-    const ring = screen.getByRole('img', { name: /0%/i })
+    // Indeterminate ring has aria-label "Loading" and aria-busy
+    const ring = screen.getByRole('img', { name: /loading/i })
     expect(ring).toBeInTheDocument()
+    expect(ring).toHaveAttribute('aria-busy', 'true')
   })
 
   // ── 4. job queued ─────────────────────────────────────────────────────────
-  it('queued job → renders ProgressRing (indeterminate, progress -1)', () => {
+  it('queued job → renders indeterminate ProgressRing with aria-label "Loading"', () => {
     useDownloads.getState().upsert(makeJob({ status: 'queued', progress: -1 }))
     render(<DownloadAction result={makeResult()} onPlay={onPlay} />)
 
-    expect(screen.getByRole('img', { name: /0%/i })).toBeInTheDocument()
+    const ring = screen.getByRole('img', { name: /loading/i })
+    expect(ring).toBeInTheDocument()
+    expect(ring).toHaveAttribute('aria-busy', 'true')
     expect(screen.getByText(/downloading/i)).toBeInTheDocument()
   })
 
