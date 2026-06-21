@@ -49,4 +49,30 @@ describe('useAlbumPalette', () => {
     expect(result.current?.text).toBe('#FFFFFF')
     expect(typeof result.current?.scrim).toBe('boolean')
   })
+
+  it('does not show the previous cover’s palette while a new cover is extracting', async () => {
+    setSettings(true)
+    // Gate the compute so /cover/b stays pending after /cover/a has resolved.
+    let releaseB: (v: RGB) => void = () => {}
+    __setComputeFnForTests((url) =>
+      url === '/cover/a'
+        ? Promise.resolve([200, 30, 40] as RGB)
+        : new Promise<RGB>((res) => {
+            releaseB = res
+          }),
+    )
+
+    const { result, rerender } = renderHook(({ url }) => useAlbumPalette(url), {
+      initialProps: { url: '/cover/a' },
+    })
+    await waitFor(() => expect(result.current?.rgb).toEqual([200, 30, 40]))
+
+    // Switch to /cover/b: until B resolves the hook must return null, NOT A's color.
+    rerender({ url: '/cover/b' })
+    expect(result.current).toBeNull()
+
+    // Once B resolves, its palette appears.
+    releaseB([10, 120, 220])
+    await waitFor(() => expect(result.current?.rgb).toEqual([10, 120, 220]))
+  })
 })
