@@ -45,8 +45,8 @@ export function TopBar() {
         />
       </div>
 
-      {/* Center — home + search pill + browse */}
-      <div className="flex items-center gap-2 flex-1 mx-4 min-w-0">
+      {/* Center — home + centered search pill */}
+      <div className="flex items-center justify-center gap-2 flex-1 mx-4 min-w-0">
         <IconButton
           name="home"
           label="Home"
@@ -58,7 +58,7 @@ export function TopBar() {
           aria-label="Search"
           onClick={() => navigate('/search')}
           className={[
-            'flex items-center gap-3 h-12 px-4 rounded-full bg-input flex-1 min-w-0 max-w-lg',
+            'flex items-center gap-3 h-12 px-4 rounded-full bg-input w-full min-w-0 max-w-md',
             'text-text-secondary text-sm font-medium text-left',
             'hover:bg-raised-hover border border-transparent hover:border-border-subtle',
             'transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
@@ -66,8 +66,6 @@ export function TopBar() {
         >
           <Icon name="search" className="w-4 h-4 flex-none" />
           <span className="truncate">Search your library — or everywhere</span>
-          <span className="w-px h-6 bg-border-subtle flex-none mx-1" aria-hidden="true" />
-          <Icon name="browse" className="w-4 h-4 flex-none" />
         </button>
       </div>
 

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { NavLink, useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import { IconButton, Chip, Cover, Skeleton, EmptyState, Equalizer, Icon } from '../ui'
 import { usePlaylists, useArtists, useAlbums, coverUrl } from '../../lib/libraryApi'
 import { usePlayer } from '../../lib/playerStore'
@@ -7,13 +7,8 @@ import type { Playlist, Album, Artist } from '../../lib/types'
 
 type Filter = 'playlists' | 'albums' | 'artists'
 
-const NAV_ITEMS = [
-  { to: '/search', label: 'Search' },
-  { to: '/library', label: 'Library' },
-  { to: '/settings', label: 'Settings' },
-]
-
 export function LibraryRail() {
+  const navigate = useNavigate()
   const [filter, setFilter] = useState<Filter>('playlists')
   const current = usePlayer((s) => s.current)
 
@@ -31,39 +26,23 @@ export function LibraryRail() {
 
   return (
     <aside className="flex flex-col min-h-0 bg-surface rounded-lg overflow-hidden">
-      {/* Header */}
+      {/* Header — "Your Library" opens the full library page */}
       <div className="px-4 pt-4 pb-2">
         <div className="flex items-center">
-          <span className="flex items-center gap-2.5 font-bold text-base text-text-primary">
-            <Icon name="browse" className="w-4 h-4 text-text-secondary" />
+          <button
+            type="button"
+            onClick={() => navigate('/library')}
+            aria-label="Open your library"
+            className="flex items-center gap-2.5 font-bold text-base text-text-secondary hover:text-text-primary transition-colors rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+          >
+            <Icon name="browse" className="w-4 h-4" />
             Your Library
-          </span>
+          </button>
           <div className="ml-auto flex gap-1.5 text-text-secondary">
             <IconButton name="plus" label="Add to library" size="sm" />
             <IconButton name="expand" label="Expand library" size="sm" />
           </div>
         </div>
-
-        {/* Nav links */}
-        <nav className="mt-3 flex flex-col gap-px">
-          {NAV_ITEMS.map((item) => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              aria-label={item.label}
-              className={({ isActive }) =>
-                [
-                  'block rounded px-2 py-1.5 text-sm font-semibold transition-colors',
-                  isActive
-                    ? 'bg-accent/20 text-accent'
-                    : 'text-text-secondary hover:text-text-primary hover:bg-raised',
-                ].join(' ')
-              }
-            >
-              {item.label}
-            </NavLink>
-          ))}
-        </nav>
       </div>
 
       {/* Filter chips */}

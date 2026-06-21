@@ -62,7 +62,9 @@ export function AppShell() {
 
         {/* Center main content — bg-surface rounded card that scrolls */}
         <main className="flex-1 min-h-0 overflow-auto bg-surface rounded-lg relative">
-          <Outlet />
+          <div className="px-4 py-5 sm:px-6 sm:py-6 lg:px-8">
+            <Outlet />
+          </div>
         </main>
 
         {/* Right column — desktop: occupies a column at xl+; mid: overlay; absent when null */}

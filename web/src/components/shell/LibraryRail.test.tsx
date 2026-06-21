@@ -43,6 +43,7 @@ function renderRail(initialPath = '/') {
       <MemoryRouter initialEntries={[initialPath]}>
         <Routes>
           <Route path="*" element={<LibraryRail />} />
+          <Route path="/library" element={<div data-testid="library-page" />} />
           <Route path="/album/:id" element={<div data-testid="album-page" />} />
           <Route path="/artist/:id" element={<div data-testid="artist-page" />} />
         </Routes>
@@ -109,11 +110,10 @@ describe('LibraryRail', () => {
     expect(screen.getAllByTestId('eq-bar').length).toBeGreaterThan(0)
   })
 
-  it('nav links for Search, Library, Settings are present', () => {
+  it('clicking the "Your Library" header navigates to /library', () => {
     renderRail()
-    expect(screen.getByRole('link', { name: /search/i })).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: /library/i })).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: /settings/i })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /open your library/i }))
+    expect(screen.getByTestId('library-page')).toBeInTheDocument()
   })
 
   it('clicking an album row navigates to /album/:id', () => {

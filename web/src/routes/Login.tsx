@@ -33,8 +33,7 @@ export default function Login() {
 
       <div className="relative w-full max-w-sm mx-4">
         {/* Wordmark */}
-        <div className="mb-8 flex items-center gap-2 justify-center select-none">
-          <Icon name="vol" className="text-accent text-2xl" aria-label="Reverb" />
+        <div className="mb-8 flex items-center justify-center select-none">
           <span className="text-2xl font-bold tracking-tight text-text-primary">
             Reverb<span className="text-accent">.</span>
           </span>

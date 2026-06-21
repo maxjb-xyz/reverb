@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { api } from '../lib/api'
 import { useAvailableAdapters, createAdapter, type AvailableAdapter } from '../lib/adaptersApi'
 import { AdapterForm } from '../components/AdapterForm'
@@ -39,8 +40,7 @@ function Shell({ children }: { children: React.ReactNode }) {
       />
       <div className="relative w-full max-w-md mx-4">
         {/* Wordmark */}
-        <div className="mb-8 flex items-center gap-2 justify-center select-none">
-          <Icon name="vol" className="text-accent text-2xl" aria-label="Reverb" />
+        <div className="mb-8 flex items-center justify-center select-none">
           <span className="text-2xl font-bold tracking-tight text-text-primary">
             Reverb<span className="text-accent">.</span>
           </span>
@@ -77,6 +77,7 @@ function StepProgress({ current }: { current: Step }) {
 }
 
 export default function Setup() {
+  const qc = useQueryClient()
   const [step, setStep] = useState<Step>('password')
   const [pw, setPw] = useState('')
   const [err, setErr] = useState('')
@@ -88,6 +89,9 @@ export default function Setup() {
     setErr('')
     try {
       await api.post('/setup/admin', { password: pw })
+      // The catalog query first ran pre-auth (401). Now that /setup/admin issued a
+      // session, refetch it so the library/search/downloader steps show their adapters.
+      await qc.invalidateQueries({ queryKey: ['adapters', 'available'] })
       setStep('library')
     } catch {
       setErr('Could not complete setup. Please try again.')

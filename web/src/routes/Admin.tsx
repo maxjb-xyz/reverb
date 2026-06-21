@@ -105,9 +105,9 @@ export default function Admin() {
   const editingName = editing?.add?.name ?? editing?.instance?.name ?? ''
 
   return (
-    <div className="max-w-2xl space-y-6 pb-8">
+    <div className="max-w-4xl space-y-6 pb-8">
       {/* Header */}
-      <h1 className="text-3xl font-black tracking-tight">Admin</h1>
+      <h1 className="text-3xl font-black tracking-tight text-text-primary">Admin</h1>
 
       {/* Tabs */}
       <div className="flex gap-2 border-b border-border-subtle pb-0" role="tablist" aria-label="Admin sections">

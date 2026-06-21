@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import Setup from './Setup'
 
 vi.mock('../lib/api', () => ({ api: { post: vi.fn(() => Promise.resolve({ ok: true })) } }))
@@ -16,10 +17,13 @@ vi.mock('../lib/adaptersApi', () => ({
 import { api } from '../lib/api'
 
 function renderSetup() {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
-    <MemoryRouter>
-      <Setup />
-    </MemoryRouter>,
+    <QueryClientProvider client={qc}>
+      <MemoryRouter>
+        <Setup />
+      </MemoryRouter>
+    </QueryClientProvider>,
   )
 }
 
