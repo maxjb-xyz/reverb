@@ -28,24 +28,20 @@ RUN CGO_ENABLED=0 go build -tags prod \
 
 # ---------- Stage 3: runtime ----------
 FROM python:3.12-slim AS runtime
-# ffmpeg is a spotDL runtime dependency.
+# ffmpeg is a spotDL runtime dependency; gosu drops root -> the PUID/PGID user.
 RUN apt-get update \
- && apt-get install -y --no-install-recommends ffmpeg \
+ && apt-get install -y --no-install-recommends ffmpeg gosu \
  && rm -rf /var/lib/apt/lists/*
 # VERSION PIN: spotDL output formatting is fragile. Reverb's spotdl adapter parses
 # progress with the regex `(\d{1,3})\s*%` in internal/download/spotdl/adapter.go.
 # Bumping this pin REQUIRES re-validating that regex against the new output.
 RUN pip install --no-cache-dir "spotdl==4.2.11"
-# Non-root user. Create + own the data/music dirs BEFORE the VOLUME declaration
-# (changes to a volume path made AFTER `VOLUME` are discarded), so a fresh named
-# volume inherits reverb's ownership and the non-root process can open the SQLite
-# DB / write downloads without any host-side chown.
-RUN useradd --create-home --uid 10001 reverb \
- && mkdir -p /data /music \
- && chown -R reverb:reverb /data /music
 COPY --from=gobuild /out/reverb /usr/local/bin/reverb
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 ENV REVERB_DB=/data/reverb.db
-VOLUME ["/data"]
 EXPOSE 8090
-USER reverb
-ENTRYPOINT ["reverb"]
+# The entrypoint starts as root only to fix /data ownership, then drops to the
+# PUID:PGID host user via gosu and execs Reverb (so the process runs non-root and
+# bind-mounted host folders — your music library, ./data — work without chown).
+ENTRYPOINT ["docker-entrypoint.sh"]

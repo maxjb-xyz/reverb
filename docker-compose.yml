@@ -14,31 +14,33 @@ services:
     #   context: .
     #   args:
     #     VERSION: "${REVERB_VERSION:-dev}"
+    environment:
+      # Run Reverb as the host user/group that owns the folders below, so the DB
+      # is writable and downloads land on your filesystem with the right owner.
+      # Set these to your `id -u` / `id -g` (defaults to 1000:1000).
+      PUID: "${PUID:-1000}"
+      PGID: "${PGID:-1000}"
     ports:
       - "8090:8090"
     env_file:
       - .env
     volumes:
-      # SQLite DB + app state (REVERB_DB defaults to /data/reverb.db in the image).
-      # A named volume "just works": it inherits the image's reverb (uid 10001)
-      # ownership, so the non-root process can create the DB. A host bind mount
-      # (./data:/data) would instead be owned by root/your host user and the
-      # container could NOT open the DB — if you prefer a bind mount, first run
-      # `sudo chown -R 10001:10001 ./data`.
-      - reverb-data:/data
-      # Music dir spotDL downloads into. Set the spotDL adapter's `output_dir` to
-      # /music in the Settings UI so downloads land where the library scans.
-      # Using a named volume (shared with the navidrome service below) avoids
-      # host-permission issues. To point Reverb at an EXISTING host library,
-      # replace this with a bind mount writable by uid 10001, e.g.:
-      #   - /srv/music:/music   # then: sudo chown -R 10001:10001 /srv/music
-      - reverb-music:/music
+      # App state + SQLite DB on the host (handy for backups). The entrypoint
+      # chowns /data to PUID:PGID on start, so this works even if Docker created
+      # ./data as root.
+      - ./data:/data
+      # Your music library on the host — this is where spotDL downloads land and
+      # where your library server scans. Point MUSIC_DIR at an existing library
+      # (e.g. /srv/music or a NAS mount) in .env; it must be owned by / writable
+      # by PUID:PGID. In Reverb's Settings, set the spotDL adapter's `output_dir`
+      # to /music. Defaults to ./music next to this file.
+      - ${MUSIC_DIR:-./music}:/music
     restart: unless-stopped
 
   # ---------------------------------------------------------------------------
-  # Optional: a Navidrome that scans the SAME reverb-music volume. Uncomment to
-  # run the full pairing. In Reverb's Settings UI add a Subsonic library adapter
-  # with base URL http://navidrome:4533 (and REVERB_LIBRARY_PASSWORD in .env).
+  # Optional: a Navidrome that scans the SAME music dir. Uncomment to run the
+  # full pairing. In Reverb's Settings UI add a Subsonic library adapter with
+  # base URL http://navidrome:4533 (and REVERB_LIBRARY_PASSWORD in .env).
   # ---------------------------------------------------------------------------
   # navidrome:
   #   image: deluan/navidrome:latest
@@ -47,11 +49,6 @@ services:
   #   environment:
   #     ND_LOGLEVEL: info
   #   volumes:
-  #     - reverb-music:/music:ro
-  #     - navidrome-data:/data
+  #     - ${MUSIC_DIR:-./music}:/music:ro
+  #     - ./navidrome-data:/data
   #   restart: unless-stopped
-
-volumes:
-  reverb-data:
-  reverb-music:
-  # navidrome-data:   # uncomment alongside the navidrome service above
