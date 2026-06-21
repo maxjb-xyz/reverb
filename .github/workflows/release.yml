@@ -38,4 +38,7 @@ jobs:
       - name: Attach notes to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
+          # Pass the tag explicitly: recent v2.x no longer reliably infers it from
+          # the release event, failing with "GitHub Releases requires a tag".
+          tag_name: ${{ github.event.release.tag_name }}
           generate_release_notes: true
