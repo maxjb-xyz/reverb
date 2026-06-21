@@ -10,6 +10,7 @@ import Setup from './routes/Setup'
 import Album from './routes/Album'
 import Artist from './routes/Artist'
 import Home from './routes/Home'
+import Admin from './routes/Admin'
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 30_000, retry: 1 } },
@@ -38,6 +39,7 @@ function Routed() {
         <Route path="/album/:id" element={<Album />} />
         <Route path="/artist/:id" element={<Artist />} />
         <Route path="/settings" element={<Settings />} />
+        <Route path="/admin" element={<Admin />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>
