@@ -32,7 +32,7 @@ export function NowPlayingOverlay() {
   return (
     <div
       data-testid="now-playing-overlay"
-      className="fixed inset-0 z-40 flex flex-col bg-base p-6 md:hidden"
+      className="fixed inset-0 z-40 flex flex-col bg-canvas p-6 md:hidden"
       style={ambient}
     >
       {/* Header row — close + label */}

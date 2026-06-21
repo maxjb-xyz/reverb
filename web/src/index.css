@@ -32,7 +32,7 @@
 }
 
 html, body, #root { height: 100%; }
-body { @apply bg-base text-text-secondary font-sans; margin: 0; -webkit-font-smoothing: antialiased; }
+body { @apply bg-canvas text-text-secondary font-sans; margin: 0; -webkit-font-smoothing: antialiased; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {

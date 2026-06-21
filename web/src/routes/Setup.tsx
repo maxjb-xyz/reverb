@@ -32,7 +32,7 @@ function stepIndex(step: Step): number {
 /** Shared branded shell: radial wash + wordmark + card */
 function Shell({ children }: { children: React.ReactNode }) {
   return (
-    <div className="min-h-screen bg-base flex items-center justify-center">
+    <div className="min-h-screen bg-canvas flex items-center justify-center">
       <div
         className="pointer-events-none fixed inset-0"
         aria-hidden="true"

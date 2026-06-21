@@ -23,7 +23,7 @@ export default function Login() {
   }
 
   return (
-    <div className="min-h-screen bg-base flex items-center justify-center">
+    <div className="min-h-screen bg-canvas flex items-center justify-center">
       {/* Subtle radial wash behind the card */}
       <div
         className="pointer-events-none fixed inset-0"

@@ -15,7 +15,10 @@ export default {
       colors: {
         accent: 'rgb(var(--color-accent) / <alpha-value>)',
         'on-accent': 'rgb(var(--on-accent) / <alpha-value>)',
-        base: 'var(--bg-base)',
+        // NOTE: do not name this 'base' — a `base` color makes Tailwind emit a
+        // `text-base` color utility that collides with the built-in `text-base`
+        // font-size utility used to size icons, turning accent icons black.
+        canvas: 'var(--bg-base)',
         surface: 'var(--bg-surface)',
         raised: 'var(--bg-raised)',
         'raised-hover': 'var(--bg-raised-hover)',

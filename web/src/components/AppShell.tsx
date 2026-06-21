@@ -37,7 +37,7 @@ export function AppShell() {
   return (
     <div
       data-testid="app-shell-root"
-      className="grid h-full grid-rows-[64px_minmax(0,1fr)_auto] bg-base gap-2 p-2"
+      className="grid h-full grid-rows-[64px_minmax(0,1fr)_auto] bg-canvas gap-2 p-2"
       style={ambient}
     >
       {/* ── Row 1: TopBar ────────────────────────────────────────────── */}
