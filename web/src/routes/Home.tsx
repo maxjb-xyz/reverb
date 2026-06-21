@@ -14,9 +14,31 @@ import {
   Equalizer,
   Icon,
 } from '../components/ui'
-import type { Album, DownloadJob } from '../lib/types'
+import type { Album, DownloadJob, Track } from '../lib/types'
 
 type FilterChip = 'All' | 'Music' | 'Downloads'
+
+// Synthesize a minimal library Track from a completed download job so it can be
+// played. Only valid once the job has a libraryTrackId (i.e. the scan matched the
+// downloaded file to a library track); the id doubles as the cover-art id.
+function trackFromJob(job: DownloadJob): Track {
+  return {
+    id: job.libraryTrackId ?? '',
+    title: job.title ?? '',
+    albumId: '',
+    album: job.album ?? '',
+    artistId: '',
+    artist: job.artist ?? '',
+    coverArtId: job.libraryTrackId ?? '',
+    trackNumber: 0,
+    discNumber: 0,
+    durationMs: 0,
+    bitRate: 0,
+    suffix: '',
+    contentType: '',
+    isrc: job.isrc,
+  }
+}
 
 // ------------------------------------------------------------------
 // ShortcutTile — compact 2-col grid item (56px height)
@@ -318,20 +340,23 @@ export default function Home() {
       {completedJobs.length > 0 && (
         <div className="mb-8">
           <Carousel title="Recently downloaded">
-            {completedJobs.map((job) => (
-              <MediaCard
-                key={job.id}
-                title={job.album ?? job.title ?? 'Unknown'}
-                subtitle={job.artist}
-                coverId={undefined}
-                badge={
-                  <span
-                    aria-hidden
-                    className="w-5 h-5 rounded-full bg-accent block"
-                  />
-                }
-              />
-            ))}
+            {completedJobs.map((job) => {
+              // Playable only once the scan has linked the file to a library
+              // track; until then it's a non-interactive cover (no fake controls).
+              const play = job.libraryTrackId
+                ? () => playTrackList([trackFromJob(job)], 0)
+                : undefined
+              return (
+                <MediaCard
+                  key={job.id}
+                  title={job.title ?? job.album ?? 'Unknown'}
+                  subtitle={job.artist}
+                  coverId={job.libraryTrackId || undefined}
+                  onClick={play}
+                  onPlay={play}
+                />
+              )
+            })}
           </Carousel>
         </div>
       )}
