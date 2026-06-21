@@ -143,6 +143,16 @@ export default function Home() {
   // "Jump back in" carousel: recent albums
   const jumpBackAlbums = recentAlbums
 
+  // First-run / nothing-to-show: no library content and no downloads yet. This is
+  // the common state before a library provider is connected or anything is
+  // downloaded — guide the user instead of rendering an empty void.
+  const isEmpty =
+    !isLoading &&
+    shortcutItems.length === 0 &&
+    !heroAlbum &&
+    jumpBackAlbums.length === 0 &&
+    completedJobs.length === 0
+
   // ------------------------------------------------------------------
   // Handlers
   // ------------------------------------------------------------------
@@ -165,6 +175,33 @@ export default function Home() {
   // ------------------------------------------------------------------
   // Render
   // ------------------------------------------------------------------
+  // First-run welcome — replaces the whole feed when there's nothing to show.
+  if (isEmpty) {
+    return (
+      <div className="flex flex-col items-center justify-center gap-6 py-24 text-center">
+        <span className="grid h-16 w-16 place-items-center rounded-full bg-raised text-text-secondary">
+          <Icon name="browse" className="text-3xl" />
+        </span>
+        <div className="space-y-2">
+          <h1 className="text-2xl font-black tracking-tight text-text-primary">Welcome to Reverb</h1>
+          <p className="mx-auto max-w-md text-sm text-text-secondary">
+            Search for any song or album to download it into your library — or connect an
+            existing music library to browse what you already have.
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center justify-center gap-3">
+          <Button variant="primary" onClick={() => navigate('/search')} aria-label="Search music">
+            <Icon name="search" className="mr-1.5 h-4 w-4" />
+            Search music
+          </Button>
+          <Button variant="secondary" onClick={() => navigate('/admin')} aria-label="Connect a library">
+            Connect a library
+          </Button>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="relative">
       {/* Chip filter row */}
