@@ -41,3 +41,14 @@ test('unauthenticated renders the login page', () => {
   )
   expect(screen.getByText('Log in to Reverb')).toBeInTheDocument()
 })
+
+test('error renders the server error state with retry button', () => {
+  mockStatus({ loading: false, setupRequired: false, authenticated: false, error: true })
+  render(
+    <MemoryRouter>
+      <App />
+    </MemoryRouter>,
+  )
+  expect(screen.getByText(/can't reach the reverb server/i)).toBeInTheDocument()
+  expect(screen.getByText('Retry')).toBeInTheDocument()
+})
