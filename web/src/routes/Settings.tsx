@@ -65,7 +65,7 @@ export default function Settings() {
 
       {pending.data?.pendingRestart && (
         <div className="rounded border border-accent/50 bg-accent/10 px-4 py-3 text-sm text-accent">
-          Restart Crate to apply your configuration changes.
+          Restart Reverb to apply your configuration changes.
         </div>
       )}
 

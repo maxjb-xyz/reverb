@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/maxjb-xyz/crate/internal/core"
+	"github.com/maxjb-xyz/reverb/internal/core"
 )
 
 // RunConformance exercises the Downloader contract. Call it from each adapter's

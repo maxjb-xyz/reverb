@@ -1,24 +1,24 @@
-# Crate dev environment
+# Reverb dev environment
 
 1. Drop a few Creative-Commons audio files into `dev/music/` (e.g. tracks from
    https://freemusicarchive.org or the Navidrome demo set). They are gitignored
    except `.gitkeep`.
 2. `docker compose -f docker-compose.dev.yml up` → Navidrome at http://localhost:4533
    (first run: create an admin user in the Navidrome UI).
-3. Run Crate against it (M1 adds the Subsonic adapter):
+3. Run Reverb against it (M1 adds the Subsonic adapter):
    - `cd web && npm run dev`
-   - `go run ./cmd/crate --dev`
+   - `go run ./cmd/reverb --dev`
    Open http://localhost:8090.
 
 ## Configure a Subsonic (Navidrome) library
 
-Until the settings UI lands (M4a), point Crate at your Subsonic server by
-seeding one `adapter_instances` row in the SQLite DB (default `./data/crate.db`),
-then restart Crate. The password may be put in `config_json` or supplied via the
-`CRATE_LIBRARY_PASSWORD` env var (env overrides `config_json`).
+Until the settings UI lands (M4a), point Reverb at your Subsonic server by
+seeding one `adapter_instances` row in the SQLite DB (default `./data/reverb.db`),
+then restart Reverb. The password may be put in `config_json` or supplied via the
+`REVERB_LIBRARY_PASSWORD` env var (env overrides `config_json`).
 
 ```sh
-sqlite3 ./data/crate.db "INSERT INTO adapter_instances (id, type, name, enabled, priority, config_json) VALUES (
+sqlite3 ./data/reverb.db "INSERT INTO adapter_instances (id, type, name, enabled, priority, config_json) VALUES (
   'lib-subsonic', 'library', 'subsonic', 1, 0,
   json('{\"url\":\"http://localhost:4533\",\"username\":\"admin\",\"password\":\"YOUR_PASSWORD\"}')
 );"
@@ -27,11 +27,11 @@ sqlite3 ./data/crate.db "INSERT INTO adapter_instances (id, type, name, enabled,
 Or keep the secret out of the DB:
 
 ```sh
-sqlite3 ./data/crate.db "INSERT INTO adapter_instances (id, type, name, enabled, priority, config_json) VALUES (
+sqlite3 ./data/reverb.db "INSERT INTO adapter_instances (id, type, name, enabled, priority, config_json) VALUES (
   'lib-subsonic', 'library', 'subsonic', 1, 0,
   json('{\"url\":\"http://localhost:4533\",\"username\":\"admin\"}')
 );"
-CRATE_LIBRARY_PASSWORD=YOUR_PASSWORD go run ./cmd/crate --dev
+REVERB_LIBRARY_PASSWORD=YOUR_PASSWORD go run ./cmd/reverb --dev
 ```
 
 Then search your library, open album/artist pages, and play tracks (queue,
@@ -48,19 +48,19 @@ a `search`-type `adapter_instances` row and supply the secret via env.
 
 ### Step 1 — seed the adapter row
 
-With Crate stopped:
+With Reverb stopped:
 
 ```sh
-sqlite3 data/crate.db "INSERT INTO adapter_instances (id,type,name,enabled,priority,config_json) \
+sqlite3 data/reverb.db "INSERT INTO adapter_instances (id,type,name,enabled,priority,config_json) \
   VALUES ('srch1','search','spotify',1,0,'{\"client_id\":\"YOUR_CLIENT_ID\"}');"
 ```
 
 `client_secret` must **not** go into `config_json`; it is supplied via env only.
 
-### Step 2 — start Crate
+### Step 2 — start Reverb
 
 ```sh
-CRATE_ADMIN_PASSWORD=devpw CRATE_SPOTIFY_CLIENT_SECRET=YOUR_CLIENT_SECRET go run ./cmd/crate &
+REVERB_ADMIN_PASSWORD=devpw REVERB_SPOTIFY_CLIENT_SECRET=YOUR_CLIENT_SECRET go run ./cmd/reverb &
 sleep 2
 ```
 
@@ -72,7 +72,7 @@ if the M1 library row is also seeded).
 Log in and get a session cookie:
 
 ```sh
-curl -s -c /tmp/crate.cookies -X POST localhost:8090/api/v1/auth/login \
+curl -s -c /tmp/reverb.cookies -X POST localhost:8090/api/v1/auth/login \
   -H 'Content-Type: application/json' -d '{"password":"devpw"}'
 # expected: {"ok":true}
 ```
@@ -80,7 +80,7 @@ curl -s -c /tmp/crate.cookies -X POST localhost:8090/api/v1/auth/login \
 Stream a search (results arrive per-source as SSE events):
 
 ```sh
-curl -sN -b /tmp/crate.cookies \
+curl -sN -b /tmp/reverb.cookies \
   "localhost:8090/api/v1/search/everywhere?q=daft%20punk&type=track" | head -c 600
 ```
 
@@ -102,10 +102,10 @@ servers (e.g. Navidrome ≥ 0.49) that return `isrc` on song children enable the
 ### Step 4 — confirm the secret never leaks
 
 ```sh
-curl -s -b /tmp/crate.cookies "localhost:8090/api/v1/adapters/available" \
+curl -s -b /tmp/reverb.cookies "localhost:8090/api/v1/adapters/available" \
   | grep -i secret || echo "no secret value exposed"
 
-curl -sN -b /tmp/crate.cookies \
+curl -sN -b /tmp/reverb.cookies \
   "localhost:8090/api/v1/search/everywhere?q=x&type=track" \
   | grep -i "YOUR_CLIENT_SECRET" || echo "secret not in SSE stream"
 ```

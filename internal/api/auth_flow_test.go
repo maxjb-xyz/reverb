@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/maxjb-xyz/crate/internal/auth"
-	"github.com/maxjb-xyz/crate/internal/registry"
-	"github.com/maxjb-xyz/crate/internal/store"
+	"github.com/maxjb-xyz/reverb/internal/auth"
+	"github.com/maxjb-xyz/reverb/internal/registry"
+	"github.com/maxjb-xyz/reverb/internal/store"
 )
 
 func testServer(t *testing.T) *Server {

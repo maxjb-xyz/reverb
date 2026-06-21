@@ -9,7 +9,7 @@ data
 *.db
 
 # The locally built binary (the image builds its own)
-/crate
+/reverb
 
 # VCS, tooling, scratch
 .git

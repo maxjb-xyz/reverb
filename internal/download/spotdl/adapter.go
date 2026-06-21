@@ -14,9 +14,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/maxjb-xyz/crate/internal/core"
-	"github.com/maxjb-xyz/crate/internal/download"
-	"github.com/maxjb-xyz/crate/internal/registry"
+	"github.com/maxjb-xyz/reverb/internal/core"
+	"github.com/maxjb-xyz/reverb/internal/download"
+	"github.com/maxjb-xyz/reverb/internal/registry"
 )
 
 var _ download.Downloader = (*Adapter)(nil)

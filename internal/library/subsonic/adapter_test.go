@@ -8,8 +8,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/maxjb-xyz/crate/internal/core"
-	"github.com/maxjb-xyz/crate/internal/library"
+	"github.com/maxjb-xyz/reverb/internal/core"
+	"github.com/maxjb-xyz/reverb/internal/library"
 )
 
 // fixtureServer serves a recorded JSON file based on the requested endpoint

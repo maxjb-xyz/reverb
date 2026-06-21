@@ -5,14 +5,14 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/maxjb-xyz/crate/internal/library"
-	"github.com/maxjb-xyz/crate/internal/registry"
-	"github.com/maxjb-xyz/crate/internal/store/db"
+	"github.com/maxjb-xyz/reverb/internal/library"
+	"github.com/maxjb-xyz/reverb/internal/registry"
+	"github.com/maxjb-xyz/reverb/internal/store/db"
 )
 
 // buildLibraryAdapter builds the active LibraryAdapter from the first enabled
 // adapter_instance of type "library". It applies env secret overrides
-// (CRATE_LIBRARY_PASSWORD) onto the stored config_json before Init. The library
+// (REVERB_LIBRARY_PASSWORD) onto the stored config_json before Init. The library
 // is optional: with no enabled library instance it returns (nil, nil).
 func buildLibraryAdapter(
 	ctx context.Context,
@@ -47,7 +47,7 @@ func buildLibraryAdapter(
 		}
 	}
 	// Env secret override — env wins for the password just before Init().
-	if pw := getenv("CRATE_LIBRARY_PASSWORD"); pw != "" {
+	if pw := getenv("REVERB_LIBRARY_PASSWORD"); pw != "" {
 		cfg["password"] = pw
 	}
 

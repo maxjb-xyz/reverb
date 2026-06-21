@@ -1,4 +1,4 @@
-// Package matching implements Crate's external⇄library matcher and the shared,
+// Package matching implements Reverb's external⇄library matcher and the shared,
 // pure Normalize() used by both matching and (future) dedup_key. Normalization is
 // SYMMETRIC: callers apply it to both sides before comparison.
 package matching

@@ -1,10 +1,10 @@
-# Crate M4a — Config UI Implementation Plan
+# Reverb M4a — Config UI Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking. Each task is a self-contained unit: a fresh implementer with ZERO prior context can complete it from the file paths, interfaces, and complete code given here. Tasks are ordered store queries → sqlc regen → registry-shared adapter helpers → secret-redaction core → adapters REST API (list/create/update/delete/test) → settings REST API → pending-restart flag → composition wiring → frontend api clients + hooks → AdapterForm + TestConnection → Settings page → first-run wizard → accent-color live application → smoke.
 
-**Goal:** Make Crate installable and configurable entirely through the browser — removing the M1/M2/M3 requirement to hand-seed `adapter_instances` rows with SQL. A brand-new user runs `docker compose up`, opens the UI, sets an admin password, then adds a Library (Subsonic/Navidrome), a Search source (Spotify), and a Downloader (spotDL) through `ConfigSchema`-driven forms — each with a **Test Connection** button — and uses Crate. The settings page and the first-run wizard share the SAME `AdapterForm` + TestConnection components. Secrets are never leaked to the browser (Secret-typed fields are redacted to an `isSet` boolean; blank-on-update preserves the stored value). The accent color is configurable (default red `#F0354B`) and applied live to the `--color-accent` CSS variable.
+**Goal:** Make Reverb installable and configurable entirely through the browser — removing the M1/M2/M3 requirement to hand-seed `adapter_instances` rows with SQL. A brand-new user runs `docker compose up`, opens the UI, sets an admin password, then adds a Library (Subsonic/Navidrome), a Search source (Spotify), and a Downloader (spotDL) through `ConfigSchema`-driven forms — each with a **Test Connection** button — and uses Reverb. The settings page and the first-run wizard share the SAME `AdapterForm` + TestConnection components. Secrets are never leaked to the browser (Secret-typed fields are redacted to an `isSet` boolean; blank-on-update preserves the stored value). The accent color is configurable (default red `#F0354B`) and applied live to the `--color-accent` CSS variable.
 
-**Architecture — apply-config decision: RESTART-TO-APPLY (option A).** The composition root (`cmd/crate/main.go` + `*_wiring.go`) builds the active library/search/downloader adapters and the Manager/Aggregator EXACTLY ONCE at startup from `adapter_instances`. M4a does NOT add a hot-reload seam: there is no clean low-risk place to atomically swap a running `download.Manager` (worker goroutines, in-flight `dl.Start` execs, the scan-debounce timer) and the SSE `Aggregator` (in-flight per-source goroutines, open SSE streams) without race risk that would blow the M4a budget. Instead, adapter create/update/delete and settings writes persist to the DB and flip an in-memory **config-dirty-since-startup** flag. The API exposes that flag (`GET /api/v1/config/pending-restart` and a `pendingRestart` boolean echoed on each mutation response); the Settings UI shows an honest **"Restart Crate to apply changes"** banner. Reads (`GET /adapters`, `GET /adapters/available`) work without restart because they query the DB/registry directly, not the live adapters. accent_color/dynamic_background settings DO take effect live (they are pure frontend display settings — no banner needed for those two). Hot-reload is explicitly deferred to M4b/later. This keeps M4a simple, robust, and honest.
+**Architecture — apply-config decision: RESTART-TO-APPLY (option A).** The composition root (`cmd/reverb/main.go` + `*_wiring.go`) builds the active library/search/downloader adapters and the Manager/Aggregator EXACTLY ONCE at startup from `adapter_instances`. M4a does NOT add a hot-reload seam: there is no clean low-risk place to atomically swap a running `download.Manager` (worker goroutines, in-flight `dl.Start` execs, the scan-debounce timer) and the SSE `Aggregator` (in-flight per-source goroutines, open SSE streams) without race risk that would blow the M4a budget. Instead, adapter create/update/delete and settings writes persist to the DB and flip an in-memory **config-dirty-since-startup** flag. The API exposes that flag (`GET /api/v1/config/pending-restart` and a `pendingRestart` boolean echoed on each mutation response); the Settings UI shows an honest **"Restart Reverb to apply changes"** banner. Reads (`GET /adapters`, `GET /adapters/available`) work without restart because they query the DB/registry directly, not the live adapters. accent_color/dynamic_background settings DO take effect live (they are pure frontend display settings — no banner needed for those two). Hot-reload is explicitly deferred to M4b/later. This keeps M4a simple, robust, and honest.
 
 The flag is a single `*atomic.Bool` constructed in `main.go`, satisfied by a tiny `ConfigDirty` interface in `api.Deps`; the adapter/settings mutation handlers set it; `GET /config/pending-restart` reads it. Nil-safe: when the Deps field is nil the API reports `pendingRestart:false`.
 
@@ -12,9 +12,9 @@ The flag is a single `*atomic.Bool` constructed in `main.go`, satisfied by a tin
 
 ## Global Constraints
 
-- Go module `github.com/maximusjb/crate`; Go 1.23; SQLite modernc only; sqlc engine sqlite (regen via the installed `sqlc` binary, fallback `go run github.com/sqlc-dev/sqlc/cmd/sqlc@v1.31.1 generate`).
+- Go module `github.com/maximusjb/reverb`; Go 1.23; SQLite modernc only; sqlc engine sqlite (regen via the installed `sqlc` binary, fallback `go run github.com/sqlc-dev/sqlc/cmd/sqlc@v1.31.1 generate`).
 - **Secrets:** NEVER return stored secret values to the browser. Redact `Secret:true` fields (per each adapter's `ConfigSchema`) → an `isSet` boolean / masked placeholder. On update, a blank/omitted secret field PRESERVES the existing stored value (never wipes it). Secrets remain overridable by env at `Init` (unchanged — the composition root applies env just before `Init`).
-- **Apply-config = restart-to-apply (option A).** Persist to DB + flip an in-memory config-dirty flag; the UI shows a "Restart Crate to apply changes" banner; the change loads on next start. No live adapter rebuild in M4a.
+- **Apply-config = restart-to-apply (option A).** Persist to DB + flip an in-memory config-dirty flag; the UI shows a "Restart Reverb to apply changes" banner; the change loads on next start. No live adapter rebuild in M4a.
 - **Self-describing:** forms + TestConnection are driven by each adapter's `ConfigSchema` — no hardcoded per-adapter UI. The wizard and the Settings page share the `AdapterForm` + TestConnection components.
 - **accent_color** (default red `#F0354B`) + **dynamic_background** settings via `/settings`; accent applied live to the `--color-accent` CSS var (hex → `"r g b"` channels). These two settings apply live (no restart banner).
 - All adapter/settings endpoints behind `requireAuth`. Deps additions are nil-safe; every existing `api.NewServer(api.Deps{...})` call site still compiles.
@@ -41,8 +41,8 @@ The flag is a single `*atomic.Bool` constructed in `main.go`, satisfied by a tin
 | `internal/api/config.go` | NEW: `GET /config/pending-restart` handler. |
 | `internal/api/config_test.go` | NEW: pending-restart reflects the flag; nil-safe. |
 | `internal/api/server.go` | MODIFY: add `Adapters`, `Settings`, `ConfigDirty` to `Deps`; mount the new routes; reuse `Search`/`Downloader`/`Library` registries for `/adapters/available` + `/adapters/test`. |
-| `cmd/crate/main.go` | MODIFY: construct an `*atomic.Bool` dirty flag; pass `st.Q()` directly as `api.Deps.Adapters` — `*db.Queries` satisfies `AdapterStore` without any wrapper. |
-| `cmd/crate/config_dirty.go` | NEW: `atomicDirty` wrapper satisfying `api.ConfigDirty`. |
+| `cmd/reverb/main.go` | MODIFY: construct an `*atomic.Bool` dirty flag; pass `st.Q()` directly as `api.Deps.Adapters` — `*db.Queries` satisfies `AdapterStore` without any wrapper. |
+| `cmd/reverb/config_dirty.go` | NEW: `atomicDirty` wrapper satisfying `api.ConfigDirty`. |
 
 **React (frontend) — created/modified in M4a, under `web/`:**
 
@@ -125,7 +125,7 @@ Expected: all four print a match.
 
 - [ ] **Step 3: Write the failing CRUD round-trip test**
 
-Append to `internal/store/store_test.go` (the file already imports `context`, `database/sql` is NOT needed here, and `github.com/maximusjb/crate/internal/store/db`; add `"github.com/google/uuid"` to the import block if missing):
+Append to `internal/store/store_test.go` (the file already imports `context`, `database/sql` is NOT needed here, and `github.com/maximusjb/reverb/internal/store/db`; add `"github.com/google/uuid"` to the import block if missing):
 ```go
 func TestAdapterInstanceCRUD(t *testing.T) {
 	st, err := store.Open(t.TempDir() + "/ai.db")
@@ -241,7 +241,7 @@ package api
 import (
 	"testing"
 
-	"github.com/maximusjb/crate/internal/registry"
+	"github.com/maximusjb/reverb/internal/registry"
 )
 
 func schema() registry.ConfigSchema {
@@ -329,7 +329,7 @@ package api
 import (
 	"strings"
 
-	"github.com/maximusjb/crate/internal/registry"
+	"github.com/maximusjb/reverb/internal/registry"
 )
 
 // secretSentinel is the placeholder returned for a SET secret. The browser never
@@ -454,7 +454,7 @@ git commit -m "feat(api): generic ConfigSchema-driven secret redaction and prese
   }
 
   // ConfigDirty tracks whether adapter/settings config changed since startup
-  // (restart-to-apply). *atomicDirty (cmd/crate) satisfies it.
+  // (restart-to-apply). *atomicDirty (cmd/reverb) satisfies it.
   type ConfigDirty interface {
       Set()
       Dirty() bool
@@ -466,7 +466,7 @@ git commit -m "feat(api): generic ConfigSchema-driven secret redaction and prese
 
 Edit `internal/api/server.go`. Add `"context"` is already imported and `db` import. Update the import block to include the store db package:
 ```go
-	"github.com/maximusjb/crate/internal/store/db"
+	"github.com/maximusjb/reverb/internal/store/db"
 ```
 Add the interfaces right after the `DownloadManager` interface block:
 ```go
@@ -528,9 +528,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/maximusjb/crate/internal/auth"
-	"github.com/maximusjb/crate/internal/registry"
-	"github.com/maximusjb/crate/internal/store"
+	"github.com/maximusjb/reverb/internal/auth"
+	"github.com/maximusjb/reverb/internal/registry"
+	"github.com/maximusjb/reverb/internal/store"
 )
 
 // testDirty is a minimal ConfigDirty for tests.
@@ -909,8 +909,8 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
-	"github.com/maximusjb/crate/internal/registry"
-	"github.com/maximusjb/crate/internal/store/db"
+	"github.com/maximusjb/reverb/internal/registry"
+	"github.com/maximusjb/reverb/internal/store/db"
 )
 
 // adapterInstanceDTO is the browser-facing shape of a configured adapter instance.
@@ -1191,7 +1191,7 @@ git commit -m "feat(api): adapter instances CRUD with secret redaction + preserv
   ```
   - Builds a NON-persisted adapter via the registry, `Init`s with the submitted config (secrets included — the client sends them only for the live test; nothing is stored), calls `TestConnection` under a 10s context, returns `{ok:true}` or `{ok:false, error:"..."}`. Never 5xx for a connection failure (that is a normal `ok:false` result); 400 only for a malformed request or unknown adapter name.
 
-> **Secret overlay note:** for `/test`, the client sends actual secret values typed into the form. If the secret field is left blank AND the instance already exists, the client should NOT call /test with a blank secret (the form's Test button is for verifying what is typed). The backend additionally applies the same env override the composition root uses, so a test honors `CRATE_*` secrets when the form omits them. M4a keeps this simple: the handler applies env overlays for the known secret env vars by adapter name (mirrors the wiring files). For unknown adapters it just uses the submitted config.
+> **Secret overlay note:** for `/test`, the client sends actual secret values typed into the form. If the secret field is left blank AND the instance already exists, the client should NOT call /test with a blank secret (the form's Test button is for verifying what is typed). The backend additionally applies the same env override the composition root uses, so a test honors `REVERB_*` secrets when the form omits them. M4a keeps this simple: the handler applies env overlays for the known secret env vars by adapter name (mirrors the wiring files). For unknown adapters it just uses the submitted config.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -1281,22 +1281,22 @@ func (s *Server) createUnregistered(name string) (registry.Plugin, bool) {
 }
 
 // overlayEnvSecrets applies the same env secret overrides the composition root uses,
-// so a Test honors CRATE_* secrets when the form omits them. Mirrors *_wiring.go.
+// so a Test honors REVERB_* secrets when the form omits them. Mirrors *_wiring.go.
 func overlayEnvSecrets(name string, cfg map[string]any) {
 	switch name {
 	case "subsonic":
-		if v := os.Getenv("CRATE_LIBRARY_PASSWORD"); v != "" {
+		if v := os.Getenv("REVERB_LIBRARY_PASSWORD"); v != "" {
 			cfg["password"] = v
 		}
 	case "spotify":
-		if v := os.Getenv("CRATE_SPOTIFY_CLIENT_SECRET"); v != "" {
+		if v := os.Getenv("REVERB_SPOTIFY_CLIENT_SECRET"); v != "" {
 			cfg["client_secret"] = v
 		}
 	case "spotdl":
-		if v := os.Getenv("CRATE_SPOTDL_PATH"); v != "" {
+		if v := os.Getenv("REVERB_SPOTDL_PATH"); v != "" {
 			cfg["binary_path"] = v
 		}
-		if v := os.Getenv("CRATE_DOWNLOAD_DIR"); v != "" {
+		if v := os.Getenv("REVERB_DOWNLOAD_DIR"); v != "" {
 			cfg["output_dir"] = v
 		}
 	}
@@ -1456,7 +1456,7 @@ package api
 import (
 	"net/http"
 
-	"github.com/maximusjb/crate/internal/store/db"
+	"github.com/maximusjb/reverb/internal/store/db"
 )
 
 const (
@@ -1543,8 +1543,8 @@ git commit -m "feat(api): GET/PUT settings for accent_color and dynamic_backgrou
 ## Task 7: Composition root — dirty flag + Deps wiring
 
 **Files:**
-- Create: `cmd/crate/config_dirty.go`
-- Modify: `cmd/crate/main.go`
+- Create: `cmd/reverb/config_dirty.go`
+- Modify: `cmd/reverb/main.go`
 
 **Interfaces:**
 - Produces:
@@ -1557,7 +1557,7 @@ git commit -m "feat(api): GET/PUT settings for accent_color and dynamic_backgrou
 
 - [ ] **Step 1: Write the dirty flag**
 
-Create `cmd/crate/config_dirty.go`:
+Create `cmd/reverb/config_dirty.go`:
 ```go
 package main
 
@@ -1574,7 +1574,7 @@ func (d *atomicDirty) Dirty() bool { return d.b.Load() }
 
 - [ ] **Step 2: Wire it into main.go**
 
-In `cmd/crate/main.go`, after `bus := events.New()` (or anywhere before building `deps`), add:
+In `cmd/reverb/main.go`, after `bus := events.New()` (or anywhere before building `deps`), add:
 ```go
 	dirty := &atomicDirty{}
 ```
@@ -1608,7 +1608,7 @@ Expected: PASS.
 - [ ] **Step 4: Commit**
 
 ```bash
-git add cmd/crate/config_dirty.go cmd/crate/main.go
+git add cmd/reverb/config_dirty.go cmd/reverb/main.go
 git commit -m "feat(cmd): wire adapter store, library registry, and restart-to-apply dirty flag into API"
 ```
 
@@ -2222,7 +2222,7 @@ describe('Settings', () => {
   it('shows the restart banner when pending', () => {
     vi.mocked(usePendingRestart).mockReturnValue({ data: { pendingRestart: true } } as ReturnType<typeof usePendingRestart>)
     wrap(<Settings />)
-    expect(screen.getByText(/restart crate to apply/i)).toBeInTheDocument()
+    expect(screen.getByText(/restart reverb to apply/i)).toBeInTheDocument()
   })
 
   it('removes an instance', async () => {
@@ -2309,7 +2309,7 @@ export default function Settings() {
 
       {pending.data?.pendingRestart && (
         <div className="rounded border border-accent/50 bg-accent/10 px-4 py-3 text-sm text-accent">
-          Restart Crate to apply your configuration changes.
+          Restart Reverb to apply your configuration changes.
         </div>
       )}
 
@@ -2435,9 +2435,9 @@ git commit -m "feat(web): Settings page — manage adapters, accent picker, dyna
   2. **Library** — pick an available `library` adapter (Subsonic), render `AdapterForm`; on Save → `createAdapter({type:'library',...})` then advance. "Skip" advances without adding.
   3. **Search** — same for `search` (Spotify). Skippable.
   4. **Downloader** — same for `downloader` (spotDL). Skippable.
-  5. **Finish** — `window.location.reload()` (so the app re-bootstraps and the guard routes to `/search`; the freshly-added adapters load on the NEXT process start under restart-to-apply — for a brand-new install the process is already running with zero adapters, so the wizard's banner-equivalent message reads: "Setup complete. Restart Crate so your library, search, and downloader become active.").
+  5. **Finish** — `window.location.reload()` (so the app re-bootstraps and the guard routes to `/search`; the freshly-added adapters load on the NEXT process start under restart-to-apply — for a brand-new install the process is already running with zero adapters, so the wizard's banner-equivalent message reads: "Setup complete. Restart Reverb so your library, search, and downloader become active.").
 
-> **Restart honesty in the wizard:** since adapters apply on restart (option A), the finish screen tells the user to restart Crate for the newly added adapters to become active. This is the same honest UX as the Settings banner. The admin password takes effect immediately (auth is checked live), so login works without restart; only the adapters need the restart.
+> **Restart honesty in the wizard:** since adapters apply on restart (option A), the finish screen tells the user to restart Reverb for the newly added adapters to become active. This is the same honest UX as the Settings banner. The admin password takes effect immediately (auth is checked live), so login works without restart; only the adapters need the restart.
 
 - [ ] **Step 1: Write/extend the failing test**
 
@@ -2474,7 +2474,7 @@ describe('Setup wizard', () => {
 
   it('step 1 prompts for an admin password', () => {
     renderSetup()
-    expect(screen.getByText('Welcome to Crate')).toBeInTheDocument()
+    expect(screen.getByText('Welcome to Reverb')).toBeInTheDocument()
     expect(screen.getByPlaceholderText('Choose a password')).toBeInTheDocument()
   })
 
@@ -2544,7 +2544,7 @@ export default function Setup() {
   if (step === 'password') {
     return (
       <form onSubmit={submitPassword} className="max-w-sm mx-auto mt-24 space-y-4">
-        <h1 className="text-2xl font-bold">Welcome to Crate</h1>
+        <h1 className="text-2xl font-bold">Welcome to Reverb</h1>
         <p className="text-neutral-400 text-sm">Set an admin password to get started.</p>
         <input
           type="password"
@@ -2564,10 +2564,10 @@ export default function Setup() {
       <div className="max-w-md mx-auto mt-24 space-y-4 text-center">
         <h1 className="text-2xl font-bold">You're all set</h1>
         <p className="text-neutral-400 text-sm">
-          Setup complete. Restart Crate so your library, search, and downloader become active, then log in.
+          Setup complete. Restart Reverb so your library, search, and downloader become active, then log in.
         </p>
         <button type="button" onClick={() => window.location.reload()} className="rounded bg-accent px-6 py-2 font-medium text-white">
-          Go to Crate
+          Go to Reverb
         </button>
       </div>
     )
@@ -2612,7 +2612,7 @@ export default function Setup() {
 }
 ```
 
-> **Guard note:** `web/src/App.tsx` already routes a fresh install to `<Setup />` while `setup_required` (i.e. no admin password). After step 1 the wizard advances IN-MEMORY (the App guard is not re-evaluated until reload), so steps 2–4 render even though `setup_required` is now false server-side. The finish "Go to Crate" reload re-runs the guard, which now sees `setup_required:false` and routes to `<Login />`. No App.tsx change is required for the wizard, but note that `useAvailableAdapters` must work before login: it is behind `requireAuth`, and the wizard's session cookie was set by `/setup/admin` (which calls `issueSession`). So the user IS authed during steps 2–4. Good — no guard change needed.
+> **Guard note:** `web/src/App.tsx` already routes a fresh install to `<Setup />` while `setup_required` (i.e. no admin password). After step 1 the wizard advances IN-MEMORY (the App guard is not re-evaluated until reload), so steps 2–4 render even though `setup_required` is now false server-side. The finish "Go to Reverb" reload re-runs the guard, which now sees `setup_required:false` and routes to `<Login />`. No App.tsx change is required for the wizard, but note that `useAvailableAdapters` must work before login: it is behind `requireAuth`, and the wizard's session cookie was set by `/setup/admin` (which calls `issueSession`). So the user IS authed during steps 2–4. Good — no guard change needed.
 
 - [ ] **Step 4: Run the tests + typecheck**
 
@@ -2806,7 +2806,7 @@ git commit -m "test(api): full adapter lifecycle smoke — create/list/test/upda
 - [ ] **Settings page:** sections per type (Library/Search/Downloaders), list/add/edit/remove/enable-toggle/reorder, accent-color picker (writes setting + applies `--color-accent` live), dynamic_background toggle, pending-restart banner. Tested.
 - [ ] **Wizard:** Setup is a multi-step flow — admin password → Library → Search → Downloader → finish — reusing AdapterForm; honest restart message; the App guard routes a fresh install through it. Tested.
 - [ ] **Accent live:** accent color applied to `--color-accent` at app bootstrap and on change; default red `#F0354B`.
-- [ ] **The whole point:** a brand-new user can `docker compose up`, set a password, add Navidrome + Spotify + spotDL through forms with Test Connection, restart, and use Crate — NO sqlite hand-editing.
+- [ ] **The whole point:** a brand-new user can `docker compose up`, set a password, add Navidrome + Spotify + spotDL through forms with Test Connection, restart, and use Reverb — NO sqlite hand-editing.
 - [ ] `go test ./cmd/... ./internal/...` green; `cd web && npm run test && npm run build` green. No real network in tests.
 
 ## Self-Review

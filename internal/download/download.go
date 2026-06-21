@@ -6,8 +6,8 @@ package download
 import (
 	"context"
 
-	"github.com/maxjb-xyz/crate/internal/core"
-	"github.com/maxjb-xyz/crate/internal/registry"
+	"github.com/maxjb-xyz/reverb/internal/core"
+	"github.com/maxjb-xyz/reverb/internal/registry"
 )
 
 // EventBus topics published by the Manager.

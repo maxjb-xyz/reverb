@@ -1,17 +1,17 @@
-# Crate — MVP Design Spec
+# Reverb — MVP Design Spec
 
 > The self-hosted music app that knows what you have, and knows how to get what you don't.
 
 - **Status:** Approved design, pre-implementation
 - **Date:** 2026-06-20
 - **Scope:** Phase 1 MVP (the first of several spec → plan → build cycles)
-- **Product name:** **Crate** (formerly working-titled "Reverb"; renamed to avoid collision with Laravel Reverb / Reverb.com). The repository directory and `reverb-plan.md` are left unrenamed for now — an optional follow-up.
+- **Product name:** **Reverb** (formerly working-titled "Reverb"; renamed to avoid collision with Laravel Reverb / Reverb.com). The repository directory and `reverb-plan.md` are left unrenamed for now — an optional follow-up.
 
 ---
 
 ## 1. Overview & Scope
 
-Crate unifies the self-hosted music ecosystem (Navidrome for serving, spotDL/Lidarr for acquiring) into one experience. The core loop:
+Reverb unifies the self-hosted music ecosystem (Navidrome for serving, spotDL/Lidarr for acquiring) into one experience. The core loop:
 
 1. Search for any song/album/artist — from your library or anywhere.
 2. If you have it, play it. If you don't, download it — in one click.
@@ -25,7 +25,7 @@ Crate unifies the self-hosted music ecosystem (Navidrome for serving, spotDL/Lid
 | Backend | **Go**, single static binary |
 | Frontend | **React + TypeScript + Vite + Tailwind** |
 | Database | **SQLite** (sqlc-typed queries, goose migrations) |
-| Streaming | HTTP **Range** requests, **proxied** through Crate |
+| Streaming | HTTP **Range** requests, **proxied** through Reverb |
 | Library source (MVP) | **Subsonic/Navidrome**, behind an abstracted adapter |
 | Search source (MVP) | **Spotify** |
 | Downloader (MVP) | **spotDL** (shell-exec wrapper) |
@@ -54,7 +54,7 @@ The architecture below is built so every deferred item plugs into an existing se
 A single Go binary serves a versioned REST API, a WebSocket endpoint, an SSE search endpoint, and the embedded React SPA on one port.
 
 ```
-┌─ Single Go binary (image: crate/crate) ────────────────────────┐
+┌─ Single Go binary (image: reverb/reverb) ────────────────────────┐
 │  api/  ── REST (/api/v1/*) + WS (/api/v1/ws) + SSE (search)     │
 │   │      API-first & versioned → future mobile reuses it         │
 │   ▼                                                             │
@@ -90,7 +90,7 @@ A single Go binary serves a versioned REST API, a WebSocket endpoint, an SSE sea
 ## 3. Backend Package Structure & Interfaces
 
 ```
-cmd/crate/main.go             # wire dependencies, start server
+cmd/reverb/main.go             # wire dependencies, start server
 internal/
   config/        # flags/env bootstrap + DB-stored settings + env secret injection
   store/         # SQLite (sqlc-generated), goose migrations
@@ -181,7 +181,7 @@ The `download.Manager` owns: the queue, a worker pool (size = setting), **dedup*
 
 ## 4. Data Model & Config
 
-**Principle:** the library (artists/albums/tracks/playlists) is **never duplicated** in SQLite — it lives in the adapter (Subsonic) and is the source of truth. The DB stores only Crate's own state, so standalone mode (P3) swaps the adapter, not the schema.
+**Principle:** the library (artists/albums/tracks/playlists) is **never duplicated** in SQLite — it lives in the adapter (Subsonic) and is the source of truth. The DB stores only Reverb's own state, so standalone mode (P3) swaps the adapter, not the schema.
 
 ### Tables (SQLite)
 
@@ -207,8 +207,8 @@ A **monotonic integer** stored in `settings` (`library_version`), incremented on
 ### Config model — DB-canonical, no YAML
 
 ```
-Process bootstrap → CLI flags + env   (--port/CRATE_PORT, --db/CRATE_DB, --dev, log level)   [before DB exists]
-Secrets           → env, optional     (CRATE_ADMIN_PASSWORD, CRATE_SPOTIFY_CLIENT_SECRET, CRATE_LIBRARY_PASSWORD, ...)
+Process bootstrap → CLI flags + env   (--port/REVERB_PORT, --db/REVERB_DB, --dev, log level)   [before DB exists]
+Secrets           → env, optional     (REVERB_ADMIN_PASSWORD, REVERB_SPOTIFY_CLIENT_SECRET, REVERB_LIBRARY_PASSWORD, ...)
                     read at startup, injected into the relevant adapter config just before Init()
 Everything else   → DB (settings + adapter_instances), edited via wizard/UI — single source of truth
 ```
@@ -227,7 +227,7 @@ Everything else   → DB (settings + adapter_instances), edited via wizard/UI �
 
 ### Flow 1 — Library playback & streaming
 
-**Streaming = proxy, not redirect.** The SPA plays from `GET /api/v1/stream/:trackId` (authed by our session); Crate proxies to the adapter's `Stream()`, forwarding **Range** both ways and passing through `Content-Type/Length`, `Accept-Ranges`, `Content-Range`, and `206`. Keeps Subsonic credentials server-side, keeps the adapter boundary clean (standalone mode streams from disk with no client change), and provides a seam for play-count/scrobble hooks. Transcoding stays Navidrome's job for MVP (passthrough; `StreamOpts.maxBitRate/format` reserved).
+**Streaming = proxy, not redirect.** The SPA plays from `GET /api/v1/stream/:trackId` (authed by our session); Reverb proxies to the adapter's `Stream()`, forwarding **Range** both ways and passing through `Content-Type/Length`, `Accept-Ranges`, `Content-Range`, and `206`. Keeps Subsonic credentials server-side, keeps the adapter boundary clean (standalone mode streams from disk with no client change), and provides a seam for play-count/scrobble hooks. Transcoding stays Navidrome's job for MVP (passthrough; `StreamOpts.maxBitRate/format` reserved).
 
 **Player engine = dual `<audio>` elements, outside React.** A framework-agnostic `AudioEngine` class wraps two HTML5 `<audio>` elements (native Range/seek via our proxy) and **preloads the next queue item** for near-gapless transitions (true Web Audio buffer scheduling would require fully decoding tracks, which fights streaming). The engine owns queue/shuffle/repeat and emits events; a Zustand store mirrors them into React. A global keyboard handler binds shortcuts to engine actions.
 
@@ -384,13 +384,13 @@ A first-class middleware seam, present from day one:
 - `auth` package = middleware wrapping all `/api/v1/*` except `login`, `health`, and the `setup_required` probe.
 - Single `admin_password`, **bcrypt-hashed**, in the secrets store. `POST /api/v1/auth/login` → **opaque random session token** stored hashed in `sessions` (revocable). Web keeps it in an httpOnly cookie; mobile sends `Authorization: Bearer` — the same middleware checks both → mobile-ready.
 - **First-run setup** if no password is set.
-- **Escape hatch:** `auth_disabled` setting (chosen in the wizard, or `CRATE_AUTH_DISABLED`) for trusted-LAN users who opt out explicitly — logs a loud startup warning.
+- **Escape hatch:** `auth_disabled` setting (chosen in the wizard, or `REVERB_AUTH_DISABLED`) for trusted-LAN users who opt out explicitly — logs a loud startup warning.
 
 ---
 
 ## 9. Testing & Dev/Test Infra
 
-**Dev stack (`docker-compose.dev.yml`):** Navidrome seeded with a few **bundled Creative-Commons tracks** (working library out-of-the-box for every contributor), spotDL **version-pinned** in the Crate image, Spotify creds via gitignored `.env`.
+**Dev stack (`docker-compose.dev.yml`):** Navidrome seeded with a few **bundled Creative-Commons tracks** (working library out-of-the-box for every contributor), spotDL **version-pinned** in the Reverb image, Spotify creds via gitignored `.env`.
 
 **Testability seams:** injectable **exec runner** (spotDL — feed canned stdout incl. malformed), injectable **HTTP client** (Spotify/Subsonic — record/replay cassettes via go-vcr, no live creds in CI), injectable **clock** (scan debounce), assertable in-memory **EventBus**.
 
@@ -434,7 +434,7 @@ Each milestone is independently demoable; M1–M3 are the spine, M4–M5 product
 | Q3 | "already downloading" dedup | **Dedup-join** on normalized `dedup_key`; in-flight requests join the existing job |
 | Q4 | Downloader fallback chain | **Configurable**; iterate by `priority` via `CanDownload` |
 | Q5 | Legal/ethical framing | README framing in **M5**; user-configured downloaders, no shipped credentials |
-| Q6 | Name collision | **Renamed to "Crate"** |
+| Q6 | Name collision | **Renamed to "Reverb"** |
 
 ---
 

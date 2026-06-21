@@ -6,13 +6,13 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
-	"github.com/maxjb-xyz/crate/internal/auth"
-	"github.com/maxjb-xyz/crate/internal/core"
-	"github.com/maxjb-xyz/crate/internal/events"
-	"github.com/maxjb-xyz/crate/internal/library"
-	"github.com/maxjb-xyz/crate/internal/registry"
-	"github.com/maxjb-xyz/crate/internal/search"
-	"github.com/maxjb-xyz/crate/internal/store/db"
+	"github.com/maxjb-xyz/reverb/internal/auth"
+	"github.com/maxjb-xyz/reverb/internal/core"
+	"github.com/maxjb-xyz/reverb/internal/events"
+	"github.com/maxjb-xyz/reverb/internal/library"
+	"github.com/maxjb-xyz/reverb/internal/registry"
+	"github.com/maxjb-xyz/reverb/internal/search"
+	"github.com/maxjb-xyz/reverb/internal/store/db"
 )
 
 // Streamer is the subset of *search.Aggregator the SSE handler needs.

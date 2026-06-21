@@ -5,9 +5,9 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/maxjb-xyz/crate/internal/library"
-	"github.com/maxjb-xyz/crate/internal/registry"
-	"github.com/maxjb-xyz/crate/internal/store/db"
+	"github.com/maxjb-xyz/reverb/internal/library"
+	"github.com/maxjb-xyz/reverb/internal/registry"
+	"github.com/maxjb-xyz/reverb/internal/store/db"
 )
 
 // stubLib captures the config passed to Init so we can assert env override + parse.
@@ -31,7 +31,7 @@ func TestBuildLibraryAdapterAppliesEnvSecret(t *testing.T) {
 		ID: "i1", Type: "library", Name: "subsonic", Enabled: 1, Priority: 0,
 		ConfigJson: `{"url":"http://nav:4533","username":"alice","password":"file-pw"}`,
 	}}
-	env := map[string]string{"CRATE_LIBRARY_PASSWORD": "env-pw"}
+	env := map[string]string{"REVERB_LIBRARY_PASSWORD": "env-pw"}
 
 	got, err := buildLibraryAdapter(context.Background(), reg, instances, func(k string) string { return env[k] })
 	if err != nil {

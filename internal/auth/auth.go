@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/maxjb-xyz/crate/internal/store/db"
+	"github.com/maxjb-xyz/reverb/internal/store/db"
 	"golang.org/x/crypto/bcrypt"
 )
 

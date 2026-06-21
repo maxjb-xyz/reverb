@@ -53,7 +53,7 @@ describe('Settings', () => {
   it('shows the restart banner when pending', () => {
     vi.mocked(usePendingRestart).mockReturnValue({ data: { pendingRestart: true } } as unknown as ReturnType<typeof usePendingRestart>)
     wrap(<Settings />)
-    expect(screen.getByText(/restart crate to apply/i)).toBeInTheDocument()
+    expect(screen.getByText(/restart reverb to apply/i)).toBeInTheDocument()
   })
 
   it('removes an instance', async () => {

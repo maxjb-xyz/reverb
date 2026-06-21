@@ -10,7 +10,7 @@ import (
 	"strconv"
 	"sync"
 
-	"github.com/maxjb-xyz/crate/internal/store/db"
+	"github.com/maxjb-xyz/reverb/internal/store/db"
 	"github.com/pressly/goose/v3"
 	_ "modernc.org/sqlite"
 )

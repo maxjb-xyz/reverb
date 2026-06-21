@@ -1,8 +1,8 @@
-# Crate M1 — Library Playback Implementation Plan
+# Reverb M1 — Library Playback Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking. Each task is a self-contained unit: a fresh implementer with ZERO prior context can complete it from the file paths, interfaces, and complete code given here.
 
-**Goal:** Connect Crate to a Navidrome/Subsonic server, browse and search YOUR library, and play tracks with a real queue (shuffle/repeat/near-gapless). This is the "library playback spine": core domain types → `LibraryAdapter` interface (+conformance suite) → Subsonic adapter (token auth, httptest-tested) → composition wiring + REST/stream/cover handlers → frontend AudioEngine (dual-`<audio>`, outside React) → Zustand player store → player bar (waveform-styled seek) → Play Queue panel → Library-mode search + Album/Artist pages.
+**Goal:** Connect Reverb to a Navidrome/Subsonic server, browse and search YOUR library, and play tracks with a real queue (shuffle/repeat/near-gapless). This is the "library playback spine": core domain types → `LibraryAdapter` interface (+conformance suite) → Subsonic adapter (token auth, httptest-tested) → composition wiring + REST/stream/cover handlers → frontend AudioEngine (dual-`<audio>`, outside React) → Zustand player store → player bar (waveform-styled seek) → Play Queue panel → Library-mode search + Album/Artist pages.
 
 **Architecture:** Builds directly on the M0 foundation (modular-monolith Go binary serving `/api/v1` + embedded React SPA). M1 adds a `core` domain package, a `library` package (interface + conformance), a `library/subsonic` adapter, new REST handlers and a streaming proxy mounted on the existing chi router, and a frontend player subsystem. The library is NEVER persisted in SQLite — it always comes through the `LibraryAdapter`, so a future standalone adapter (P3) is a drop-in. Streaming is a Range-forwarding proxy so Subsonic credentials never reach the browser.
 
@@ -10,13 +10,13 @@
 
 ## Global Constraints
 
-- Go module path: `github.com/maximusjb/crate` (verbatim in every `import`).
+- Go module path: `github.com/maximusjb/reverb` (verbatim in every `import`).
 - Go version floor: `go 1.23`.
 - SQLite driver: `modernc.org/sqlite` only (cgo-free). **Library data is NEVER persisted in SQLite** — it always comes from the `LibraryAdapter` (keeps standalone-mode P3 a drop-in). No new migrations in M1.
-- API base path: `/api/v1` for every endpoint. Session-cookie auth (`crate_session`); all M1 endpoints (including stream/cover) sit behind `requireAuth`. HTML5 `<audio>`/`<img>` send the cookie automatically for same-origin requests, so cookie auth works for media.
+- API base path: `/api/v1` for every endpoint. Session-cookie auth (`reverb_session`); all M1 endpoints (including stream/cover) sit behind `requireAuth`. HTML5 `<audio>`/`<img>` send the cookie automatically for same-origin requests, so cookie auth works for media.
 - **Streaming is a PROXY** through `GET /api/v1/stream/:id`, forwarding the inbound `Range` header upstream and copying back status (200 or 206), `Content-Type`, `Content-Length`, `Accept-Ranges`, `Content-Range`. Subsonic credentials never reach the browser. Use an injectable `*http.Client` so the proxy is testable with `httptest`.
-- **Adapter registration is EXPLICIT at the composition root** (`cmd/crate/main.go`), NOT `init()` side-effects. The registry holds factories; `main` builds the active adapter from the enabled `library` `adapter_instance` row, applying env secret overrides (e.g. `CRATE_LIBRARY_PASSWORD`) just before `Init()`.
-- Subsonic token auth: query params `u`=username, `t`=md5(password+salt), `s`=salt, `v`=1.16.1, `c`=crate, `f`=json. Salt is a random per-request hex string. Subsonic JSON is wrapped: `{"subsonic-response":{"status":"ok",...}}` — decode and check `status`; map `"failed"` to a Go error including the error `code` and `message`.
+- **Adapter registration is EXPLICIT at the composition root** (`cmd/reverb/main.go`), NOT `init()` side-effects. The registry holds factories; `main` builds the active adapter from the enabled `library` `adapter_instance` row, applying env secret overrides (e.g. `REVERB_LIBRARY_PASSWORD`) just before `Init()`.
+- Subsonic token auth: query params `u`=username, `t`=md5(password+salt), `s`=salt, `v`=1.16.1, `c`=reverb, `f`=json. Salt is a random per-request hex string. Subsonic JSON is wrapped: `{"subsonic-response":{"status":"ok",...}}` — decode and check `status`; map `"failed"` to a Go error including the error `code` and `message`.
 - `go:embed` cannot use `..` (M0 footgun). Recorded test JSON lives under the test package dir: `internal/library/subsonic/testdata/`.
 - Frontend: TanStack Query for server state, Zustand for player/UI state. The `AudioEngine` is imperative and lives OUTSIDE React; near-gapless via dual-`<audio>` preload; the seek bar is waveform-STYLED (true peaks deferred). The audio-element dependency in `AudioEngine` is injectable/abstracted so queue/shuffle/repeat/advance logic is unit-testable in jsdom without real media playback.
 - Tests: TDD always (failing test → confirm red → minimal code → confirm green → commit, conventional-commit messages). Go tests use `httptest` + recorded Subsonic JSON (no live server). Run Go tests with `go test ./cmd/... ./internal/...` (NOT `./...` — avoids `web/node_modules`). Frontend: `cd web && npm run test` (Vitest 4); typecheck via `cd web && npm run build`.
@@ -45,8 +45,8 @@
 | `internal/api/library_test.go` | Handler tests using a fake `library.LibraryAdapter` injected into `Deps`. |
 | `internal/api/stream_test.go` | Stream/cover proxy tests (Range forwarding, 206). |
 | `internal/api/server.go` | MODIFY: add `Library library.LibraryAdapter` to `Deps`; mount the new routes under `/api/v1`. (`Deps` lives in `server.go`, not `handlers.go`.) |
-| `cmd/crate/library_wiring.go` | `buildLibraryAdapter` — builds the active adapter from the enabled `library` adapter_instance row + env secret override. |
-| `cmd/crate/main.go` | MODIFY: register the subsonic factory, build the active library adapter, pass into `api.Deps.Library`. |
+| `cmd/reverb/library_wiring.go` | `buildLibraryAdapter` — builds the active adapter from the enabled `library` adapter_instance row + env secret override. |
+| `cmd/reverb/main.go` | MODIFY: register the subsonic factory, build the active library adapter, pass into `api.Deps.Library`. |
 
 **React (frontend) — created/modified in M1, under `web/`:**
 
@@ -186,7 +186,7 @@ Expected: FAIL — `undefined: Track` / package has no Go files.
 
 Create `internal/core/types.go`:
 ```go
-// Package core holds Crate's shared, serializable domain types. These cross the
+// Package core holds Reverb's shared, serializable domain types. These cross the
 // adapter boundary (LibraryAdapter, future SearchSource) and are emitted by the
 // REST API, so every exported field carries a stable camelCase JSON tag.
 package core
@@ -335,8 +335,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/maximusjb/crate/internal/core"
-	"github.com/maximusjb/crate/internal/registry"
+	"github.com/maximusjb/reverb/internal/core"
+	"github.com/maximusjb/reverb/internal/registry"
 )
 
 // fakeAdapter is a minimal in-memory LibraryAdapter that satisfies the contract.
@@ -396,7 +396,7 @@ Expected: FAIL — `undefined: RunConformance` / `undefined: LibraryAdapter`.
 Create `internal/library/library.go`:
 ```go
 // Package library defines the LibraryAdapter contract and a conformance suite
-// every adapter must pass. Library data is never persisted by Crate — it always
+// every adapter must pass. Library data is never persisted by Reverb — it always
 // flows through an adapter, so a future standalone (folder-scan) adapter is a
 // drop-in replacement.
 package library
@@ -404,8 +404,8 @@ package library
 import (
 	"context"
 
-	"github.com/maximusjb/crate/internal/core"
-	"github.com/maximusjb/crate/internal/registry"
+	"github.com/maximusjb/reverb/internal/core"
+	"github.com/maximusjb/reverb/internal/registry"
 )
 
 type LibraryAdapter interface {
@@ -440,7 +440,7 @@ import (
 	"io"
 	"testing"
 
-	"github.com/maximusjb/crate/internal/core"
+	"github.com/maximusjb/reverb/internal/core"
 )
 
 // RunConformance exercises the LibraryAdapter contract. Call it from each
@@ -606,7 +606,7 @@ func TestTokenAuthParams(t *testing.T) {
 	if gotQuery.Get("u") != "alice" {
 		t.Errorf("u = %q, want alice", gotQuery.Get("u"))
 	}
-	if gotQuery.Get("v") != "1.16.1" || gotQuery.Get("c") != "crate" || gotQuery.Get("f") != "json" {
+	if gotQuery.Get("v") != "1.16.1" || gotQuery.Get("c") != "reverb" || gotQuery.Get("f") != "json" {
 		t.Errorf("missing fixed params: %v", gotQuery)
 	}
 	salt := gotQuery.Get("s")
@@ -820,7 +820,7 @@ import (
 
 const (
 	apiVersion = "1.16.1"
-	clientName = "crate"
+	clientName = "reverb"
 )
 
 // Client is a low-level Subsonic API client using token auth. The *http.Client
@@ -1046,8 +1046,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/maximusjb/crate/internal/core"
-	"github.com/maximusjb/crate/internal/library"
+	"github.com/maximusjb/reverb/internal/core"
+	"github.com/maximusjb/reverb/internal/library"
 )
 
 // fixtureServer serves a recorded JSON file based on the requested endpoint
@@ -1242,9 +1242,9 @@ import (
 	"net/url"
 	"strconv"
 
-	"github.com/maximusjb/crate/internal/core"
-	"github.com/maximusjb/crate/internal/library"
-	"github.com/maximusjb/crate/internal/registry"
+	"github.com/maximusjb/reverb/internal/core"
+	"github.com/maximusjb/reverb/internal/library"
+	"github.com/maximusjb/reverb/internal/registry"
 )
 
 // compile-time assertions
@@ -1629,10 +1629,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/maximusjb/crate/internal/auth"
-	"github.com/maximusjb/crate/internal/core"
-	"github.com/maximusjb/crate/internal/registry"
-	"github.com/maximusjb/crate/internal/store"
+	"github.com/maximusjb/reverb/internal/auth"
+	"github.com/maximusjb/reverb/internal/core"
+	"github.com/maximusjb/reverb/internal/registry"
+	"github.com/maximusjb/reverb/internal/store"
 )
 
 // fakeLibrary implements library.LibraryAdapter (+ browse interfaces) for tests.
@@ -1845,7 +1845,7 @@ Expected: FAIL — `Deps` has no field `Library` / undefined handlers.
 
 - [ ] **Step 4: Extend Deps + mount routes**
 
-Edit `internal/api/server.go`. Add the import `"github.com/maximusjb/crate/internal/library"` to the import block, add the `Library` field to `Deps`, and mount the routes. Replace the `Deps` struct:
+Edit `internal/api/server.go`. Add the import `"github.com/maximusjb/reverb/internal/library"` to the import block, add the `Library` field to `Deps`, and mount the routes. Replace the `Deps` struct:
 ```go
 type Deps struct {
 	Auth       *auth.Service
@@ -1898,7 +1898,7 @@ import (
 	"strconv"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/maximusjb/crate/internal/core"
+	"github.com/maximusjb/reverb/internal/core"
 )
 
 // optional browse interfaces (implemented by the subsonic adapter).
@@ -2027,7 +2027,7 @@ import (
 	"strconv"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/maximusjb/crate/internal/core"
+	"github.com/maximusjb/reverb/internal/core"
 )
 
 // handleStream proxies an audio stream from the library adapter, forwarding the
@@ -2106,11 +2106,11 @@ git commit -m "feat(api): library REST handlers and Range-forwarding stream/cove
 ## Task 6: Composition root — explicit registration + build active adapter from config
 
 **Files:**
-- Modify: `cmd/crate/main.go`
-- Create: `cmd/crate/library_wiring.go`, `cmd/crate/library_wiring_test.go`
+- Modify: `cmd/reverb/main.go`
+- Create: `cmd/reverb/library_wiring.go`, `cmd/reverb/library_wiring_test.go`
 
 **Interfaces:**
-- Consumes: `store.Store` (`ListAdapterInstances`), `registry.Registry`, `subsonic.New`, env (`CRATE_LIBRARY_PASSWORD`), `library.LibraryAdapter`.
+- Consumes: `store.Store` (`ListAdapterInstances`), `registry.Registry`, `subsonic.New`, env (`REVERB_LIBRARY_PASSWORD`), `library.LibraryAdapter`.
 - Produces:
   ```go
   // buildLibraryAdapter finds the enabled library adapter_instance, creates it
@@ -2121,7 +2121,7 @@ git commit -m "feat(api): library REST handlers and Range-forwarding stream/cove
 
 - [ ] **Step 1: Write the failing wiring test**
 
-Create `cmd/crate/library_wiring_test.go`:
+Create `cmd/reverb/library_wiring_test.go`:
 ```go
 package main
 
@@ -2129,9 +2129,9 @@ import (
 	"context"
 	"testing"
 
-	"github.com/maximusjb/crate/internal/library"
-	"github.com/maximusjb/crate/internal/registry"
-	"github.com/maximusjb/crate/internal/store/db"
+	"github.com/maximusjb/reverb/internal/library"
+	"github.com/maximusjb/reverb/internal/registry"
+	"github.com/maximusjb/reverb/internal/store/db"
 )
 
 // stubLib captures the config passed to Init so we can assert env override + parse.
@@ -2155,7 +2155,7 @@ func TestBuildLibraryAdapterAppliesEnvSecret(t *testing.T) {
 		ID: "i1", Type: "library", Name: "subsonic", Enabled: 1, Priority: 0,
 		ConfigJson: `{"url":"http://nav:4533","username":"alice","password":"file-pw"}`,
 	}}
-	env := map[string]string{"CRATE_LIBRARY_PASSWORD": "env-pw"}
+	env := map[string]string{"REVERB_LIBRARY_PASSWORD": "env-pw"}
 
 	got, err := buildLibraryAdapter(context.Background(), reg, instances, func(k string) string { return env[k] })
 	if err != nil {
@@ -2198,12 +2198,12 @@ func TestBuildLibraryAdapterIgnoresNonLibraryTypes(t *testing.T) {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `go test ./cmd/crate/ -v`
+Run: `go test ./cmd/reverb/ -v`
 Expected: FAIL — `undefined: buildLibraryAdapter`.
 
 - [ ] **Step 3: Write the wiring helper**
 
-Create `cmd/crate/library_wiring.go`:
+Create `cmd/reverb/library_wiring.go`:
 ```go
 package main
 
@@ -2212,14 +2212,14 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/maximusjb/crate/internal/library"
-	"github.com/maximusjb/crate/internal/registry"
-	"github.com/maximusjb/crate/internal/store/db"
+	"github.com/maximusjb/reverb/internal/library"
+	"github.com/maximusjb/reverb/internal/registry"
+	"github.com/maximusjb/reverb/internal/store/db"
 )
 
 // buildLibraryAdapter builds the active LibraryAdapter from the first enabled
 // adapter_instance of type "library". It applies env secret overrides
-// (CRATE_LIBRARY_PASSWORD) onto the stored config_json before Init. The library
+// (REVERB_LIBRARY_PASSWORD) onto the stored config_json before Init. The library
 // is optional: with no enabled library instance it returns (nil, nil).
 func buildLibraryAdapter(
 	ctx context.Context,
@@ -2254,7 +2254,7 @@ func buildLibraryAdapter(
 		}
 	}
 	// Env secret override — env wins for the password just before Init().
-	if pw := getenv("CRATE_LIBRARY_PASSWORD"); pw != "" {
+	if pw := getenv("REVERB_LIBRARY_PASSWORD"); pw != "" {
 		cfg["password"] = pw
 	}
 
@@ -2267,12 +2267,12 @@ func buildLibraryAdapter(
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `go test ./cmd/crate/ -v`
+Run: `go test ./cmd/reverb/ -v`
 Expected: PASS.
 
 - [ ] **Step 5: Wire into main**
 
-Edit `cmd/crate/main.go`. Add imports `"github.com/maximusjb/crate/internal/library/subsonic"` and `"github.com/maximusjb/crate/internal/library"` (library only if referenced; the var below uses it). After the `authSvc` block and before `srv := api.NewServer(...)`, insert:
+Edit `cmd/reverb/main.go`. Add imports `"github.com/maximusjb/reverb/internal/library/subsonic"` and `"github.com/maximusjb/reverb/internal/library"` (library only if referenced; the var below uses it). After the `authSvc` block and before `srv := api.NewServer(...)`, insert:
 ```go
 	// Registries (explicit registration at the composition root — no init() side-effects).
 	libraryReg := registry.NewRegistry("library")
@@ -2318,7 +2318,7 @@ Expected: build OK, all PASS.
 
 ```bash
 go mod tidy
-git add cmd/crate go.mod go.sum
+git add cmd/reverb go.mod go.sum
 git commit -m "feat(cmd): explicit subsonic registration and active adapter wiring from config"
 ```
 
@@ -4282,22 +4282,22 @@ const items = [
 This requires a running Navidrome with a user. Bring up the M0 dev stack and create a Navidrome admin (one-time, via http://localhost:4533). Then seed an adapter row directly (until the settings UI lands in M4):
 ```bash
 docker compose -f docker-compose.dev.yml up -d
-# Wait for Navidrome, create a user 'crate'/'cratepass' in its UI, add a CC track to dev/music.
-rm -f data/crate.db
-CRATE_ADMIN_PASSWORD=devpw go run ./cmd/crate &
+# Wait for Navidrome, create a user 'reverb'/'reverbpass' in its UI, add a CC track to dev/music.
+rm -f data/reverb.db
+REVERB_ADMIN_PASSWORD=devpw go run ./cmd/reverb &
 sleep 2
 # Log in to get a session cookie:
-curl -s -c /tmp/crate.cookies -X POST localhost:8090/api/v1/auth/login -H 'Content-Type: application/json' -d '{"password":"devpw"}'
+curl -s -c /tmp/reverb.cookies -X POST localhost:8090/api/v1/auth/login -H 'Content-Type: application/json' -d '{"password":"devpw"}'
 ```
 
-Then insert the adapter row using sqlite3 (the DB is at ./data/crate.db). Run:
+Then insert the adapter row using sqlite3 (the DB is at ./data/reverb.db). Run:
 ```bash
-sqlite3 data/crate.db "INSERT INTO adapter_instances (id,type,name,enabled,priority,config_json) VALUES ('lib1','library','subsonic',1,0,'{\"url\":\"http://localhost:4533\",\"username\":\"crate\",\"password\":\"cratepass\"}');"
+sqlite3 data/reverb.db "INSERT INTO adapter_instances (id,type,name,enabled,priority,config_json) VALUES ('lib1','library','subsonic',1,0,'{\"url\":\"http://localhost:4533\",\"username\":\"reverb\",\"password\":\"reverbpass\"}');"
 ```
-Restart Crate so it builds the adapter from the row:
+Restart Reverb so it builds the adapter from the row:
 ```bash
 kill %1 2>/dev/null
-CRATE_ADMIN_PASSWORD=devpw go run ./cmd/crate &
+REVERB_ADMIN_PASSWORD=devpw go run ./cmd/reverb &
 sleep 2
 ```
 Expected log line: `library adapter active: subsonic`.
@@ -4306,8 +4306,8 @@ Expected log line: `library adapter active: subsonic`.
 
 Run:
 ```bash
-curl -s -b /tmp/crate.cookies "localhost:8090/api/v1/library/albums?type=newest" | head -c 300
-curl -s -b /tmp/crate.cookies "localhost:8090/api/v1/library/search?q=a" | head -c 300
+curl -s -b /tmp/reverb.cookies "localhost:8090/api/v1/library/albums?type=newest" | head -c 300
+curl -s -b /tmp/reverb.cookies "localhost:8090/api/v1/library/search?q=a" | head -c 300
 ```
 Expected: JSON arrays/objects from Navidrome (not `{"error":...}`). If you added a track, it appears in results.
 
@@ -4315,7 +4315,7 @@ Expected: JSON arrays/objects from Navidrome (not `{"error":...}`). If you added
 
 Run (replace TRACK_ID with an `id` from the search output):
 ```bash
-curl -s -D - -o /dev/null -b /tmp/crate.cookies -H 'Range: bytes=0-1023' "localhost:8090/api/v1/stream/TRACK_ID" | grep -iE 'HTTP/|content-range|accept-ranges|content-type'
+curl -s -D - -o /dev/null -b /tmp/reverb.cookies -H 'Range: bytes=0-1023' "localhost:8090/api/v1/stream/TRACK_ID" | grep -iE 'HTTP/|content-range|accept-ranges|content-type'
 ```
 Expected: `HTTP/1.1 206 Partial Content`, an `Accept-Ranges: bytes`, a `Content-Range: bytes 0-1023/...`, and an audio `Content-Type`.
 
@@ -4353,8 +4353,8 @@ Otherwise no commit for this task — it is verification-only.
 **Spec coverage (M1 line items):**
 - Core domain types ✓ (Task 1 — Track/Album/Artist/Playlist/SearchResults/EntityType/StreamHandle/StreamOpts/ScanStatus/CoverArt, JSON-tagged).
 - `LibraryAdapter` interface + conformance suite with `StartScan`/`ScanStatus` documented optional/stubable ✓ (Task 2).
-- Subsonic adapter: token auth (md5(password+salt), `c=crate&v=1.16.1&f=json`), wrapped-JSON decode + failed→error mapping, endpoints ping/search3/getArtists/getArtist/getAlbum/getAlbumList2/getPlaylists/stream(Range)/getCoverArt/startScan/getScanStatus, DTO→core mapping, Plugin (ConfigSchema url/username/password[secret], TestConnection=ping), httptest + recorded JSON ✓ (Tasks 3–5).
-- Composition + API: explicit registration at composition root, active adapter from enabled `library` adapter_instance row with `CRATE_LIBRARY_PASSWORD` override, `Library` in Deps, REST `/library/*` + `/stream/:id` (Range proxy) + `/cover/:id`, all behind `requireAuth` ✓ (Tasks 5–6).
+- Subsonic adapter: token auth (md5(password+salt), `c=reverb&v=1.16.1&f=json`), wrapped-JSON decode + failed→error mapping, endpoints ping/search3/getArtists/getArtist/getAlbum/getAlbumList2/getPlaylists/stream(Range)/getCoverArt/startScan/getScanStatus, DTO→core mapping, Plugin (ConfigSchema url/username/password[secret], TestConnection=ping), httptest + recorded JSON ✓ (Tasks 3–5).
+- Composition + API: explicit registration at composition root, active adapter from enabled `library` adapter_instance row with `REVERB_LIBRARY_PASSWORD` override, `Library` in Deps, REST `/library/*` + `/stream/:id` (Range proxy) + `/cover/:id`, all behind `requireAuth` ✓ (Tasks 5–6).
 - Frontend AudioEngine: dual-`<audio>`, queue/transport/shuffle/repeat/volume + preload, subscribe callback, injectable audio element, unit-tested logic in jsdom ✓ (Task 8).
 - Zustand player store mirror + actions ✓ (Task 9).
 - Player bar rewrite: art via /cover, title/artist, transport, waveform-styled seek with buffered range, volume, shuffle/repeat, Queue button, disabled Downloads placeholder, global keyboard shortcuts ✓ (Task 10).

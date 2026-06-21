@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/maxjb-xyz/crate/internal/core"
-	"github.com/maxjb-xyz/crate/internal/store"
+	"github.com/maxjb-xyz/reverb/internal/core"
+	"github.com/maxjb-xyz/reverb/internal/store"
 )
 
 func newSQLStore(t *testing.T) JobStore {

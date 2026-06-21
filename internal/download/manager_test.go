@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/maxjb-xyz/crate/internal/core"
-	"github.com/maxjb-xyz/crate/internal/events"
-	"github.com/maxjb-xyz/crate/internal/registry"
+	"github.com/maxjb-xyz/reverb/internal/core"
+	"github.com/maxjb-xyz/reverb/internal/events"
+	"github.com/maxjb-xyz/reverb/internal/registry"
 )
 
 // ---- fakes ----
@@ -21,17 +21,17 @@ type fakeDL struct {
 	name        string
 	canDownload bool
 	block       chan struct{} // if non-nil, Start blocks until closed/canceled
-	errOnStart  error        // if non-nil, Start returns this error
+	errOnStart  error         // if non-nil, Start returns this error
 	started     int32
 	mu          sync.Mutex
 	startCount  int
 }
 
-func (d *fakeDL) Type() string                             { return "downloader" }
-func (d *fakeDL) Name() string                             { return d.name }
-func (d *fakeDL) ConfigSchema() registry.ConfigSchema      { return registry.ConfigSchema{} }
-func (d *fakeDL) Init(map[string]any) error                { return nil }
-func (d *fakeDL) TestConnection(context.Context) error     { return nil }
+func (d *fakeDL) Type() string                         { return "downloader" }
+func (d *fakeDL) Name() string                         { return d.name }
+func (d *fakeDL) ConfigSchema() registry.ConfigSchema  { return registry.ConfigSchema{} }
+func (d *fakeDL) Init(map[string]any) error            { return nil }
+func (d *fakeDL) TestConnection(context.Context) error { return nil }
 func (d *fakeDL) CanDownload(context.Context, core.DownloadRequest) (bool, error) {
 	return d.canDownload, nil
 }

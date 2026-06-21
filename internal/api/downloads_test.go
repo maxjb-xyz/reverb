@@ -9,10 +9,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/maxjb-xyz/crate/internal/auth"
-	"github.com/maxjb-xyz/crate/internal/core"
-	"github.com/maxjb-xyz/crate/internal/registry"
-	"github.com/maxjb-xyz/crate/internal/store"
+	"github.com/maxjb-xyz/reverb/internal/auth"
+	"github.com/maxjb-xyz/reverb/internal/core"
+	"github.com/maxjb-xyz/reverb/internal/registry"
+	"github.com/maxjb-xyz/reverb/internal/store"
 )
 
 // fakeManager is an in-memory DownloadManager.
@@ -38,7 +38,10 @@ func (m *fakeManager) List(context.Context) ([]core.DownloadJob, error) {
 	}
 	return out, nil
 }
-func (m *fakeManager) Cancel(_ context.Context, id string) error { m.canceled = append(m.canceled, id); return nil }
+func (m *fakeManager) Cancel(_ context.Context, id string) error {
+	m.canceled = append(m.canceled, id)
+	return nil
+}
 func (m *fakeManager) Retry(_ context.Context, id string) (core.DownloadJob, error) {
 	m.retried = append(m.retried, id)
 	return core.DownloadJob{ID: id, Status: core.DownloadQueued, Attempts: 1}, nil

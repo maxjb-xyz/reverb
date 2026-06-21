@@ -1,23 +1,23 @@
-# Crate M0 — Foundation Implementation Plan
+# Reverb M0 — Foundation Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Stand up Crate's bootable skeleton — a single Go binary that serves a versioned API and an embedded React shell, with config, SQLite, an event bus, the adapter registry, and a working auth/first-run-setup flow.
+**Goal:** Stand up Reverb's bootable skeleton — a single Go binary that serves a versioned API and an embedded React shell, with config, SQLite, an event bus, the adapter registry, and a working auth/first-run-setup flow.
 
-**Architecture:** Modular-monolith Go binary (`cmd/crate`) with domain packages under `internal/`. It serves REST under `/api/v1`, gates protected routes behind session-cookie auth, and serves the React SPA either from `embed.FS` (prod) or by reverse-proxying Vite (`--dev`). State lives in SQLite (goose migrations, sqlc-typed queries). No real adapters yet — the registry + self-describing `Plugin` contract are proven with a fake adapter.
+**Architecture:** Modular-monolith Go binary (`cmd/reverb`) with domain packages under `internal/`. It serves REST under `/api/v1`, gates protected routes behind session-cookie auth, and serves the React SPA either from `embed.FS` (prod) or by reverse-proxying Vite (`--dev`). State lives in SQLite (goose migrations, sqlc-typed queries). No real adapters yet — the registry + self-describing `Plugin` contract are proven with a fake adapter.
 
 **Tech Stack:** Go 1.23, chi v5, modernc.org/sqlite (pure-Go, cgo-free), pressly/goose v3, sqlc, x/crypto/bcrypt; React + TypeScript + Vite + Tailwind 3.4, React Router 6, TanStack Query 5, Zustand 4, Vitest. (As-built versions from `npm create vite@latest`: React 19, TypeScript ~5.9, Vite 8, Vitest 4, Node ≥22 — CI pins Node 22.)
 
 ## Global Constraints
 
-- Go module path: `github.com/maximusjb/crate` (verbatim in every `import`).
+- Go module path: `github.com/maximusjb/reverb` (verbatim in every `import`).
 - Go version floor: `go 1.23`.
 - SQLite driver: `modernc.org/sqlite` (driver name `"sqlite"`) — **no cgo** (keeps the single static binary cross-compilable). Never add `mattn/go-sqlite3`.
 - API base path: `/api/v1` for every endpoint.
-- Default port `8090`; env override `CRATE_PORT`; flag `--port`.
-- Default DB path `./data/crate.db`; env `CRATE_DB`; flag `--db`.
-- Dev mode: flag `--dev` (or env `CRATE_DEV=1`) → SPA requests reverse-proxy to `http://localhost:5173`.
-- Secrets come only from env at startup: `CRATE_ADMIN_PASSWORD`, plus adapter secrets in later milestones. Never store the admin password in plaintext — bcrypt only.
+- Default port `8090`; env override `REVERB_PORT`; flag `--port`.
+- Default DB path `./data/reverb.db`; env `REVERB_DB`; flag `--db`.
+- Dev mode: flag `--dev` (or env `REVERB_DEV=1`) → SPA requests reverse-proxy to `http://localhost:5173`.
+- Secrets come only from env at startup: `REVERB_ADMIN_PASSWORD`, plus adapter secrets in later milestones. Never store the admin password in plaintext — bcrypt only.
 - Accent color is a runtime CSS custom property `--color-accent` (space-separated RGB channels), default red `240 53 75` (`#F0354B`); Tailwind references it via `rgb(var(--color-accent) / <alpha-value>)`.
 - Settings keys used in M0: `admin_password_hash`, `auth_disabled`, `accent_color`, `dynamic_background`.
 - TDD always: failing test → confirm red → minimal code → confirm green → commit. Conventional-commit messages.
@@ -28,7 +28,7 @@
 
 **Go (backend):**
 - `go.mod`, `go.sum` — module + deps.
-- `cmd/crate/main.go` — entrypoint: load config, open store, build server, listen.
+- `cmd/reverb/main.go` — entrypoint: load config, open store, build server, listen.
 - `internal/config/config.go` — `Config` + `Load()` (flags + env).
 - `internal/store/store.go` — open DB, run goose migrations, expose `*Queries`.
 - `internal/store/migrations/0001_init.sql` — settings, sessions, adapter_instances.
@@ -69,7 +69,7 @@
 ## Task 1: Go module + HTTP server skeleton + health
 
 **Files:**
-- Create: `go.mod`, `.gitignore`, `cmd/crate/main.go`, `internal/api/server.go`, `internal/api/handlers.go`
+- Create: `go.mod`, `.gitignore`, `cmd/reverb/main.go`, `internal/api/server.go`, `internal/api/handlers.go`
 - Test: `internal/api/handlers_test.go`
 
 **Interfaces:**
@@ -79,8 +79,8 @@
 
 Run:
 ```bash
-go mod init github.com/maximusjb/crate
-printf '%s\n' '/data/' '/web/dist/' '/web/node_modules/' '*.db' '/.env' '/crate' '/.superpowers/' > .gitignore
+go mod init github.com/maximusjb/reverb
+printf '%s\n' '/data/' '/web/dist/' '/web/node_modules/' '*.db' '/.env' '/reverb' '/.superpowers/' > .gitignore
 go get github.com/go-chi/chi/v5@v5.1.0
 ```
 
@@ -178,7 +178,7 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 
 - [ ] **Step 5: Add the entrypoint**
 
-Create `cmd/crate/main.go`:
+Create `cmd/reverb/main.go`:
 ```go
 package main
 
@@ -186,13 +186,13 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/maximusjb/crate/internal/api"
+	"github.com/maximusjb/reverb/internal/api"
 )
 
 func main() {
 	srv := api.NewServer(api.Deps{})
 	addr := ":8090"
-	log.Printf("crate listening on %s", addr)
+	log.Printf("reverb listening on %s", addr)
 	if err := http.ListenAndServe(addr, srv.Handler()); err != nil {
 		log.Fatal(err)
 	}
@@ -219,10 +219,10 @@ git commit -m "feat(api): bootable server skeleton with health endpoint"
 **Files:**
 - Create: `internal/config/config.go`
 - Test: `internal/config/config_test.go`
-- Modify: `cmd/crate/main.go`
+- Modify: `cmd/reverb/main.go`
 
 **Interfaces:**
-- Produces: `type Config struct { Port int; DBPath string; Dev bool; LogLevel string; AdminPassword string }` and `func Load(args []string, getenv func(string) string) (Config, error)`. `AdminPassword` is sourced from `CRATE_ADMIN_PASSWORD` only.
+- Produces: `type Config struct { Port int; DBPath string; Dev bool; LogLevel string; AdminPassword string }` and `func Load(args []string, getenv func(string) string) (Config, error)`. `AdminPassword` is sourced from `REVERB_ADMIN_PASSWORD` only.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -237,7 +237,7 @@ func TestLoadDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if c.Port != 8090 || c.DBPath != "./data/crate.db" || c.Dev {
+	if c.Port != 8090 || c.DBPath != "./data/reverb.db" || c.Dev {
 		t.Fatalf("unexpected defaults: %+v", c)
 	}
 }
@@ -253,7 +253,7 @@ func TestLoadFlagsOverrideDefaults(t *testing.T) {
 }
 
 func TestEnvFillsPortWhenNoFlag(t *testing.T) {
-	env := map[string]string{"CRATE_PORT": "7000", "CRATE_ADMIN_PASSWORD": "secret"}
+	env := map[string]string{"REVERB_PORT": "7000", "REVERB_ADMIN_PASSWORD": "secret"}
 	c, err := Load(nil, func(k string) string { return env[k] })
 	if err != nil {
 		t.Fatal(err)
@@ -291,22 +291,22 @@ type Config struct {
 
 // Load resolves config: flags win over env, env wins over defaults.
 func Load(args []string, getenv func(string) string) (Config, error) {
-	c := Config{Port: 8090, DBPath: "./data/crate.db", LogLevel: "info"}
+	c := Config{Port: 8090, DBPath: "./data/reverb.db", LogLevel: "info"}
 
-	if v := getenv("CRATE_PORT"); v != "" {
+	if v := getenv("REVERB_PORT"); v != "" {
 		if p, err := strconv.Atoi(v); err == nil {
 			c.Port = p
 		}
 	}
-	if v := getenv("CRATE_DB"); v != "" {
+	if v := getenv("REVERB_DB"); v != "" {
 		c.DBPath = v
 	}
-	if getenv("CRATE_DEV") == "1" {
+	if getenv("REVERB_DEV") == "1" {
 		c.Dev = true
 	}
-	c.AdminPassword = getenv("CRATE_ADMIN_PASSWORD")
+	c.AdminPassword = getenv("REVERB_ADMIN_PASSWORD")
 
-	fs := flag.NewFlagSet("crate", flag.ContinueOnError)
+	fs := flag.NewFlagSet("reverb", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	fs.IntVar(&c.Port, "port", c.Port, "HTTP port")
 	fs.StringVar(&c.DBPath, "db", c.DBPath, "SQLite path")
@@ -326,7 +326,7 @@ Expected: PASS (all three).
 
 - [ ] **Step 5: Wire config into main**
 
-Replace `cmd/crate/main.go`:
+Replace `cmd/reverb/main.go`:
 ```go
 package main
 
@@ -336,8 +336,8 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/maximusjb/crate/internal/api"
-	"github.com/maximusjb/crate/internal/config"
+	"github.com/maximusjb/reverb/internal/api"
+	"github.com/maximusjb/reverb/internal/config"
 )
 
 func main() {
@@ -347,7 +347,7 @@ func main() {
 	}
 	srv := api.NewServer(api.Deps{})
 	addr := fmt.Sprintf(":%d", cfg.Port)
-	log.Printf("crate listening on %s (dev=%v)", addr, cfg.Dev)
+	log.Printf("reverb listening on %s (dev=%v)", addr, cfg.Dev)
 	if err := http.ListenAndServe(addr, srv.Handler()); err != nil {
 		log.Fatal(err)
 	}
@@ -359,7 +359,7 @@ func main() {
 Run: `go build ./... && go test ./...`
 Expected: build OK, tests PASS.
 ```bash
-git add internal/config cmd/crate/main.go
+git add internal/config cmd/reverb/main.go
 git commit -m "feat(config): flag+env bootstrap configuration"
 ```
 
@@ -518,7 +518,7 @@ func TestMigrateAndSettingsRoundTrip(t *testing.T) {
 }
 ```
 
-Add the import line `"github.com/maximusjb/crate/internal/store/db"` to the test's import block.
+Add the import line `"github.com/maximusjb/reverb/internal/store/db"` to the test's import block.
 
 - [ ] **Step 5: Run test to verify it fails**
 
@@ -538,7 +538,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/maximusjb/crate/internal/store/db"
+	"github.com/maximusjb/reverb/internal/store/db"
 	"github.com/pressly/goose/v3"
 	_ "modernc.org/sqlite"
 )
@@ -583,7 +583,7 @@ Expected: PASS.
 
 - [ ] **Step 8: Wire store into main**
 
-Edit `cmd/crate/main.go` — after config load, before building the server:
+Edit `cmd/reverb/main.go` — after config load, before building the server:
 ```go
 	st, err := store.Open(cfg.DBPath)
 	if err != nil {
@@ -594,13 +594,13 @@ Edit `cmd/crate/main.go` — after config load, before building the server:
 		log.Fatal(err)
 	}
 ```
-Add import `"github.com/maximusjb/crate/internal/store"`.
+Add import `"github.com/maximusjb/reverb/internal/store"`.
 
 - [ ] **Step 9: Commit**
 
 Run: `go build ./... && go test ./...`
 ```bash
-git add sqlc.yaml internal/store cmd/crate/main.go go.mod go.sum
+git add sqlc.yaml internal/store cmd/reverb/main.go go.mod go.sum
 git commit -m "feat(store): sqlite store with goose migrations and sqlc queries"
 ```
 
@@ -980,8 +980,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/maximusjb/crate/internal/store"
-	"github.com/maximusjb/crate/internal/store/db"
+	"github.com/maximusjb/reverb/internal/store"
+	"github.com/maximusjb/reverb/internal/store/db"
 )
 
 func newTestService(t *testing.T) *Service {
@@ -1075,7 +1075,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/maximusjb/crate/internal/store/db"
+	"github.com/maximusjb/reverb/internal/store/db"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -1215,7 +1215,7 @@ git commit -m "feat(auth): password hashing, sessions, setup-required logic"
       Dev        bool
   }
   ```
-- Endpoints: `GET /api/v1/health`, `GET /api/v1/setup/status` → `{"setupRequired":bool}`, `POST /api/v1/setup/admin` `{"password":...}` → sets password + returns session (only when setup required), `POST /api/v1/auth/login` `{"password":...}` → session cookie + `{"ok":true}`, `POST /api/v1/auth/logout`, `GET /api/v1/me` (protected) → `{"authenticated":true}`, `GET /api/v1/adapters/available` (protected) → `[{type,name,configSchema,capabilities}]`. Session cookie name: `crate_session`.
+- Endpoints: `GET /api/v1/health`, `GET /api/v1/setup/status` → `{"setupRequired":bool}`, `POST /api/v1/setup/admin` `{"password":...}` → sets password + returns session (only when setup required), `POST /api/v1/auth/login` `{"password":...}` → session cookie + `{"ok":true}`, `POST /api/v1/auth/logout`, `GET /api/v1/me` (protected) → `{"authenticated":true}`, `GET /api/v1/adapters/available` (protected) → `[{type,name,configSchema,capabilities}]`. Session cookie name: `reverb_session`.
 
 - [ ] **Step 1: Write the failing flow test**
 
@@ -1230,9 +1230,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/maximusjb/crate/internal/auth"
-	"github.com/maximusjb/crate/internal/registry"
-	"github.com/maximusjb/crate/internal/store"
+	"github.com/maximusjb/reverb/internal/auth"
+	"github.com/maximusjb/reverb/internal/registry"
+	"github.com/maximusjb/reverb/internal/store"
 )
 
 func testServer(t *testing.T) *Server {
@@ -1310,8 +1310,8 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
-	"github.com/maximusjb/crate/internal/auth"
-	"github.com/maximusjb/crate/internal/registry"
+	"github.com/maximusjb/reverb/internal/auth"
+	"github.com/maximusjb/reverb/internal/registry"
 )
 
 type Deps struct {
@@ -1371,7 +1371,7 @@ import (
 	"net/http"
 )
 
-const sessionCookie = "crate_session"
+const sessionCookie = "reverb_session"
 
 func (s *Server) tokenFromRequest(r *http.Request) string {
 	if c, err := r.Cookie(sessionCookie); err == nil {
@@ -1414,7 +1414,7 @@ Append to `internal/api/handlers.go`:
 ```go
 import (
 	"context"
-	"github.com/maximusjb/crate/internal/registry"
+	"github.com/maximusjb/reverb/internal/registry"
 )
 
 type passwordBody struct {
@@ -1542,7 +1542,7 @@ import "net/http"
 // embeddedSPA is replaced in Task 11 with a real embed.FS handler.
 func (s *Server) embeddedSPA() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, http.StatusOK, map[string]string{"app": "crate", "note": "frontend not embedded yet"})
+		writeJSON(w, http.StatusOK, map[string]string{"app": "reverb", "note": "frontend not embedded yet"})
 	})
 }
 ```
@@ -1554,7 +1554,7 @@ Expected: PASS (`TestHealth`, `TestSetupThenProtectedAccess`).
 
 - [ ] **Step 8: Wire everything in main**
 
-Replace `cmd/crate/main.go`:
+Replace `cmd/reverb/main.go`:
 ```go
 package main
 
@@ -1566,11 +1566,11 @@ import (
 	"os"
 	"time"
 
-	"github.com/maximusjb/crate/internal/api"
-	"github.com/maximusjb/crate/internal/auth"
-	"github.com/maximusjb/crate/internal/config"
-	"github.com/maximusjb/crate/internal/registry"
-	"github.com/maximusjb/crate/internal/store"
+	"github.com/maximusjb/reverb/internal/api"
+	"github.com/maximusjb/reverb/internal/auth"
+	"github.com/maximusjb/reverb/internal/config"
+	"github.com/maximusjb/reverb/internal/registry"
+	"github.com/maximusjb/reverb/internal/store"
 )
 
 func main() {
@@ -1605,7 +1605,7 @@ func main() {
 	})
 
 	addr := fmt.Sprintf(":%d", cfg.Port)
-	log.Printf("crate listening on %s (dev=%v)", addr, cfg.Dev)
+	log.Printf("reverb listening on %s (dev=%v)", addr, cfg.Dev)
 	if err := http.ListenAndServe(addr, srv.Handler()); err != nil {
 		log.Fatal(err)
 	}
@@ -1616,7 +1616,7 @@ func main() {
 Run: `go build ./... && go test ./...`
 Expected: PASS.
 ```bash
-git add internal/api cmd/crate/main.go go.mod go.sum
+git add internal/api cmd/reverb/main.go go.mod go.sum
 git commit -m "feat(api): auth middleware, setup/login/me/adapters endpoints, SPA handler"
 ```
 
@@ -1638,7 +1638,7 @@ Create `internal/api/openapi.yaml`:
 ```yaml
 openapi: 3.0.3
 info:
-  title: Crate API
+  title: Reverb API
   version: 0.1.0
 servers:
   - url: /api/v1
@@ -1814,7 +1814,7 @@ const items = [
 export function Sidebar() {
   return (
     <nav className="w-56 shrink-0 border-r border-neutral-800 p-4 space-y-1">
-      <div className="text-xl font-bold mb-4 text-accent">Crate</div>
+      <div className="text-xl font-bold mb-4 text-accent">Reverb</div>
       {items.map((i) => (
         <NavLink
           key={i.to}
@@ -1917,13 +1917,13 @@ import { render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import App from './App'
 
-test('renders the Crate brand in the shell', () => {
+test('renders the Reverb brand in the shell', () => {
   render(
     <MemoryRouter>
       <App />
     </MemoryRouter>,
   )
-  expect(screen.getByText('Crate')).toBeInTheDocument()
+  expect(screen.getByText('Reverb')).toBeInTheDocument()
 })
 ```
 
@@ -2057,7 +2057,7 @@ export default function Login() {
   }
   return (
     <form onSubmit={submit} className="max-w-sm mx-auto mt-24 space-y-4">
-      <h1 className="text-2xl font-bold">Log in to Crate</h1>
+      <h1 className="text-2xl font-bold">Log in to Reverb</h1>
       <input
         type="password"
         value={pw}
@@ -2088,7 +2088,7 @@ export default function Setup() {
   }
   return (
     <form onSubmit={submit} className="max-w-sm mx-auto mt-24 space-y-4">
-      <h1 className="text-2xl font-bold">Welcome to Crate</h1>
+      <h1 className="text-2xl font-bold">Welcome to Reverb</h1>
       <p className="text-neutral-400 text-sm">Set an admin password to get started.</p>
       <input
         type="password"
@@ -2148,7 +2148,7 @@ test('setup page prompts for an admin password', () => {
       <Setup />
     </MemoryRouter>,
   )
-  expect(screen.getByText('Welcome to Crate')).toBeInTheDocument()
+  expect(screen.getByText('Welcome to Reverb')).toBeInTheDocument()
   expect(screen.getByPlaceholderText('Choose a password')).toBeInTheDocument()
 })
 ```
@@ -2175,7 +2175,7 @@ git commit -m "feat(web): session-guarded routing with setup and login flows"
 - Test: manual run (documented expected output)
 
 **Interfaces:**
-- Produces: `(*Server) embeddedSPA()` serves files from embedded `web/dist` with SPA fallback to `index.html`. `make build` produces `./crate` with the SPA inside.
+- Produces: `(*Server) embeddedSPA()` serves files from embedded `web/dist` with SPA fallback to `index.html`. `make build` produces `./reverb` with the SPA inside.
 
 - [ ] **Step 1: Tag the dev stub `!prod` and add the prod embed**
 
@@ -2190,7 +2190,7 @@ import "net/http"
 // embeddedSPA (dev/test stub) — replaced by embed_prod.go under -tags prod.
 func (s *Server) embeddedSPA() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, http.StatusOK, map[string]string{"app": "crate", "note": "frontend not embedded yet"})
+		writeJSON(w, http.StatusOK, map[string]string{"app": "reverb", "note": "frontend not embedded yet"})
 	})
 }
 ```
@@ -2258,15 +2258,15 @@ web:
 	cp -r web/dist internal/api/dist
 
 build: web
-	go build -tags prod -o crate ./cmd/crate
+	go build -tags prod -o reverb ./cmd/reverb
 
 dev:
 	@echo "Run in two shells:"
 	@echo "  1) cd web && npm run dev"
-	@echo "  2) go run ./cmd/crate --dev"
+	@echo "  2) go run ./cmd/reverb --dev"
 
 clean:
-	rm -rf crate web/dist internal/api/dist
+	rm -rf reverb web/dist internal/api/dist
 ```
 
 Add `/internal/api/dist/` to `.gitignore`:
@@ -2277,14 +2277,14 @@ printf '%s\n' '/internal/api/dist/' >> .gitignore
 - [ ] **Step 3: Build the full binary**
 
 Run: `make build`
-Expected: `web/dist` built, copied to `internal/api/dist`, `./crate` produced with no errors.
+Expected: `web/dist` built, copied to `internal/api/dist`, `./reverb` produced with no errors.
 
 - [ ] **Step 4: Smoke-run prod mode**
 
 Run:
 ```bash
-rm -f data/crate.db
-./crate &
+rm -f data/reverb.db
+./reverb &
 sleep 1
 curl -s localhost:8090/api/v1/health
 curl -s localhost:8090/api/v1/setup/status
@@ -2339,16 +2339,16 @@ printf '%s\n' '/dev/navidrome/' >> .gitignore
 
 Create `dev/README.md`:
 ```markdown
-# Crate dev environment
+# Reverb dev environment
 
 1. Drop a few Creative-Commons audio files into `dev/music/` (e.g. tracks from
    https://freemusicarchive.org or the Navidrome demo set). They are gitignored
    except `.gitkeep`.
 2. `docker compose -f docker-compose.dev.yml up` → Navidrome at http://localhost:4533
    (first run: create an admin user in the Navidrome UI).
-3. Run Crate against it (M1 adds the Subsonic adapter):
+3. Run Reverb against it (M1 adds the Subsonic adapter):
    - `cd web && npm run dev`
-   - `go run ./cmd/crate --dev`
+   - `go run ./cmd/reverb --dev`
    Open http://localhost:8090.
 ```
 
@@ -2431,7 +2431,7 @@ git commit -m "ci: go + frontend test/build pipeline"
 
 ## Definition of Done (M0)
 
-- `make build` produces a single `./crate` binary with the SPA embedded.
+- `make build` produces a single `./reverb` binary with the SPA embedded.
 - Fresh run → `/api/v1/setup/status` reports `setupRequired: true`; the SPA shows the setup screen.
 - Setting an admin password logs you in (session cookie) and renders the empty app shell (sidebar + Search/Library/Settings + player bar).
 - Restart → setup no longer required; `/login` accepts the password; wrong password is rejected; `/me` is 401 without a session.

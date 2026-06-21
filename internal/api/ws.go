@@ -7,8 +7,8 @@ import (
 
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
-	"github.com/maxjb-xyz/crate/internal/download"
-	"github.com/maxjb-xyz/crate/internal/events"
+	"github.com/maxjb-xyz/reverb/internal/download"
+	"github.com/maxjb-xyz/reverb/internal/events"
 )
 
 // wsTopics are the EventBus topics streamed to WS clients.

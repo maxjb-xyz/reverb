@@ -9,8 +9,8 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
-	"github.com/maxjb-xyz/crate/internal/registry"
-	"github.com/maxjb-xyz/crate/internal/store/db"
+	"github.com/maxjb-xyz/reverb/internal/registry"
+	"github.com/maxjb-xyz/reverb/internal/store/db"
 )
 
 // adapterInstanceDTO is the browser-facing shape of a configured adapter instance.
@@ -226,22 +226,22 @@ func (s *Server) createUnregistered(name string) (registry.Plugin, bool) {
 }
 
 // overlayEnvSecrets applies the same env secret overrides the composition root uses,
-// so a Test honors CRATE_* secrets when the form omits them. Mirrors *_wiring.go.
+// so a Test honors REVERB_* secrets when the form omits them. Mirrors *_wiring.go.
 func overlayEnvSecrets(name string, cfg map[string]any) {
 	switch name {
 	case "subsonic":
-		if v := os.Getenv("CRATE_LIBRARY_PASSWORD"); v != "" {
+		if v := os.Getenv("REVERB_LIBRARY_PASSWORD"); v != "" {
 			cfg["password"] = v
 		}
 	case "spotify":
-		if v := os.Getenv("CRATE_SPOTIFY_CLIENT_SECRET"); v != "" {
+		if v := os.Getenv("REVERB_SPOTIFY_CLIENT_SECRET"); v != "" {
 			cfg["client_secret"] = v
 		}
 	case "spotdl":
-		if v := os.Getenv("CRATE_SPOTDL_PATH"); v != "" {
+		if v := os.Getenv("REVERB_SPOTDL_PATH"); v != "" {
 			cfg["binary_path"] = v
 		}
-		if v := os.Getenv("CRATE_DOWNLOAD_DIR"); v != "" {
+		if v := os.Getenv("REVERB_DOWNLOAD_DIR"); v != "" {
 			cfg["output_dir"] = v
 		}
 	}
