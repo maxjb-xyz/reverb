@@ -8,9 +8,24 @@ export default {
           '0%, 100%': { height: '4px' },
           '50%': { height: '14px' },
         },
+        'fade-in': {
+          from: { opacity: '0' },
+          to: { opacity: '1' },
+        },
+        'scale-in': {
+          from: { opacity: '0', transform: 'scale(.96)' },
+          to: { opacity: '1', transform: 'scale(1)' },
+        },
+        'slide-in-right': {
+          from: { opacity: '0', transform: 'translateX(16px)' },
+          to: { opacity: '1', transform: 'translateX(0)' },
+        },
       },
       animation: {
         eq: 'eq .9s ease-in-out infinite',
+        'fade-in': 'fade-in .15s ease-out',
+        'scale-in': 'scale-in .16s cubic-bezier(.2,.8,.2,1)',
+        'slide-in-right': 'slide-in-right .2s cubic-bezier(.2,.8,.2,1)',
       },
       colors: {
         accent: 'rgb(var(--color-accent) / <alpha-value>)',

@@ -193,50 +193,58 @@ export default function Admin() {
             </>
           )}
 
-          {/* Add / Edit form panel */}
+          {/* Add / Edit form — centered modal so it's visible right where the
+              action was taken (it used to render off-screen at the page bottom). */}
           {editing && (
-            <div
-              role="dialog"
-              aria-modal="true"
-              aria-label={editing.add ? `Add ${editingName}` : `Edit ${editingName}`}
-              className="rounded-lg border border-border-subtle bg-raised p-6 space-y-4"
-            >
-              <h3 className="text-base font-extrabold text-text-primary">
-                {editing.add ? `Add ${editingName}` : `Edit ${editingName}`}
-              </h3>
-              <AdapterForm
-                name={editingName}
-                schema={editingSchema}
-                initial={editing.instance?.config}
-                submitLabel={editing.add ? 'Add' : 'Save'}
-                onSubmit={async (config) => {
-                  if (editing.add) {
-                    await createAdapter({
-                      type: editing.section,
-                      name: editingName,
-                      enabled: true,
-                      priority: 0,
-                      config,
-                    })
-                  } else if (editing.instance) {
-                    await updateAdapter(editing.instance.id, {
-                      name: editing.instance.name,
-                      enabled: editing.instance.enabled,
-                      priority: editing.instance.priority,
-                      config,
-                    })
-                  }
-                  setEditing(null)
-                  refresh()
-                }}
-              />
-              <button
-                type="button"
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+              <div
+                className="absolute inset-0 bg-black/60 animate-fade-in"
+                aria-hidden="true"
                 onClick={() => setEditing(null)}
-                className="text-sm text-text-muted hover:text-text-secondary transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+              />
+              <div
+                role="dialog"
+                aria-modal="true"
+                aria-label={editing.add ? `Add ${editingName}` : `Edit ${editingName}`}
+                className="relative w-full max-w-md rounded-xl border border-border-subtle bg-raised p-6 space-y-4 shadow-pop animate-scale-in"
               >
-                Cancel
-              </button>
+                <h3 className="text-base font-extrabold text-text-primary">
+                  {editing.add ? `Add ${editingName}` : `Edit ${editingName}`}
+                </h3>
+                <AdapterForm
+                  name={editingName}
+                  schema={editingSchema}
+                  initial={editing.instance?.config}
+                  submitLabel={editing.add ? 'Add' : 'Save'}
+                  onSubmit={async (config) => {
+                    if (editing.add) {
+                      await createAdapter({
+                        type: editing.section,
+                        name: editingName,
+                        enabled: true,
+                        priority: 0,
+                        config,
+                      })
+                    } else if (editing.instance) {
+                      await updateAdapter(editing.instance.id, {
+                        name: editing.instance.name,
+                        enabled: editing.instance.enabled,
+                        priority: editing.instance.priority,
+                        config,
+                      })
+                    }
+                    setEditing(null)
+                    refresh()
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={() => setEditing(null)}
+                  className="text-sm text-text-muted hover:text-text-secondary transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                >
+                  Cancel
+                </button>
+              </div>
             </div>
           )}
         </div>

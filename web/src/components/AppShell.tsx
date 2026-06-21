@@ -76,6 +76,7 @@ export function AppShell() {
               'xl:relative xl:inset-auto xl:z-auto xl:block xl:w-80 xl:flex-none xl:min-h-0',
               // Below xl (900–1200px): fixed overlay, positioned over main content
               'absolute inset-y-0 right-0 z-20 w-80',
+              'animate-slide-in-right',
             ].join(' ')}
           >
             {rightPanel === 'nowplaying' && <NowPlayingPanel />}
