@@ -40,12 +40,19 @@ _Screenshots coming soon._
 
 ## Quick start (Docker Compose)
 
+No clone or build needed — Compose pulls the published image:
+
 ```bash
-git clone https://github.com/maxjb-xyz/reverb.git
-cd reverb
-cp .env.example .env        # fill in secrets (see Configuration)
-docker compose up -d        # builds + runs on http://localhost:8090
+mkdir reverb && cd reverb
+curl -O https://raw.githubusercontent.com/maxjb-xyz/reverb/main/docker-compose.yml
+curl -o .env https://raw.githubusercontent.com/maxjb-xyz/reverb/main/.env.example
+# edit .env to set your secrets (see Configuration)
+docker compose up -d        # pulls ghcr.io/maxjb-xyz/reverb and runs on http://localhost:8090
 ```
+
+Pin a specific version with `REVERB_VERSION=0.1.0` in `.env` (defaults to
+`latest`). Prefer to build from source instead? See
+[Development & contributing](#development--contributing).
 
 Open http://localhost:8090 and complete the **first-run wizard**: set an admin
 password (unless you set `REVERB_ADMIN_PASSWORD` in `.env`), then add your

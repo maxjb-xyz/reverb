@@ -6,9 +6,15 @@ production-ish single-host deployment.
 
 ## Quick start
 
+Compose pulls the published image (`ghcr.io/maxjb-xyz/reverb`) — no source
+checkout or build required:
+
 ```bash
-cp .env.example .env      # fill in secrets
-docker compose up -d      # builds + starts Reverb on :8090
+mkdir reverb && cd reverb
+curl -O https://raw.githubusercontent.com/maxjb-xyz/reverb/main/docker-compose.yml
+curl -o .env https://raw.githubusercontent.com/maxjb-xyz/reverb/main/.env.example
+# edit .env to set secrets; optionally pin REVERB_VERSION=0.1.0 (defaults to latest)
+docker compose up -d      # pulls the image and starts Reverb on :8090
 ```
 
 Open http://localhost:8090 and complete the first-run wizard (set an admin
@@ -85,10 +91,12 @@ docker compose start reverb
 ## Upgrades
 
 ```bash
-git pull                  # or: docker compose pull (if using a published image)
-docker compose build      # rebuild from the new source
+docker compose pull       # fetch the new published image (bump REVERB_VERSION to pin)
 docker compose up -d      # recreate the container
 ```
+
+Building from source instead? Use `git pull && docker compose build && docker
+compose up -d` (with the compose `build:` block uncommented).
 
 Reverb runs SQLite migrations automatically on startup. Back up `./data/reverb.db`
 before a major upgrade.

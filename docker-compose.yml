@@ -7,12 +7,13 @@
 
 services:
   reverb:
-    build:
-      context: .
-      args:
-        VERSION: "${REVERB_VERSION:-dev}"
-    # Or pull a published image instead of building:
-    # image: ghcr.io/maxjb-xyz/reverb:latest
+    # Pull the published image (override the tag with REVERB_VERSION, e.g. 0.1.0).
+    image: ghcr.io/maxjb-xyz/reverb:${REVERB_VERSION:-latest}
+    # To build from source instead, comment out `image:` above and uncomment:
+    # build:
+    #   context: .
+    #   args:
+    #     VERSION: "${REVERB_VERSION:-dev}"
     ports:
       - "8090:8090"
     env_file:
