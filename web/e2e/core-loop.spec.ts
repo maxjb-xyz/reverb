@@ -10,7 +10,7 @@ test('core loop: login -> search everywhere -> download -> in-library -> play', 
 
   // 1) Load: setup not required, not authed -> Login screen.
   await page.goto('/')
-  await expect(page.getByRole('heading', { name: 'Log in to Reverb' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Welcome back' })).toBeVisible()
 
   // 2) Log in. The app reloads on success; /me now returns authed. After the
   //    reload the realtime socket opens and resyncs the download list exactly once
@@ -24,35 +24,43 @@ test('core loop: login -> search everywhere -> download -> in-library -> play', 
   await page.getByRole('button', { name: 'Log in' }).click()
   await initialResync
 
-  // 3) After reload we land on /search (default route). Switch to Everywhere.
-  await expect(page.getByRole('button', { name: 'Everywhere' })).toBeVisible()
-  await page.getByRole('button', { name: 'Everywhere' }).click()
+  // 3) After reload we land on / (Home). Navigate to /search, then switch to Everywhere.
+  //    The Segmented control renders each option as role="tab" inside a role="tablist".
+  await page.goto('/search')
+  await expect(page.getByRole('tab', { name: 'Everywhere' })).toBeVisible()
+  await page.getByRole('tab', { name: 'Everywhere' }).click()
 
   // 4) Search; the SSE mock returns one not-in-library track.
-  await page.getByPlaceholder('Search your library…').fill(externalTrack.title)
+  //    After switching to Everywhere the placeholder becomes "Search everywhere" (no ellipsis).
+  await page.getByPlaceholder('Search everywhere').fill(externalTrack.title)
   await expect(page.getByText(externalTrack.title)).toBeVisible()
 
   // The Download button is present (row is NOT in library — GET /downloads was []).
-  const downloadBtn = page.getByRole('button', { name: `Download ${externalTrack.title}` })
+  // Use exact: true to avoid matching the TrackRow's full accessible name which also
+  // contains the track title.
+  const downloadBtn = page.getByRole('button', { name: `Download ${externalTrack.title}`, exact: true })
   await expect(downloadBtn).toBeVisible()
 
-  // 5) Click Download -> POST /downloads -> queued job-1. The row shows a progress
-  //    indicator. WAIT for that downloading state to render (so the POST's upsert
-  //    has applied) BEFORE sending the WS completion frame — otherwise the POST
-  //    response can resolve after the completion and clobber it back to queued.
+  // 5) Click Download -> POST /downloads -> queued job-1. The row shows a
+  //    "Downloading" badge (no title attribute). WAIT for that downloading state to
+  //    render (so the POST's upsert has applied) BEFORE sending the WS completion
+  //    frame — otherwise the POST response can resolve after the completion and
+  //    clobber it back to queued.
   await downloadBtn.click()
-  await expect(page.getByTitle(/^Downloading/)).toBeVisible()
+  await expect(page.getByText('Downloading')).toBeVisible()
   await ws.complete()
 
-  // The Download/progress state disappears; the in-library ✓ row appears.
+  // The Download/progress state disappears; the in-library button appears.
+  // DownloadAction renders title="In Library" (capital L) on the in-library button.
   await expect(downloadBtn).toHaveCount(0)
-  await expect(page.getByTitle('In library')).toBeVisible()
+  await expect(page.getByTitle('In Library')).toBeVisible()
 
-  // 6) Play: clicking the in-library row plays the synthesized track. The player
-  //    bar shows the title and a Pause button (playing flipped true). The
-  //    one-shot SSE stream closes on completion (SearchStream closes on error),
+  // 6) Play: clicking the in-library button (aria-label="Play <title>") plays the
+  //    synthesized track. The player bar (data-testid="player-bar") shows the title
+  //    and the play/pause button becomes aria-label="Pause" (playing flipped true).
+  //    The one-shot SSE stream closes on completion (SearchStream closes on error),
   //    so the row is stable — a normal click works without reconnect churn.
-  await page.getByRole('button', { name: new RegExp(externalTrack.title) }).first().click()
+  await page.getByRole('button', { name: `Play ${externalTrack.title}`, exact: true }).click()
   await expect(page.getByTestId('player-bar').getByText(externalTrack.title)).toBeVisible()
   await expect(page.getByRole('button', { name: 'Pause' })).toBeVisible()
 })

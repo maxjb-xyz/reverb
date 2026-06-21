@@ -110,6 +110,25 @@ export async function installApiMocks(page: Page, authed: { value: boolean }) {
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(downloadState.jobs) })
   })
 
+  // Adapters list — one enabled spotDL downloader so DownloadAction shows the
+  // Download button (without this it falls through to the "No downloader" badge).
+  await page.route('**/api/v1/adapters', (route: Route) => {
+    if (route.request().method() === 'GET') {
+      const adapters = [
+        {
+          id: 'spotdl-1',
+          type: 'downloader',
+          name: 'spotdl',
+          enabled: true,
+          priority: 0,
+          config: {},
+        },
+      ]
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(adapters) })
+    }
+    return route.continue()
+  })
+
   // Stream proxy → tiny audio body so the <audio> src resolves (no real media).
   await page.route('**/api/v1/stream/**', (route: Route) =>
     route.fulfill({ status: 200, contentType: 'audio/mpeg', body: '' }),
