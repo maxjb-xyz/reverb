@@ -38,6 +38,20 @@ describe('uiStore right-panel slot', () => {
     useUI.getState().closePanel()
     expect(useUI.getState().rightPanel).toBe(null)
   })
+
+  it('togglePanel("nowplaying") opens then closes', () => {
+    useUI.getState().togglePanel('nowplaying')
+    expect(useUI.getState().rightPanel).toBe('nowplaying')
+    useUI.getState().togglePanel('nowplaying')
+    expect(useUI.getState().rightPanel).toBe(null)
+  })
+
+  it('opening "downloads" replaces "nowplaying"', () => {
+    useUI.getState().openPanel('nowplaying')
+    expect(useUI.getState().rightPanel).toBe('nowplaying')
+    useUI.getState().openPanel('downloads')
+    expect(useUI.getState().rightPanel).toBe('downloads')
+  })
 })
 
 describe('uiStore now-playing overlay', () => {

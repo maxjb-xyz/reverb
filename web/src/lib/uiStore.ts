@@ -1,8 +1,9 @@
 import { create } from 'zustand'
 
 // RightPanel models the single right-side slot. M1 ships 'queue'. M3 adds
-// 'downloads' (Download Tray) into the SAME slot — opening one closes the other.
-export type RightPanel = 'queue' | 'downloads' | null
+// 'downloads' (Download Tray). Phase 3 adds 'nowplaying' (desktop Now-Playing
+// panel). All three share the same slot — opening one closes the other.
+export type RightPanel = 'queue' | 'downloads' | 'nowplaying' | null
 
 interface UIStore {
   rightPanel: RightPanel
