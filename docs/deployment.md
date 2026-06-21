@@ -28,18 +28,24 @@ password unless you provided `REVERB_ADMIN_PASSWORD` in `.env`), then connect:
 
 ## Folders
 
-Reverb bind-mounts two host folders (declared in `docker-compose.yml`):
+Reverb stores two things:
 
-- `./data` → `/data` — app state + the SQLite DB (`/data/reverb.db`).
-- `./music` → `/music` — your music library, where spotDL downloads land and your
-  library server scans. To use an existing library, change `./music` to its path
-  (e.g. `/srv/music:/music`).
+- **App state + SQLite DB** → the `reverb-data` **named volume** (`/data`). It needs
+  no setup — the volume inherits the container's non-root ownership, so the DB just
+  opens. (See [Backups](#backups) for copying it out.)
+- **Your music library** → the `./music` **host bind mount** (`/music`), where spotDL
+  downloads land and your library server scans. To use an existing library, change
+  `./music` to its path in `docker-compose.yml` (e.g. `- /srv/music:/music`).
 
-The container **runs as root**, so it reads/writes these bind mounts regardless of
-their ownership — no `chown`, no `PUID`/`PGID`, nothing to configure. The one
-tradeoff: files spotDL downloads into `./music` are owned by `root` on the host (a
-library server scanning them still reads them fine; you'll just need `sudo` to
-move/delete them by hand).
+The container **runs non-root as uid 1000** (the typical first host user), so a
+music folder you created/own is writable with **no `chown` and no `PUID`/`PGID`
+config**. If your library is owned by a *different* user (e.g. a NAS share or a
+service account), either `chown` it to `1000:1000` or add a `user:` line to the
+`reverb` service matching its owner:
+
+```yaml
+    user: "1001:1001"   # set to `id -u`:`id -g` of your music folder's owner
+```
 
 ## The shared music folder
 
@@ -89,17 +95,21 @@ server {
 
 ## Backups
 
-- `./data` holds the SQLite database (`/data/reverb.db`) plus app state — the only
-  stateful Reverb data worth backing up.
-- Your `MUSIC_DIR` holds the downloaded audio (managed by your library server).
+- The `reverb-data` volume holds the SQLite database (`/data/reverb.db`) plus app
+  state — the only stateful Reverb data worth backing up.
+- Your `./music` folder holds the downloaded audio (managed by your library server).
 
-Since `./data` is a host folder, a cold backup is just a copy:
+Copy the DB out of the named volume (cold copy is simplest):
 
 ```bash
 docker compose stop reverb
-cp ./data/reverb.db ./backups/reverb-$(date +%F).db
+docker run --rm -v reverb_reverb-data:/data -v "$PWD/backups:/backup" \
+  busybox cp /data/reverb.db /backup/reverb-$(date +%F).db
 docker compose start reverb
 ```
+
+(The volume is `<project>_reverb-data` — `reverb_reverb-data` when the compose
+directory is `reverb`; run `docker volume ls` to confirm.)
 
 ## Upgrades
 

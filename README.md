@@ -50,11 +50,12 @@ curl -o .env https://raw.githubusercontent.com/maxjb-xyz/reverb/main/.env.exampl
 docker compose up -d        # pulls ghcr.io/maxjb-xyz/reverb and runs on http://localhost:8090
 ```
 
-That's it — no permission setup. The DB lives in `./data` and music in `./music`
-on your **host filesystem** (point `./music` at an existing library by editing the
-volume line in `docker-compose.yml`). **spotDL is bundled and pre-configured as the
-downloader**, so downloading works immediately. Pin a version with
-`REVERB_VERSION=0.1.0` in `.env` (defaults to `latest`). Prefer to build from
+That's it. Reverb runs **non-root** (uid 1000); your music library is the `./music`
+folder on the **host filesystem** (point it at an existing library by editing the
+volume line in `docker-compose.yml`), and the database lives in a managed Docker
+volume — no permission setup for the common case. **spotDL is bundled and
+pre-configured as the downloader**, so downloading works immediately. Pin a version
+with `REVERB_VERSION=0.1.0` in `.env` (defaults to `latest`). Prefer to build from
 source? See [Development & contributing](#development--contributing).
 
 Open http://localhost:8090 and complete the **first-run wizard**: set an admin

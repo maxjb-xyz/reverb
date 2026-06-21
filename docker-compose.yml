@@ -19,11 +19,14 @@ services:
     env_file:
       - .env
     volumes:
-      # App state + SQLite DB (kept on the host so it's easy to back up).
-      - ./data:/data
-      # Your music library. spotDL downloads land here and your library server
-      # scans it. To use an EXISTING library, change ./music to its path, e.g.
-      #   - /srv/music:/music
+      # App state + SQLite DB. A named volume needs zero setup — it inherits the
+      # container's non-root (uid 1000) ownership so the DB just opens.
+      - reverb-data:/data
+      # Your music library on the host. spotDL downloads land here and your
+      # library server scans it. To use an EXISTING library, change ./music to its
+      # path, e.g. `- /srv/music:/music`. Reverb runs as uid 1000, so this folder
+      # must be writable by uid 1000 (it is if you created/own it). If it's owned
+      # by a different user, add a `user: "<uid>:<gid>"` line to this service.
       - ./music:/music
     restart: unless-stopped
 
@@ -42,3 +45,6 @@ services:
   #     - ./music:/music:ro
   #     - ./navidrome-data:/data
   #   restart: unless-stopped
+
+volumes:
+  reverb-data:
