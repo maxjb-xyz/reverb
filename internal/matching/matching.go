@@ -166,9 +166,17 @@ func (s *Service) resolve(ext core.ExternalResult, cands []core.Track) core.Matc
 		if Normalize(c.Title) != nTitle || Normalize(c.Artist) != nArtist {
 			continue
 		}
-		delta := absInt(c.DurationMs - ext.DurationMs)
-		if delta > DurationToleranceMs {
-			continue
+		// Duration only DISAMBIGUATES; it must not REJECT when the external side
+		// has no duration. The post-download re-match carries no DurationMs (the
+		// job doesn't store one), so ext.DurationMs is 0 — without this guard every
+		// candidate's delta is its full length and nothing ever matches, leaving
+		// downloads permanently unlinked (no play / no cover).
+		delta := 0
+		if ext.DurationMs > 0 {
+			delta = absInt(c.DurationMs - ext.DurationMs)
+			if delta > DurationToleranceMs {
+				continue
+			}
 		}
 		albumMatch := nAlbum != "" && Normalize(c.Album) == nAlbum
 		// Prefer smaller delta; on tie, prefer album match.

@@ -11,10 +11,13 @@ interface TrackRowProps {
   active?: boolean
   onPlay: () => void
   right?: ReactNode
+  /** Direct cover image URL (e.g. an external Spotify image). Overrides the
+   *  library coverArtId proxy URL — external results have a URL, not a cover id. */
+  coverSrc?: string
 }
 
-export function TrackRow({ track, index, active = false, onPlay, right }: TrackRowProps) {
-  const src = track.coverArtId ? coverUrl(track.coverArtId, 80) : undefined
+export function TrackRow({ track, index, active = false, onPlay, right, coverSrc }: TrackRowProps) {
+  const src = coverSrc ?? (track.coverArtId ? coverUrl(track.coverArtId, 80) : undefined)
 
   return (
     <button

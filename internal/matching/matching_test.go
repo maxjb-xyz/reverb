@@ -86,6 +86,25 @@ func TestMatchAgainstFixtures(t *testing.T) {
 	}
 }
 
+func TestMatchZeroDurationStillMatches(t *testing.T) {
+	// The post-download re-match carries no DurationMs (0). Duration must only
+	// disambiguate, never reject — otherwise a title+artist match is dropped and
+	// the download is never linked (no play / no cover).
+	cands := []core.Track{{ID: "lib-1", Title: "COMË N GO", Artist: "Yeat", Album: "Dangerous Summer", DurationMs: 180000}}
+	svc := NewService(fakeLib{tracks: cands}, newMemCache(), func(context.Context) (int64, error) { return 1, nil })
+	ext := core.ExternalResult{
+		Source: "spotify", ExternalID: "sp-x", Type: core.EntityTrack,
+		Title: "COMË N GO", Artist: "Yeat", Album: "Dangerous Summer", DurationMs: 0,
+	}
+	res, err := svc.Match(context.Background(), ext)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Status != core.MatchInLibrary || res.LibraryTrackID != "lib-1" {
+		t.Fatalf("zero-duration re-match should link to lib-1, got %+v", res)
+	}
+}
+
 func TestMatchCacheFirstAndInvalidation(t *testing.T) {
 	cands := []core.Track{{ID: "t1", Title: "Song", Artist: "A", Album: "X", DurationMs: 200000, ISRC: "USX1"}}
 	cache := newMemCache()

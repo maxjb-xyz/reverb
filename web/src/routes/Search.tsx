@@ -284,6 +284,7 @@ export default function Search() {
                     <TrackRow
                       key={`${r.source}:${r.externalId}`}
                       track={displayTrack}
+                      coverSrc={r.coverUrl || undefined}
                       active={!!matchedId && currentTrackId === matchedId}
                       onPlay={() => {
                         if (syntheticTrack) {
