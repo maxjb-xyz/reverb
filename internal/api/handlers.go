@@ -1,7 +1,6 @@
 package api
 
 import (
-	"context"
 	"encoding/json"
 	"net/http"
 
@@ -57,7 +56,7 @@ func (s *Server) handleSetupAdmin(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not set password"})
 		return
 	}
-	s.issueSession(w, r.Context())
+	s.issueSession(w, r)
 }
 
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
@@ -71,22 +70,22 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid credentials"})
 		return
 	}
-	s.issueSession(w, r.Context())
+	s.issueSession(w, r)
 }
 
-func (s *Server) issueSession(w http.ResponseWriter, ctx context.Context) {
-	tok, err := s.deps.Auth.CreateSession(ctx)
+func (s *Server) issueSession(w http.ResponseWriter, r *http.Request) {
+	tok, err := s.deps.Auth.CreateSession(r.Context())
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "session error"})
 		return
 	}
-	s.setSessionCookie(w, tok, s.deps.Dev)
+	s.setSessionCookie(w, r, tok)
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
 func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 	_ = s.deps.Auth.Logout(r.Context(), s.tokenFromRequest(r))
-	s.setSessionCookie(w, "", s.deps.Dev)
+	s.setSessionCookie(w, r, "")
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 

@@ -2,6 +2,7 @@ package api
 
 import (
 	"net/http"
+	"strings"
 )
 
 const sessionCookie = "reverb_session"
@@ -32,7 +33,18 @@ func (s *Server) requireAuth(next http.Handler) http.Handler {
 	})
 }
 
-func (s *Server) setSessionCookie(w http.ResponseWriter, token string, dev bool) {
+// cookieSecure reports whether the session cookie should carry the Secure flag,
+// based on the real request scheme. Direct TLS or an https-terminating reverse
+// proxy (X-Forwarded-Proto: https) → Secure. Plain http (LAN, no TLS) → not Secure,
+// otherwise the browser silently drops the cookie and every authed request 401s.
+func cookieSecure(r *http.Request) bool {
+	if r.TLS != nil {
+		return true
+	}
+	return strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https")
+}
+
+func (s *Server) setSessionCookie(w http.ResponseWriter, r *http.Request, token string) {
 	maxAge := 30 * 24 * 3600
 	if token == "" {
 		maxAge = -1 // delete the cookie
@@ -43,7 +55,7 @@ func (s *Server) setSessionCookie(w http.ResponseWriter, token string, dev bool)
 		Path:     "/",
 		HttpOnly: true,
 		SameSite: http.SameSiteLaxMode,
-		Secure:   !dev,
+		Secure:   cookieSecure(r),
 		MaxAge:   maxAge,
 	})
 }
