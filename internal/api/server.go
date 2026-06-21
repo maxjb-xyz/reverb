@@ -65,6 +65,7 @@ type Deps struct {
 	Adapters         AdapterStore
 	ConfigDirty      ConfigDirty
 	Dev              bool
+	Version          string
 }
 
 type Server struct {
@@ -91,6 +92,7 @@ func (s *Server) routes() {
 		r.Post("/auth/login", s.handleLogin)
 		r.Post("/auth/logout", s.handleLogout)
 		r.Get("/openapi.yaml", s.handleOpenAPI)
+		r.Get("/version", s.handleVersion)
 
 		// protected
 		r.Group(func(pr chi.Router) {

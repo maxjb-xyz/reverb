@@ -23,6 +23,8 @@ import (
 )
 
 func main() {
+	log.Printf("crate %s starting", version)
+
 	cfg, err := config.Load(os.Args[1:], os.Getenv)
 	if err != nil {
 		log.Fatal(err)
@@ -126,6 +128,7 @@ func main() {
 		Events:      bus,
 		ConfigDirty: dirty,
 		Dev:         cfg.Dev,
+		Version:     version,
 	}
 	if aggregator != nil {
 		deps.SearchAggregator = aggregator
