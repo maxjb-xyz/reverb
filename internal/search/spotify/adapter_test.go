@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/maxjb-xyz/reverb/internal/core"
@@ -132,4 +133,36 @@ func TestGetAlbumIncludesTracks(t *testing.T) {
 func TestSpotifyConformance(t *testing.T) {
 	a := newTestAdapter(t)
 	search.RunConformance(t, a)
+}
+
+func TestGetArtistDiscographyMapsAndFilters(t *testing.T) {
+	page := `{"items":[
+	  {"id":"al1","name":"OK Computer","album_type":"album","total_tracks":12,"release_date":"1997-05-21","images":[{"url":"http://img/1"}]},
+	  {"id":"s1","name":"Creep","album_type":"single","total_tracks":1,"release_date":"1992-09-21","images":[{"url":"http://img/2"}]}
+	],"next":null}`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/artists/") && strings.HasSuffix(r.URL.Path, "/albums") {
+			_, _ = w.Write([]byte(page))
+			return
+		}
+		_, _ = w.Write([]byte(`{"access_token":"t","expires_in":3600}`))
+	}))
+	defer srv.Close()
+	a := New().WithBaseURLs(srv.URL, srv.URL)
+	if err := a.Init(map[string]any{"client_id": "x", "client_secret": "y"}); err != nil {
+		t.Fatal(err)
+	}
+	albums, err := a.GetArtistDiscography(context.Background(), "art1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(albums) != 2 {
+		t.Fatalf("want 2 albums, got %d", len(albums))
+	}
+	if albums[0].Name != "OK Computer" || albums[0].Kind != "album" || albums[0].TotalTracks != 12 || albums[0].Year != 1997 {
+		t.Fatalf("bad album mapping: %+v", albums[0])
+	}
+	if albums[1].Kind != "single" {
+		t.Fatalf("want single, got %q", albums[1].Kind)
+	}
 }

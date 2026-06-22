@@ -13,8 +13,9 @@ import (
 )
 
 var (
-	_ search.SearchSource = (*Adapter)(nil)
-	_ registry.Plugin     = (*Adapter)(nil)
+	_ search.SearchSource       = (*Adapter)(nil)
+	_ registry.Plugin           = (*Adapter)(nil)
+	_ search.DiscographyProvider = (*Adapter)(nil)
 )
 
 const (
@@ -175,6 +176,45 @@ func (a *Adapter) Search(ctx context.Context, q string, t core.EntityType) ([]co
 				out = append(out, a.mapTrack(tr))
 			}
 		}
+	}
+	return out, nil
+}
+
+// GetArtistDiscography returns the artist's Albums + Singles/EPs (no tracklists).
+// It follows Spotify pagination and asks only for album,single groups so
+// compilations and "appears on" never reach the dedup stage.
+func (a *Adapter) GetArtistDiscography(ctx context.Context, externalID string) ([]core.ExternalAlbum, error) {
+	out := []core.ExternalAlbum{}
+	params := url.Values{}
+	params.Set("include_groups", "album,single")
+	params.Set("limit", "50")
+	offset := 0
+	for {
+		params.Set("offset", strconv.Itoa(offset))
+		var resp artistAlbumsResponse
+		if err := a.client.apiGet(ctx, "/artists/"+url.PathEscape(externalID)+"/albums", params, &resp); err != nil {
+			return nil, err
+		}
+		for _, it := range resp.Items {
+			kind := "album"
+			if it.AlbumType == "single" {
+				kind = "single"
+			}
+			out = append(out, core.ExternalAlbum{
+				Source:      "spotify",
+				ExternalID:  it.ID,
+				Name:        it.Name,
+				CoverURL:    firstImage(it.Images),
+				Year:        yearFromReleaseDate(it.ReleaseDate),
+				Kind:        kind,
+				TotalTracks: it.TotalTracks,
+				Tracks:      []core.ExternalResult{},
+			})
+		}
+		if resp.Next == "" || len(resp.Items) == 0 {
+			break
+		}
+		offset += len(resp.Items)
 	}
 	return out, nil
 }

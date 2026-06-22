@@ -48,6 +48,21 @@ type fullAlbumDTO struct {
 	} `json:"tracks"`
 }
 
+// artistAlbumsResponse is /artists/{id}/albums (paged).
+type artistAlbumsResponse struct {
+	Items []artistAlbumDTO `json:"items"`
+	Next  string           `json:"next"`
+}
+
+type artistAlbumDTO struct {
+	ID          string     `json:"id"`
+	Name        string     `json:"name"`
+	AlbumType   string     `json:"album_type"`   // "album" | "single" | "compilation"
+	TotalTracks int        `json:"total_tracks"`
+	ReleaseDate string     `json:"release_date"`
+	Images      []imageDTO `json:"images"`
+}
+
 // searchResponse mirrors GET /v1/search. Only the requested type is populated.
 type searchResponse struct {
 	Tracks  *struct{ Items []trackDTO } `json:"tracks"`
