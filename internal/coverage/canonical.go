@@ -10,7 +10,7 @@ import (
 	"github.com/maxjb-xyz/reverb/internal/matching"
 )
 
-var editionMarkers = []string{"deluxe", "remaster", "remastered", "expanded", "anniversary", "explicit", "deluxe edition", "special edition"}
+var editionMarkers = []string{"deluxe", "remaster", "expanded", "anniversary", "explicit", "special edition"}
 
 // editionParenRe matches a trailing parenthetical that contains an edition marker.
 var editionParenRe = regexp.MustCompile(`\s*\([^)]*\)\s*$`)
