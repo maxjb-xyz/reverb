@@ -291,6 +291,9 @@ func TestAlbumDetailLibraryDegradesWhenNoMatch(t *testing.T) {
 	if det.OwnedCount != 3 {
 		t.Errorf("OwnedCount: want 3, got %d", det.OwnedCount)
 	}
+	if det.LibraryAlbumID != "libAlbum1" {
+		t.Errorf("LibraryAlbumID: want %q, got %q", "libAlbum1", det.LibraryAlbumID)
+	}
 	for _, tr := range det.Tracks {
 		if tr.State != core.CoverageFull {
 			t.Errorf("fallback track %q: want state:full, got %s", tr.Title, tr.State)

@@ -262,6 +262,7 @@ func (s *Service) AlbumDetail(ctx context.Context, source, id string) (core.Albu
 			det.ArtistID = al.ArtistID
 			det.CoverArtID = al.CoverArtID
 			det.Year = al.Year
+			det.CoverURL = ""
 			return det, nil
 		}
 		// Fallback: no external match — return all library tracks as owned.
