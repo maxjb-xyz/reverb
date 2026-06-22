@@ -110,7 +110,7 @@ func (s *Service) Detail(ctx context.Context, id string) (core.SyncedPlaylistDet
 		if res.Status == core.MatchInLibrary && res.LibraryTrackID != "" {
 			det.OwnedCount++
 			dt.State = core.CoverageFull
-			dt.LibraryTrack = &core.Track{ID: res.LibraryTrackID, Title: tr.Title, Artist: tr.Artist, Album: tr.Album, DurationMs: tr.DurationMs}
+			dt.LibraryTrack = &core.Track{ID: res.LibraryTrackID, Title: tr.Title, Artist: tr.Artist, Album: tr.Album, DurationMs: tr.DurationMs, ArtistID: res.ArtistID, AlbumID: res.AlbumID, CoverArtID: res.CoverArtID}
 		} else {
 			dt.State = core.CoverageNone
 			ref := core.ExternalTrackRef{Source: tr.Source, ExternalID: tr.ExternalID, Title: tr.Title, Artist: tr.Artist, Album: tr.Album, ISRC: tr.ISRC, DurationMs: tr.DurationMs}

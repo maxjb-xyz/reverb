@@ -32,16 +32,18 @@ function relativeTime(unixSeconds: number): string {
   return `${diffDays}d ago`
 }
 
-/** Build a display-only Track from a missing AlbumDetailTrack (no library id). */
+/** Build a display Track from an AlbumDetailTrack. When the row is owned, thread the
+ *  matched library track's ids through so the artist + album render as clickable links
+ *  and the cover resolves; otherwise these fall back to '' (plain text, no link). */
 function asTrack(t: AlbumDetailTrack): Track {
   return {
     id: '',
     title: t.title,
     album: t.album ?? '',
-    albumId: '',
+    albumId: t.libraryTrack?.albumId ?? '',
     artist: t.artist,
-    artistId: '',
-    coverArtId: '',
+    artistId: t.libraryTrack?.artistId ?? '',
+    coverArtId: t.libraryTrack?.coverArtId ?? '',
     trackNumber: t.trackNumber,
     discNumber: 1,
     durationMs: t.durationMs,

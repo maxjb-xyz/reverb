@@ -45,6 +45,7 @@ func (m *memCache) UpsertMatchCache(ctx context.Context, arg db.UpsertMatchCache
 		Source: arg.Source, ExternalID: arg.ExternalID, LibraryTrackID: arg.LibraryTrackID,
 		Method: arg.Method, Confidence: arg.Confidence, Isrc: arg.Isrc, Mbid: arg.Mbid,
 		DurationMs: arg.DurationMs, LibraryVersion: arg.LibraryVersion,
+		ArtistID: arg.ArtistID, AlbumID: arg.AlbumID, CoverArtID: arg.CoverArtID,
 	}
 	return nil
 }
@@ -288,6 +289,45 @@ func TestArtistTokenSet(t *testing.T) {
 	got := artistTokenSet("Frédéric Chopin/Arthur Rubinstein")
 	if !got["frederic chopin"] || !got["arthur rubinstein"] {
 		t.Errorf("artistTokenSet(composite classical)=%v want both ≥3-char tokens present", got)
+	}
+}
+
+// TestMatchThreadsCandidateMetadata asserts a matched owned track's MatchResult
+// carries the candidate's ArtistID/AlbumID/CoverArtID (so the synthesized owned
+// LibraryTrack can render clickable links + a real cover), on BOTH a fresh match
+// (fuzzy + ISRC rungs) and a cache HIT (reconstructed from the persisted row).
+func TestMatchThreadsCandidateMetadata(t *testing.T) {
+	cands := []core.Track{{
+		ID: "lib-1", Title: "Song", Artist: "A", Album: "X", DurationMs: 200000, ISRC: "USX1",
+		ArtistID: "ar-1", AlbumID: "al-1", CoverArtID: "cv-1",
+	}}
+	cache := newMemCache()
+	svc := NewService(fakeLib{tracks: cands}, cache, func(context.Context) (int64, error) { return 1, nil })
+	ext := core.ExternalResult{Source: "spotify", ExternalID: "sp1", Title: "Song", Artist: "A", DurationMs: 200000, ISRC: "USX1", Type: core.EntityTrack}
+
+	fresh, err := svc.Match(context.Background(), ext)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fresh.Status != core.MatchInLibrary {
+		t.Fatalf("fresh: expected in_library, got %+v", fresh)
+	}
+	if fresh.ArtistID != "ar-1" || fresh.AlbumID != "al-1" || fresh.CoverArtID != "cv-1" {
+		t.Fatalf("fresh metadata not threaded: %+v", fresh)
+	}
+
+	// Cache HIT: the library is now empty, so a non-cached path would lose the ids.
+	// The persisted row must reconstruct them.
+	svc.lib = fakeLib{tracks: nil}
+	hit, err := svc.Match(context.Background(), ext)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hit.Status != core.MatchInLibrary {
+		t.Fatalf("hit: expected cached positive, got %+v", hit)
+	}
+	if hit.ArtistID != "ar-1" || hit.AlbumID != "al-1" || hit.CoverArtID != "cv-1" {
+		t.Fatalf("cache HIT lost candidate metadata: %+v", hit)
 	}
 }
 

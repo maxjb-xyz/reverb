@@ -176,6 +176,17 @@ describe('SyncedPlaylist page', () => {
     expect(screen.getByText(/1 missing/)).toBeInTheDocument()
   })
 
+  it('owned rows render artist + album as links (asTrack threads libraryTrack ids)', async () => {
+    await renderLoaded()
+    // track1/track2 carry makeTrack defaults (artistId 'ar1', albumId 'al1'); asTrack
+    // now wires those onto the display Track so TrackRow renders both as links.
+    const albumLinks = screen.getAllByRole('link', { name: 'Playlist A' })
+    expect(albumLinks.length).toBeGreaterThanOrEqual(1)
+    expect(albumLinks.every((l) => l.getAttribute('href') === '/album/library/al1')).toBe(true)
+    const artistLink = screen.getByRole('link', { name: 'Artist A' })
+    expect(artistLink).toHaveAttribute('href', '/artist/library/ar1')
+  })
+
   it('shows "Synced playlist" eyebrow', async () => {
     await renderLoaded()
     expect(screen.getByText('Synced playlist')).toBeInTheDocument()

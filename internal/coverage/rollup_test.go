@@ -8,11 +8,18 @@ import (
 	"github.com/maxjb-xyz/reverb/internal/core"
 )
 
-type fakeMatcher struct{ owned map[string]string } // externalID -> libraryTrackID ("" = miss)
+type fakeMatcher struct {
+	owned map[string]string      // externalID -> libraryTrackID ("" = miss)
+	meta  map[string]core.Track  // externalID -> matched candidate metadata (optional)
+}
 
 func (f fakeMatcher) Match(_ context.Context, e core.ExternalResult) (core.MatchResult, error) {
 	if id, ok := f.owned[e.ExternalID]; ok && id != "" {
-		return core.MatchResult{Status: core.MatchInLibrary, LibraryTrackID: id}, nil
+		md := f.meta[e.ExternalID]
+		return core.MatchResult{
+			Status: core.MatchInLibrary, LibraryTrackID: id,
+			ArtistID: md.ArtistID, AlbumID: md.AlbumID, CoverArtID: md.CoverArtID,
+		}, nil
 	}
 	return core.MatchResult{Status: core.MatchNotInLibrary}, nil
 }

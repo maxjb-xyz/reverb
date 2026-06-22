@@ -27,6 +27,12 @@ type MatchResult struct {
 	LibraryTrackID string      `json:"libraryTrackId"`
 	Method         MatchMethod `json:"method"`
 	Confidence     float64     `json:"confidence"`
+	// Metadata of the matched library candidate, threaded through so the synthesized
+	// owned LibraryTrack can carry clickable artist/album links and a real cover.
+	// Set only when Status == MatchInLibrary; reconstructed from match_cache on a HIT.
+	ArtistID   string `json:"artistId,omitempty"`
+	AlbumID    string `json:"albumId,omitempty"`
+	CoverArtID string `json:"coverArtId,omitempty"`
 }
 
 // ExternalResult is one search hit from an external SearchSource. ISRC and MBID

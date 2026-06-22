@@ -1,12 +1,12 @@
 -- name: GetMatchCache :one
-SELECT source, external_id, library_track_id, method, confidence, isrc, mbid, duration_ms, library_version, matched_at
+SELECT source, external_id, library_track_id, method, confidence, isrc, mbid, duration_ms, library_version, matched_at, artist_id, album_id, cover_art_id
 FROM match_cache
 WHERE source = ? AND external_id = ?;
 
 -- name: UpsertMatchCache :exec
 INSERT INTO match_cache (
-    source, external_id, library_track_id, method, confidence, isrc, mbid, duration_ms, library_version, matched_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, unixepoch())
+    source, external_id, library_track_id, method, confidence, isrc, mbid, duration_ms, library_version, matched_at, artist_id, album_id, cover_art_id
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, unixepoch(), ?, ?, ?)
 ON CONFLICT(source, external_id) DO UPDATE SET
     library_track_id = excluded.library_track_id,
     method           = excluded.method,
@@ -15,7 +15,10 @@ ON CONFLICT(source, external_id) DO UPDATE SET
     mbid             = excluded.mbid,
     duration_ms      = excluded.duration_ms,
     library_version  = excluded.library_version,
-    matched_at       = excluded.matched_at;
+    matched_at       = excluded.matched_at,
+    artist_id        = excluded.artist_id,
+    album_id         = excluded.album_id,
+    cover_art_id     = excluded.cover_art_id;
 
 -- name: DeleteMatchCacheBySource :exec
 DELETE FROM match_cache WHERE source = ?;

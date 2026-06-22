@@ -264,8 +264,15 @@ func TestAlbumDetailLibraryMergesFullTracklist(t *testing.T) {
 		},
 		albums: map[string]core.ExternalAlbum{"AL": extAlbum},
 	}
-	// matcher owns et1 and et2 but not et3
-	m := fakeMatcher{owned: map[string]string{"et1": "lt1", "et2": "lt2"}}
+	// matcher owns et1 and et2 but not et3; the matched candidates carry artist/
+	// album/cover ids that must be threaded onto the synthesized LibraryTrack.
+	m := fakeMatcher{
+		owned: map[string]string{"et1": "lt1", "et2": "lt2"},
+		meta: map[string]core.Track{
+			"et1": {ArtistID: "ar1", AlbumID: "al1", CoverArtID: "cv1"},
+			"et2": {ArtistID: "ar2", AlbumID: "al2", CoverArtID: "cv2"},
+		},
+	}
 	svc := NewService(disco, m, fakeLibrary{}, newMemCache(), func() int64 { return 1 }, func(context.Context) (int64, error) { return 1, nil })
 	det, err := svc.AlbumDetail(context.Background(), "library", "libAlbum1")
 	if err != nil {
@@ -301,6 +308,14 @@ func TestAlbumDetailLibraryMergesFullTracklist(t *testing.T) {
 		if tr.CoverURL != wantCover {
 			t.Errorf("track[%d] CoverURL: want %q, got %q", i, wantCover, tr.CoverURL)
 		}
+	}
+	// Owned rows must thread the matched candidate's artist/album/cover ids onto the
+	// synthesized LibraryTrack (so the FE renders clickable artist + album links).
+	if lt := det.Tracks[0].LibraryTrack; lt == nil || lt.ArtistID != "ar1" || lt.AlbumID != "al1" || lt.CoverArtID != "cv1" {
+		t.Errorf("track[0] LibraryTrack metadata not threaded: %+v", lt)
+	}
+	if lt := det.Tracks[1].LibraryTrack; lt == nil || lt.ArtistID != "ar2" || lt.AlbumID != "al2" || lt.CoverArtID != "cv2" {
+		t.Errorf("track[1] LibraryTrack metadata not threaded: %+v", lt)
 	}
 }
 

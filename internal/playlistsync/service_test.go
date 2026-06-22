@@ -83,11 +83,17 @@ func (f *fakeSource) GetPlaylist(ctx context.Context, externalID string) (core.E
 type fakeMatcher struct {
 	// owned maps ExternalID → library track id
 	owned map[string]string
+	// meta optionally carries the matched candidate's artist/album/cover ids.
+	meta map[string]core.Track
 }
 
 func (m fakeMatcher) Match(_ context.Context, ext core.ExternalResult) (core.MatchResult, error) {
 	if libID, ok := m.owned[ext.ExternalID]; ok {
-		return core.MatchResult{Status: core.MatchInLibrary, LibraryTrackID: libID, Method: core.MatchISRC, Confidence: 1.0}, nil
+		md := m.meta[ext.ExternalID]
+		return core.MatchResult{
+			Status: core.MatchInLibrary, LibraryTrackID: libID, Method: core.MatchISRC, Confidence: 1.0,
+			ArtistID: md.ArtistID, AlbumID: md.AlbumID, CoverArtID: md.CoverArtID,
+		}, nil
 	}
 	return core.MatchResult{Status: core.MatchNotInLibrary}, nil
 }
@@ -238,7 +244,10 @@ func TestImportThenDetailComputesOwnership(t *testing.T) {
 	src := &fakeSource{playlists: map[string]core.ExternalPlaylist{
 		"PL": {Source: "spotify", ExternalID: "PL", Name: "Chill", Tracks: []core.ExternalResult{track("t1"), track("t2")}},
 	}}
-	m := fakeMatcher{owned: map[string]string{"t1": "L1"}} // t2 missing
+	m := fakeMatcher{
+		owned: map[string]string{"t1": "L1"}, // t2 missing
+		meta:  map[string]core.Track{"t1": {ArtistID: "ar1", AlbumID: "al1", CoverArtID: "cv1"}},
+	}
 	svc := NewService(src, m, &fakeDownloader{}, newMemStore(), func() int64 { return 100 }, seqID())
 	det, err := svc.Import(context.Background(), "https://open.spotify.com/playlist/PL", false)
 	if err != nil {
@@ -249,6 +258,11 @@ func TestImportThenDetailComputesOwnership(t *testing.T) {
 	}
 	if det.Tracks[0].State != core.CoverageFull || det.Tracks[1].State != core.CoverageNone {
 		t.Fatalf("bad ownership: %+v", det.Tracks)
+	}
+	// The owned row's synthesized LibraryTrack must thread the matched candidate's
+	// artist/album/cover ids so the FE renders clickable artist + album links.
+	if lt := det.Tracks[0].LibraryTrack; lt == nil || lt.ArtistID != "ar1" || lt.AlbumID != "al1" || lt.CoverArtID != "cv1" {
+		t.Fatalf("owned row LibraryTrack metadata not threaded: %+v", lt)
 	}
 }
 

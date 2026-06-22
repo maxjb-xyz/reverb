@@ -80,6 +80,9 @@ type MatchCache struct {
 	DurationMs     int64          `json:"duration_ms"`
 	LibraryVersion int64          `json:"library_version"`
 	MatchedAt      int64          `json:"matched_at"`
+	ArtistID       string         `json:"artist_id"`
+	AlbumID        string         `json:"album_id"`
+	CoverArtID     string         `json:"cover_art_id"`
 }
 
 type Session struct {

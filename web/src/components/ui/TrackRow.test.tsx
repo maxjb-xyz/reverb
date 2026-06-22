@@ -129,6 +129,33 @@ describe('TrackRow', () => {
     expect(screen.queryByRole('link', { name: 'Radiohead' })).toBeNull()
   })
 
+  // ── Album link ──────────────────────────────────────────────────────────────
+
+  it('renders album as a link to /album/library/:albumId when albumId is present', () => {
+    renderRow({ onPlay: vi.fn() })
+    const link = screen.getByRole('link', { name: 'OK Computer' })
+    expect(link).toBeInTheDocument()
+    expect(link).toHaveAttribute('href', '/album/library/alb-1')
+  })
+
+  it('clicking the album link does NOT call onPlay', () => {
+    const onPlay = vi.fn()
+    renderRow({ onPlay })
+    const link = screen.getByRole('link', { name: 'OK Computer' })
+    fireEvent.click(link)
+    expect(onPlay).not.toHaveBeenCalled()
+  })
+
+  it('renders album as plain text when albumId is empty', () => {
+    render(
+      <MemoryRouter>
+        <TrackRow track={{ ...track, albumId: '' }} onPlay={vi.fn()} />
+      </MemoryRouter>,
+    )
+    expect(screen.getByText('OK Computer')).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'OK Computer' })).toBeNull()
+  })
+
   // ── Active / now-playing treatment ───────────────────────────────────────
 
   it('applies text-accent when active', () => {

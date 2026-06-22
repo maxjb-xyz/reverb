@@ -102,7 +102,18 @@ export function TrackRow({ track, index, active = false, onPlay, right, coverSrc
 
       {/* Album */}
       <span className="truncate text-sm text-text-secondary hidden md:block">
-        {track.album}
+        {track.albumId ? (
+          <Link
+            to={`/album/library/${track.albumId}`}
+            onClick={(e) => e.stopPropagation()}
+            onDoubleClick={(e) => e.stopPropagation()}
+            className="hover:underline focus-visible:outline-none focus-visible:underline"
+          >
+            {track.album}
+          </Link>
+        ) : (
+          track.album
+        )}
       </span>
 
       {/* Right slot (Phase 5: download badge) */}

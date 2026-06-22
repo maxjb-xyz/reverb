@@ -185,6 +185,20 @@ describe('Album page', () => {
     expect(links[0]).toHaveAttribute('href', '/artist/library/art1')
   })
 
+  it('owned rows render artist + album as links (libraryTrack ids wired through)', async () => {
+    await renderLoaded()
+    // ownedTrack1/2 carry makeTrack defaults: artistId 'ar1', albumId 'al1', album
+    // 'Test Album'. The owned rows pass the real libraryTrack to TrackRow, which now
+    // renders the album cell as a link to /album/library/:albumId.
+    const albumLinks = screen.getAllByRole('link', { name: 'Test Album' })
+    expect(albumLinks.length).toBe(2) // both owned rows
+    expect(albumLinks.every((l) => l.getAttribute('href') === '/album/library/al1')).toBe(true)
+    // Owned-row artist links point at the library artist id (ar1), distinct from the
+    // header link (art1) — TrackRow links the row's own artistId.
+    const artistLinks = screen.getAllByRole('link', { name: 'Radiohead' })
+    expect(artistLinks.some((l) => l.getAttribute('href') === '/artist/library/ar1')).toBe(true)
+  })
+
   it('Play button calls playTrackList with the 2 owned tracks only', async () => {
     await renderLoaded()
     // The header Play button is the first button matching /play kid a/i; the

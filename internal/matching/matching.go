@@ -204,6 +204,9 @@ func (s *Service) Match(ctx context.Context, ext core.ExternalResult) (core.Matc
 			Mbid:           ext.MBID,
 			DurationMs:     int64(ext.DurationMs),
 			LibraryVersion: curVer,
+			ArtistID:       result.ArtistID,
+			AlbumID:        result.AlbumID,
+			CoverArtID:     result.CoverArtID,
 		}); uerr != nil {
 			return core.MatchResult{}, uerr
 		}
@@ -237,6 +240,9 @@ func cachedToResult(row db.MatchCache) core.MatchResult {
 			LibraryTrackID: row.LibraryTrackID.String,
 			Method:         core.MatchMethod(row.Method),
 			Confidence:     row.Confidence,
+			ArtistID:       row.ArtistID,
+			AlbumID:        row.AlbumID,
+			CoverArtID:     row.CoverArtID,
 		}
 	}
 	return core.MatchResult{
@@ -258,6 +264,9 @@ func (s *Service) resolve(ext core.ExternalResult, cands []core.Track) core.Matc
 					LibraryTrackID: c.ID,
 					Method:         core.MatchISRC,
 					Confidence:     1.0,
+					ArtistID:       c.ArtistID,
+					AlbumID:        c.AlbumID,
+					CoverArtID:     c.CoverArtID,
 				}
 			}
 		}
@@ -322,6 +331,9 @@ func (s *Service) resolve(ext core.ExternalResult, cands []core.Track) core.Matc
 			LibraryTrackID: cands[best].ID,
 			Method:         core.MatchFuzzy,
 			Confidence:     conf,
+			ArtistID:       cands[best].ArtistID,
+			AlbumID:        cands[best].AlbumID,
+			CoverArtID:     cands[best].CoverArtID,
 		}
 	}
 

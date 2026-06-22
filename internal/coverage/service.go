@@ -214,7 +214,7 @@ func (s *Service) albumDetailFromExternal(ctx context.Context, full core.Externa
 		if res.Status == core.MatchInLibrary && res.LibraryTrackID != "" {
 			det.OwnedCount++
 			dt.State = core.CoverageFull
-			dt.LibraryTrack = &core.Track{ID: res.LibraryTrackID, Title: tr.Title, Artist: tr.Artist, DurationMs: tr.DurationMs}
+			dt.LibraryTrack = &core.Track{ID: res.LibraryTrackID, Title: tr.Title, Artist: tr.Artist, DurationMs: tr.DurationMs, ArtistID: res.ArtistID, AlbumID: res.AlbumID, CoverArtID: res.CoverArtID}
 		} else {
 			dt.State = core.CoverageNone
 			ref := core.ExternalTrackRef{Source: tr.Source, ExternalID: tr.ExternalID, Title: tr.Title, Artist: tr.Artist, Album: full.Name, ISRC: tr.ISRC, DurationMs: tr.DurationMs}
