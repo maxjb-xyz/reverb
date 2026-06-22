@@ -125,7 +125,7 @@ describe('Playlist page', () => {
       data: { ...chillPlaylist, tracks: [], songCount: 0 },
       isLoading: false,
       isError: false,
-    } as ReturnType<typeof usePlaylistDetail>)
+    } as unknown as ReturnType<typeof usePlaylistDetail>)
     wrapper(<Playlist />)
     await waitFor(() => expect(screen.getByRole('heading', { name: 'Chill' })).toBeInTheDocument())
     expect(screen.getByRole('button', { name: /play chill/i })).toBeDisabled()

@@ -18,6 +18,15 @@ export default function Artist() {
   const navigate = useNavigate()
   const [filter, setFilter] = useState<KindFilter>('all')
 
+  // Aggregate all missing tracks across all albums for "Download all missing".
+  // Hoisted above the early returns so the hook order stays stable across renders
+  // (loading → loaded): calling useMemo only after a conditional return triggers
+  // React error #310 ("rendered more hooks than during the previous render").
+  const allMissingTracks = useMemo(
+    () => Object.values(coverage).flatMap((c) => c.missingTracks),
+    [coverage],
+  )
+
   if (isLoading) {
     return (
       <div data-testid="artist-skeleton" className="space-y-8">
@@ -76,12 +85,6 @@ export default function Artist() {
   ).length
   const hasPending = detail.resolved && albums.some(
     (a) => !coverage[a.externalId] || coverage[a.externalId].state === 'pending',
-  )
-
-  // Aggregate all missing tracks across all albums for "Download all missing"
-  const allMissingTracks = useMemo(
-    () => Object.values(coverage).flatMap((c) => c.missingTracks),
-    [coverage],
   )
 
   // Filter albums by kind

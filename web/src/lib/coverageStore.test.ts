@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { renderHook, act } from '@testing-library/react'
+import { renderHook } from '@testing-library/react'
 import { CoverageStream } from './coverageStream'
 import { useCoverageStream, reducer } from './coverageStore'
 import type { AlbumCoverage } from './types'
