@@ -18,39 +18,63 @@ var _ JobStore = (*sqlStore)(nil)
 // NewSQLStore wraps generated queries as a Manager JobStore.
 func NewSQLStore(q *db.Queries) JobStore { return &sqlStore{q: q} }
 
-// toCore converts a db.DownloadJob row to a core.DownloadJob, rehydrating all
+// rowFields is a flattened view of the fields sqlc SELECT queries return. All
+// three query row types (GetDownloadJobRow, GetActiveDownloadJobByDedupRow,
+// ListDownloadJobsRow) have the same shape; toCoreFlatRow converts from this.
+type rowFields struct {
+	id             string
+	dedupKey       string
+	requestJson    string
+	downloaderName string
+	status         string
+	progress       int64
+	errStr         string
+	outputPath     string
+	libraryTrackID sql.NullString
+	coverArtID     sql.NullString
+	priority       int64
+	attempts       int64
+	createdAt      int64
+	startedAt      sql.NullInt64
+	finishedAt     sql.NullInt64
+}
+
+// toCoreFlatRow converts a rowFields to a core.DownloadJob, rehydrating all
 // request fields from request_json so a job loaded from SQLite can run.
 // Returns an error if request_json is non-empty but cannot be decoded — a
 // corrupted row must not silently yield a job with empty request fields.
-func toCore(r db.DownloadJob) (core.DownloadJob, error) {
+func toCoreFlatRow(r rowFields) (core.DownloadJob, error) {
 	j := core.DownloadJob{
-		ID:             r.ID,
-		DedupKey:       r.DedupKey,
-		Status:         core.DownloadStatus(r.Status),
-		Progress:       int(r.Progress),
-		Error:          r.Error,
-		OutputPath:     r.OutputPath,
-		DownloaderName: r.DownloaderName,
-		Priority:       int(r.Priority),
-		Attempts:       int(r.Attempts),
-		CreatedAt:      r.CreatedAt,
+		ID:             r.id,
+		DedupKey:       r.dedupKey,
+		Status:         core.DownloadStatus(r.status),
+		Progress:       int(r.progress),
+		Error:          r.errStr,
+		OutputPath:     r.outputPath,
+		DownloaderName: r.downloaderName,
+		Priority:       int(r.priority),
+		Attempts:       int(r.attempts),
+		CreatedAt:      r.createdAt,
 	}
-	if r.LibraryTrackID.Valid {
-		j.LibraryTrackID = r.LibraryTrackID.String
+	if r.libraryTrackID.Valid {
+		j.LibraryTrackID = r.libraryTrackID.String
 	}
-	if r.StartedAt.Valid {
-		j.StartedAt = r.StartedAt.Int64
+	if r.coverArtID.Valid {
+		j.CoverArtID = r.coverArtID.String
 	}
-	if r.FinishedAt.Valid {
-		j.FinishedAt = r.FinishedAt.Int64
+	if r.startedAt.Valid {
+		j.StartedAt = r.startedAt.Int64
+	}
+	if r.finishedAt.Valid {
+		j.FinishedAt = r.finishedAt.Int64
 	}
 	// The FULL request is carried in request_json; rehydrate every field so a job
 	// loaded from SQLite has enough to run (artist/title/album/source/externalId/
 	// isrc/playWhenReady — the explicit downloader is reflected by DownloaderName).
 	var req core.DownloadRequest
-	if r.RequestJson != "" {
-		if err := jsonUnmarshal(r.RequestJson, &req); err != nil {
-			return core.DownloadJob{}, fmt.Errorf("download job %s: decode request_json: %w", r.ID, err)
+	if r.requestJson != "" {
+		if err := jsonUnmarshal(r.requestJson, &req); err != nil {
+			return core.DownloadJob{}, fmt.Errorf("download job %s: decode request_json: %w", r.id, err)
 		}
 	}
 	j.Source = req.Source
@@ -64,8 +88,41 @@ func toCore(r db.DownloadJob) (core.DownloadJob, error) {
 	return j, nil
 }
 
+func fromGetRow(r db.GetDownloadJobRow) rowFields {
+	return rowFields{
+		id: r.ID, dedupKey: r.DedupKey, requestJson: r.RequestJson,
+		downloaderName: r.DownloaderName, status: r.Status, progress: r.Progress,
+		errStr: r.Error, outputPath: r.OutputPath,
+		libraryTrackID: r.LibraryTrackID, coverArtID: r.CoverArtID,
+		priority: r.Priority, attempts: r.Attempts, createdAt: r.CreatedAt,
+		startedAt: r.StartedAt, finishedAt: r.FinishedAt,
+	}
+}
+
+func fromGetDedupRow(r db.GetActiveDownloadJobByDedupRow) rowFields {
+	return rowFields{
+		id: r.ID, dedupKey: r.DedupKey, requestJson: r.RequestJson,
+		downloaderName: r.DownloaderName, status: r.Status, progress: r.Progress,
+		errStr: r.Error, outputPath: r.OutputPath,
+		libraryTrackID: r.LibraryTrackID, coverArtID: r.CoverArtID,
+		priority: r.Priority, attempts: r.Attempts, createdAt: r.CreatedAt,
+		startedAt: r.StartedAt, finishedAt: r.FinishedAt,
+	}
+}
+
+func fromListRow(r db.ListDownloadJobsRow) rowFields {
+	return rowFields{
+		id: r.ID, dedupKey: r.DedupKey, requestJson: r.RequestJson,
+		downloaderName: r.DownloaderName, status: r.Status, progress: r.Progress,
+		errStr: r.Error, outputPath: r.OutputPath,
+		libraryTrackID: r.LibraryTrackID, coverArtID: r.CoverArtID,
+		priority: r.Priority, attempts: r.Attempts, createdAt: r.CreatedAt,
+		startedAt: r.StartedAt, finishedAt: r.FinishedAt,
+	}
+}
+
 // Insert persists the job lifecycle row AND marshals the COMPLETE originating
-// core.DownloadRequest into request_json, so toCore can rehydrate a runnable job.
+// core.DownloadRequest into request_json, so toCoreFlatRow can rehydrate a runnable job.
 func (s *sqlStore) Insert(ctx context.Context, j core.DownloadJob, req core.DownloadRequest) error {
 	return s.q.InsertDownloadJob(ctx, db.InsertDownloadJobParams{
 		ID:             j.ID,
@@ -91,7 +148,7 @@ func (s *sqlStore) Get(ctx context.Context, id string) (core.DownloadJob, bool, 
 	if err != nil {
 		return core.DownloadJob{}, false, err
 	}
-	j, err := toCore(r)
+	j, err := toCoreFlatRow(fromGetRow(r))
 	if err != nil {
 		return core.DownloadJob{}, false, err
 	}
@@ -106,7 +163,7 @@ func (s *sqlStore) ActiveByDedup(ctx context.Context, dedup string) (core.Downlo
 	if err != nil {
 		return core.DownloadJob{}, false, err
 	}
-	j, err := toCore(r)
+	j, err := toCoreFlatRow(fromGetDedupRow(r))
 	if err != nil {
 		return core.DownloadJob{}, false, err
 	}
@@ -120,7 +177,7 @@ func (s *sqlStore) List(ctx context.Context) ([]core.DownloadJob, error) {
 	}
 	out := make([]core.DownloadJob, 0, len(rows))
 	for _, r := range rows {
-		j, err := toCore(r)
+		j, err := toCoreFlatRow(fromListRow(r))
 		if err != nil {
 			return nil, err
 		}
@@ -135,8 +192,8 @@ func (s *sqlStore) List(ctx context.Context) ([]core.DownloadJob, error) {
 // This is acceptable for M3 — cross-restart job recovery is deferred. Revisit
 // with a transaction when recovery lands.
 // Status drives started_at/finished_at via the SQL CASE expression in
-// UpdateDownloadJobStatus; progress/error/output_path/library_track_id each have
-// a dedicated update so callers can set them independently.
+// UpdateDownloadJobStatus; progress/error/output_path/library_track_id/cover_art_id
+// each have a dedicated update so callers can set them independently.
 func (s *sqlStore) Update(ctx context.Context, j core.DownloadJob) error {
 	if err := s.q.UpdateDownloadJobStatus(ctx, db.UpdateDownloadJobStatusParams{
 		Status: string(j.Status), ID: j.ID,
@@ -158,8 +215,13 @@ func (s *sqlStore) Update(ctx context.Context, j core.DownloadJob) error {
 	}); err != nil {
 		return err
 	}
-	return s.q.UpdateDownloadJobLibraryTrackID(ctx, db.UpdateDownloadJobLibraryTrackIDParams{
+	if err := s.q.UpdateDownloadJobLibraryTrackID(ctx, db.UpdateDownloadJobLibraryTrackIDParams{
 		LibraryTrackID: nullString(j.LibraryTrackID), ID: j.ID,
+	}); err != nil {
+		return err
+	}
+	return s.q.UpdateDownloadJobCoverArtID(ctx, db.UpdateDownloadJobCoverArtIDParams{
+		CoverArtID: nullString(j.CoverArtID), ID: j.ID,
 	})
 }
 

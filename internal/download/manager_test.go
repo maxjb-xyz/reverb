@@ -97,9 +97,10 @@ func (s *fakeScanner) statusCalls() int { s.mu.Lock(); defer s.mu.Unlock(); retu
 
 // fakeRematcher returns a fixed in-library match and records the last ExternalResult it saw.
 type fakeRematcher struct {
-	trackID string
-	mu      sync.Mutex
-	lastReq core.ExternalResult
+	trackID    string
+	coverArtID string // optional; when set, returned in the MatchResult
+	mu         sync.Mutex
+	lastReq    core.ExternalResult
 }
 
 func (r *fakeRematcher) Match(_ context.Context, ext core.ExternalResult) (core.MatchResult, error) {
@@ -109,7 +110,7 @@ func (r *fakeRematcher) Match(_ context.Context, ext core.ExternalResult) (core.
 	if r.trackID == "" {
 		return core.MatchResult{Status: core.MatchNotInLibrary, Method: core.MatchNone}, nil
 	}
-	return core.MatchResult{Status: core.MatchInLibrary, LibraryTrackID: r.trackID, Method: core.MatchFuzzy, Confidence: 0.9}, nil
+	return core.MatchResult{Status: core.MatchInLibrary, LibraryTrackID: r.trackID, CoverArtID: r.coverArtID, Method: core.MatchFuzzy, Confidence: 0.9}, nil
 }
 
 func (r *fakeRematcher) getLastReq() core.ExternalResult {
@@ -444,7 +445,7 @@ func TestCompletionSetsLibraryTrackIDAndPublishesComplete(t *testing.T) {
 	dl := &fakeDL{name: "dl", canDownload: true}
 	store := newMemStore()
 	bus := events.New()
-	rematcher := &fakeRematcher{trackID: "lib-track-9"}
+	rematcher := &fakeRematcher{trackID: "lib-track-9", coverArtID: "mf-lib-track-9_abc123"}
 	m := NewManager(Config{Workers: 1, DebounceWindow: 5 * time.Second, ScanPollEvery: time.Millisecond, ScanPollMax: time.Second, ScanSettleMax: 10 * time.Millisecond},
 		[]Downloader{dl}, store, bus, &fakeScanner{}, rematcher, &fakeVersion{v: 1}, clk)
 	t.Cleanup(m.Stop)
@@ -509,10 +510,13 @@ func TestCompletionSetsLibraryTrackIDAndPublishesComplete(t *testing.T) {
 		t.Fatalf("re-match ExternalResult.Artist: got %q want %q", lastReq.Artist, "A")
 	}
 
-	// Assert the store reflects the re-matched library_track_id.
+	// Assert the store reflects the re-matched library_track_id and cover_art_id.
 	cur, _, _ := store.Get(context.Background(), job.ID)
 	if cur.LibraryTrackID != "lib-track-9" {
 		t.Fatalf("library_track_id not set after re-match, got %q", cur.LibraryTrackID)
+	}
+	if cur.CoverArtID != "mf-lib-track-9_abc123" {
+		t.Fatalf("cover_art_id not set after re-match, got %q (needed for home recently-downloaded covers)", cur.CoverArtID)
 	}
 
 	// Allow the goroutine a moment to deliver the event (channel send is non-blocking;

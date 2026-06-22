@@ -37,6 +37,7 @@ type DownloadJob struct {
 	Error          string         `json:"error,omitempty"`
 	OutputPath     string         `json:"outputPath,omitempty"`
 	LibraryTrackID string         `json:"libraryTrackId,omitempty"`
+	CoverArtID     string         `json:"coverArtId,omitempty"`
 	DownloaderName string         `json:"downloaderName"`
 	Priority       int            `json:"priority"`
 	Attempts       int            `json:"attempts"`

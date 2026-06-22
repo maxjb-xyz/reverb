@@ -67,6 +67,7 @@ type DownloadJob struct {
 	CreatedAt      int64          `json:"created_at"`
 	StartedAt      sql.NullInt64  `json:"started_at"`
 	FinishedAt     sql.NullInt64  `json:"finished_at"`
+	CoverArtID     sql.NullString `json:"cover_art_id"`
 }
 
 type MatchCache struct {

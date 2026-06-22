@@ -514,6 +514,7 @@ func (m *Manager) runScan() {
 			continue
 		}
 		j.LibraryTrackID = res.LibraryTrackID
+		j.CoverArtID = res.CoverArtID
 		_ = m.store.Update(ctx, j)
 		m.publishComplete(j, res.LibraryTrackID)
 	}
