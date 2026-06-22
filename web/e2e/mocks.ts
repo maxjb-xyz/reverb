@@ -440,6 +440,299 @@ export async function installCompletenessWsMock(page: Page): Promise<WsTrigger> 
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Playlist-sync flow mocks (Task 10): import a Spotify playlist → land on the
+// synced playlist page (1 owned + 1 missing) → download the one missing track →
+// WS complete flips it owned (live) → "Sync now" surfaces an added 3rd track.
+//
+// Fully ISOLATED state: a private closure `state` object + a separate module-level
+// ref (playlistSyncStateRef) for the WS trigger. Does NOT touch the core-loop
+// `downloadState` nor the completeness `completenessStateRef`. installPlaylistSyncMocks
+// is registered AFTER installApiMocks so its `**/api/v1/downloads` handler (and the
+// synced-playlists routes) win for this spec (most-recently-registered-first).
+// ─────────────────────────────────────────────────────────────────────────────
+
+// The library track id the completed missing-track download resolves to.
+export const syncMissingLibraryTrackId = 'lib-track-sp-miss-1'
+
+// The owned library track (track 1 of the synced playlist).
+function syncOwnedLibraryTrack() {
+  return {
+    id: 'lib-sp-owned-1',
+    title: 'Synced Owned Song',
+    artist: 'Mock Artist',
+    durationMs: 200_000,
+    album: 'My Mix',
+    albumId: '',
+    artistId: '',
+    coverArtId: '',
+    trackNumber: 1,
+    discNumber: 1,
+    bitRate: 0,
+    suffix: '',
+    contentType: '',
+  }
+}
+
+// The library track the missing row resolves to once downloaded.
+function syncMissingLibraryTrack() {
+  return {
+    id: syncMissingLibraryTrackId,
+    title: 'Synced Missing Song',
+    artist: 'Mock Artist',
+    durationMs: 180_000,
+    album: 'My Mix',
+    albumId: '',
+    artistId: '',
+    coverArtId: '',
+    trackNumber: 2,
+    discNumber: 1,
+    bitRate: 0,
+    suffix: '',
+    contentType: '',
+  }
+}
+
+// The owned track row (state:full + libraryTrack).
+function syncOwnedTrack() {
+  return {
+    state: 'full' as const,
+    libraryTrack: syncOwnedLibraryTrack(),
+    title: 'Synced Owned Song',
+    artist: 'Mock Artist',
+    trackNumber: 1,
+    durationMs: 200_000,
+  }
+}
+
+// The missing track row (state:none + externalRef ext-sp-miss-1).
+function syncMissingTrack() {
+  return {
+    state: 'none' as const,
+    externalRef: {
+      source: 'spotify',
+      externalId: 'ext-sp-miss-1',
+      title: 'Synced Missing Song',
+      artist: 'Mock Artist',
+      durationMs: 180_000,
+    },
+    title: 'Synced Missing Song',
+    artist: 'Mock Artist',
+    trackNumber: 2,
+    durationMs: 180_000,
+  }
+}
+
+// The missing track AFTER download: now owned (state:full + libraryTrack).
+function syncMissingNowOwnedTrack() {
+  return {
+    state: 'full' as const,
+    libraryTrack: syncMissingLibraryTrack(),
+    title: 'Synced Missing Song',
+    artist: 'Mock Artist',
+    trackNumber: 2,
+    durationMs: 180_000,
+  }
+}
+
+// The 3rd track surfaced AFTER a "Sync now" (a newly-added missing track).
+function syncAddedTrack() {
+  return {
+    state: 'none' as const,
+    externalRef: {
+      source: 'spotify',
+      externalId: 'ext-sp-added-1',
+      title: 'Synced Added Song',
+      artist: 'Mock Artist',
+      durationMs: 210_000,
+    },
+    title: 'Synced Added Song',
+    artist: 'Mock Artist',
+    trackNumber: 3,
+    durationMs: 210_000,
+  }
+}
+
+// Common synced-playlist fields (id sp1, name "My Mix").
+function syncBase() {
+  return {
+    id: 'sp1',
+    source: 'spotify',
+    externalId: 'ext-pl-1',
+    name: 'My Mix',
+    coverUrl: '',
+    syncEnabled: false,
+    syncIntervalSec: 0,
+    autoDownload: false,
+    lastSyncedAt: 0,
+  }
+}
+
+// The SyncedPlaylistDetail, computed from the per-test state flags:
+//   missingOwned → the missing track flips to owned (ownedCount +1)
+//   synced       → a 3rd (added) track appears in the list (totalCount +1)
+type PlaylistSyncState = { missingOwned: boolean; synced: boolean }
+
+function syncDetail(state: PlaylistSyncState) {
+  const tracks = [
+    syncOwnedTrack(),
+    state.missingOwned ? syncMissingNowOwnedTrack() : syncMissingTrack(),
+  ]
+  if (state.synced) tracks.push(syncAddedTrack())
+  const ownedCount = tracks.filter((t) => t.state === 'full').length
+  return { ...syncBase(), ownedCount, totalCount: tracks.length, trackCount: tracks.length, tracks }
+}
+
+function syncSummary(state: PlaylistSyncState) {
+  const detail = syncDetail(state)
+  return { ...syncBase(), trackCount: detail.totalCount }
+}
+
+// The queued / completed missing-track download jobs (own externalId so the
+// synced-playlist row's DownloadAction.byExternal('spotify','ext-sp-miss-1') matches).
+function syncMissingQueuedJob() {
+  return {
+    id: 'job-sp-miss-1',
+    dedupKey: 'ext:spotify:ext-sp-miss-1',
+    status: 'queued',
+    progress: 0,
+    downloaderName: 'spotdl',
+    priority: 0,
+    attempts: 0,
+    source: 'spotify',
+    externalId: 'ext-sp-miss-1',
+    artist: 'Mock Artist',
+    title: 'Synced Missing Song',
+    album: 'My Mix',
+    playWhenReady: false,
+    createdAt: Date.now() / 1000,
+    startedAt: 0,
+    finishedAt: 0,
+  }
+}
+
+function syncMissingCompletedJob() {
+  return {
+    ...syncMissingQueuedJob(),
+    status: 'completed',
+    progress: 100,
+    libraryTrackId: syncMissingLibraryTrackId,
+    finishedAt: Date.now() / 1000,
+  }
+}
+
+// Per-test state, isolated from the core-loop + completeness states.
+type FullPlaylistSyncState = PlaylistSyncState & {
+  downloads: ReturnType<typeof syncMissingQueuedJob>[]
+}
+
+export async function installPlaylistSyncMocks(page: Page): Promise<void> {
+  const state: FullPlaylistSyncState = { missingOwned: false, synced: false, downloads: [] }
+
+  // POST /synced-playlists (import) → the initial 1-owned-1-missing detail.
+  // GET  /synced-playlists (list)   → [summary of sp1].
+  await page.route('**/api/v1/synced-playlists', (route: Route) => {
+    if (route.request().method() === 'POST') {
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(syncDetail(state)) })
+    }
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([syncSummary(state)]) })
+  })
+
+  // GET /synced-playlists/sp1 → STATEFUL detail (reflects missingOwned + synced).
+  // POST /synced-playlists/sp1/sync → flip `synced` (next GET includes the 3rd track).
+  // POST /synced-playlists/sp1/download-missing → enqueue the missing job (header CTA).
+  await page.route('**/api/v1/synced-playlists/sp1/sync', (route: Route) => {
+    state.synced = true
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(syncDetail(state)) })
+  })
+
+  await page.route('**/api/v1/synced-playlists/sp1/download-missing', (route: Route) => {
+    state.downloads = [syncMissingQueuedJob()]
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([syncMissingQueuedJob()]) })
+  })
+
+  await page.route('**/api/v1/synced-playlists/sp1', (route: Route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(syncDetail(state)) }),
+  )
+
+  // /downloads — STATEFUL for the per-row missing-track download (own state; does
+  // NOT touch the core-loop downloadState). GET starts empty (row shows Download).
+  // POST enqueues the queued missing job. ws.complete() flips it to completed AND
+  // flips state.missingOwned so a re-fetched detail also shows it owned.
+  await page.route('**/api/v1/downloads', (route: Route) => {
+    if (route.request().method() === 'POST') {
+      state.downloads = [syncMissingQueuedJob()]
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(syncMissingQueuedJob()) })
+    }
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(state.downloads) })
+  })
+
+  // Library lists empty (the Library page renders Albums/Artists/Playlists tabs +
+  // the synced list above; the spec drives the Playlists tab to reach Import).
+  await page.route('**/api/v1/library/albums**', (route: Route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([]) }),
+  )
+  await page.route('**/api/v1/library/artists', (route: Route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([]) }),
+  )
+  await page.route('**/api/v1/library/playlists', (route: Route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([]) }),
+  )
+
+  // Expose state to the WS trigger via a module-level ref (mirrors completeness).
+  playlistSyncStateRef = state
+}
+
+// Module-level ref so the playlist-sync WS trigger can reflect the completion into
+// the isolated playlist-sync state (separate from completenessStateRef/downloadState).
+let playlistSyncStateRef: FullPlaylistSyncState | null = null
+
+// installPlaylistSyncWsMock mirrors installWsMock but fires completion for the
+// synced-playlist missing track (job-sp-miss-1 / ext-sp-miss-1 →
+// syncMissingLibraryTrackId), reflects it into the playlist-sync download state,
+// AND flips missingOwned so a re-fetched detail also shows the track owned.
+export async function installPlaylistSyncWsMock(page: Page): Promise<WsTrigger> {
+  let capturedWs: WebSocketRoute | null = null
+
+  await page.routeWebSocket('**/api/v1/ws', (ws: WebSocketRoute) => {
+    capturedWs = ws
+  })
+
+  return {
+    complete: () =>
+      new Promise<void>((resolve, reject) => {
+        const deadline = Date.now() + 5000
+        const poll = () => {
+          if (capturedWs) {
+            if (playlistSyncStateRef) {
+              playlistSyncStateRef.downloads = [syncMissingCompletedJob()]
+              playlistSyncStateRef.missingOwned = true
+            }
+            const frame = {
+              type: 'download.complete',
+              payload: {
+                jobId: 'job-sp-miss-1',
+                dedupKey: 'ext:spotify:ext-sp-miss-1',
+                status: 'completed',
+                progress: 100,
+                source: 'spotify',
+                externalId: 'ext-sp-miss-1',
+                libraryTrackId: syncMissingLibraryTrackId,
+              },
+            }
+            capturedWs.send(JSON.stringify(frame))
+            resolve()
+          } else if (Date.now() > deadline) {
+            reject(new Error('installPlaylistSyncWsMock: WebSocket never opened within 5 s'))
+          } else {
+            setTimeout(poll, 20)
+          }
+        }
+        poll()
+      }),
+  }
+}
+
 // WsTrigger lets the spec fire the completion frame at the right moment.
 export type WsTrigger = { complete: () => Promise<void> }
 
