@@ -92,9 +92,12 @@ export default function SyncedPlaylist() {
   // Seed local state from detail once it loads / changes
   useEffect(() => {
     if (!detail) return
+    /* eslint-disable react-hooks/set-state-in-effect -- intentional: seed local form state when server record loads */
     setSyncEnabled(detail.syncEnabled)
     setIntervalSec(detail.syncIntervalSec)
     setAutoDownload(detail.autoDownload)
+    /* eslint-enable react-hooks/set-state-in-effect */
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: re-seed only when the playlist id changes, not on every detail refresh
   }, [detail?.id])
 
   const palette = useAlbumPalette(detail?.coverUrl)

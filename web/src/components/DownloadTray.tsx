@@ -17,6 +17,7 @@ import type { AdapterInstance } from '../lib/adaptersApi'
 // title + downloader context. Always returns a descriptive string — never a
 // bare "Failed" or "Error".
 
+// eslint-disable-next-line react-refresh/only-export-components -- failureMessage is a pure helper exported for unit tests alongside the component
 export function failureMessage(job: DownloadJob): string {
   const title = job.title ?? job.externalId
   const dl = job.downloaderName || 'the downloader'

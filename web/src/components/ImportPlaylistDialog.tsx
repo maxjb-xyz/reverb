@@ -23,10 +23,12 @@ export function ImportPlaylistDialog({ open, onClose }: ImportPlaylistDialogProp
   // Reset state whenever dialog opens
   useEffect(() => {
     if (open) {
+      /* eslint-disable react-hooks/set-state-in-effect -- intentional: reset form fields when dialog reopens */
       setUrl('')
       setDownloadMissing(false)
       setBusy(false)
       setError(null)
+      /* eslint-enable react-hooks/set-state-in-effect */
     }
   }, [open])
 

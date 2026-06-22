@@ -11,6 +11,7 @@ import { makeTrack, makeAlbum } from '../test/factories'
 // one test's mode (e.g. 'everywhere') doesn't leak into the next.
 beforeEach(() => useSearch.setState({ query: '', mode: 'library' }))
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- _req exists for TypeScript compatibility with the mock wrapper
 const postDownloadMock = vi.fn((_req: unknown) => Promise.resolve({ id: 'j-album', status: 'queued' } as never))
 vi.mock('../lib/downloadApi', () => ({
   postDownload: (req: unknown) => postDownloadMock(req),
@@ -112,6 +113,7 @@ describe('Search (everywhere mode)', () => {
       url: string
       constructor(url: string) {
         this.url = url
+        // eslint-disable-next-line @typescript-eslint/no-this-alias
         inst = this
       }
       close() {}
@@ -151,6 +153,7 @@ describe('Search (everywhere mode)', () => {
       url: string
       constructor(url: string) {
         this.url = url
+        // eslint-disable-next-line @typescript-eslint/no-this-alias
         inst = this
       }
       close() {}
@@ -180,6 +183,7 @@ describe('Search (everywhere mode)', () => {
       url: string
       constructor(url: string) {
         this.url = url
+        // eslint-disable-next-line @typescript-eslint/no-this-alias
         inst = this
       }
       close() {}
@@ -222,16 +226,16 @@ describe('Search (everywhere mode)', () => {
 
   it('close-on-change: closes the prior stream when the query changes', async () => {
     let inst: { onmessage: ((ev: { data: string }) => void) | null; onerror: (() => void) | null; close(): void } | null = null
-    let closeCalls = 0
     class StubES2 {
       onmessage: ((ev: { data: string }) => void) | null = null
       onerror: (() => void) | null = null
       url: string
       constructor(url: string) {
         this.url = url
+        // eslint-disable-next-line @typescript-eslint/no-this-alias
         inst = this
       }
-      close() { closeCalls++ }
+      close() {}
     }
     vi.stubGlobal('EventSource', StubES2 as unknown as typeof EventSource)
 
@@ -280,7 +284,11 @@ describe('Search (everywhere mode)', () => {
       onmessage: ((ev: { data: string }) => void) | null = null
       onerror: (() => void) | null = null
       url: string
-      constructor(url: string) { this.url = url; inst = this }
+      constructor(url: string) {
+        this.url = url
+        // eslint-disable-next-line @typescript-eslint/no-this-alias
+        inst = this
+      }
       close() {}
     }
     vi.stubGlobal('EventSource', StubES as unknown as typeof EventSource)
@@ -305,7 +313,11 @@ describe('Search (everywhere mode)', () => {
       onmessage: ((ev: { data: string }) => void) | null = null
       onerror: (() => void) | null = null
       url: string
-      constructor(url: string) { this.url = url; inst = this }
+      constructor(url: string) {
+        this.url = url
+        // eslint-disable-next-line @typescript-eslint/no-this-alias
+        inst = this
+      }
       close() {}
     }
     vi.stubGlobal('EventSource', StubES as unknown as typeof EventSource)
@@ -343,6 +355,7 @@ describe('Search (everywhere mode)', () => {
       url: string
       constructor(url: string) {
         this.url = url
+        // eslint-disable-next-line @typescript-eslint/no-this-alias
         inst = this
       }
       close() {}

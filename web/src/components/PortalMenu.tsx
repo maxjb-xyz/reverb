@@ -28,6 +28,7 @@ export function PortalMenu({
   const menuRef = useRef<HTMLDivElement>(null)
 
   // Compute fixed position from trigger rect on mount
+  // eslint-disable-next-line react-hooks/refs -- intentional: portal position is read once at render time; menu re-mounts on each open
   const rect = triggerRef.current?.getBoundingClientRect()
   const top = rect ? rect.bottom + 4 : 0
   // Align the right edge of the menu with the right edge of the trigger

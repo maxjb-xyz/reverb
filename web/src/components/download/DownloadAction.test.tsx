@@ -7,6 +7,7 @@ import type { ExternalResult, DownloadJob } from '../../lib/types'
 // ── mocks ────────────────────────────────────────────────────────────────────
 
 const postDownloadMock = vi.fn(
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- req param exists for TypeScript compatibility with the mock wrapper
   (_req?: unknown): Promise<DownloadJob> =>
     Promise.resolve({
       id: 'job-1',

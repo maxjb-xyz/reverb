@@ -1,4 +1,4 @@
-// @ts-ignore - CSS-only package without types
+// @ts-expect-error - CSS-only package without types
 import '@fontsource-variable/figtree'
 import React from 'react'
 import ReactDOM from 'react-dom/client'
