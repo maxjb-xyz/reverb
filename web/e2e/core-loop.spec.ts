@@ -59,12 +59,12 @@ test('core loop: login -> search everywhere -> download -> in-library -> play', 
   await expect(downloadBtn).toHaveCount(0)
   await expect(page.getByTitle('In Library')).toBeVisible()
 
-  // 6) Play: clicking the in-library button (aria-label="Play <title>") plays the
+  // 6) Play: clicking the in-library button (title="In Library") plays the
   //    synthesized track. The player bar (data-testid="player-bar") shows the title
   //    and the play/pause button becomes aria-label="Pause" (playing flipped true).
-  //    The one-shot SSE stream closes on completion (SearchStream closes on error),
-  //    so the row is stable — a normal click works without reconnect churn.
-  await page.getByRole('button', { name: `Play ${externalTrack.title}`, exact: true }).click()
+  //    Use title="In Library" to distinguish the DownloadAction play button from the
+  //    TrackRow hover-play button (both share the same aria-label since Spotify semantics).
+  await page.getByTitle('In Library').click()
   await expect(page.getByTestId('player-bar').getByText(externalTrack.title)).toBeVisible()
   await expect(page.getByRole('button', { name: 'Pause' })).toBeVisible()
 })

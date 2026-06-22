@@ -1,9 +1,11 @@
 import type { ReactNode } from 'react'
+import { Link } from 'react-router-dom'
 import type { Track } from '../../lib/types'
 import { formatDuration } from '../../lib/types'
 import { coverUrl } from '../../lib/libraryApi'
 import { Cover } from './Cover'
 import { Equalizer } from './Equalizer'
+import { Icon } from './Icon'
 
 interface TrackRowProps {
   track: Track
@@ -24,13 +26,22 @@ interface TrackRowProps {
 export function TrackRow({ track, index, active = false, onPlay, right, coverSrc, rightWidth = 'auto' }: TrackRowProps) {
   const src = coverSrc ?? (track.coverArtId ? coverUrl(track.coverArtId, 80) : undefined)
 
+  function handleKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault()
+      onPlay()
+    }
+  }
+
   return (
-    <button
-      type="button"
-      onClick={onPlay}
+    <div
+      role="row"
+      tabIndex={0}
+      onDoubleClick={onPlay}
+      onKeyDown={handleKeyDown}
       className={[
         'group w-full grid items-center gap-3.5 px-2.5 py-2 rounded-md text-left',
-        'transition-colors hover:bg-raised-hover',
+        'transition-colors hover:bg-raised-hover cursor-default',
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
         active ? 'text-accent' : 'text-text-primary',
       ].join(' ')}
@@ -45,8 +56,28 @@ export function TrackRow({ track, index, active = false, onPlay, right, coverSrc
         )}
       </span>
 
-      {/* Cover */}
-      <Cover src={src} alt={track.title} size={40} rounded="md" />
+      {/* Cover — with hover play button overlaid */}
+      <div className="relative flex-none">
+        <Cover src={src} alt={track.title} size={40} rounded="md" />
+        {/* Hover play button: hidden by default, revealed on row hover */}
+        <button
+          type="button"
+          aria-label={`Play ${track.title}`}
+          onClick={(e) => { e.stopPropagation(); onPlay() }}
+          onDoubleClick={(e) => e.stopPropagation()}
+          className={[
+            'absolute inset-0 rounded-md',
+            'inline-grid place-items-center',
+            'bg-surface/60',
+            'text-text-primary',
+            'opacity-0 group-hover:opacity-100',
+            'transition-opacity duration-150',
+            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:opacity-100',
+          ].join(' ')}
+        >
+          <Icon name="play" className="w-4 h-4" />
+        </button>
+      </div>
 
       {/* Title + Artist */}
       <span className="min-w-0">
@@ -54,7 +85,18 @@ export function TrackRow({ track, index, active = false, onPlay, right, coverSrc
           {track.title}
         </span>
         <span className="block truncate text-xs text-text-secondary mt-0.5">
-          {track.artist}
+          {track.artistId ? (
+            <Link
+              to={`/artist/library/${track.artistId}`}
+              onClick={(e) => e.stopPropagation()}
+              onDoubleClick={(e) => e.stopPropagation()}
+              className="hover:underline focus-visible:outline-none focus-visible:underline"
+            >
+              {track.artist}
+            </Link>
+          ) : (
+            track.artist
+          )}
         </span>
       </span>
 
@@ -72,6 +114,6 @@ export function TrackRow({ track, index, active = false, onPlay, right, coverSrc
       <span className="text-sm text-text-muted text-right tabular-nums">
         {formatDuration(track.durationMs)}
       </span>
-    </button>
+    </div>
   )
 }

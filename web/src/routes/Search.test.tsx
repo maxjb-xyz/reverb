@@ -82,12 +82,12 @@ describe('Search (library mode)', () => {
     expect(screen.getByPlaceholderText('Search your library')).toBeInTheDocument()
   })
 
-  it('calls engine.playTrackList with track list and index when a track row is clicked', async () => {
+  it('calls engine.playTrackList with track list and index when a track row is double-clicked', async () => {
     const spy = vi.spyOn(engine, 'playTrackList').mockImplementation(() => {})
     render(wrap(<Search />))
     fireEvent.change(screen.getByPlaceholderText(/search your library/i), { target: { value: 'found' } })
     await waitFor(() => expect(screen.getByText('Found Song')).toBeInTheDocument())
-    fireEvent.click(screen.getByText('Found Song'))
+    fireEvent.doubleClick(screen.getByText('Found Song'))
     expect(spy).toHaveBeenCalledOnce()
     expect(spy).toHaveBeenCalledWith([stubTrack], 0)
     spy.mockRestore()

@@ -154,9 +154,9 @@ describe('Playlist page', () => {
     expect(screen.getByRole('button', { name: /play chill/i })).toBeDisabled()
   })
 
-  it('clicking a track row calls playTrackList at that track index', async () => {
+  it('double-clicking a track row calls playTrackList at that track index', async () => {
     await renderLoaded()
-    fireEvent.click(screen.getByText('Song Two'))
+    fireEvent.doubleClick(screen.getByText('Song Two'))
     expect(mockPlayTrackList).toHaveBeenCalledWith([track1, track2, track3], 1)
   })
 

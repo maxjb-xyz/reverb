@@ -178,13 +178,18 @@ describe('Album page', () => {
 
   it('artist link routes to /artist/library/art1', async () => {
     await renderLoaded()
-    const link = screen.getByRole('link', { name: 'Radiohead' })
-    expect(link).toHaveAttribute('href', '/artist/library/art1')
+    // Multiple "Radiohead" links: one in the album header, two in track row artists
+    // (TrackRow now renders artist as a link when artistId is set). All point to art1.
+    const links = screen.getAllByRole('link', { name: 'Radiohead' })
+    expect(links.length).toBeGreaterThanOrEqual(1)
+    expect(links[0]).toHaveAttribute('href', '/artist/library/art1')
   })
 
   it('Play button calls playTrackList with the 2 owned tracks only', async () => {
     await renderLoaded()
-    fireEvent.click(screen.getByRole('button', { name: /play kid a/i }))
+    // The header Play button is the first button matching /play kid a/i; the
+    // TrackRow hover-play button for the "Kid A" track also matches — use [0].
+    fireEvent.click(screen.getAllByRole('button', { name: /play kid a/i })[0])
     expect(mockPlayTrackList).toHaveBeenCalledWith(
       [ownedTrack1, ownedTrack2],
       0,
@@ -204,10 +209,10 @@ describe('Album page', () => {
     expect(screen.getByRole('button', { name: /download treefingers/i })).toBeInTheDocument()
   })
 
-  it('owned rows are playable — clicking Track 1 calls playTrackList with ownedIndex 0', async () => {
+  it('owned rows are playable — double-clicking Track 1 calls playTrackList with ownedIndex 0', async () => {
     await renderLoaded()
-    // "Everything in Its Right Place" is unique — click the track row
-    fireEvent.click(screen.getByText('Everything in Its Right Place'))
+    // "Everything in Its Right Place" is unique — double-click the track row (Spotify semantics)
+    fireEvent.doubleClick(screen.getByText('Everything in Its Right Place'))
     expect(mockPlayTrackList).toHaveBeenCalledWith([ownedTrack1, ownedTrack2], 0)
   })
 

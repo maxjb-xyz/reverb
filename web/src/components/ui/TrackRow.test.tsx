@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
+import { MemoryRouter } from 'react-router-dom'
 import { TrackRow } from './TrackRow'
 import type { Track } from '../../lib/types'
 
@@ -19,70 +20,159 @@ const track: Track = {
   contentType: 'audio/mpeg',
 }
 
+/** Track with no artistId — simulates missing/external rows */
+const trackNoArtist: Track = {
+  ...track,
+  artistId: '',
+}
+
+function renderRow(props: Partial<Parameters<typeof TrackRow>[0]> & Pick<Parameters<typeof TrackRow>[0], 'onPlay'>) {
+  return render(
+    <MemoryRouter>
+      <TrackRow track={track} {...props} />
+    </MemoryRouter>,
+  )
+}
+
 describe('TrackRow', () => {
   it('renders the track title', () => {
-    render(<TrackRow track={track} onPlay={vi.fn()} />)
+    renderRow({ onPlay: vi.fn() })
     expect(screen.getByText('Karma Police')).toBeInTheDocument()
   })
 
   it('renders the artist name', () => {
-    render(<TrackRow track={track} onPlay={vi.fn()} />)
+    renderRow({ onPlay: vi.fn() })
     expect(screen.getByText('Radiohead')).toBeInTheDocument()
   })
 
   it('renders the album name', () => {
-    render(<TrackRow track={track} onPlay={vi.fn()} />)
+    renderRow({ onPlay: vi.fn() })
     expect(screen.getByText('OK Computer')).toBeInTheDocument()
   })
 
   it('formats duration as m:ss', () => {
-    render(<TrackRow track={track} onPlay={vi.fn()} />)
+    renderRow({ onPlay: vi.fn() })
     expect(screen.getByText('3:58')).toBeInTheDocument()
   })
 
   it('renders the 1-based index when provided', () => {
-    render(<TrackRow track={track} index={3} onPlay={vi.fn()} />)
+    renderRow({ index: 3, onPlay: vi.fn() })
     expect(screen.getByText('4')).toBeInTheDocument()
   })
 
-  it('calls onPlay when clicked', () => {
+  // ── Play interaction (Spotify semantics) ─────────────────────────────────
+
+  it('does NOT call onPlay on single click of the row', () => {
     const onPlay = vi.fn()
-    render(<TrackRow track={track} onPlay={onPlay} />)
-    fireEvent.click(screen.getByRole('button'))
+    const { container } = renderRow({ onPlay })
+    const row = container.firstChild as HTMLElement
+    fireEvent.click(row)
+    expect(onPlay).not.toHaveBeenCalled()
+  })
+
+  it('calls onPlay on double-click of the row', () => {
+    const onPlay = vi.fn()
+    const { container } = renderRow({ onPlay })
+    const row = container.firstChild as HTMLElement
+    fireEvent.doubleClick(row)
     expect(onPlay).toHaveBeenCalledTimes(1)
   })
 
+  it('calls onPlay when the hover play button is clicked', () => {
+    const onPlay = vi.fn()
+    renderRow({ onPlay })
+    const playBtn = screen.getByRole('button', { name: `Play ${track.title}` })
+    fireEvent.click(playBtn)
+    expect(onPlay).toHaveBeenCalledTimes(1)
+  })
+
+  it('calls onPlay on keyboard Enter', () => {
+    const onPlay = vi.fn()
+    const { container } = renderRow({ onPlay })
+    const row = container.firstChild as HTMLElement
+    fireEvent.keyDown(row, { key: 'Enter' })
+    expect(onPlay).toHaveBeenCalledTimes(1)
+  })
+
+  it('calls onPlay on keyboard Space', () => {
+    const onPlay = vi.fn()
+    const { container } = renderRow({ onPlay })
+    const row = container.firstChild as HTMLElement
+    fireEvent.keyDown(row, { key: ' ' })
+    expect(onPlay).toHaveBeenCalledTimes(1)
+  })
+
+  // ── Artist link ───────────────────────────────────────────────────────────
+
+  it('renders artist as a link when artistId is present', () => {
+    renderRow({ onPlay: vi.fn() })
+    const link = screen.getByRole('link', { name: 'Radiohead' })
+    expect(link).toBeInTheDocument()
+    expect(link).toHaveAttribute('href', '/artist/library/art-1')
+  })
+
+  it('clicking the artist link does NOT call onPlay', () => {
+    const onPlay = vi.fn()
+    renderRow({ onPlay })
+    const link = screen.getByRole('link', { name: 'Radiohead' })
+    fireEvent.click(link)
+    expect(onPlay).not.toHaveBeenCalled()
+  })
+
+  it('renders artist as plain text when artistId is empty', () => {
+    render(
+      <MemoryRouter>
+        <TrackRow track={trackNoArtist} onPlay={vi.fn()} />
+      </MemoryRouter>,
+    )
+    expect(screen.getByText('Radiohead')).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Radiohead' })).toBeNull()
+  })
+
+  // ── Active / now-playing treatment ───────────────────────────────────────
+
   it('applies text-accent when active', () => {
-    const { container } = render(<TrackRow track={track} active onPlay={vi.fn()} />)
-    const root = container.firstChild as HTMLElement
-    expect(root.className).toMatch(/text-accent/)
+    const { container } = renderRow({ active: true, onPlay: vi.fn() })
+    const row = container.firstChild as HTMLElement
+    expect(row.className).toMatch(/text-accent/)
   })
 
   it('does not apply text-accent when not active', () => {
-    const { container } = render(<TrackRow track={track} onPlay={vi.fn()} />)
-    const root = container.firstChild as HTMLElement
-    expect(root.className).not.toMatch(/text-accent/)
+    const { container } = renderRow({ onPlay: vi.fn() })
+    const row = container.firstChild as HTMLElement
+    expect(row.className).not.toMatch(/text-accent/)
   })
 
   it('renders Equalizer (eq-bar) when active', () => {
-    const { container } = render(<TrackRow track={track} active onPlay={vi.fn()} />)
+    const { container } = renderRow({ active: true, onPlay: vi.fn() })
     const bars = container.querySelectorAll('[data-testid="eq-bar"]')
     expect(bars.length).toBeGreaterThan(0)
   })
 
   it('does not render Equalizer when not active', () => {
-    const { container } = render(<TrackRow track={track} onPlay={vi.fn()} />)
+    const { container } = renderRow({ onPlay: vi.fn() })
     const bars = container.querySelectorAll('[data-testid="eq-bar"]')
     expect(bars.length).toBe(0)
   })
 
+  // ── Right slot ────────────────────────────────────────────────────────────
+
   it('renders the right slot when provided', () => {
-    render(<TrackRow track={track} onPlay={vi.fn()} right={<span data-testid="dl-badge">DL</span>} />)
+    renderRow({ onPlay: vi.fn(), right: <span data-testid="dl-badge">DL</span> })
     expect(screen.getByTestId('dl-badge')).toBeInTheDocument()
   })
 
-  it('has focus-visible ring on the button', () => {
-    render(<TrackRow track={track} onPlay={vi.fn()} />)
-    expect(screen.getByRole('button').className).toMatch(/focus-visible:ring/)
+  // ── A11y ──────────────────────────────────────────────────────────────────
+
+  it('has role="row" on the container', () => {
+    const { container } = renderRow({ onPlay: vi.fn() })
+    const row = container.firstChild as HTMLElement
+    expect(row.getAttribute('role')).toBe('row')
+  })
+
+  it('has focus-visible ring class on the row container', () => {
+    const { container } = renderRow({ onPlay: vi.fn() })
+    const row = container.firstChild as HTMLElement
+    expect(row.className).toMatch(/focus-visible:ring/)
   })
 })
