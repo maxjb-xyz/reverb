@@ -2,6 +2,7 @@ package playlistsync
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"sync/atomic"
@@ -162,7 +163,15 @@ func (ms *memStore) Get(_ context.Context, id string) (SyncedRow, error) {
 func (ms *memStore) List(_ context.Context) ([]SyncedRow, error) {
 	out := make([]SyncedRow, 0, len(ms.rows))
 	for _, r := range ms.rows {
-		out = append(out, r.SyncedRow)
+		row := r.SyncedRow
+		// Mimic the real store: pre-count tracks so the service List path doesn't
+		// need to unmarshal TracksJSON.
+		if row.TracksJSON != "" {
+			var tracks []core.ExternalResult
+			_ = json.Unmarshal([]byte(row.TracksJSON), &tracks)
+			row.TrackCount = len(tracks)
+		}
+		out = append(out, row)
 	}
 	return out, nil
 }
@@ -399,5 +408,95 @@ func TestSyncErrorPreservesTracklist(t *testing.T) {
 	}
 	if after.TotalCount != 2 {
 		t.Fatalf("TotalCount should still be 2 after failed sync, got %d", after.TotalCount)
+	}
+}
+
+// TestDetailCoverURLFromExternalTrack is the regression for the playlistsync Detail path:
+// AlbumDetailTrack.CoverURL must be populated from the external track's CoverURL for
+// a track that is NOT in the library (CoverageNone / external row).
+func TestDetailCoverURLFromExternalTrack(t *testing.T) {
+	const wantCover = "https://i.scdn.co/image/abc123"
+	extTrack := core.ExternalResult{
+		Source: "spotify", ExternalID: "t-missing", Title: "Missing Track",
+		Artist: "Some Artist", Album: "Some Album", Type: core.EntityTrack,
+		CoverURL: wantCover,
+	}
+	src := &fakeSource{playlists: map[string]core.ExternalPlaylist{
+		"PL": {Source: "spotify", ExternalID: "PL", Name: "Cover Test", Tracks: []core.ExternalResult{extTrack}},
+	}}
+	// No tracks owned — the track should appear as CoverageNone with CoverURL from ext.
+	svc := NewService(src, fakeMatcher{}, &fakeDownloader{}, newMemStore(), func() int64 { return 100 }, seqID())
+	det, err := svc.Import(context.Background(), "spotify:playlist:PL", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(det.Tracks) != 1 {
+		t.Fatalf("expected 1 track, got %d", len(det.Tracks))
+	}
+	got := det.Tracks[0]
+	if got.State != core.CoverageNone {
+		t.Fatalf("expected CoverageNone, got %v", got.State)
+	}
+	if got.CoverURL != wantCover {
+		t.Fatalf("Detail track CoverURL = %q, want %q (external track cover not propagated)", got.CoverURL, wantCover)
+	}
+}
+
+// TestDetailCoverURLOwnedTrackFallsBackToExternal asserts that even for an owned
+// (CoverageFull) track, Detail propagates the external CoverURL so the FE has art
+// even before the library scanner provides a local cover.
+func TestDetailCoverURLOwnedTrackFallsBackToExternal(t *testing.T) {
+	const wantCover = "https://i.scdn.co/image/owned123"
+	extTrack := core.ExternalResult{
+		Source: "spotify", ExternalID: "t-owned", Title: "Owned Track",
+		Artist: "Artist", Album: "Album", Type: core.EntityTrack,
+		CoverURL: wantCover,
+	}
+	src := &fakeSource{playlists: map[string]core.ExternalPlaylist{
+		"PL": {Source: "spotify", ExternalID: "PL", Name: "Owned Cover Test", Tracks: []core.ExternalResult{extTrack}},
+	}}
+	m := fakeMatcher{owned: map[string]string{"t-owned": "lib-1"}}
+	svc := NewService(src, m, &fakeDownloader{}, newMemStore(), func() int64 { return 100 }, seqID())
+	det, err := svc.Import(context.Background(), "spotify:playlist:PL", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(det.Tracks) != 1 {
+		t.Fatalf("expected 1 track, got %d", len(det.Tracks))
+	}
+	got := det.Tracks[0]
+	if got.State != core.CoverageFull {
+		t.Fatalf("expected CoverageFull, got %v", got.State)
+	}
+	if got.CoverURL != wantCover {
+		t.Fatalf("Detail owned track CoverURL = %q, want %q (external cover not propagated)", got.CoverURL, wantCover)
+	}
+}
+
+// TestListTrackCountViaSQLCount verifies that List returns correct TrackCount
+// values. The memStore.List pre-populates TrackCount (mirroring the real store's
+// json_array_length SQL path), so the service must not double-unmarshal TracksJSON.
+func TestListTrackCountViaSQLCount(t *testing.T) {
+	src := &fakeSource{playlists: map[string]core.ExternalPlaylist{
+		"PL1": {Source: "spotify", ExternalID: "PL1", Name: "Three", Tracks: []core.ExternalResult{track("a"), track("b"), track("c")}},
+		"PL2": {Source: "spotify", ExternalID: "PL2", Name: "One", Tracks: []core.ExternalResult{track("x")}},
+	}}
+	svc := NewService(src, fakeMatcher{}, &fakeDownloader{}, newMemStore(), func() int64 { return 100 }, seqID())
+	svc.Import(context.Background(), "spotify:playlist:PL1", false) //nolint
+	svc.Import(context.Background(), "spotify:playlist:PL2", false) //nolint
+
+	list, err := svc.List(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	counts := make(map[string]int, len(list))
+	for _, pl := range list {
+		counts[pl.Name] = pl.TrackCount
+	}
+	if counts["Three"] != 3 {
+		t.Fatalf("PL1 TrackCount = %d, want 3", counts["Three"])
+	}
+	if counts["One"] != 1 {
+		t.Fatalf("PL2 TrackCount = %d, want 1", counts["One"])
 	}
 }

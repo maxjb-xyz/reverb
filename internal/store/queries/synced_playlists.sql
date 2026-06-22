@@ -14,6 +14,15 @@ SELECT * FROM synced_playlists WHERE source = ? AND external_id = ?;
 -- name: ListSyncedPlaylists :many
 SELECT * FROM synced_playlists ORDER BY created_at DESC;
 
+-- name: ListSyncedPlaylistsCount :many
+-- Returns all playlists for the list view with track_count derived via
+-- json_array_length so the Go service never unmarshals the full tracks_json blob.
+SELECT id, source, external_id, name, cover_url,
+       sync_enabled, sync_interval_sec, auto_download,
+       last_synced_at, created_at,
+       CAST(json_array_length(tracks_json) AS INTEGER) AS track_count
+FROM synced_playlists ORDER BY created_at DESC;
+
 -- name: ListDueSyncedPlaylists :many
 SELECT * FROM synced_playlists
 WHERE sync_enabled = 1 AND sync_interval_sec > 0 AND (last_synced_at + sync_interval_sec) <= ?;

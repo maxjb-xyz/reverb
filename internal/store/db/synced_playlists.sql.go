@@ -148,6 +148,65 @@ func (q *Queries) ListSyncedPlaylists(ctx context.Context) ([]SyncedPlaylist, er
 	return items, nil
 }
 
+const listSyncedPlaylistsCount = `-- name: ListSyncedPlaylistsCount :many
+SELECT id, source, external_id, name, cover_url,
+       sync_enabled, sync_interval_sec, auto_download,
+       last_synced_at, created_at,
+       CAST(json_array_length(tracks_json) AS INTEGER) AS track_count
+FROM synced_playlists ORDER BY created_at DESC
+`
+
+type ListSyncedPlaylistsCountRow struct {
+	ID              string `json:"id"`
+	Source          string `json:"source"`
+	ExternalID      string `json:"external_id"`
+	Name            string `json:"name"`
+	CoverUrl        string `json:"cover_url"`
+	SyncEnabled     int64  `json:"sync_enabled"`
+	SyncIntervalSec int64  `json:"sync_interval_sec"`
+	AutoDownload    int64  `json:"auto_download"`
+	LastSyncedAt    int64  `json:"last_synced_at"`
+	CreatedAt       int64  `json:"created_at"`
+	TrackCount      int64  `json:"track_count"`
+}
+
+// Returns all playlists for the list view with track_count derived via
+// json_array_length so the Go service never unmarshals the full tracks_json blob.
+func (q *Queries) ListSyncedPlaylistsCount(ctx context.Context) ([]ListSyncedPlaylistsCountRow, error) {
+	rows, err := q.db.QueryContext(ctx, listSyncedPlaylistsCount)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListSyncedPlaylistsCountRow
+	for rows.Next() {
+		var i ListSyncedPlaylistsCountRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Source,
+			&i.ExternalID,
+			&i.Name,
+			&i.CoverUrl,
+			&i.SyncEnabled,
+			&i.SyncIntervalSec,
+			&i.AutoDownload,
+			&i.LastSyncedAt,
+			&i.CreatedAt,
+			&i.TrackCount,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const updateSyncedPlaylistSettings = `-- name: UpdateSyncedPlaylistSettings :exec
 UPDATE synced_playlists SET sync_enabled = ?, sync_interval_sec = ?, auto_download = ? WHERE id = ?
 `

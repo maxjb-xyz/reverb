@@ -34,11 +34,14 @@ type Store interface {
 }
 
 // SyncedRow is the store's row shape (decoupled from db.*; the wiring adapter maps db rows to this).
+// TrackCount is populated by the List query (via json_array_length in SQL) so the service
+// never needs to unmarshal TracksJSON just to count tracks for the list view.
 type SyncedRow struct {
 	ID, Source, ExternalID, Name, CoverURL, TracksJSON string
 	SyncEnabled, AutoDownload                          bool
 	SyncIntervalSec                                    int
 	LastSyncedAt, CreatedAt                            int64
+	TrackCount                                         int // set by List; zero means "not pre-counted, fall back to TracksJSON"
 }
 
 type Service struct {
@@ -160,9 +163,16 @@ func (s *Service) List(ctx context.Context) ([]core.SyncedPlaylist, error) {
 	}
 	out := []core.SyncedPlaylist{}
 	for _, r := range rows {
-		var tracks []core.ExternalResult
-		_ = json.Unmarshal([]byte(r.TracksJSON), &tracks)
-		out = append(out, rowToSummary(r, len(tracks)))
+		count := r.TrackCount
+		if count == 0 && r.TracksJSON != "" {
+			// Fallback: row came without a pre-counted TrackCount (e.g. from the
+			// in-memory test store), so derive it the old way. The real store adapter
+			// always populates TrackCount via json_array_length in SQL.
+			var tracks []core.ExternalResult
+			_ = json.Unmarshal([]byte(r.TracksJSON), &tracks)
+			count = len(tracks)
+		}
+		out = append(out, rowToSummary(r, count))
 	}
 	return out, nil
 }

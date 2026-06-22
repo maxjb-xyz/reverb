@@ -88,13 +88,27 @@ func (s *syncStore) Get(ctx context.Context, id string) (playlistsync.SyncedRow,
 }
 
 func (s *syncStore) List(ctx context.Context) ([]playlistsync.SyncedRow, error) {
-	rows, err := s.q.ListSyncedPlaylists(ctx)
+	rows, err := s.q.ListSyncedPlaylistsCount(ctx)
 	if err != nil {
 		return nil, err
 	}
 	out := make([]playlistsync.SyncedRow, 0, len(rows))
 	for _, r := range rows {
-		out = append(out, rowToSync(r))
+		out = append(out, playlistsync.SyncedRow{
+			ID:              r.ID,
+			Source:          r.Source,
+			ExternalID:      r.ExternalID,
+			Name:            r.Name,
+			CoverURL:        r.CoverUrl,
+			SyncEnabled:     r.SyncEnabled != 0,
+			AutoDownload:    r.AutoDownload != 0,
+			SyncIntervalSec: int(r.SyncIntervalSec),
+			LastSyncedAt:    r.LastSyncedAt,
+			CreatedAt:       r.CreatedAt,
+			TrackCount:      int(r.TrackCount),
+			// TracksJSON intentionally omitted: List only needs the count, which
+			// sql computed via json_array_length — no full blob unmarshal needed.
+		})
 	}
 	return out, nil
 }
