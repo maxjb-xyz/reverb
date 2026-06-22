@@ -29,7 +29,7 @@ function trackFromJob(job: DownloadJob): Track {
     album: job.album ?? '',
     artistId: '',
     artist: job.artist ?? '',
-    coverArtId: job.libraryTrackId ?? '',
+    coverArtId: job.coverArtId ?? '',
     trackNumber: 0,
     discNumber: 0,
     durationMs: 0,
@@ -371,7 +371,7 @@ export default function Home() {
                   key={job.id}
                   title={job.title ?? job.album ?? 'Unknown'}
                   subtitle={job.artist}
-                  coverId={job.libraryTrackId || undefined}
+                  coverId={job.coverArtId || undefined}
                   onClick={play}
                   onPlay={play}
                 />

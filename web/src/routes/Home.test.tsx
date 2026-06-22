@@ -184,6 +184,23 @@ describe('Home feed', () => {
     expect(screen.getByRole('heading', { name: /recently downloaded/i })).toBeInTheDocument()
   })
 
+  it('completed job with coverArtId renders MediaCard with correct cover src', async () => {
+    const { useAlbums, usePlaylists } = await import('../lib/libraryApi')
+
+    const albums = [makeAlbum({ id: 'al1', name: 'Some Album', artist: 'Some Artist' })]
+    vi.mocked(useAlbums).mockReturnValue({ data: albums, isLoading: false, error: null } as unknown as UseQueryResult<Album[], Error>)
+    vi.mocked(usePlaylists).mockReturnValue({ data: [], isLoading: false, error: null } as unknown as UseQueryResult<Playlist[], Error>)
+
+    const job = makeJob({ id: 'j2', status: 'completed', title: 'Cover Track', coverArtId: 'mf-abc123' })
+    useDownloads.setState({ jobs: { j2: job } })
+
+    render(wrap(<Home />))
+
+    // The MediaCard should render an img with src derived from coverArtId 'mf-abc123'
+    const img = screen.getByRole('img', { name: /Cover Track/i })
+    expect(img).toHaveAttribute('src', '/api/v1/cover/mf-abc123')
+  })
+
   it('shows skeleton tiles while data is loading', async () => {
     const { useAlbums, usePlaylists } = await import('../lib/libraryApi')
 

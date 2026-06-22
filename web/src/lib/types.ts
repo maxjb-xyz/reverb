@@ -174,6 +174,7 @@ export interface DownloadJob {
   error?: string
   outputPath?: string
   libraryTrackId?: string
+  coverArtId?: string
   downloaderName: string
   priority: number
   attempts: number
