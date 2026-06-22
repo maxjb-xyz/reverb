@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { usePlaylistDetail } from '../lib/coverageApi'
@@ -10,6 +10,7 @@ import { TrackRow } from '../components/ui/TrackRow'
 import { Button, IconButton, Cover, Skeleton, EmptyState } from '../components/ui'
 import { useAlbumPalette } from '../lib/useAlbumPalette'
 import { rgbToCss } from '../lib/palette'
+import { PortalMenu } from '../components/PortalMenu'
 
 export default function Playlist() {
   const { id = '' } = useParams()
@@ -22,6 +23,7 @@ export default function Playlist() {
 
   // "…" menu state
   const [menuOpen, setMenuOpen] = useState(false)
+  const menuTriggerRef = useRef<HTMLDivElement>(null)
   // Inline rename state
   const [renaming, setRenaming] = useState(false)
   const [renameValue, setRenameValue] = useState('')
@@ -176,47 +178,40 @@ export default function Playlist() {
                 }}
                 disabled={!hasTracks}
               />
-              {/* "…" overflow menu */}
-              <div className="relative">
+              {/* "…" overflow menu — rendered via portal to escape scroll-container clip */}
+              <div ref={menuTriggerRef} className="inline-flex">
                 <IconButton
                   name="down"
                   label="More options"
                   onClick={() => setMenuOpen((o) => !o)}
                   aria-label="More options"
                 />
-                {menuOpen && (
-                  <>
-                    {/* backdrop */}
-                    <div
-                      className="fixed inset-0 z-20"
-                      aria-hidden="true"
-                      onClick={() => setMenuOpen(false)}
-                    />
-                    <div
-                      role="menu"
-                      aria-label="Playlist options"
-                      className="absolute left-0 top-full z-30 mt-1 w-48 rounded-xl border border-border-subtle bg-raised shadow-pop"
-                    >
-                      <button
-                        type="button"
-                        role="menuitem"
-                        onClick={openRename}
-                        className="flex w-full items-center gap-3 rounded-t-xl px-3 py-2.5 text-sm text-text-primary hover:bg-raised-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-                      >
-                        Rename
-                      </button>
-                      <button
-                        type="button"
-                        role="menuitem"
-                        onClick={() => void handleDelete()}
-                        className="flex w-full items-center gap-3 rounded-b-xl px-3 py-2.5 text-sm text-text-primary hover:bg-raised-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-                      >
-                        Delete playlist
-                      </button>
-                    </div>
-                  </>
-                )}
               </div>
+              {menuOpen && (
+                <PortalMenu
+                  triggerRef={menuTriggerRef}
+                  onClose={() => setMenuOpen(false)}
+                  label="Playlist options"
+                  widthClass="w-48"
+                >
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={openRename}
+                    className="flex w-full items-center gap-3 rounded-t-xl px-3 py-2.5 text-sm text-text-primary hover:bg-raised-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                  >
+                    Rename
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => void handleDelete()}
+                    className="flex w-full items-center gap-3 rounded-b-xl px-3 py-2.5 text-sm text-text-primary hover:bg-raised-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                  >
+                    Delete playlist
+                  </button>
+                </PortalMenu>
+              )}
             </div>
           </div>
         </header>

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import {
@@ -11,6 +11,7 @@ import {
 import { TrackRow } from '../components/ui/TrackRow'
 import { DownloadAction } from '../components/download/DownloadAction'
 import { Button, IconButton, Cover, Skeleton, EmptyState, Badge, Toggle, Select } from '../components/ui'
+import { PortalMenu } from '../components/PortalMenu'
 import type { ExternalResult, ExternalTrackRef, AlbumDetailTrack, Track } from '../lib/types'
 import { usePlayer } from '../lib/playerStore'
 import { useAlbumPalette } from '../lib/useAlbumPalette'
@@ -81,6 +82,7 @@ export default function SyncedPlaylist() {
 
   // "…" menu state
   const [menuOpen, setMenuOpen] = useState(false)
+  const menuTriggerRef = useRef<HTMLDivElement>(null)
 
   // Schedule settings local state — seeded from detail once loaded
   const [syncEnabled, setSyncEnabled] = useState<boolean | null>(null)
@@ -259,80 +261,73 @@ export default function SyncedPlaylist() {
               >
                 Sync now
               </Button>
-              {/* "…" overflow menu */}
-              <div className="relative">
+              {/* "…" overflow menu — rendered via portal to escape scroll-container clip */}
+              <div ref={menuTriggerRef} className="inline-flex">
                 <IconButton
                   name="down"
                   label="More options"
                   onClick={() => setMenuOpen((o) => !o)}
                   aria-label="More options"
                 />
-                {menuOpen && (
-                  <>
-                    {/* backdrop */}
-                    <div
-                      className="fixed inset-0 z-20"
-                      aria-hidden="true"
-                      onClick={() => setMenuOpen(false)}
-                    />
-                    <div
-                      role="menu"
-                      aria-label="Synced playlist options"
-                      className="absolute left-0 top-full z-30 mt-1 w-72 rounded-xl border border-border-subtle bg-raised shadow-pop"
-                    >
-                      {/* Schedule settings panel */}
-                      <div className="px-4 py-3 space-y-3 border-b border-border-subtle">
-                        <p className="text-xs font-semibold uppercase tracking-widest text-text-muted">
-                          Schedule
-                        </p>
-                        <div className="flex items-center justify-between gap-3">
-                          <span className="text-sm text-text-primary">Auto-sync</span>
-                          <Toggle
-                            checked={effectiveSyncEnabled}
-                            label="Auto-sync"
-                            onChange={(v) => {
-                              setSyncEnabled(v)
-                              void handleUpdateSettings({ syncEnabled: v })
-                            }}
-                          />
-                        </div>
-                        <div className="flex items-center justify-between gap-3">
-                          <span className="text-sm text-text-primary">Interval</span>
-                          <Select
-                            value={String(effectiveIntervalSec)}
-                            options={INTERVAL_OPTIONS}
-                            label="Sync interval"
-                            onChange={(v) => {
-                              const sec = Number(v)
-                              setIntervalSec(sec)
-                              void handleUpdateSettings({ intervalSec: sec })
-                            }}
-                          />
-                        </div>
-                        <div className="flex items-center justify-between gap-3">
-                          <span className="text-sm text-text-primary">Auto-download missing</span>
-                          <Toggle
-                            checked={effectiveAutoDownload}
-                            label="Auto-download missing"
-                            onChange={(v) => {
-                              setAutoDownload(v)
-                              void handleUpdateSettings({ autoDownload: v })
-                            }}
-                          />
-                        </div>
-                      </div>
-                      <button
-                        type="button"
-                        role="menuitem"
-                        onClick={() => void handleDelete()}
-                        className="flex w-full items-center gap-3 rounded-b-xl px-4 py-2.5 text-sm text-text-primary hover:bg-raised-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-                      >
-                        Remove
-                      </button>
-                    </div>
-                  </>
-                )}
               </div>
+              {menuOpen && (
+                <PortalMenu
+                  triggerRef={menuTriggerRef}
+                  onClose={() => setMenuOpen(false)}
+                  label="Synced playlist options"
+                  widthClass="w-72"
+                >
+                  {/* Schedule settings panel */}
+                  <div className="px-4 py-3 space-y-3 border-b border-border-subtle">
+                    <p className="text-xs font-semibold uppercase tracking-widest text-text-muted">
+                      Schedule
+                    </p>
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-sm text-text-primary">Auto-sync</span>
+                      <Toggle
+                        checked={effectiveSyncEnabled}
+                        label="Auto-sync"
+                        onChange={(v) => {
+                          setSyncEnabled(v)
+                          void handleUpdateSettings({ syncEnabled: v })
+                        }}
+                      />
+                    </div>
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-sm text-text-primary">Interval</span>
+                      <Select
+                        value={String(effectiveIntervalSec)}
+                        options={INTERVAL_OPTIONS}
+                        label="Sync interval"
+                        onChange={(v) => {
+                          const sec = Number(v)
+                          setIntervalSec(sec)
+                          void handleUpdateSettings({ intervalSec: sec })
+                        }}
+                      />
+                    </div>
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-sm text-text-primary">Auto-download missing</span>
+                      <Toggle
+                        checked={effectiveAutoDownload}
+                        label="Auto-download missing"
+                        onChange={(v) => {
+                          setAutoDownload(v)
+                          void handleUpdateSettings({ autoDownload: v })
+                        }}
+                      />
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => void handleDelete()}
+                    className="flex w-full items-center gap-3 rounded-b-xl px-4 py-2.5 text-sm text-text-primary hover:bg-raised-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                  >
+                    Remove
+                  </button>
+                </PortalMenu>
+              )}
             </div>
           </div>
         </header>
