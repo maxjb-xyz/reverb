@@ -38,7 +38,7 @@ test('playlist sync: import -> have/missing -> download missing -> flips owned -
   // Scope to the page's filter group (a "Playlists" button also exists in the
   // LibraryRail aside — getByRole alone is a strict-mode collision).
   await page.getByRole('group', { name: 'Library filter' }).getByRole('button', { name: 'Playlists' }).click()
-  await page.getByRole('button', { name: '+ Import from Spotify' }).click()
+  await page.getByRole('main').getByRole('button', { name: 'Import from Spotify' }).click()
 
   // The import dialog opens. Paste a playlist URL and click Import.
   const dialog = page.getByRole('dialog')
