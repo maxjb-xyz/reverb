@@ -250,7 +250,7 @@ paths:
   /synced-playlists:
     get:
       summary: List imported (synced) playlists
-      responses: { "200": { description: array of SyncedPlaylist }, "503": { description: playlist sync unavailable } }
+      responses: { "200": { description: array of SyncedPlaylist }, "500": { description: store error }, "503": { description: playlist sync unavailable } }
     post:
       summary: Import a playlist by URL (idempotent on source+externalId)
       requestBody:

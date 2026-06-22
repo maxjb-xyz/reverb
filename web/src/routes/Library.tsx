@@ -51,6 +51,7 @@ export default function Library() {
         <Button
           size="sm"
           variant="secondary"
+          aria-label="Import from Spotify"
           onClick={() => setImportOpen(true)}
         >
           + Import from Spotify

@@ -3,10 +3,15 @@ package playlistsync
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"github.com/maxjb-xyz/reverb/internal/core"
 )
+
+// ErrNotPlaylistURL is returned by Import when the supplied URL is not a
+// recognizable Spotify playlist URL (a client error, not a fetch failure).
+var ErrNotPlaylistURL = errors.New("not a spotify playlist url")
 
 type PlaylistSource interface {
 	ParsePlaylistID(url string) (string, bool)
@@ -52,7 +57,7 @@ func NewService(src PlaylistSource, m Matcher, dl Downloader, store Store, now f
 func (s *Service) Import(ctx context.Context, rawURL string, downloadMissing bool) (core.SyncedPlaylistDetail, error) {
 	extID, ok := s.src.ParsePlaylistID(rawURL)
 	if !ok {
-		return core.SyncedPlaylistDetail{}, fmt.Errorf("not a spotify playlist url")
+		return core.SyncedPlaylistDetail{}, ErrNotPlaylistURL
 	}
 	pl, err := s.src.GetPlaylist(ctx, extID)
 	if err != nil {

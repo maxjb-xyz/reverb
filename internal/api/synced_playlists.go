@@ -2,10 +2,12 @@ package api
 
 import (
 	"context"
+	"errors"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/maxjb-xyz/reverb/internal/core"
+	"github.com/maxjb-xyz/reverb/internal/playlistsync"
 )
 
 // SyncService is the slice of *playlistsync.Service the API needs.
@@ -48,8 +50,12 @@ func (s *Server) handleImportSyncedPlaylist(w http.ResponseWriter, r *http.Reque
 	}
 	det, err := svc.Import(r.Context(), body.URL, body.DownloadMissing)
 	if err != nil {
-		// A bad/inaccessible playlist URL is a client error, not a server fault.
-		writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": err.Error()})
+		// A malformed playlist URL is a bad request; a fetch failure is unprocessable.
+		status := http.StatusUnprocessableEntity
+		if errors.Is(err, playlistsync.ErrNotPlaylistURL) {
+			status = http.StatusBadRequest
+		}
+		writeJSON(w, status, map[string]string{"error": err.Error()})
 		return
 	}
 	writeJSON(w, http.StatusOK, det)

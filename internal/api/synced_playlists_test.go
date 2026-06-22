@@ -12,6 +12,7 @@ import (
 
 	"github.com/maxjb-xyz/reverb/internal/auth"
 	"github.com/maxjb-xyz/reverb/internal/core"
+	"github.com/maxjb-xyz/reverb/internal/playlistsync"
 	"github.com/maxjb-xyz/reverb/internal/registry"
 	"github.com/maxjb-xyz/reverb/internal/store"
 )
@@ -131,18 +132,34 @@ func TestSyncedImportMissingURLReturns400(t *testing.T) {
 	}
 }
 
-func TestSyncedImportBadURLReturns422(t *testing.T) {
-	svc := &fakeSync{importErr: errors.New("not a spotify playlist url")}
+func TestSyncedImportBadURLReturns400(t *testing.T) {
+	svc := &fakeSync{importErr: playlistsync.ErrNotPlaylistURL}
 	srv, cookie := syncTestServer(t, svc)
 	rec := httptest.NewRecorder()
 	body := `{"url":"https://example.com/nope"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/synced-playlists", strings.NewReader(body))
 	req.AddCookie(cookie)
 	srv.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400: %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "not a spotify playlist url") {
+		t.Fatalf("body = %q", rec.Body.String())
+	}
+}
+
+func TestSyncedImportFetchErrorReturns422(t *testing.T) {
+	svc := &fakeSync{importErr: errors.New("spotify: 502 bad gateway")}
+	srv, cookie := syncTestServer(t, svc)
+	rec := httptest.NewRecorder()
+	body := `{"url":"https://open.spotify.com/playlist/ext1"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/synced-playlists", strings.NewReader(body))
+	req.AddCookie(cookie)
+	srv.Handler().ServeHTTP(rec, req)
 	if rec.Code != http.StatusUnprocessableEntity {
 		t.Fatalf("status = %d, want 422: %s", rec.Code, rec.Body.String())
 	}
-	if !strings.Contains(rec.Body.String(), "not a spotify playlist url") {
+	if !strings.Contains(rec.Body.String(), "502 bad gateway") {
 		t.Fatalf("body = %q", rec.Body.String())
 	}
 }

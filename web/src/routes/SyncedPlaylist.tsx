@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import {
@@ -89,12 +89,13 @@ export default function SyncedPlaylist() {
   const [intervalSec, setIntervalSec] = useState<number | null>(null)
   const [autoDownload, setAutoDownload] = useState<boolean | null>(null)
 
-  // Initialise local state from detail on first render
-  if (detail && syncEnabled === null) {
+  // Seed local state from detail once it loads / changes
+  useEffect(() => {
+    if (!detail) return
     setSyncEnabled(detail.syncEnabled)
     setIntervalSec(detail.syncIntervalSec)
     setAutoDownload(detail.autoDownload)
-  }
+  }, [detail?.id])
 
   const palette = useAlbumPalette(detail?.coverUrl)
 
