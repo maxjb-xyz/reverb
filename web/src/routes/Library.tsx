@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAlbums, useArtists, usePlaylists } from '../lib/libraryApi'
-import { Chip, MediaCard, Skeleton, EmptyState } from '../components/ui'
+import { Chip, MediaCard, Skeleton, EmptyState, Button } from '../components/ui'
+import { ImportPlaylistDialog } from '../components/ImportPlaylistDialog'
 
 type Filter = 'albums' | 'artists' | 'playlists'
 
@@ -33,6 +34,7 @@ function SkeletonGrid({ rounded = 'md' }: { rounded?: 'md' | 'full' }) {
 
 export default function Library() {
   const [filter, setFilter] = useState<Filter>('albums')
+  const [importOpen, setImportOpen] = useState(false)
   const navigate = useNavigate()
 
   const albums = useAlbums('newest')
@@ -115,6 +117,16 @@ export default function Library() {
       {/* Playlists grid */}
       {filter === 'playlists' && (
         <>
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-semibold text-text-muted">Playlists</span>
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() => setImportOpen(true)}
+            >
+              + Import from Spotify
+            </Button>
+          </div>
           {playlists.isLoading ? (
             <SkeletonGrid rounded="md" />
           ) : (playlists.data ?? []).length === 0 ? (
@@ -139,6 +151,8 @@ export default function Library() {
           )}
         </>
       )}
+
+      <ImportPlaylistDialog open={importOpen} onClose={() => setImportOpen(false)} />
     </div>
   )
 }

@@ -245,4 +245,20 @@ describe('Library page', () => {
     fireEvent.click(card)
     expect(screen.getByTestId('playlist-page')).toBeInTheDocument()
   })
+
+  it('shows "Import from Spotify" button in Playlists section that opens the dialog', () => {
+    render(wrap(<Library />))
+    fireEvent.click(screen.getByRole('button', { name: /^playlists$/i }))
+
+    const importBtn = screen.getByRole('button', { name: /import from spotify/i })
+    expect(importBtn).toBeInTheDocument()
+
+    // Dialog is closed initially
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+
+    // Clicking opens it
+    fireEvent.click(importBtn)
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: /import from spotify/i })).toBeInTheDocument()
+  })
 })
