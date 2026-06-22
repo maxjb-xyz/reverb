@@ -25,9 +25,13 @@ interface TrackRowProps {
   artistNode?: ReactNode
   /** Override the album cell with a pre-built node (e.g. a Link for external results). */
   albumNode?: ReactNode
+  /** Override the artist link destination. When provided, replaces /artist/library/:artistId. */
+  artistTo?: string
+  /** Override the album link destination. When provided, replaces /album/library/:albumId. */
+  albumTo?: string
 }
 
-export function TrackRow({ track, index, active = false, onPlay, right, coverSrc, rightWidth = 'auto', artistNode, albumNode }: TrackRowProps) {
+export function TrackRow({ track, index, active = false, onPlay, right, coverSrc, rightWidth = 'auto', artistNode, albumNode, artistTo, albumTo }: TrackRowProps) {
   const src = coverSrc ?? (track.coverArtId ? coverUrl(track.coverArtId, 80) : undefined)
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
@@ -89,9 +93,9 @@ export function TrackRow({ track, index, active = false, onPlay, right, coverSrc
           {track.title}
         </span>
         <span className="block truncate text-xs text-text-secondary mt-0.5">
-          {artistNode ?? (track.artistId ? (
+          {artistNode ?? ((artistTo ?? (track.artistId ? `/artist/library/${track.artistId}` : null)) ? (
             <Link
-              to={`/artist/library/${track.artistId}`}
+              to={artistTo ?? `/artist/library/${track.artistId}`}
               onClick={(e) => e.stopPropagation()}
               onDoubleClick={(e) => e.stopPropagation()}
               className="hover:underline focus-visible:outline-none focus-visible:underline"
@@ -106,9 +110,9 @@ export function TrackRow({ track, index, active = false, onPlay, right, coverSrc
 
       {/* Album */}
       <span className="truncate text-sm text-text-secondary hidden md:block">
-        {albumNode ?? (track.albumId ? (
+        {albumNode ?? ((albumTo ?? (track.albumId ? `/album/library/${track.albumId}` : null)) ? (
           <Link
-            to={`/album/library/${track.albumId}`}
+            to={albumTo ?? `/album/library/${track.albumId}`}
             onClick={(e) => e.stopPropagation()}
             onDoubleClick={(e) => e.stopPropagation()}
             className="hover:underline focus-visible:outline-none focus-visible:underline"

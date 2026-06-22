@@ -92,6 +92,16 @@ const missingRow: AlbumDetailTrack = {
   trackNumber: 3,
   durationMs: 210000,
 }
+const ownedRowWithExternalIds: AlbumDetailTrack = {
+  ...ownedRow1,
+  artistExternalId: 'sp-artist-99',
+  albumExternalId: 'sp-album-99',
+}
+const missingRowWithExternalIds: AlbumDetailTrack = {
+  ...missingRow,
+  artistExternalId: 'sp-artist-88',
+  albumExternalId: 'sp-album-88',
+}
 
 const mockDetail: SyncedPlaylistDetail = {
   id: 'sp1',
@@ -429,6 +439,72 @@ describe('SyncedPlaylist page', () => {
     it('missing row renders the Download control, not an "In Library" badge', async () => {
       await renderLoaded()
       expect(screen.getByRole('button', { name: /download missing track/i })).toBeInTheDocument()
+    })
+  })
+
+  describe('Spotify artist/album links', () => {
+    it('owned row links artist to /artist/spotify/:id when artistExternalId is present', async () => {
+      mockUseSyncedPlaylist.mockReturnValue({
+        data: { ...mockDetail, tracks: [ownedRowWithExternalIds, ownedRow2, missingRow] },
+        isLoading: false,
+        isError: false,
+      })
+      wrapper(<SyncedPlaylist />)
+      await waitFor(() =>
+        expect(screen.getByRole('heading', { name: 'Test Synced Playlist' })).toBeInTheDocument(),
+      )
+      const artistLink = screen.getByRole('link', { name: 'Artist A' })
+      expect(artistLink).toHaveAttribute('href', '/artist/spotify/sp-artist-99')
+    })
+
+    it('owned row links album to /album/spotify/:id when albumExternalId is present', async () => {
+      mockUseSyncedPlaylist.mockReturnValue({
+        data: { ...mockDetail, tracks: [ownedRowWithExternalIds, ownedRow2, missingRow] },
+        isLoading: false,
+        isError: false,
+      })
+      wrapper(<SyncedPlaylist />)
+      await waitFor(() =>
+        expect(screen.getByRole('heading', { name: 'Test Synced Playlist' })).toBeInTheDocument(),
+      )
+      const albumLinks = screen.getAllByRole('link', { name: 'Playlist A' })
+      // The first one belongs to the owned row with external ids
+      expect(albumLinks[0]).toHaveAttribute('href', '/album/spotify/sp-album-99')
+    })
+
+    it('missing row links artist to /artist/spotify/:id when artistExternalId is present', async () => {
+      mockUseSyncedPlaylist.mockReturnValue({
+        data: { ...mockDetail, tracks: [ownedRow1, ownedRow2, missingRowWithExternalIds] },
+        isLoading: false,
+        isError: false,
+      })
+      wrapper(<SyncedPlaylist />)
+      await waitFor(() =>
+        expect(screen.getByRole('heading', { name: 'Test Synced Playlist' })).toBeInTheDocument(),
+      )
+      const artistLink = screen.getByRole('link', { name: 'Artist C' })
+      expect(artistLink).toHaveAttribute('href', '/artist/spotify/sp-artist-88')
+    })
+
+    it('missing row links album to /album/spotify/:id when albumExternalId is present', async () => {
+      const missingWithAlbum: AlbumDetailTrack = { ...missingRowWithExternalIds, album: 'Missing Album' }
+      mockUseSyncedPlaylist.mockReturnValue({
+        data: { ...mockDetail, tracks: [ownedRow1, ownedRow2, missingWithAlbum] },
+        isLoading: false,
+        isError: false,
+      })
+      wrapper(<SyncedPlaylist />)
+      await waitFor(() =>
+        expect(screen.getByRole('heading', { name: 'Test Synced Playlist' })).toBeInTheDocument(),
+      )
+      const albumLink = screen.getByRole('link', { name: 'Missing Album' })
+      expect(albumLink).toHaveAttribute('href', '/album/spotify/sp-album-88')
+    })
+
+    it('owned row falls back to /artist/library/:id when no artistExternalId', async () => {
+      await renderLoaded()
+      const artistLink = screen.getByRole('link', { name: 'Artist A' })
+      expect(artistLink).toHaveAttribute('href', '/artist/library/ar1')
     })
   })
 })

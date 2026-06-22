@@ -207,6 +207,8 @@ export default function Album() {
                 active={isActive}
                 onPlay={() => playTrackList(ownedTracks, ownedIdx)}
                 coverSrc={t.libraryTrack.coverArtId ? undefined : t.coverUrl}
+                artistTo={t.artistExternalId ? `/artist/spotify/${t.artistExternalId}` : undefined}
+                albumTo={t.albumExternalId ? `/album/spotify/${t.albumExternalId}` : undefined}
                 right={
                   <Badge kind="in-library">
                     <Icon name="check" className="text-xs" />

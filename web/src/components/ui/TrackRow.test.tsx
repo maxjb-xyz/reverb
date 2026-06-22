@@ -189,6 +189,32 @@ describe('TrackRow', () => {
     expect(screen.getByTestId('dl-badge')).toBeInTheDocument()
   })
 
+  // ── artistTo / albumTo overrides ──────────────────────────────────────────
+
+  it('artistTo overrides the artist link destination', () => {
+    renderRow({ onPlay: vi.fn(), artistTo: '/artist/spotify/sp-artist-1' })
+    const link = screen.getByRole('link', { name: 'Radiohead' })
+    expect(link).toHaveAttribute('href', '/artist/spotify/sp-artist-1')
+  })
+
+  it('albumTo overrides the album link destination', () => {
+    renderRow({ onPlay: vi.fn(), albumTo: '/album/spotify/sp-album-1' })
+    const link = screen.getByRole('link', { name: 'OK Computer' })
+    expect(link).toHaveAttribute('href', '/album/spotify/sp-album-1')
+  })
+
+  it('falls back to /artist/library/:artistId when artistTo is not provided', () => {
+    renderRow({ onPlay: vi.fn() })
+    const link = screen.getByRole('link', { name: 'Radiohead' })
+    expect(link).toHaveAttribute('href', '/artist/library/art-1')
+  })
+
+  it('falls back to /album/library/:albumId when albumTo is not provided', () => {
+    renderRow({ onPlay: vi.fn() })
+    const link = screen.getByRole('link', { name: 'OK Computer' })
+    expect(link).toHaveAttribute('href', '/album/library/alb-1')
+  })
+
   // ── A11y ──────────────────────────────────────────────────────────────────
 
   it('has role="button" on the container', () => {

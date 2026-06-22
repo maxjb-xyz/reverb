@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, Link } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import {
   useSyncedPlaylist,
@@ -354,6 +354,8 @@ export default function SyncedPlaylist() {
                 active={isActive}
                 onPlay={() => playTrackList(ownedTracks, ownedIdx)}
                 coverSrc={t.libraryTrack?.coverArtId ? undefined : t.coverUrl}
+                artistTo={t.artistExternalId ? `/artist/spotify/${t.artistExternalId}` : undefined}
+                albumTo={t.albumExternalId ? `/album/spotify/${t.albumExternalId}` : undefined}
                 right={
                   <Badge kind="in-library">
                     <Icon name="check" className="text-xs" />
@@ -367,6 +369,32 @@ export default function SyncedPlaylist() {
 
           // Non-owned tracks: display row with DownloadAction right slot
           const displayTrack = asTrack(t)
+          const missingArtistTo = t.artistExternalId ? `/artist/spotify/${t.artistExternalId}` : undefined
+          const missingAlbumTo = t.albumExternalId ? `/album/spotify/${t.albumExternalId}` : undefined
+          const missingArtistNode = missingArtistTo
+            ? (
+              <Link
+                to={missingArtistTo}
+                onClick={(e) => e.stopPropagation()}
+                onDoubleClick={(e) => e.stopPropagation()}
+                className="hover:underline focus-visible:outline-none focus-visible:underline"
+              >
+                {t.artist}
+              </Link>
+            )
+            : undefined
+          const missingAlbumNode = missingAlbumTo
+            ? (
+              <Link
+                to={missingAlbumTo}
+                onClick={(e) => e.stopPropagation()}
+                onDoubleClick={(e) => e.stopPropagation()}
+                className="hover:underline focus-visible:outline-none focus-visible:underline"
+              >
+                {t.album ?? ''}
+              </Link>
+            )
+            : undefined
           const right = t.externalRef
             ? (
               <DownloadAction
@@ -382,6 +410,8 @@ export default function SyncedPlaylist() {
               index={i}
               onPlay={() => {}}
               coverSrc={t.coverUrl ?? detail.coverUrl}
+              artistNode={missingArtistNode}
+              albumNode={missingAlbumNode}
               right={right}
               rightWidth={right ? '120px' : undefined}
             />

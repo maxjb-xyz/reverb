@@ -112,6 +112,10 @@ export interface AlbumDetailTrack {
   trackNumber: number
   durationMs: number
   coverUrl?: string
+  /** Spotify artist id — links to /artist/spotify/:id when present */
+  artistExternalId?: string
+  /** Spotify album id — links to /album/spotify/:id when present */
+  albumExternalId?: string
 }
 
 export interface AlbumDetail {
