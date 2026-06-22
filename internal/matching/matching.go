@@ -27,7 +27,13 @@ var artistSeparators = []string{"/", "&", ";", "·", "•", " featuring ", " fea
 
 // artistTokenSet tokenizes a (possibly composite) artist string into a set of
 // normalized artist tokens, splitting on composite separators and feat markers
-// case-insensitively. Empty tokens are dropped.
+// case-insensitively. Empty tokens are dropped, as are sub-3-char tokens: the
+// "/" separator is BOTH Navidrome's composite-join char AND a literal in real
+// band names ("AC/DC"), so "AC/DC" → {ac, dc}; dropping <3-char tokens collapses
+// that to {} so a stray external "AC" can't token-subset-match "AC/DC". Real
+// composite classical credits ("Chopin"/"Rubinstein"/"Vivaldi") are all ≥3 chars
+// and unaffected; exact "AC/DC"=="AC/DC" still matches via artistMatches's
+// equality check, which runs BEFORE tokenizing.
 func artistTokenSet(artist string) map[string]bool {
 	parts := []string{artist}
 	for _, sep := range artistSeparators {
@@ -41,7 +47,8 @@ func artistTokenSet(artist string) map[string]bool {
 	set := map[string]bool{}
 	for _, p := range parts {
 		n := Normalize(p)
-		if n != "" {
+		// Drop empty and sub-3-char tokens (slash-in-name false-positive guard).
+		if len([]rune(n)) >= 3 {
 			set[n] = true
 		}
 	}
@@ -275,6 +282,10 @@ func (s *Service) resolve(ext core.ExternalResult, cands []core.Track) core.Matc
 		}
 		// Album corroboration: exact normalized album equality. Computed BEFORE the
 		// duration gate so it can bypass a REJECT (see DurationToleranceMs doc).
+		// NOTE: this album-bypass protection depends on Normalize NOT stripping
+		// version qualifiers (e.g. "(Live)", "(Deluxe)") — if a future Normalize
+		// change folded those away, "X" and "X (Live)" would corroborate and
+		// silently weaken the live-vs-studio duration gate. See Normalize's doc.
 		albumMatch := nAlbum != "" && Normalize(c.Album) == nAlbum
 		// Duration only DISAMBIGUATES; it must not REJECT when the external side
 		// has no duration. The post-download re-match carries no DurationMs (the

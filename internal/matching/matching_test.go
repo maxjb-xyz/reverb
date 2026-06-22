@@ -262,11 +262,32 @@ func TestArtistMatches(t *testing.T) {
 		// tokenizes via & only → {earth wind, fire}; an unrelated "Fire" is a subset and
 		// would match, but a totally unrelated comma'd name does not get falsely split.
 		{"Tyler, The Creator", "Drake", false},
+		// Slash-in-name guard: "AC/DC" tokenizes to {ac, dc} but both are <3 chars and
+		// dropped → {} → a stray external "AC" can NOT subset-match the band "AC/DC".
+		{"AC", "AC/DC", false},
+		// …but the exact-equality fast path (runs before tokenizing) keeps "AC/DC" itself
+		// matching, even though its token set is empty.
+		{"AC/DC", "AC/DC", true},
+		// Regression: real composite classical credits (all tokens ≥3 chars) still match.
+		{"Frédéric Chopin", "Frédéric Chopin/Arthur Rubinstein", true},
 	}
 	for _, c := range cases {
 		if got := artistMatches(c.ext, c.lib); got != c.want {
 			t.Errorf("artistMatches(%q, %q)=%v want %v", c.ext, c.lib, got, c.want)
 		}
+	}
+}
+
+// TestArtistTokenSet unit-tests the tokenizer's sub-3-char drop directly: "AC/DC"
+// collapses to the empty set (both 2-char tokens dropped) while "Frédéric Chopin/
+// Arthur Rubinstein" retains its (≥3-char) composite tokens.
+func TestArtistTokenSet(t *testing.T) {
+	if got := artistTokenSet("AC/DC"); len(got) != 0 {
+		t.Errorf("artistTokenSet(%q)=%v want empty (both tokens <3 chars)", "AC/DC", got)
+	}
+	got := artistTokenSet("Frédéric Chopin/Arthur Rubinstein")
+	if !got["frederic chopin"] || !got["arthur rubinstein"] {
+		t.Errorf("artistTokenSet(composite classical)=%v want both ≥3-char tokens present", got)
 	}
 }
 
