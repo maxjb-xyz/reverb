@@ -93,6 +93,12 @@ func TestSearchTracksMapsISRCAndCover(t *testing.T) {
 	if r.Type != core.EntityTrack {
 		t.Fatalf("type: %q", r.Type)
 	}
+	if r.ArtistExternalID != "sp_ar1" {
+		t.Fatalf("ArtistExternalID not mapped: %q (want %q)", r.ArtistExternalID, "sp_ar1")
+	}
+	if r.AlbumExternalID != "sp_al1" {
+		t.Fatalf("AlbumExternalID not mapped: %q (want %q)", r.AlbumExternalID, "sp_al1")
+	}
 	if res[1].ISRC != "" {
 		t.Fatalf("track1 should have empty ISRC, got %q", res[1].ISRC)
 	}

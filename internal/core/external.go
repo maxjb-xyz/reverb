@@ -39,18 +39,24 @@ type MatchResult struct {
 // are DATA (optional) — the matcher uses them when non-empty. Match is filled in
 // by MatchingService before the result is emitted to the client.
 type ExternalResult struct {
-	Source     string       `json:"source"`
-	ExternalID string       `json:"externalId"`
-	Title      string       `json:"title"`
-	Artist     string       `json:"artist"`
-	Album      string       `json:"album"`
-	DurationMs int          `json:"durationMs"`
-	ISRC       string       `json:"isrc,omitempty"`
-	MBID       string       `json:"mbid,omitempty"`
-	CoverURL   string       `json:"coverUrl,omitempty"`
-	CoverArtID string       `json:"coverArtId,omitempty"`
-	Type       EntityType   `json:"type"`
-	Match      *MatchResult `json:"match,omitempty"`
+	Source           string       `json:"source"`
+	ExternalID       string       `json:"externalId"`
+	Title            string       `json:"title"`
+	Artist           string       `json:"artist"`
+	Album            string       `json:"album"`
+	DurationMs       int          `json:"durationMs"`
+	ISRC             string       `json:"isrc,omitempty"`
+	MBID             string       `json:"mbid,omitempty"`
+	CoverURL         string       `json:"coverUrl,omitempty"`
+	CoverArtID       string       `json:"coverArtId,omitempty"`
+	// ArtistExternalID and AlbumExternalID carry the source-specific IDs for the
+	// primary artist and album of this track result. Populated by adapters that
+	// have these IDs readily available (e.g. Spotify). Used by the frontend to
+	// render clickable artist/album links on remote search rows.
+	ArtistExternalID string       `json:"artistExternalId,omitempty"`
+	AlbumExternalID  string       `json:"albumExternalId,omitempty"`
+	Type             EntityType   `json:"type"`
+	Match            *MatchResult `json:"match,omitempty"`
 }
 
 // ExternalAlbum is an album fetched from a SearchSource (GetAlbum).

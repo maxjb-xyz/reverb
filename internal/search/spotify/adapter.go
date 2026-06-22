@@ -127,17 +127,26 @@ func artistName(arts []artistRefDTO) string {
 	return ""
 }
 
+func artistID(arts []artistRefDTO) string {
+	if len(arts) > 0 {
+		return arts[0].ID
+	}
+	return ""
+}
+
 func (a *Adapter) mapTrack(t trackDTO) core.ExternalResult {
 	return core.ExternalResult{
-		Source:     "spotify",
-		ExternalID: t.ID,
-		Title:      t.Name,
-		Artist:     artistName(t.Artists),
-		Album:      t.Album.Name,
-		DurationMs: t.DurationMs,
-		ISRC:       t.ExternalIDs.ISRC,
-		CoverURL:   firstImage(t.Album.Images),
-		Type:       core.EntityTrack,
+		Source:           "spotify",
+		ExternalID:       t.ID,
+		Title:            t.Name,
+		Artist:           artistName(t.Artists),
+		Album:            t.Album.Name,
+		DurationMs:       t.DurationMs,
+		ISRC:             t.ExternalIDs.ISRC,
+		CoverURL:         firstImage(t.Album.Images),
+		Type:             core.EntityTrack,
+		ArtistExternalID: artistID(t.Artists),
+		AlbumExternalID:  t.Album.ID,
 	}
 }
 
