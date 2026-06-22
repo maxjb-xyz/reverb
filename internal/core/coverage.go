@@ -34,13 +34,14 @@ type AlbumCoverage struct {
 
 // DiscographyAlbum is one deduped release in the artist-page skeleton.
 type DiscographyAlbum struct {
-	Source      string `json:"source"`
-	ExternalID  string `json:"externalId"`
-	Name        string `json:"name"`
-	CoverURL    string `json:"coverUrl,omitempty"`
-	Year        int    `json:"year"`
-	Kind        string `json:"kind"` // "album" | "single"
-	TotalTracks int    `json:"totalTracks"`
+	Source         string `json:"source"`
+	ExternalID     string `json:"externalId"`
+	Name           string `json:"name"`
+	CoverURL       string `json:"coverUrl,omitempty"`
+	Year           int    `json:"year"`
+	Kind           string `json:"kind"` // "album" | "single"
+	TotalTracks    int    `json:"totalTracks"`
+	LibraryAlbumID string `json:"libraryAlbumId,omitempty"`
 }
 
 // ArtistDetail is the artist-page response: header + deduped discography skeleton.

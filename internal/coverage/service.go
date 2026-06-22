@@ -35,6 +35,9 @@ type CoverageCache interface {
 	UpsertDiscographyCache(ctx context.Context, source, externalArtistID, albumsJSON string, now int64) error
 	GetAlbumCoverage(ctx context.Context, source, externalAlbumID string) (CoverageRow, error)
 	UpsertAlbumCoverage(ctx context.Context, source, externalAlbumID, coverageJSON, libraryAlbumID string, libraryVersion int64, now int64) error
+	// GetLibraryAlbumIDByExternal returns the library album id for a known
+	// (source, externalAlbumID) pair from the coverage cache, or "" when absent.
+	GetLibraryAlbumIDByExternal(ctx context.Context, source, externalAlbumID string) string
 }
 
 type ArtistMapRow struct{ ExternalArtistID string; Confidence float64 }
@@ -85,6 +88,12 @@ func (s *Service) ArtistDetail(ctx context.Context, source, id string) (core.Art
 	det.Albums = Canonicalize(albums)
 	if det.Name == "" && len(albums) > 0 {
 		det.Name = albums[0].Artist
+	}
+	// Backfill LibraryAlbumID for albums already mapped in the coverage cache.
+	for i, da := range det.Albums {
+		if libID := s.cache.GetLibraryAlbumIDByExternal(ctx, "spotify", da.ExternalID); libID != "" {
+			det.Albums[i].LibraryAlbumID = libID
+		}
 	}
 	return det, nil
 }

@@ -123,6 +123,17 @@ func (c *coverageCache) UpsertAlbumCoverage(ctx context.Context, source, externa
 	})
 }
 
+func (c *coverageCache) GetLibraryAlbumIDByExternal(ctx context.Context, source, externalAlbumID string) string {
+	row, err := c.q.GetAlbumCoverage(ctx, db.GetAlbumCoverageParams{
+		Source:          source,
+		ExternalAlbumID: externalAlbumID,
+	})
+	if err != nil {
+		return ""
+	}
+	return row.LibraryAlbumID
+}
+
 // BuildCoverageService constructs a *coverage.Service from the built services: the
 // first enabled search source implementing coverage.DiscoSource (spotify does),
 // the library adapter, a matching.Service over the same library, the cache adapter,

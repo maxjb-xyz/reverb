@@ -269,7 +269,13 @@ export default function Artist() {
                 album={al}
                 cov={coverage[al.externalId]}
                 resolved={detail.resolved}
-                onNavigate={() => navigate(`/album/${al.source}/${al.externalId}`)}
+                onNavigate={() =>
+                navigate(
+                  al.libraryAlbumId
+                    ? `/album/library/${al.libraryAlbumId}`
+                    : `/album/${al.source}/${al.externalId}`,
+                )
+              }
               />
             ))}
           </div>

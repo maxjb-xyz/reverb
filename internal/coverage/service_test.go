@@ -145,6 +145,16 @@ func (m *memCache) UpsertAlbumCoverage(_ context.Context, source, externalAlbumI
 	return nil
 }
 
+func (m *memCache) GetLibraryAlbumIDByExternal(_ context.Context, source, externalAlbumID string) string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	row, ok := m.albumCov[source+"|"+externalAlbumID]
+	if !ok || !row.Found {
+		return ""
+	}
+	return row.LibraryAlbumID
+}
+
 // upsertAlbumCoverageRaw seeds a coverage row directly (for tests that need to
 // prime the cache with a specific library_version, e.g. a stale-row test).
 func (m *memCache) upsertAlbumCoverageRaw(source, externalAlbumID, coverageJSON, libraryAlbumID string, libraryVersion int64) {
@@ -415,6 +425,51 @@ func TestAlbumDetailLibraryDegradesWhenNoMatch(t *testing.T) {
 	for _, tr := range det.Tracks {
 		if tr.State != core.CoverageFull {
 			t.Errorf("fallback track %q: want state:full, got %s", tr.Title, tr.State)
+		}
+	}
+}
+
+// TestArtistDetailLibraryAlbumIDBackfill: ArtistDetail sets LibraryAlbumID on a
+// DiscographyAlbum when the album_coverage cache already holds a mapping for its
+// external id, and leaves it empty when the mapping is absent.
+func TestArtistDetailLibraryAlbumIDBackfill(t *testing.T) {
+	// Two external albums: "AL" is mapped (library album "libAlbum1"), "BL" is not.
+	disco := fakeDisco{
+		artists: []core.ExternalResult{{Source: "spotify", ExternalID: "art1", Title: "Radiohead", Type: core.EntityArtist}},
+		disco: []core.ExternalAlbum{
+			{Source: "spotify", ExternalID: "AL", Name: "Kid A", Artist: "Radiohead", Kind: "album", TotalTracks: 2},
+			{Source: "spotify", ExternalID: "BL", Name: "Amnesiac", Artist: "Radiohead", Kind: "album", TotalTracks: 2},
+		},
+		albums: map[string]core.ExternalAlbum{},
+	}
+	cache := newMemCache()
+	// Pre-seed the coverage cache for "AL" with a known library album id.
+	cache.upsertAlbumCoverageRaw("spotify", "AL", `{"source":"spotify","externalAlbumId":"AL","state":"full","ownedCount":2,"totalCount":2,"missingTracks":[]}`, "libAlbum1", 1)
+	// "BL" has no coverage entry.
+
+	svc := NewService(disco, fakeMatcher{}, fakeLibrary{}, cache, func() int64 { return 1 }, func(context.Context) (int64, error) { return 1, nil })
+	det, err := svc.ArtistDetail(context.Background(), "library", "libArtist1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !det.Resolved {
+		t.Fatalf("expected resolved=true, got %+v", det)
+	}
+	if len(det.Albums) != 2 {
+		t.Fatalf("expected 2 albums, got %d", len(det.Albums))
+	}
+	for _, da := range det.Albums {
+		switch da.ExternalID {
+		case "AL":
+			if da.LibraryAlbumID != "libAlbum1" {
+				t.Errorf("AL: LibraryAlbumID: want %q, got %q", "libAlbum1", da.LibraryAlbumID)
+			}
+		case "BL":
+			if da.LibraryAlbumID != "" {
+				t.Errorf("BL: LibraryAlbumID: want empty, got %q", da.LibraryAlbumID)
+			}
+		default:
+			t.Errorf("unexpected album externalId %q", da.ExternalID)
 		}
 	}
 }

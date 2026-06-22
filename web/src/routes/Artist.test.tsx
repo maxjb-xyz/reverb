@@ -48,6 +48,7 @@ import { useCoverageStream } from '../lib/coverageStore'
 import { postBatchDownload } from '../lib/downloadApi'
 import { useDownloads } from '../lib/downloadStore'
 import { useAlbumPalette } from '../lib/useAlbumPalette'
+import { useNavigate } from 'react-router-dom'
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -287,6 +288,43 @@ describe('Artist page', () => {
     const gradientWrapper = heading.closest('[class*="from-raised"]')
     expect(gradientWrapper).toBeTruthy()
     expect((gradientWrapper as HTMLElement).style.background).toBe('')
+  })
+
+  it('clicking an album with libraryAlbumId navigates to /album/library/:id', () => {
+    const mockNavigate = vi.fn()
+    vi.mocked(useNavigate).mockReturnValue(mockNavigate)
+    // Override detail with a library-mapped album
+    vi.mocked(useArtistDetail).mockReturnValue({
+      data: {
+        ...STUB_DETAIL,
+        albums: [
+          {
+            source: 'spotify',
+            externalId: 'AL',
+            name: 'Kid A',
+            year: 2000,
+            kind: 'album' as const,
+            totalTracks: 10,
+            coverUrl: 'https://cdn.example.com/kida.jpg',
+            libraryAlbumId: 'libAlbum1',
+          },
+        ],
+      },
+      isLoading: false,
+      isError: false,
+    } as ReturnType<typeof useArtistDetail>)
+    wrapper(<Artist />)
+    fireEvent.click(screen.getByRole('button', { name: 'Kid A' }))
+    expect(mockNavigate).toHaveBeenCalledWith('/album/library/libAlbum1')
+  })
+
+  it('clicking an album without libraryAlbumId navigates to /album/spotify/:externalId', () => {
+    const mockNavigate = vi.fn()
+    vi.mocked(useNavigate).mockReturnValue(mockNavigate)
+    // Use default STUB_DETAIL — album 'AL' has no libraryAlbumId
+    wrapper(<Artist />)
+    fireEvent.click(screen.getByRole('button', { name: 'Kid A' }))
+    expect(mockNavigate).toHaveBeenCalledWith('/album/spotify/AL')
   })
 
   it('shows a progress ring for an album card whose missing track has a running job', () => {

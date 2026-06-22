@@ -87,6 +87,7 @@ export interface DiscographyAlbum {
   year: number
   kind: 'album' | 'single'
   totalTracks: number
+  libraryAlbumId?: string
 }
 
 export interface ArtistDetail {
