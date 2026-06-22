@@ -8,6 +8,8 @@ import { formatDuration } from '../lib/types'
 import type { AlbumDetailTrack, ExternalResult, ExternalTrackRef, Track } from '../lib/types'
 import { usePlayer } from '../lib/playerStore'
 import { Button, IconButton, Cover, Skeleton, EmptyState } from '../components/ui'
+import { useAlbumPalette } from '../lib/useAlbumPalette'
+import { rgbToCss } from '../lib/palette'
 
 // ── Local helpers ─────────────────────────────────────────────────────────────
 
@@ -108,13 +110,18 @@ export default function Album() {
   // Cover source: prefer coverArtId proxy, fall back to direct coverUrl
   const coverSrc = album.coverArtId ? coverUrl(album.coverArtId, 300) : album.coverUrl
 
+  const palette = useAlbumPalette(coverSrc)
+
   // Total duration: sum across all tracks (owned + missing)
   const totalDurationMs = album.tracks.reduce((acc, t) => acc + t.durationMs, 0)
 
   return (
     <div className="space-y-6">
       {/* Subtle gradient wash behind header */}
-      <div className="relative -mx-4 -mt-4 px-4 pt-4 pb-6 rounded-b-2xl overflow-hidden bg-gradient-to-b from-raised to-transparent">
+      <div
+        className="relative -mx-4 -mt-4 px-4 pt-4 pb-6 rounded-b-2xl overflow-hidden bg-gradient-to-b from-raised to-transparent"
+        style={palette ? { background: `linear-gradient(to bottom, ${rgbToCss(palette.rgb, 0.55)} 0%, transparent 100%)` } : undefined}
+      >
         <header className="relative z-10 flex items-end gap-6 pt-2">
           <Cover
             src={coverSrc}

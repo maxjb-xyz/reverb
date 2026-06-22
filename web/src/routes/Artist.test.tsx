@@ -7,6 +7,8 @@ import Artist from './Artist'
 // Module mocks — must be hoisted before any imports that pull these modules.
 // ---------------------------------------------------------------------------
 
+vi.mock('../lib/useAlbumPalette', () => ({ useAlbumPalette: vi.fn(() => null) }))
+
 vi.mock('../lib/coverageApi', () => ({
   useArtistDetail: vi.fn(),
 }))
@@ -31,6 +33,7 @@ vi.mock('react-router-dom', async (importOriginal) => {
 import { useArtistDetail } from '../lib/coverageApi'
 import { useCoverageStream } from '../lib/coverageStore'
 import { postBatchDownload } from '../lib/downloadApi'
+import { useAlbumPalette } from '../lib/useAlbumPalette'
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -243,5 +246,28 @@ describe('Artist page', () => {
     expect(screen.queryByText('0/10')).not.toBeInTheDocument()
     // The card itself must still render
     expect(screen.getByRole('button', { name: 'Kid A' })).toBeInTheDocument()
+  })
+
+  it('header wrapper has dynamic style.background when palette is present', () => {
+    vi.mocked(useAlbumPalette).mockReturnValue({ rgb: [120, 80, 200], text: '#FFFFFF', scrim: false })
+    wrapper(<Artist />)
+    const heading = screen.getByRole('heading', { name: 'Radiohead' })
+    const gradientWrapper = heading.closest('[class*="from-raised"]')
+    expect(gradientWrapper).toBeTruthy()
+    const bg = (gradientWrapper as HTMLElement).style.background
+    expect(bg).toContain('linear-gradient')
+    // Browser normalizes rgb(120 80 200 / 0.55) → rgba(120, 80, 200, 0.55)
+    expect(bg).toMatch(/120/)
+    expect(bg).toMatch(/80/)
+    expect(bg).toMatch(/200/)
+  })
+
+  it('header wrapper has no inline style when palette is null', () => {
+    vi.mocked(useAlbumPalette).mockReturnValue(null)
+    wrapper(<Artist />)
+    const heading = screen.getByRole('heading', { name: 'Radiohead' })
+    const gradientWrapper = heading.closest('[class*="from-raised"]')
+    expect(gradientWrapper).toBeTruthy()
+    expect((gradientWrapper as HTMLElement).style.background).toBe('')
   })
 })

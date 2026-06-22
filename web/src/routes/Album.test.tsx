@@ -5,6 +5,10 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import Album from './Album'
 import { makeTrack } from '../test/factories'
 import type { AlbumDetail, ExternalTrackRef } from '../lib/types'
+import { useAlbumPalette } from '../lib/useAlbumPalette'
+
+// ── useAlbumPalette mock ───────────────────────────────────────────────────────
+vi.mock('../lib/useAlbumPalette', () => ({ useAlbumPalette: vi.fn(() => null) }))
 
 // ── Player mock ────────────────────────────────────────────────────────────────
 const mockPlayTrackList = vi.fn()
@@ -278,6 +282,28 @@ describe('Album page', () => {
     // Must not render any track rows or album header
     expect(screen.queryByTestId('album-skeleton')).not.toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'Kid A' })).not.toBeInTheDocument()
+  })
+
+  it('header wrapper has dynamic style.background when palette is present', async () => {
+    vi.mocked(useAlbumPalette).mockReturnValue({ rgb: [120, 80, 200], text: '#FFFFFF', scrim: false })
+    await renderLoaded()
+    // The gradient wrapper div is the first child of the outer space-y-6 div
+    const wrapper = screen.getByRole('heading', { name: 'Kid A' }).closest('[class*="from-raised"]')
+    expect(wrapper).toBeTruthy()
+    const bg = (wrapper as HTMLElement).style.background
+    expect(bg).toContain('linear-gradient')
+    // Browser normalizes rgb(120 80 200 / 0.55) → rgba(120, 80, 200, 0.55)
+    expect(bg).toMatch(/120/)
+    expect(bg).toMatch(/80/)
+    expect(bg).toMatch(/200/)
+  })
+
+  it('header wrapper has no inline style when palette is null', async () => {
+    vi.mocked(useAlbumPalette).mockReturnValue(null)
+    await renderLoaded()
+    const wrapper = screen.getByRole('heading', { name: 'Kid A' }).closest('[class*="from-raised"]')
+    expect(wrapper).toBeTruthy()
+    expect((wrapper as HTMLElement).style.background).toBe('')
   })
 
   describe('library-source album (all tracks owned — unchanged behavior)', () => {

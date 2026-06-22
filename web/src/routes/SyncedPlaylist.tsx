@@ -13,6 +13,8 @@ import { DownloadAction } from '../components/download/DownloadAction'
 import { Button, IconButton, Cover, Skeleton, EmptyState, Badge, Toggle, Select } from '../components/ui'
 import type { ExternalResult, ExternalTrackRef, AlbumDetailTrack, Track } from '../lib/types'
 import { usePlayer } from '../lib/playerStore'
+import { useAlbumPalette } from '../lib/useAlbumPalette'
+import { rgbToCss } from '../lib/palette'
 
 // ── Local helpers ─────────────────────────────────────────────────────────────
 
@@ -91,6 +93,8 @@ export default function SyncedPlaylist() {
     setIntervalSec(detail.syncIntervalSec)
     setAutoDownload(detail.autoDownload)
   }
+
+  const palette = useAlbumPalette(detail?.coverUrl)
 
   // ── Loading / error states ──────────────────────────────────────────────────
 
@@ -192,7 +196,10 @@ export default function SyncedPlaylist() {
   return (
     <div className="space-y-6">
       {/* Gradient wash header */}
-      <div className="relative -mx-4 -mt-4 px-4 pt-4 pb-6 rounded-b-2xl overflow-hidden bg-gradient-to-b from-raised to-transparent">
+      <div
+        className="relative -mx-4 -mt-4 px-4 pt-4 pb-6 rounded-b-2xl overflow-hidden bg-gradient-to-b from-raised to-transparent"
+        style={palette ? { background: `linear-gradient(to bottom, ${rgbToCss(palette.rgb, 0.55)} 0%, transparent 100%)` } : undefined}
+      >
         <header className="relative z-10 flex items-end gap-6 pt-2">
           <Cover
             src={detail.coverUrl}

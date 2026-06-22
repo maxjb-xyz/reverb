@@ -8,6 +8,8 @@ import { Cover, Skeleton, EmptyState, MediaCard } from '../components/ui'
 import { Chip } from '../components/ui/Chip'
 import { Button } from '../components/ui/Button'
 import type { DiscographyAlbum } from '../lib/types'
+import { useAlbumPalette } from '../lib/useAlbumPalette'
+import { rgbToCss } from '../lib/palette'
 
 type KindFilter = 'all' | 'album' | 'single'
 
@@ -71,6 +73,8 @@ export default function Artist() {
     ? coverUrl(detail.coverArtId, 300)
     : detail.coverUrl
 
+  const palette = useAlbumPalette(coverSrc)
+
   const albums = detail.albums ?? []
 
   // Compute stat counts from the coverage map
@@ -96,71 +100,77 @@ export default function Artist() {
 
   return (
     <div className="space-y-8">
-      {/* Artist header */}
-      <header className="flex items-end gap-6 pt-4">
-        <Cover
-          src={coverSrc}
-          alt={detail.name}
-          size={188}
-          rounded="full"
-          className="shadow-cover flex-none"
-        />
-        <div className="min-w-0 pb-1">
-          <div className="text-xs font-semibold uppercase tracking-widest text-text-muted mb-1">
-            Artist
-          </div>
-          <h1 className="text-5xl font-black leading-tight tracking-tight text-text-primary truncate">
-            {detail.name}
-          </h1>
-
-          {/* Stat line */}
-          <p className="mt-2 text-sm text-text-secondary flex flex-wrap items-center gap-x-1">
-            <span>
-              {fullCount} of {albums.length} {albums.length === 1 ? 'album' : 'albums'} in your library
-            </span>
-            {detail.resolved && partialCount > 0 && (
-              <>
-                <span className="text-text-muted">·</span>
-                <span className="text-accent">{partialCount} partial</span>
-              </>
-            )}
-            {detail.resolved && missingCount > 0 && (
-              <>
-                <span className="text-text-muted">·</span>
-                <span className="text-text-muted">{missingCount} missing</span>
-              </>
-            )}
-            {hasPending && (
-              <>
-                <span className="text-text-muted">·</span>
-                <span className="text-text-muted">checking…</span>
-              </>
-            )}
-          </p>
-
-          {/* Action row — only when there are missing tracks. Guarded by a confirm
-              so a stray click can't enqueue a large batch (spec §10). */}
-          {detail.resolved && allMissingTracks.length > 0 && (
-            <div className="mt-4">
-              <Button
-                variant="secondary"
-                size="md"
-                onClick={() => {
-                  if (
-                    window.confirm(
-                      `Download ${allMissingTracks.length} missing tracks?`,
-                    )
-                  ) {
-                    postBatchDownload(allMissingTracks)
-                  }
-                }}
-              >
-                Download all missing · {allMissingTracks.length}
-              </Button>
+      {/* Subtle gradient wash behind header */}
+      <div
+        className="relative -mx-4 -mt-4 px-4 pt-4 pb-6 rounded-b-2xl overflow-hidden bg-gradient-to-b from-raised to-transparent"
+        style={palette ? { background: `linear-gradient(to bottom, ${rgbToCss(palette.rgb, 0.55)} 0%, transparent 100%)` } : undefined}
+      >
+        {/* Artist header */}
+        <header className="relative z-10 flex items-end gap-6 pt-2">
+          <Cover
+            src={coverSrc}
+            alt={detail.name}
+            size={188}
+            rounded="full"
+            className="shadow-cover flex-none"
+          />
+          <div className="min-w-0 pb-1">
+            <div className="text-xs font-semibold uppercase tracking-widest text-text-muted mb-1">
+              Artist
             </div>
-          )}
-        </div>
-      </header>
+            <h1 className="text-5xl font-black leading-tight tracking-tight text-text-primary truncate">
+              {detail.name}
+            </h1>
+
+            {/* Stat line */}
+            <p className="mt-2 text-sm text-text-secondary flex flex-wrap items-center gap-x-1">
+              <span>
+                {fullCount} of {albums.length} {albums.length === 1 ? 'album' : 'albums'} in your library
+              </span>
+              {detail.resolved && partialCount > 0 && (
+                <>
+                  <span className="text-text-muted">·</span>
+                  <span className="text-accent">{partialCount} partial</span>
+                </>
+              )}
+              {detail.resolved && missingCount > 0 && (
+                <>
+                  <span className="text-text-muted">·</span>
+                  <span className="text-text-muted">{missingCount} missing</span>
+                </>
+              )}
+              {hasPending && (
+                <>
+                  <span className="text-text-muted">·</span>
+                  <span className="text-text-muted">checking…</span>
+                </>
+              )}
+            </p>
+
+            {/* Action row — only when there are missing tracks. Guarded by a confirm
+                so a stray click can't enqueue a large batch (spec §10). */}
+            {detail.resolved && allMissingTracks.length > 0 && (
+              <div className="mt-4">
+                <Button
+                  variant="secondary"
+                  size="md"
+                  onClick={() => {
+                    if (
+                      window.confirm(
+                        `Download ${allMissingTracks.length} missing tracks?`,
+                      )
+                    ) {
+                      postBatchDownload(allMissingTracks)
+                    }
+                  }}
+                >
+                  Download all missing · {allMissingTracks.length}
+                </Button>
+              </div>
+            )}
+          </div>
+        </header>
+      </div>
 
       {/* Kind filters */}
       <div className="flex items-center gap-2">

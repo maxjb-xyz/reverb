@@ -5,6 +5,10 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import Playlist from './Playlist'
 import { makeTrack } from '../test/factories'
 import type { Playlist as PlaylistType } from '../lib/types'
+import { useAlbumPalette } from '../lib/useAlbumPalette'
+
+// ── useAlbumPalette mock ───────────────────────────────────────────────────────
+vi.mock('../lib/useAlbumPalette', () => ({ useAlbumPalette: vi.fn(() => null) }))
 
 // ── Player mock ────────────────────────────────────────────────────────────────
 const mockPlayTrackList = vi.fn()
@@ -264,5 +268,28 @@ describe('Playlist page', () => {
       fireEvent.click(removeBtn)
     })
     expect(mockPlayTrackList).not.toHaveBeenCalled()
+  })
+
+  it('header wrapper has dynamic style.background when palette is present', async () => {
+    vi.mocked(useAlbumPalette).mockReturnValue({ rgb: [120, 80, 200], text: '#FFFFFF', scrim: false })
+    await renderLoaded()
+    const heading = screen.getByRole('heading', { name: 'Chill' })
+    const gradientWrapper = heading.closest('[class*="from-raised"]')
+    expect(gradientWrapper).toBeTruthy()
+    const bg = (gradientWrapper as HTMLElement).style.background
+    expect(bg).toContain('linear-gradient')
+    // Browser normalizes rgb(120 80 200 / 0.55) → rgba(120, 80, 200, 0.55)
+    expect(bg).toMatch(/120/)
+    expect(bg).toMatch(/80/)
+    expect(bg).toMatch(/200/)
+  })
+
+  it('header wrapper has no inline style when palette is null', async () => {
+    vi.mocked(useAlbumPalette).mockReturnValue(null)
+    await renderLoaded()
+    const heading = screen.getByRole('heading', { name: 'Chill' })
+    const gradientWrapper = heading.closest('[class*="from-raised"]')
+    expect(gradientWrapper).toBeTruthy()
+    expect((gradientWrapper as HTMLElement).style.background).toBe('')
   })
 })

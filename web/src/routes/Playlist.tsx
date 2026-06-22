@@ -8,6 +8,8 @@ import type { Track } from '../lib/types'
 import { usePlayer } from '../lib/playerStore'
 import { TrackRow } from '../components/ui/TrackRow'
 import { Button, IconButton, Cover, Skeleton, EmptyState } from '../components/ui'
+import { useAlbumPalette } from '../lib/useAlbumPalette'
+import { rgbToCss } from '../lib/palette'
 
 export default function Playlist() {
   const { id = '' } = useParams()
@@ -62,6 +64,8 @@ export default function Playlist() {
 
   const coverSrc = playlist.coverArtId ? coverUrl(playlist.coverArtId, 300) : undefined
 
+  const palette = useAlbumPalette(coverSrc)
+
   function openRename() {
     setRenameValue(playlist!.name)
     setRenaming(true)
@@ -114,7 +118,10 @@ export default function Playlist() {
   return (
     <div className="space-y-6">
       {/* Subtle gradient wash behind header */}
-      <div className="relative -mx-4 -mt-4 px-4 pt-4 pb-6 rounded-b-2xl overflow-hidden bg-gradient-to-b from-raised to-transparent">
+      <div
+        className="relative -mx-4 -mt-4 px-4 pt-4 pb-6 rounded-b-2xl overflow-hidden bg-gradient-to-b from-raised to-transparent"
+        style={palette ? { background: `linear-gradient(to bottom, ${rgbToCss(palette.rgb, 0.55)} 0%, transparent 100%)` } : undefined}
+      >
         <header className="relative z-10 flex items-end gap-6 pt-2">
           <Cover
             src={coverSrc}
