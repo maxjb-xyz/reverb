@@ -262,8 +262,16 @@ export default function Home() {
       {/* Hero — "Just added to your library" */}
       {!isLoading && heroAlbum && (
         <section className="flex gap-6 items-center mb-10" aria-label="Just added to your library">
-          {/* Cover */}
-          <div className="w-48 h-48 flex-none shadow-cover rounded-md overflow-hidden">
+          {/* Cover — clickable to open album detail */}
+          <button
+            type="button"
+            aria-label={heroAlbum.name}
+            onClick={() => navigate(`/album/library/${heroAlbum.id}`)}
+            className={[
+              'w-48 h-48 flex-none shadow-cover rounded-md overflow-hidden',
+              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
+            ].join(' ')}
+          >
             <Cover
               src={heroAlbum.coverArtId ? coverUrl(heroAlbum.coverArtId, 200) : undefined}
               alt={heroAlbum.name}
@@ -271,7 +279,7 @@ export default function Home() {
               rounded="md"
               className="w-full h-full"
             />
-          </div>
+          </button>
 
           {/* Info */}
           <div className="min-w-0">
@@ -282,15 +290,25 @@ export default function Home() {
             <p className="text-xs font-semibold text-text-secondary mb-1.5">
               Album · {heroAlbum.artist}
             </p>
-            <h1 className="text-4xl font-black tracking-tight text-text-primary leading-tight mb-5 truncate">
+            {/* Title — also clickable to open album detail */}
+            <button
+              type="button"
+              aria-label={heroAlbum.name}
+              onClick={() => navigate(`/album/library/${heroAlbum.id}`)}
+              className={[
+                'text-4xl font-black tracking-tight text-text-primary leading-tight mb-5 truncate block text-left',
+                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded',
+                'hover:underline',
+              ].join(' ')}
+            >
               {heroAlbum.name}
-            </h1>
+            </button>
             <div className="flex items-center gap-5">
               <Button
                 variant="primary"
                 size="md"
                 aria-label={`Play ${heroAlbum.name}`}
-                onClick={handleHeroPlay}
+                onClick={(e) => { e.stopPropagation(); handleHeroPlay() }}
               >
                 <Icon name="play" className="w-5 h-5 mr-1" />
                 Play

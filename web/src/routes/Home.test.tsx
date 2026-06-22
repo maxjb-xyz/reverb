@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, fireEvent } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { UseQueryResult } from '@tanstack/react-query'
@@ -84,6 +84,15 @@ vi.mock('../lib/api', () => ({
     get: vi.fn(async () => ({ id: 'al1', tracks: [] })),
   },
 }))
+
+const mockNavigate = vi.fn()
+vi.mock('react-router-dom', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('react-router-dom')>()
+  return {
+    ...actual,
+    useNavigate: () => mockNavigate,
+  }
+})
 
 // ------------------------------------------------------------------
 // Suites
@@ -198,5 +207,57 @@ describe('Home feed', () => {
 
     expect(screen.queryByText(/just added to your library/i)).not.toBeInTheDocument()
     expect(screen.queryByText(/jump back in/i)).not.toBeInTheDocument()
+  })
+
+  it('clicking the hero album cover navigates to the album detail page', async () => {
+    const { useAlbums, usePlaylists } = await import('../lib/libraryApi')
+
+    const album = makeAlbum({ id: 'al99', name: 'Heros Cover Album', artist: 'Test Artist' })
+    vi.mocked(useAlbums).mockReturnValue({ data: [album], isLoading: false, error: null } as unknown as UseQueryResult<Album[], Error>)
+    vi.mocked(usePlaylists).mockReturnValue({ data: [], isLoading: false, error: null } as unknown as UseQueryResult<Playlist[], Error>)
+
+    render(wrap(<Home />))
+
+    // The cover is a button with aria-label = album name (first match is the cover button)
+    const coverButtons = screen.getAllByRole('button', { name: 'Heros Cover Album' })
+    // There are two: cover + title. Click the first (cover).
+    fireEvent.click(coverButtons[0])
+
+    expect(mockNavigate).toHaveBeenCalledWith('/album/library/al99')
+  })
+
+  it('clicking the hero album title navigates to the album detail page', async () => {
+    const { useAlbums, usePlaylists } = await import('../lib/libraryApi')
+
+    const album = makeAlbum({ id: 'al99', name: 'Heros Cover Album', artist: 'Test Artist' })
+    vi.mocked(useAlbums).mockReturnValue({ data: [album], isLoading: false, error: null } as unknown as UseQueryResult<Album[], Error>)
+    vi.mocked(usePlaylists).mockReturnValue({ data: [], isLoading: false, error: null } as unknown as UseQueryResult<Playlist[], Error>)
+
+    render(wrap(<Home />))
+
+    const titleButtons = screen.getAllByRole('button', { name: 'Heros Cover Album' })
+    // Click the second button (title)
+    fireEvent.click(titleButtons[1])
+
+    expect(mockNavigate).toHaveBeenCalledWith('/album/library/al99')
+  })
+
+  it('clicking the hero Play button does NOT navigate — calls play instead', async () => {
+    const { useAlbums, usePlaylists } = await import('../lib/libraryApi')
+
+    const album = makeAlbum({ id: 'al99', name: 'Heros Cover Album', artist: 'Test Artist' })
+    vi.mocked(useAlbums).mockReturnValue({ data: [album], isLoading: false, error: null } as unknown as UseQueryResult<Album[], Error>)
+    vi.mocked(usePlaylists).mockReturnValue({ data: [], isLoading: false, error: null } as unknown as UseQueryResult<Playlist[], Error>)
+
+    render(wrap(<Home />))
+
+    mockNavigate.mockClear()
+
+    // The hero section has its own Play button — locate it within the section landmark
+    const heroSection = screen.getByRole('region', { name: /just added to your library/i })
+    const playButton = heroSection.querySelector('button[aria-label="Play Heros Cover Album"]') as HTMLElement
+    fireEvent.click(playButton)
+
+    expect(mockNavigate).not.toHaveBeenCalled()
   })
 })
