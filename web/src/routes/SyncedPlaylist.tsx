@@ -342,6 +342,7 @@ export default function SyncedPlaylist() {
                 track={t.libraryTrack}
                 index={i}
                 onPlay={() => playTrackList(ownedTracks, ownedIdx)}
+                coverSrc={t.libraryTrack?.coverArtId ? undefined : t.coverUrl}
               />
             )
           }
@@ -357,7 +358,7 @@ export default function SyncedPlaylist() {
               track={displayTrack}
               index={i}
               onPlay={() => {}}
-              coverSrc={detail.coverUrl}
+              coverSrc={t.coverUrl ?? detail.coverUrl}
               right={right}
               rightWidth={right ? '120px' : undefined}
             />

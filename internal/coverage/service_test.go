@@ -224,9 +224,9 @@ func TestAlbumDetailLibraryMergesFullTracklist(t *testing.T) {
 	extAlbum := core.ExternalAlbum{
 		Source: "spotify", ExternalID: "AL", Name: "Kid A", Artist: "Radiohead",
 		Tracks: []core.ExternalResult{
-			{Source: "spotify", ExternalID: "et1", Title: "Everything in Its Right Place", Artist: "Radiohead", Type: core.EntityTrack},
-			{Source: "spotify", ExternalID: "et2", Title: "Kid A", Artist: "Radiohead", Type: core.EntityTrack},
-			{Source: "spotify", ExternalID: "et3", Title: "The National Anthem", Artist: "Radiohead", Type: core.EntityTrack},
+			{Source: "spotify", ExternalID: "et1", Title: "Everything in Its Right Place", Artist: "Radiohead", CoverURL: "https://img/et1.jpg", Type: core.EntityTrack},
+			{Source: "spotify", ExternalID: "et2", Title: "Kid A", Artist: "Radiohead", CoverURL: "https://img/et2.jpg", Type: core.EntityTrack},
+			{Source: "spotify", ExternalID: "et3", Title: "The National Anthem", Artist: "Radiohead", CoverURL: "https://img/et3.jpg", Type: core.EntityTrack},
 		},
 	}
 	disco := fakeDisco{
@@ -265,6 +265,13 @@ func TestAlbumDetailLibraryMergesFullTracklist(t *testing.T) {
 	}
 	if noneCount != 1 {
 		t.Errorf("want 1 track with state:none, got %d", noneCount)
+	}
+	// Every track must carry the external CoverURL regardless of owned/missing state.
+	for i, tr := range det.Tracks {
+		wantCover := extAlbum.Tracks[i].CoverURL
+		if tr.CoverURL != wantCover {
+			t.Errorf("track[%d] CoverURL: want %q, got %q", i, wantCover, tr.CoverURL)
+		}
 	}
 }
 

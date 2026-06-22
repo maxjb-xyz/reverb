@@ -196,6 +196,28 @@ describe('SyncedPlaylist page', () => {
     expect(screen.getByRole('button', { name: /download missing track/i })).toBeInTheDocument()
   })
 
+  it('owned row receives coverSrc from coverUrl when libraryTrack has no coverArtId', async () => {
+    mockUseSyncedPlaylist.mockReturnValue({
+      data: {
+        ...mockDetail,
+        tracks: [
+          { ...ownedRow1, coverUrl: 'https://img/owned-cover.jpg' }, // libraryTrack.coverArtId is ''
+          ownedRow2,
+          missingRow,
+        ],
+      },
+      isLoading: false,
+      isError: false,
+    })
+    wrapper(<SyncedPlaylist />)
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { name: 'Test Synced Playlist' })).toBeInTheDocument(),
+    )
+    const imgs = document.querySelectorAll('img')
+    const srcs = Array.from(imgs).map((img) => img.getAttribute('src'))
+    expect(srcs).toContain('https://img/owned-cover.jpg')
+  })
+
   it('Play button calls playTrackList with owned tracks at index 0', async () => {
     await renderLoaded()
     fireEvent.click(screen.getByRole('button', { name: /play test synced playlist/i }))

@@ -67,6 +67,7 @@ type AlbumDetailTrack struct {
 	Artist      string            `json:"artist"`
 	TrackNumber int               `json:"trackNumber"`
 	DurationMs  int               `json:"durationMs"`
+	CoverURL    string            `json:"coverUrl,omitempty"`
 }
 
 // AlbumDetail is the album-page response with per-track ownership.

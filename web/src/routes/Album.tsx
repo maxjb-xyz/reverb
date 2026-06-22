@@ -195,6 +195,7 @@ export default function Album() {
                 track={t.libraryTrack}
                 index={i}
                 onPlay={() => playTrackList(ownedTracks, ownedIdx)}
+                coverSrc={t.libraryTrack.coverArtId ? undefined : t.coverUrl}
               />
             )
           }
@@ -211,7 +212,7 @@ export default function Album() {
               track={displayTrack}
               index={i}
               onPlay={() => {}}
-              coverSrc={album.coverUrl}
+              coverSrc={t.coverUrl ?? album.coverUrl}
               right={right}
               rightWidth={right ? '120px' : undefined}
             />

@@ -198,6 +198,31 @@ describe('Album page', () => {
     expect(mockPlayTrackList).toHaveBeenCalledWith([ownedTrack1, ownedTrack2], 0)
   })
 
+  it('owned row receives coverSrc from coverUrl when libraryTrack has no coverArtId', async () => {
+    const { useAlbumDetail } = await import('../lib/coverageApi')
+    const albumWithCoverUrl: AlbumDetail = {
+      ...partialAlbum,
+      tracks: [
+        {
+          ...partialAlbum.tracks[0], // state:'full', libraryTrack has coverArtId:''
+          coverUrl: 'https://img/per-track-cover.jpg',
+        },
+        ...partialAlbum.tracks.slice(1),
+      ],
+    }
+    vi.mocked(useAlbumDetail).mockReturnValue({
+      data: albumWithCoverUrl,
+      isLoading: false,
+      isError: false,
+    } as ReturnType<typeof useAlbumDetail>)
+    wrapper(<Album />)
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Kid A' })).toBeInTheDocument())
+    // The per-track coverUrl must appear as an img src (Cover renders an <img>)
+    const imgs = document.querySelectorAll('img')
+    const srcs = Array.from(imgs).map((img) => img.getAttribute('src'))
+    expect(srcs).toContain('https://img/per-track-cover.jpg')
+  })
+
   it('renders every track row even when a track has an unexpected state (pending, no externalRef)', async () => {
     const { useAlbumDetail } = await import('../lib/coverageApi')
     const albumWithPending: AlbumDetail = {

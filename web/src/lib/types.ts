@@ -109,6 +109,7 @@ export interface AlbumDetailTrack {
   artist: string
   trackNumber: number
   durationMs: number
+  coverUrl?: string
 }
 
 export interface AlbumDetail {
