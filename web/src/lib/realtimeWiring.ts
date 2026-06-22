@@ -41,10 +41,15 @@ export function useRealtime(makeSocket?: (url: string) => WebSocketLike): void {
     // Broad library invalidation is the MVP behavior; per-album/artist is a
     // best-effort optimization applied only when the id is present (deferred:
     // the backend may surface empty artistId/albumId on download.complete).
+    // Detail-page queries use separate root keys — invalidate them too so a
+    // completed download flips a missing row to playable without a hard reload.
     function invalidateLibrary(ids?: { artistId?: string; albumId?: string }) {
       void qc.invalidateQueries({ queryKey: ['library'] })
       if (ids?.albumId) void qc.invalidateQueries({ queryKey: ['library', 'album', ids.albumId] })
       if (ids?.artistId) void qc.invalidateQueries({ queryKey: ['library', 'artist', ids.artistId] })
+      void qc.invalidateQueries({ queryKey: ['album-detail'] })
+      void qc.invalidateQueries({ queryKey: ['artist-detail'] })
+      void qc.invalidateQueries({ queryKey: ['synced-playlist'] })
     }
 
     function onEvent(frame: RealtimeEvent) {

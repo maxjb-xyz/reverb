@@ -352,7 +352,12 @@ export default function SyncedPlaylist() {
           // Non-owned tracks: display row with DownloadAction right slot
           const displayTrack = asTrack(t)
           const right = t.externalRef
-            ? <DownloadAction result={refToExternalResult(t.externalRef, detail.name)} />
+            ? (
+              <DownloadAction
+                result={refToExternalResult(t.externalRef, detail.name)}
+                onPlay={(libraryTrackId) => playTrackList([{ ...asTrack(t), id: libraryTrackId }], 0)}
+              />
+            )
             : undefined
           return (
             <TrackRow

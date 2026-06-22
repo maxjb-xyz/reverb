@@ -67,10 +67,13 @@ test('playlist sync: import -> have/missing -> download missing -> flips owned -
   await expect(page.getByText('Downloading')).toBeVisible()
   await ws.complete()
 
-  // The row's Download button disappears and the In-Library button appears — the
-  // missing track is now owned (live, without re-navigation).
+  // The row's Download button disappears — the missing track is now owned (live,
+  // without re-navigation). Fix 6b invalidates the ['synced-playlist'] query on
+  // download.complete, so the detail refetches and the row flips to a full TrackRow
+  // (no DownloadAction, no "In Library" badge — just a playable track row).
   await expect(rowDownloadBtn).toHaveCount(0)
-  await expect(page.getByTitle('In Library')).toBeVisible()
+  // The track title is still visible as a normal (owned) row.
+  await expect(page.getByText('Synced Missing Song', { exact: true })).toBeVisible()
 
   // 6) "Sync now" → the mock flips its `synced` flag; the page invalidates and
   //    re-fetches GET /synced-playlists/sp1, which now includes the added 3rd track.

@@ -73,17 +73,24 @@ describe('useRealtime', () => {
     expect(useDownloads.getState().jobs['j1'].progress).toBe(42)
 
     // A completion event: store reflects completed + libraryTrackId, player auto-plays
-    // (job had playWhenReady), and library queries are invalidated.
+    // (job had playWhenReady), and library + detail queries are invalidated.
     s.onmessage?.(frame('download.complete', { jobId: 'j1', dedupKey: 'dk', status: 'completed', progress: 100, source: 'spotify', externalId: 'sp1', libraryTrackId: 't9' }))
     expect(useDownloads.getState().jobs['j1'].status).toBe('completed')
     expect(useDownloads.getState().jobs['j1'].libraryTrackId).toBe('t9')
     expect(playTrackList).toHaveBeenCalledTimes(1)
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['library'] })
+    // Detail-page query keys must also be invalidated so missing rows flip to playable.
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['album-detail'] })
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['artist-detail'] })
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['synced-playlist'] })
 
     // library.updated also invalidates (broad fallback even with empty IDs).
     invalidateSpy.mockClear()
     s.onmessage?.(frame('library.updated', { artistIds: [], albumIds: [] }))
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['library'] })
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['album-detail'] })
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['artist-detail'] })
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['synced-playlist'] })
 
     // Unmount closes the socket.
     unmount()

@@ -210,7 +210,12 @@ export default function Album() {
           // non-playable row so no track ever silently vanishes from the list.
           const displayTrack = asTrack(t)
           const right = t.externalRef
-            ? <DownloadAction result={refToExternalResult(t.externalRef, album.name, album.artist)} />
+            ? (
+              <DownloadAction
+                result={refToExternalResult(t.externalRef, album.name, album.artist)}
+                onPlay={(libraryTrackId) => playTrackList([{ ...asTrack(t), id: libraryTrackId }], 0)}
+              />
+            )
             : undefined
           return (
             <TrackRow
