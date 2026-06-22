@@ -5,7 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { UseQueryResult } from '@tanstack/react-query'
 import Home from './Home'
 import { useDownloads } from '../lib/downloadStore'
-import type { Album, DownloadJob, Playlist } from '../lib/types'
+import type { Album, DownloadJob, Playlist, SyncedPlaylist } from '../lib/types'
 
 // ------------------------------------------------------------------
 // Helpers
@@ -70,6 +70,10 @@ vi.mock('../lib/libraryApi', async (importOriginal) => {
     coverUrl: vi.fn((id: string) => `/api/v1/cover/${id}`),
   }
 })
+
+vi.mock('../lib/syncedPlaylistApi', () => ({
+  useSyncedPlaylists: vi.fn(() => ({ data: [], isLoading: false, error: null })),
+}))
 
 vi.mock('../lib/playerStore', () => ({
   usePlayer: vi.fn((selector: (s: { current: null; playTrackList: ReturnType<typeof vi.fn> }) => unknown) => {
@@ -290,5 +294,38 @@ describe('Home feed', () => {
     fireEvent.click(playButton)
 
     expect(mockNavigate).not.toHaveBeenCalled()
+  })
+
+  it('synced playlists appear in the shortcut grid and link to /synced-playlist/:id', async () => {
+    const { useAlbums, usePlaylists } = await import('../lib/libraryApi')
+    const { useSyncedPlaylists } = await import('../lib/syncedPlaylistApi')
+
+    const album = makeAlbum({ id: 'al1', name: 'Some Album', artist: 'Some Artist' })
+    vi.mocked(useAlbums).mockReturnValue({ data: [album], isLoading: false, error: null } as unknown as UseQueryResult<Album[], Error>)
+    vi.mocked(usePlaylists).mockReturnValue({ data: [], isLoading: false, error: null } as unknown as UseQueryResult<Playlist[], Error>)
+
+    const syncedPlaylist: SyncedPlaylist = {
+      id: 'sp1',
+      source: 'spotify',
+      externalId: 'ext1',
+      name: 'Classical',
+      coverUrl: 'https://example.com/classical.jpg',
+      syncEnabled: true,
+      syncIntervalSec: 86400,
+      autoDownload: false,
+      lastSyncedAt: 0,
+      trackCount: 5,
+    }
+    vi.mocked(useSyncedPlaylists).mockReturnValue({ data: [syncedPlaylist], isLoading: false, error: null } as unknown as UseQueryResult<SyncedPlaylist[], Error>)
+
+    render(wrap(<Home />))
+
+    // The synced playlist name appears in the shortcut grid
+    expect(screen.getByRole('button', { name: 'Classical' })).toBeInTheDocument()
+
+    // Clicking it navigates to /synced-playlist/sp1 (not /playlist/sp1)
+    mockNavigate.mockClear()
+    fireEvent.click(screen.getByRole('button', { name: 'Classical' }))
+    expect(mockNavigate).toHaveBeenCalledWith('/synced-playlist/sp1')
   })
 })

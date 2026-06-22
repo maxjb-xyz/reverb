@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { useAlbums, usePlaylists, coverUrl } from '../lib/libraryApi'
+import { useSyncedPlaylists } from '../lib/syncedPlaylistApi'
 import { useDownloads } from '../lib/downloadStore'
 import { usePlayer } from '../lib/playerStore'
 import { api } from '../lib/api'
@@ -46,12 +47,14 @@ function trackFromJob(job: DownloadJob): Track {
 interface ShortcutTileProps {
   title: string
   coverId?: string
+  /** Direct image URL (for synced playlists that carry a coverUrl, not a coverArtId). */
+  coverSrc?: string
   isPlaying?: boolean
   onClick?: () => void
 }
 
-function ShortcutTile({ title, coverId, isPlaying, onClick }: ShortcutTileProps) {
-  const src = coverId ? coverUrl(coverId, 56) : undefined
+function ShortcutTile({ title, coverId, coverSrc, isPlaying, onClick }: ShortcutTileProps) {
+  const src = coverSrc ?? (coverId ? coverUrl(coverId, 56) : undefined)
   return (
     <button
       type="button"
@@ -134,6 +137,7 @@ export default function Home() {
   const newestQuery = useAlbums('newest')
   const recentQuery = useAlbums('recent')
   const playlistsQuery = usePlaylists()
+  const syncedPlaylistsQuery = useSyncedPlaylists()
 
   // Completed downloads — newest first
   const allJobs = useDownloads((s) => s.jobs)
@@ -153,9 +157,11 @@ export default function Home() {
   // Shortcut grid: up to 8 items from recent albums + playlists combined
   const recentAlbums: Album[] = recentQuery.data ?? []
   const playlists = playlistsQuery.data ?? []
-  const shortcutItems: Array<{ id: string; name: string; coverId: string; type: 'album' | 'playlist' }> = [
+  const syncedPlaylists = syncedPlaylistsQuery.data ?? []
+  const shortcutItems: Array<{ id: string; name: string; coverId?: string; coverSrc?: string; type: 'album' | 'playlist' | 'synced-playlist' }> = [
     ...recentAlbums.map((a) => ({ id: a.id, name: a.name, coverId: a.coverArtId, type: 'album' as const })),
     ...playlists.map((p) => ({ id: p.id, name: p.name, coverId: p.coverArtId, type: 'playlist' as const })),
+    ...syncedPlaylists.map((sp) => ({ id: sp.id, name: sp.name, coverSrc: sp.coverUrl, type: 'synced-playlist' as const })),
   ].slice(0, 8)
 
   // Hero: first item from newest albums
@@ -173,13 +179,15 @@ export default function Home() {
     shortcutItems.length === 0 &&
     !heroAlbum &&
     jumpBackAlbums.length === 0 &&
-    completedJobs.length === 0
+    completedJobs.length === 0 &&
+    syncedPlaylists.length === 0
 
   // ------------------------------------------------------------------
   // Handlers
   // ------------------------------------------------------------------
-  function handleShortcutClick(item: { id: string; type: 'album' | 'playlist' }) {
+  function handleShortcutClick(item: { id: string; type: 'album' | 'playlist' | 'synced-playlist' }) {
     if (item.type === 'album') navigate(`/album/library/${item.id}`)
+    else if (item.type === 'synced-playlist') navigate(`/synced-playlist/${item.id}`)
     else navigate(`/playlist/${item.id}`)
   }
 
@@ -251,6 +259,7 @@ export default function Home() {
                 key={item.id}
                 title={item.name}
                 coverId={item.coverId}
+                coverSrc={item.coverSrc}
                 isPlaying={isPlaying}
                 onClick={() => handleShortcutClick(item)}
               />
