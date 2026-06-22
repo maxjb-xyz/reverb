@@ -199,24 +199,23 @@ export default function Album() {
             )
           }
 
-          // Missing track
-          if (t.state === 'none' && t.externalRef) {
-            const displayTrack = asTrack(t)
-            const result = refToExternalResult(t.externalRef, album.name, album.artist)
-            return (
-              <TrackRow
-                key={`missing-${t.externalRef.source}-${t.externalRef.externalId}`}
-                track={displayTrack}
-                index={i}
-                onPlay={() => {}}
-                coverSrc={album.coverUrl}
-                right={<DownloadAction result={result} />}
-                rightWidth="120px"
-              />
-            )
-          }
-
-          return null
+          // Fallback: any other state (none, partial, pending, or unexpected) renders a
+          // non-playable row so no track ever silently vanishes from the list.
+          const displayTrack = asTrack(t)
+          const right = t.externalRef
+            ? <DownloadAction result={refToExternalResult(t.externalRef, album.name, album.artist)} />
+            : undefined
+          return (
+            <TrackRow
+              key={t.libraryTrack?.id ?? t.externalRef?.externalId ?? i}
+              track={displayTrack}
+              index={i}
+              onPlay={() => {}}
+              coverSrc={album.coverUrl}
+              right={right}
+              rightWidth={right ? '120px' : undefined}
+            />
+          )
         })}
         {album.tracks.length === 0 && (
           <EmptyState icon="browse" title="No tracks in this album" />

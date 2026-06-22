@@ -198,6 +198,33 @@ describe('Album page', () => {
     expect(mockPlayTrackList).toHaveBeenCalledWith([ownedTrack1, ownedTrack2], 0)
   })
 
+  it('renders every track row even when a track has an unexpected state (pending, no externalRef)', async () => {
+    const { useAlbumDetail } = await import('../lib/coverageApi')
+    const albumWithPending: AlbumDetail = {
+      ...partialAlbum,
+      totalCount: 4,
+      ownedCount: 2,
+      tracks: [
+        ...partialAlbum.tracks,
+        {
+          state: 'pending',
+          title: 'Motion Picture Soundtrack',
+          artist: 'Radiohead',
+          trackNumber: 4,
+          durationMs: 3000,
+        },
+      ],
+    }
+    vi.mocked(useAlbumDetail).mockReturnValue({
+      data: albumWithPending,
+      isLoading: false,
+      isError: false,
+    } as ReturnType<typeof useAlbumDetail>)
+    wrapper(<Album />)
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Kid A' })).toBeInTheDocument())
+    expect(screen.getByText('Motion Picture Soundtrack')).toBeInTheDocument()
+  })
+
   it('shows EmptyState when album not found', async () => {
     const { useAlbumDetail } = await import('../lib/coverageApi')
     vi.mocked(useAlbumDetail).mockReturnValue({
