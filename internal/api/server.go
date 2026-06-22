@@ -97,7 +97,10 @@ type Server struct {
 		search    Streamer
 		coverage  CoverageService
 		downloads DownloadManager
-		sync      SyncService
+		// sync is intentionally NOT swapped by reload — the playlist-sync service
+		// is built once at startup and tied to a fixed Spotify credential/store.
+		// Enabling Spotify or changing the library after startup requires a restart.
+		sync SyncService
 	}
 }
 

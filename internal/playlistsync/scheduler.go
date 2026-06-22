@@ -2,6 +2,7 @@ package playlistsync
 
 import (
 	"context"
+	"log"
 	"time"
 )
 
@@ -32,11 +33,12 @@ func (s *Scheduler) Run(ctx context.Context) {
 func (s *Scheduler) tick(ctx context.Context) {
 	rows, err := s.svc.store.ListDue(ctx, s.svc.now())
 	if err != nil {
+		log.Printf("playlistsync scheduler: ListDue error: %v", err)
 		return
 	}
 	for _, r := range rows {
 		if _, err := s.svc.Sync(ctx, r.ID); err != nil {
-			// log-and-continue (use the project logger if one is wired; else skip)
+			log.Printf("playlistsync scheduler: sync playlist %q error: %v", r.ID, err)
 			continue
 		}
 	}

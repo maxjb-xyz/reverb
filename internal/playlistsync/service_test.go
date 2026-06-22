@@ -33,6 +33,7 @@ func seqID() func() string {
 type fakeSource struct {
 	playlists map[string]core.ExternalPlaylist
 	syncCount int
+	err       error // when non-nil, GetPlaylist returns this error
 }
 
 func (f *fakeSource) ParsePlaylistID(url string) (string, bool) {
@@ -64,6 +65,9 @@ func (f *fakeSource) ParsePlaylistID(url string) (string, bool) {
 
 func (f *fakeSource) GetPlaylist(ctx context.Context, externalID string) (core.ExternalPlaylist, error) {
 	f.syncCount++
+	if f.err != nil {
+		return core.ExternalPlaylist{}, f.err
+	}
 	pl, ok := f.playlists[externalID]
 	if !ok {
 		return core.ExternalPlaylist{}, fmt.Errorf("playlist %q not found", externalID)
@@ -336,5 +340,37 @@ func TestDeleteRemovesPlaylist(t *testing.T) {
 	list, _ := svc.List(context.Background())
 	if len(list) != 0 {
 		t.Fatalf("expected 0 playlists after delete, got %d", len(list))
+	}
+}
+
+func TestSyncErrorPreservesTracklist(t *testing.T) {
+	src := &fakeSource{playlists: map[string]core.ExternalPlaylist{
+		"PL": {Source: "spotify", ExternalID: "PL", Name: "Keep", Tracks: []core.ExternalResult{track("t1"), track("t2")}},
+	}}
+	store := newMemStore()
+	svc := NewService(src, fakeMatcher{}, &fakeDownloader{}, store, func() int64 { return 100 }, seqID())
+	det, err := svc.Import(context.Background(), "spotify:playlist:PL", false)
+	if err != nil {
+		t.Fatalf("import error: %v", err)
+	}
+	if det.TotalCount != 2 {
+		t.Fatalf("expected 2 tracks after import, got %d", det.TotalCount)
+	}
+
+	// Simulate the source becoming unavailable.
+	src.err = fmt.Errorf("spotify unavailable")
+
+	_, syncErr := svc.Sync(context.Background(), det.ID)
+	if syncErr == nil {
+		t.Fatal("Sync should have returned an error when source fails")
+	}
+
+	// The stored tracklist must be unchanged.
+	after, err := svc.Detail(context.Background(), det.ID)
+	if err != nil {
+		t.Fatalf("Detail after failed sync: %v", err)
+	}
+	if after.TotalCount != 2 {
+		t.Fatalf("TotalCount should still be 2 after failed sync, got %d", after.TotalCount)
 	}
 }
