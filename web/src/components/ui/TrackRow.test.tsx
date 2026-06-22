@@ -164,10 +164,10 @@ describe('TrackRow', () => {
 
   // ── A11y ──────────────────────────────────────────────────────────────────
 
-  it('has role="row" on the container', () => {
+  it('has role="button" on the container', () => {
     const { container } = renderRow({ onPlay: vi.fn() })
     const row = container.firstChild as HTMLElement
-    expect(row.getAttribute('role')).toBe('row')
+    expect(row.getAttribute('role')).toBe('button')
   })
 
   it('has focus-visible ring class on the row container', () => {

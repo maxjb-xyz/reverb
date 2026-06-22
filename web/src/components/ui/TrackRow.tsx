@@ -35,7 +35,7 @@ export function TrackRow({ track, index, active = false, onPlay, right, coverSrc
 
   return (
     <div
-      role="row"
+      role="button"
       tabIndex={0}
       onDoubleClick={onPlay}
       onKeyDown={handleKeyDown}
