@@ -300,6 +300,42 @@ func TestStartTreatsAudioErrorAsFailure(t *testing.T) {
 	}
 }
 
+func TestStartIncludesYouTubeFallbackProvider(t *testing.T) {
+	// --audio youtube-music youtube must always be present so tracks absent from
+	// YT-Music (obscure/regional/classical releases) can still be found on YouTube.
+	r := &fakeRunner{lines: []string{`Downloaded: ok`}}
+	a := newAdapter(t, r)
+	_, _ = a.Start(context.Background(), core.DownloadRequest{Artist: "A", Title: "T"}, func(int) {})
+
+	// Find the position of "--audio" and assert "youtube-music" and "youtube" follow
+	// in that order, both before the "download" operation.
+	audioIdx, ytMusicIdx, ytIdx, dlIdx := -1, -1, -1, -1
+	for i, arg := range r.gotArgs {
+		switch arg {
+		case "--audio":
+			audioIdx = i
+		case "youtube-music":
+			ytMusicIdx = i
+		case "youtube":
+			ytIdx = i
+		case "download":
+			dlIdx = i
+		}
+	}
+	if audioIdx < 0 {
+		t.Fatalf("--audio not found in args: %v", r.gotArgs)
+	}
+	if ytMusicIdx != audioIdx+1 {
+		t.Fatalf("youtube-music must immediately follow --audio; args: %v", r.gotArgs)
+	}
+	if ytIdx != audioIdx+2 {
+		t.Fatalf("youtube must follow youtube-music in --audio list; args: %v", r.gotArgs)
+	}
+	if dlIdx < 0 || audioIdx > dlIdx {
+		t.Fatalf("--audio must precede the download operation; args: %v", r.gotArgs)
+	}
+}
+
 func TestRedactArgsMasksSecret(t *testing.T) {
 	got := redactArgs([]string{"--client-id", "id", "--client-secret", "supersecret", "download"})
 	if strings.Contains(got, "supersecret") {

@@ -161,6 +161,9 @@ func (a *Adapter) Start(ctx context.Context, req core.DownloadRequest, onProgres
 	if a.clientID != "" && a.clientSecret != "" {
 		args = append(args, "--client-id", a.clientID, "--client-secret", a.clientSecret)
 	}
+	// Prefer YouTube Music but fall back to plain YouTube when a track is absent
+	// from YT-Music's catalog (common for obscure/regional/classical releases).
+	args = append(args, "--audio", "youtube-music", "youtube")
 	args = append(args, "--simple-tui", "--output", outputTemplate, "download", query)
 
 	log.Printf("spotdl: exec %s %s", a.binary, redactArgs(args))
