@@ -86,3 +86,17 @@ type Setting struct {
 	Key   string `json:"key"`
 	Value string `json:"value"`
 }
+
+type SyncedPlaylist struct {
+	ID              string `json:"id"`
+	Source          string `json:"source"`
+	ExternalID      string `json:"external_id"`
+	Name            string `json:"name"`
+	CoverUrl        string `json:"cover_url"`
+	TracksJson      string `json:"tracks_json"`
+	SyncEnabled     int64  `json:"sync_enabled"`
+	SyncIntervalSec int64  `json:"sync_interval_sec"`
+	AutoDownload    int64  `json:"auto_download"`
+	LastSyncedAt    int64  `json:"last_synced_at"`
+	CreatedAt       int64  `json:"created_at"`
+}

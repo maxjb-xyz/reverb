@@ -75,6 +75,7 @@ type Deps struct {
 	Downloader       *registry.Registry
 	Lib              *registry.Registry
 	Downloads        DownloadManager
+	Sync             SyncService
 	Events           EventSubscriber
 	Adapters         AdapterStore
 	ConfigDirty      ConfigDirty
@@ -96,6 +97,7 @@ type Server struct {
 		search    Streamer
 		coverage  CoverageService
 		downloads DownloadManager
+		sync      SyncService
 	}
 }
 
@@ -105,6 +107,7 @@ func NewServer(deps Deps) *Server {
 	s.live.search = deps.SearchAggregator
 	s.live.coverage = deps.Coverage
 	s.live.downloads = deps.Downloads
+	s.live.sync = deps.Sync
 	s.routes()
 	return s
 }
@@ -198,6 +201,13 @@ func (s *Server) routes() {
 			pr.Put("/library/playlist/{id}", s.handleRenamePlaylist)
 			pr.Delete("/library/playlist/{id}", s.handleDeletePlaylist)
 			pr.Post("/library/playlist/{id}/remove", s.handleRemovePlaylistTracks)
+			pr.Post("/synced-playlists", s.handleImportSyncedPlaylist)
+			pr.Get("/synced-playlists", s.handleListSyncedPlaylists)
+			pr.Get("/synced-playlists/{id}", s.handleSyncedPlaylistDetail)
+			pr.Post("/synced-playlists/{id}/sync", s.handleSyncNow)
+			pr.Post("/synced-playlists/{id}/download-missing", s.handleSyncedDownloadMissing)
+			pr.Put("/synced-playlists/{id}/settings", s.handleSyncedSettings)
+			pr.Delete("/synced-playlists/{id}", s.handleDeleteSyncedPlaylist)
 			pr.Post("/downloads/batch", s.handleBatchDownload)
 			pr.Post("/downloads", s.handleCreateDownload)
 			pr.Get("/downloads", s.handleListDownloads)

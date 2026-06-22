@@ -15,6 +15,7 @@ import (
 	"github.com/maxjb-xyz/reverb/internal/download"
 	"github.com/maxjb-xyz/reverb/internal/library"
 	"github.com/maxjb-xyz/reverb/internal/matching"
+	"github.com/maxjb-xyz/reverb/internal/playlistsync"
 	"github.com/maxjb-xyz/reverb/internal/registry"
 	"github.com/maxjb-xyz/reverb/internal/search"
 	"github.com/maxjb-xyz/reverb/internal/store/db"
@@ -227,6 +228,7 @@ type ServiceBundle struct {
 	Aggregator *search.Aggregator     // may be nil
 	Coverage   *coverage.Service      // may be nil (needs a library + a DiscoSource)
 	Manager    *download.Manager      // may be nil; NOT started yet
+	Sync       *playlistsync.Service  // may be nil (needs a library, a Manager + a PlaylistProvider)
 }
 
 // VersionStore is the library_version reader/writer the Manager + matcher need.
@@ -347,6 +349,15 @@ func (b *Builder) Build(ctx context.Context) (ServiceBundle, error) {
 		log.Printf("WARNING: downloaders configured but no library adapter — download manager disabled")
 	} else {
 		log.Printf("no downloaders configured (add one via settings)")
+	}
+
+	// Playlist-sync service (synced-playlist pages + scheduler). Needs a library
+	// to match against, a download Manager to fetch missing tracks, and a search
+	// source implementing search.PlaylistProvider (spotify does). Nil when any is
+	// missing — the API handlers 503 in that case.
+	bundle.Sync = b.BuildSyncService(sources, libAdapter, bundle.Manager)
+	if bundle.Sync != nil {
+		log.Printf("playlist sync service active")
 	}
 
 	return bundle, nil

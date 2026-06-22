@@ -247,6 +247,73 @@ paths:
       summary: Retry a failed/canceled download
       parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
       responses: { "200": { description: DownloadJob }, "404": { description: not found } }
+  /synced-playlists:
+    get:
+      summary: List imported (synced) playlists
+      responses: { "200": { description: array of SyncedPlaylist }, "503": { description: playlist sync unavailable } }
+    post:
+      summary: Import a playlist by URL (idempotent on source+externalId)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                url: { type: string }
+                downloadMissing: { type: boolean }
+              required: [url]
+      responses:
+        "200": { description: SyncedPlaylistDetail }
+        "400": { description: url is required }
+        "422": { description: bad or inaccessible playlist URL }
+        "503": { description: playlist sync unavailable }
+  /synced-playlists/{id}:
+    get:
+      summary: Synced-playlist detail with live per-track ownership
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses:
+        "200": { description: SyncedPlaylistDetail }
+        "404": { description: not found }
+        "503": { description: playlist sync unavailable }
+    delete:
+      summary: Delete a synced playlist
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses: { "200": { description: ok }, "503": { description: playlist sync unavailable } }
+  /synced-playlists/{id}/sync:
+    post:
+      summary: Re-fetch the playlist from its source now
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses:
+        "200": { description: SyncedPlaylistDetail }
+        "422": { description: sync failed }
+        "503": { description: playlist sync unavailable }
+  /synced-playlists/{id}/download-missing:
+    post:
+      summary: Enqueue downloads for the playlist's missing tracks
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses:
+        "200": { description: array of DownloadJob }
+        "422": { description: could not enqueue }
+        "503": { description: playlist sync unavailable }
+  /synced-playlists/{id}/settings:
+    put:
+      summary: Update auto-sync schedule + auto-download for a synced playlist
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                syncEnabled: { type: boolean }
+                intervalSec: { type: integer }
+                autoDownload: { type: boolean }
+      responses:
+        "200": { description: ok }
+        "422": { description: update failed }
+        "503": { description: playlist sync unavailable }
   /downloads/batch:
     post:
       summary: Enqueue multiple downloads in one request

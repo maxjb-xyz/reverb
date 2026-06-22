@@ -15,6 +15,7 @@ import (
 	"github.com/maxjb-xyz/reverb/internal/download/spotdl"
 	"github.com/maxjb-xyz/reverb/internal/events"
 	"github.com/maxjb-xyz/reverb/internal/library/subsonic"
+	"github.com/maxjb-xyz/reverb/internal/playlistsync"
 	"github.com/maxjb-xyz/reverb/internal/registry"
 	"github.com/maxjb-xyz/reverb/internal/search/spotify"
 	"github.com/maxjb-xyz/reverb/internal/store"
@@ -23,6 +24,11 @@ import (
 
 func main() {
 	log.Printf("reverb %s starting", version)
+
+	// Root context cancelled when main returns, so background goroutines (e.g. the
+	// playlist-sync scheduler) shut down with the process.
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
 	cfg, err := config.Load(os.Args[1:], os.Getenv)
 	if err != nil {
@@ -84,6 +90,12 @@ func main() {
 		defer bundle.Manager.Stop()
 	}
 
+	// Start the playlist-sync scheduler when a sync service is configured. It ticks
+	// every 15 minutes, syncing due playlists, and stops when ctx is cancelled.
+	if bundle.Sync != nil {
+		go playlistsync.NewScheduler(bundle.Sync, 15*time.Minute).Run(ctx)
+	}
+
 	deps := api.Deps{
 		Auth:        authSvc,
 		Library:     bundle.Library,
@@ -107,6 +119,9 @@ func main() {
 	}
 	if bundle.Manager != nil {
 		deps.Downloads = bundle.Manager
+	}
+	if bundle.Sync != nil {
+		deps.Sync = bundle.Sync
 	}
 	srv := api.NewServer(deps)
 
