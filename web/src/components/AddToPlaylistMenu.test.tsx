@@ -89,4 +89,10 @@ describe('AddToPlaylistMenu', () => {
     renderMenu()
     expect(screen.getByText(/no playlists yet/i)).toBeInTheDocument()
   })
+
+  it('renders the dialog inside document.body (portaled)', () => {
+    renderMenu()
+    const dialog = screen.getByRole('dialog')
+    expect(document.body.contains(dialog)).toBe(true)
+  })
 })

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { Icon } from './ui'
@@ -107,23 +108,23 @@ export function AddToPlaylistMenu({ trackId, onClose }: AddToPlaylistMenuProps) 
     }
   }
 
-  return (
+  return createPortal(
     <>
       {/* Backdrop — click closes */}
       <div
         data-testid="add-to-playlist-backdrop"
-        className="fixed inset-0 z-20"
+        className="fixed inset-0 z-40"
         aria-hidden="true"
         onClick={onClose}
       />
 
-      {/* Popover panel — anchored above the trigger (bottom-full) */}
+      {/* Modal panel — centered via fixed positioning */}
       <div
         ref={panelRef}
         role="dialog"
         aria-modal="true"
         aria-label="Add to playlist"
-        className="absolute bottom-full left-0 z-30 mb-2 w-64 rounded-xl border border-border-subtle bg-raised shadow-pop"
+        className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-80 max-w-[calc(100vw-2rem)] rounded-xl border border-border-subtle bg-raised shadow-pop"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="px-3 pb-1 pt-3">
@@ -201,6 +202,7 @@ export function AddToPlaylistMenu({ trackId, onClose }: AddToPlaylistMenuProps) 
           </p>
         )}
       </div>
-    </>
+    </>,
+    document.body,
   )
 }
