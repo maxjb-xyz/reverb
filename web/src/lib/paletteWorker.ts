@@ -10,13 +10,29 @@ import { dominantColorFromPixels, type RGB } from './palette'
 // for an ambient dominant color and keeps the work sub-millisecond.
 const SAMPLE_SIZE = 32
 
+// credentialsFor returns 'include' for same-origin URLs (our auth-gated /api/... proxy)
+// and 'omit' for cross-origin URLs (Spotify CDN, etc. which return
+// Access-Control-Allow-Origin: * but do NOT support credentialed requests).
+// A URL is same-origin if it is relative (starts with '/') — which covers all
+// library covers (/api/v1/cover/...) — or if its parsed origin matches self.location.
+// Everything else (absolute https://... external URLs) gets 'omit' so anonymous CORS works.
+export function credentialsFor(url: string): RequestCredentials {
+  if (url.startsWith('/')) return 'include'
+  try {
+    const workerOrigin = (typeof self !== 'undefined' && self.location?.origin) || ''
+    return new URL(url).origin === workerOrigin ? 'include' : 'omit'
+  } catch {
+    return 'omit'
+  }
+}
+
 interface Request {
   id: string
   coverUrl: string
 }
 
 async function extract(coverUrl: string): Promise<RGB> {
-  const res = await fetch(coverUrl, { credentials: 'include' })
+  const res = await fetch(coverUrl, { credentials: credentialsFor(coverUrl) })
   const blob = await res.blob()
   const bitmap = await createImageBitmap(blob)
   const canvas = new OffscreenCanvas(SAMPLE_SIZE, SAMPLE_SIZE)

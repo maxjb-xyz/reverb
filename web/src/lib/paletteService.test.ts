@@ -1,6 +1,29 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { getPalette, __setComputeFnForTests, __resetForTests } from './paletteService'
+import { credentialsFor } from './paletteWorker'
 import type { RGB } from './palette'
+
+describe('credentialsFor', () => {
+  it('returns include for relative /api/... URLs (same-origin library covers)', () => {
+    expect(credentialsFor('/api/v1/cover/abc123')).toBe('include')
+  })
+
+  it('returns include for any /-relative URL', () => {
+    expect(credentialsFor('/cover/foo')).toBe('include')
+  })
+
+  it('returns omit for Spotify CDN URLs (cross-origin external covers)', () => {
+    expect(credentialsFor('https://i.scdn.co/image/ab67616d0000b273abc')).toBe('omit')
+  })
+
+  it('returns omit for any absolute https cross-origin URL', () => {
+    expect(credentialsFor('https://example.com/cover.jpg')).toBe('omit')
+  })
+
+  it('returns omit for malformed URLs', () => {
+    expect(credentialsFor('not a url')).toBe('omit')
+  })
+})
 
 describe('paletteService', () => {
   beforeEach(() => {
