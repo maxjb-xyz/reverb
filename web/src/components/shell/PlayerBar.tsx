@@ -11,6 +11,7 @@
  * from the original PlayerBar (Space, Arrow{Left,Right}, Shift+Arrow{Left,Right}).
  */
 import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { usePlayer } from '../../lib/playerStore'
 import { useUI } from '../../lib/uiStore'
 import { coverUrl } from '../../lib/libraryApi'
@@ -99,6 +100,7 @@ export function PlayerBar() {
   const togglePanel = useUI((s) => s.togglePanel)
   const rightPanel = useUI((s) => s.rightPanel)
 
+  const navigate = useNavigate()
   const [addMenuOpen, setAddMenuOpen] = useState(false)
 
   const palette = useAlbumPalette(current?.coverArtId ? coverUrl(current.coverArtId, 80) : undefined)
@@ -162,9 +164,19 @@ export function PlayerBar() {
           <div className="truncate text-sm font-semibold text-text-primary">
             {current ? current.title : 'Nothing playing'}
           </div>
-          <div className="truncate text-xs text-text-secondary">
-            {current?.artist ?? ''}
-          </div>
+          {current?.artist && current.artistId ? (
+            <button
+              type="button"
+              onClick={() => navigate(`/artist/library/${current.artistId}`)}
+              className="block max-w-full truncate text-left text-xs text-text-secondary hover:text-text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+            >
+              {current.artist}
+            </button>
+          ) : (
+            <div className="truncate text-xs text-text-secondary">
+              {current?.artist ?? ''}
+            </div>
+          )}
         </div>
 
         {current && (

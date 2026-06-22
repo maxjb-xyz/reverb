@@ -27,11 +27,11 @@ type albumRefDTO struct {
 }
 
 type trackDTO struct {
-	ID         string         `json:"id"`
-	Name       string         `json:"name"`
-	DurationMs int            `json:"duration_ms"`
-	Artists    []artistRefDTO `json:"artists"`
-	Album      albumRefDTO    `json:"album"`
+	ID          string         `json:"id"`
+	Name        string         `json:"name"`
+	DurationMs  int            `json:"duration_ms"`
+	Artists     []artistRefDTO `json:"artists"`
+	Album       albumRefDTO    `json:"album"`
 	ExternalIDs struct {
 		ISRC string `json:"isrc"`
 	} `json:"external_ids"`
@@ -55,17 +55,18 @@ type artistAlbumsResponse struct {
 }
 
 type artistAlbumDTO struct {
-	ID          string     `json:"id"`
-	Name        string     `json:"name"`
-	AlbumType   string     `json:"album_type"`   // "album" | "single" | "compilation"
-	TotalTracks int        `json:"total_tracks"`
-	ReleaseDate string     `json:"release_date"`
-	Images      []imageDTO `json:"images"`
+	ID          string         `json:"id"`
+	Name        string         `json:"name"`
+	AlbumType   string         `json:"album_type"` // "album" | "single" | "compilation"
+	TotalTracks int            `json:"total_tracks"`
+	ReleaseDate string         `json:"release_date"`
+	Images      []imageDTO     `json:"images"`
+	Artists     []artistRefDTO `json:"artists"`
 }
 
 // searchResponse mirrors GET /v1/search. Only the requested type is populated.
 type searchResponse struct {
-	Tracks  *struct{ Items []trackDTO } `json:"tracks"`
+	Tracks  *struct{ Items []trackDTO }    `json:"tracks"`
 	Albums  *struct{ Items []albumRefDTO } `json:"albums"`
 	Artists *struct {
 		Items []struct {

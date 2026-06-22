@@ -13,8 +13,8 @@ import (
 )
 
 var (
-	_ search.SearchSource       = (*Adapter)(nil)
-	_ registry.Plugin           = (*Adapter)(nil)
+	_ search.SearchSource        = (*Adapter)(nil)
+	_ registry.Plugin            = (*Adapter)(nil)
 	_ search.DiscographyProvider = (*Adapter)(nil)
 )
 
@@ -204,6 +204,7 @@ func (a *Adapter) GetArtistDiscography(ctx context.Context, externalID string) (
 				Source:      "spotify",
 				ExternalID:  it.ID,
 				Name:        it.Name,
+				Artist:      artistName(it.Artists),
 				CoverURL:    firstImage(it.Images),
 				Year:        yearFromReleaseDate(it.ReleaseDate),
 				Kind:        kind,

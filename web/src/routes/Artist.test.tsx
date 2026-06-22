@@ -150,11 +150,24 @@ describe('Artist page', () => {
     expect(screen.queryByRole('button', { name: 'Creep' })).not.toBeInTheDocument()
   })
 
-  it('"Download all missing" button calls postBatchDownload with missing tracks', () => {
+  it('"Download all missing" button calls postBatchDownload when confirmed', () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
     wrapper(<Artist />)
     const dlBtn = screen.getByRole('button', { name: /download all missing/i })
     fireEvent.click(dlBtn)
+    expect(confirmSpy).toHaveBeenCalledWith('Download 1 missing tracks?')
     expect(postBatchDownload).toHaveBeenCalledWith([MISSING_TRACK])
+    confirmSpy.mockRestore()
+  })
+
+  it('"Download all missing" does NOT download when confirm is cancelled', () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    wrapper(<Artist />)
+    const dlBtn = screen.getByRole('button', { name: /download all missing/i })
+    fireEvent.click(dlBtn)
+    expect(confirmSpy).toHaveBeenCalled()
+    expect(postBatchDownload).not.toHaveBeenCalled()
+    confirmSpy.mockRestore()
   })
 
   it('shows EmptyState when artist not found', () => {

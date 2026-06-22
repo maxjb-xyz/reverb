@@ -137,8 +137,8 @@ func TestSpotifyConformance(t *testing.T) {
 
 func TestGetArtistDiscographyMapsAndFilters(t *testing.T) {
 	page := `{"items":[
-	  {"id":"al1","name":"OK Computer","album_type":"album","total_tracks":12,"release_date":"1997-05-21","images":[{"url":"http://img/1"}]},
-	  {"id":"s1","name":"Creep","album_type":"single","total_tracks":1,"release_date":"1992-09-21","images":[{"url":"http://img/2"}]}
+	  {"id":"al1","name":"OK Computer","album_type":"album","total_tracks":12,"release_date":"1997-05-21","images":[{"url":"http://img/1"}],"artists":[{"id":"art1","name":"Radiohead"}]},
+	  {"id":"s1","name":"Creep","album_type":"single","total_tracks":1,"release_date":"1992-09-21","images":[{"url":"http://img/2"}],"artists":[{"id":"art1","name":"Radiohead"}]}
 	],"next":null}`
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasPrefix(r.URL.Path, "/artists/") && strings.HasSuffix(r.URL.Path, "/albums") {
@@ -161,6 +161,9 @@ func TestGetArtistDiscographyMapsAndFilters(t *testing.T) {
 	}
 	if albums[0].Name != "OK Computer" || albums[0].Kind != "album" || albums[0].TotalTracks != 12 || albums[0].Year != 1997 {
 		t.Fatalf("bad album mapping: %+v", albums[0])
+	}
+	if albums[0].Artist != "Radiohead" {
+		t.Fatalf("album Artist not populated: %q", albums[0].Artist)
 	}
 	if albums[1].Kind != "single" {
 		t.Fatalf("want single, got %q", albums[1].Kind)

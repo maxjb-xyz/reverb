@@ -10,6 +10,7 @@
  *   5. "About the artist" card — cover, name, "In your library · N albums"
  */
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { usePlayer } from '../../lib/playerStore'
 import { useUI } from '../../lib/uiStore'
 import { coverUrl, useArtist } from '../../lib/libraryApi'
@@ -58,6 +59,7 @@ export function NowPlayingPanel() {
   const index = usePlayer((s) => s.index)
   const jumpTo = usePlayer((s) => s.jumpTo)
 
+  const navigate = useNavigate()
   const [addMenuOpen, setAddMenuOpen] = useState(false)
 
   if (rightPanel !== 'nowplaying') return null
@@ -79,9 +81,19 @@ export function NowPlayingPanel() {
     >
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3.5">
-        <span className="text-sm font-bold text-text-primary">
-          {current?.album ?? 'Now Playing'}
-        </span>
+        {current?.album && current.albumId ? (
+          <button
+            type="button"
+            onClick={() => navigate(`/album/library/${current.albumId}`)}
+            className="truncate text-left text-sm font-bold text-text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+          >
+            {current.album}
+          </button>
+        ) : (
+          <span className="text-sm font-bold text-text-primary">
+            {current?.album ?? 'Now Playing'}
+          </span>
+        )}
         <IconButton
           name="x"
           label="Close panel"
@@ -109,9 +121,19 @@ export function NowPlayingPanel() {
             <div className="truncate text-xl font-extrabold leading-tight tracking-tight text-text-primary">
               {current?.title ?? 'Nothing playing'}
             </div>
-            <div className="mt-1 truncate text-sm text-text-secondary">
-              {current?.artist ?? ''}
-            </div>
+            {current?.artist && current.artistId ? (
+              <button
+                type="button"
+                onClick={() => navigate(`/artist/library/${current.artistId}`)}
+                className="mt-1 block max-w-full truncate text-left text-sm text-text-secondary hover:text-text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+              >
+                {current.artist}
+              </button>
+            ) : (
+              <div className="mt-1 truncate text-sm text-text-secondary">
+                {current?.artist ?? ''}
+              </div>
+            )}
           </div>
           {current && (
             <div className="relative flex-none">

@@ -151,14 +151,6 @@ export async function installApiMocks(page: Page, authed: { value: boolean }) {
 // completeness `**/api/v1/downloads` handler wins for this spec.
 // ─────────────────────────────────────────────────────────────────────────────
 
-// The missing external track on the partial album.
-export const missingTrack = {
-  source: 'spotify',
-  externalId: 'ext-miss-1',
-  title: 'Missing Song',
-  durationMs: 180_000,
-}
-
 // The library track id the completed missing-track download resolves to.
 export const missingLibraryTrackId = 'lib-track-miss-1'
 

@@ -101,11 +101,15 @@ Three caches, deliberately split by dependency:
 |---|---|---|
 | `artist_external_map` | library artist id ⇄ (source, external artist id) + confidence | Stable; manual re-resolve is future work. |
 | `discography_cache` | (source, external artist id) → canonical album list | Long TTL (discographies change rarely). **Library-independent.** |
-| `album_coverage` | (source, external album id) → coverage + matched library album id | Invalidated by **`library.updated`** (scan / download-complete), recomputed lazily on next view. |
+| `album_coverage` | (source, external album id) → coverage + matched library album id + `library_version` | **Version-stamped staleness** (mirrors `match_cache`): each row records the `library_version` it was computed against; a cached row is served only while its stamp is `>=` the current version, otherwise it is recomputed lazily on next view. |
 
 Splitting discography (library-independent) from coverage (library-dependent) means
-a freshly-downloaded track flips an album partial→full by invalidating only
-`album_coverage` — never the discography fetch.
+a freshly-downloaded track flips an album partial→full automatically: a scan /
+download-complete bumps `library_version`, which leaves every `album_coverage` row
+stale so the next view recomputes it — while the discography fetch (stamped by its
+own long TTL, not `library_version`) is untouched. This staleness check replaces an
+explicit delete-on-`library.updated` invalidation: nothing is purged, rows simply
+expire against the version counter the way `match_cache` does.
 
 ### 3.5 Reuse ledger
 - **Reused as-is:** matching service, `match_cache`, SSE streaming pattern,

@@ -8,8 +8,6 @@ import (
 	"github.com/maxjb-xyz/reverb/internal/matching"
 )
 
-const resolveConfidenceFloor = 0.6
-
 // ResolveArtist maps a library artist to an external artist id, caching the result.
 // Returns ("",0,nil) when no confident match (caller degrades to library-only).
 func ResolveArtist(ctx context.Context, src DiscoSource, lib LibraryArtist, cache CoverageCache, now func() int64, libraryArtistID string) (string, float64, error) {
@@ -31,9 +29,9 @@ func ResolveArtist(ctx context.Context, src DiscoSource, lib LibraryArtist, cach
 			return c.ExternalID, 1.0, nil
 		}
 	}
-	// Fall back to the top result if "close enough"; here Spotify already ranks by
-	// relevance, so accept the first candidate above the floor (heuristic 0.7).
-	top := cands[0]
-	_ = cache.UpsertArtistExternalMap(ctx, libraryArtistID, "spotify", top.ExternalID, 0.7, now())
-	return top.ExternalID, 0.7, nil
+	// No candidate's normalized name matches the library artist — accepting Spotify's
+	// top result would resolve an absent artist to a WRONG discography. Per the spec
+	// ("no confident match → graceful degrade to library-only") we degrade WITHOUT
+	// caching a positive, so a later re-resolve can still succeed.
+	return "", 0, nil
 }

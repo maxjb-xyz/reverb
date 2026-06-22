@@ -7,6 +7,12 @@ import type { Track } from '../../lib/types'
 import { useAlbumPalette } from '../../lib/useAlbumPalette'
 vi.mock('../../lib/useAlbumPalette', () => ({ useAlbumPalette: vi.fn(() => null) }))
 
+const mockNavigate = vi.fn()
+vi.mock('react-router-dom', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('react-router-dom')>()
+  return { ...actual, useNavigate: () => mockNavigate }
+})
+
 function track(id: string): Track {
   return {
     id,
@@ -37,6 +43,13 @@ describe('PlayerBar (shell)', () => {
     render(<PlayerBar />)
     expect(screen.getByText('Song 1')).toBeInTheDocument()
     expect(screen.getAllByText('Artist').length).toBeGreaterThan(0)
+  })
+
+  it('clicking the artist name navigates to the source-qualified artist route', () => {
+    mockNavigate.mockClear()
+    render(<PlayerBar />)
+    fireEvent.click(screen.getByRole('button', { name: 'Artist' }))
+    expect(mockNavigate).toHaveBeenCalledWith('/artist/library/ar')
   })
 
   // --- transport button actions ---

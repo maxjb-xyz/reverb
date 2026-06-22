@@ -46,10 +46,10 @@ func (fakeLibrary) GetAlbum(_ context.Context, id string) (core.Album, error) {
 
 // memCache is an in-memory CoverageCache for tests.
 type memCache struct {
-	mu          sync.Mutex
-	artistMap   map[string]ArtistMapRow   // key: libraryArtistID+"|"+source
-	disco       map[string]DiscoRow       // key: source+"|"+externalArtistID
-	albumCov    map[string]CoverageRow    // key: source+"|"+externalAlbumID
+	mu        sync.Mutex
+	artistMap map[string]ArtistMapRow // key: libraryArtistID+"|"+source
+	disco     map[string]DiscoRow     // key: source+"|"+externalArtistID
+	albumCov  map[string]CoverageRow  // key: source+"|"+externalAlbumID
 }
 
 func newMemCache() *memCache {
@@ -135,6 +135,49 @@ func TestStreamCoverageComputesPerAlbum(t *testing.T) {
 	}
 	if len(got) != 1 || got[0].State != core.CoveragePartial || got[0].OwnedCount != 1 {
 		t.Fatalf("bad stream: %+v", got)
+	}
+}
+
+// source="spotify" skips library resolution and takes the external id directly;
+// the artist name must fall back to albums[0].Artist (Fix 1: GetArtistDiscography
+// now populates ExternalAlbum.Artist).
+func TestArtistDetailSpotifySourceNameFromDiscography(t *testing.T) {
+	disco := fakeDisco{
+		disco: []core.ExternalAlbum{
+			{Source: "spotify", ExternalID: "AL", Name: "Kid A", Artist: "Radiohead", Kind: "album", TotalTracks: 2},
+		},
+	}
+	svc := NewService(disco, fakeMatcher{}, fakeLibrary{}, newMemCache(), func() int64 { return 1 }, func(context.Context) (int64, error) { return 1, nil })
+	det, err := svc.ArtistDetail(context.Background(), "spotify", "art1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !det.Resolved {
+		t.Fatalf("spotify source must resolve, got %+v", det)
+	}
+	if det.Name != "Radiohead" {
+		t.Fatalf("name must fall back to albums[0].Artist, got %q", det.Name)
+	}
+}
+
+// Fix 4: a library artist whose name matches NO Spotify candidate must degrade to
+// library-only (resolved:false) — NOT resolve to a wrong artist's top result.
+func TestArtistDetailDegradesWhenNoConfidentMatch(t *testing.T) {
+	disco := fakeDisco{
+		// "Radiohead" (library) vs a single wrong candidate → no normalized match.
+		artists: []core.ExternalResult{{Source: "spotify", ExternalID: "wrong", Title: "Coldplay", Type: core.EntityArtist}},
+	}
+	svc := NewService(disco, fakeMatcher{}, fakeLibrary{}, newMemCache(), func() int64 { return 1 }, func(context.Context) (int64, error) { return 1, nil })
+	det, err := svc.ArtistDetail(context.Background(), "library", "libArtist1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if det.Resolved {
+		t.Fatalf("must degrade to library-only when no candidate matches, got resolved=%v", det.Resolved)
+	}
+	// fakeLibrary's artist carries no Albums → empty skeleton (not nil).
+	if det.Albums == nil {
+		t.Fatalf("degrade must return a (possibly empty) library-album skeleton, got nil")
 	}
 }
 

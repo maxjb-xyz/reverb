@@ -1,10 +1,17 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { render, screen, fireEvent, act } from '@testing-library/react'
+import { MemoryRouter } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { NowPlayingPanel } from './NowPlayingPanel'
 import { usePlayer } from '../../lib/playerStore'
 import { useUI } from '../../lib/uiStore'
 import type { Track, Artist } from '../../lib/types'
+
+const mockNavigate = vi.fn()
+vi.mock('react-router-dom', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('react-router-dom')>()
+  return { ...actual, useNavigate: () => mockNavigate }
+})
 
 vi.mock('../../lib/libraryApi', () => ({
   streamUrl: vi.fn((id: string) => `/stream/${id}`),
@@ -43,13 +50,16 @@ function renderPanel() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
     <QueryClientProvider client={qc}>
-      <NowPlayingPanel />
+      <MemoryRouter>
+        <NowPlayingPanel />
+      </MemoryRouter>
     </QueryClientProvider>,
   )
 }
 
 describe('NowPlayingPanel', () => {
   beforeEach(() => {
+    mockNavigate.mockClear()
     vi.mocked(useArtist).mockReturnValue({ data: artist } as ReturnType<typeof useArtist>)
     act(() => {
       usePlayer.getState().playTrackList([track('1'), track('2'), track('3')], 0)
@@ -98,5 +108,19 @@ describe('NowPlayingPanel', () => {
     // "Test Artist" appears in the meta (artist name) and in the About card
     expect(screen.getAllByText('Test Artist').length).toBeGreaterThan(0)
     expect(screen.getByText(/In your library · 3 albums/i)).toBeInTheDocument()
+  })
+
+  it('clicking the artist name navigates to the source-qualified artist route', () => {
+    renderPanel()
+    const artistBtn = screen.getByRole('button', { name: 'Test Artist' })
+    fireEvent.click(artistBtn)
+    expect(mockNavigate).toHaveBeenCalledWith('/artist/library/ar1')
+  })
+
+  it('clicking the album name navigates to the source-qualified album route', () => {
+    renderPanel()
+    const albumBtn = screen.getByRole('button', { name: 'Test Album' })
+    fireEvent.click(albumBtn)
+    expect(mockNavigate).toHaveBeenCalledWith('/album/library/al1')
   })
 })

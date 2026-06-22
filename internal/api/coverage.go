@@ -100,6 +100,10 @@ func (s *Server) handleLibraryPlaylist(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, pl)
 }
 
+// maxBatchDownloadTracks caps a single POST /downloads/batch request so a runaway
+// or malicious body can't enqueue an unbounded number of jobs.
+const maxBatchDownloadTracks = 500
+
 // batchDownloadBody is the POST /downloads/batch request DTO. Each ref enqueues
 // one download; per-item failures (e.g. dedup) are skipped without aborting the batch.
 type batchDownloadBody struct {
@@ -115,6 +119,10 @@ func (s *Server) handleBatchDownload(w http.ResponseWriter, r *http.Request) {
 	var body batchDownloadBody
 	if err := decode(r, &body); err != nil || len(body.Tracks) == 0 {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "tracks is required"})
+		return
+	}
+	if len(body.Tracks) > maxBatchDownloadTracks {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "too many tracks"})
 		return
 	}
 	jobs := []core.DownloadJob{}

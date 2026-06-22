@@ -138,13 +138,22 @@ export default function Artist() {
             )}
           </p>
 
-          {/* Action row — only when there are missing tracks */}
+          {/* Action row — only when there are missing tracks. Guarded by a confirm
+              so a stray click can't enqueue a large batch (spec §10). */}
           {detail.resolved && allMissingTracks.length > 0 && (
             <div className="mt-4">
               <Button
                 variant="secondary"
                 size="md"
-                onClick={() => postBatchDownload(allMissingTracks)}
+                onClick={() => {
+                  if (
+                    window.confirm(
+                      `Download ${allMissingTracks.length} missing tracks?`,
+                    )
+                  ) {
+                    postBatchDownload(allMissingTracks)
+                  }
+                }}
               >
                 Download all missing · {allMissingTracks.length}
               </Button>

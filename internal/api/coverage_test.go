@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -18,13 +19,13 @@ import (
 
 // fakeCoverage is a controllable CoverageService for handler tests.
 type fakeCoverage struct {
-	artist      core.ArtistDetail
-	artistErr   error
-	album       core.AlbumDetail
-	albumErr    error
-	covs        []core.AlbumCoverage
-	lastSource  string
-	lastID      string
+	artist     core.ArtistDetail
+	artistErr  error
+	album      core.AlbumDetail
+	albumErr   error
+	covs       []core.AlbumCoverage
+	lastSource string
+	lastID     string
 }
 
 func (f *fakeCoverage) ArtistDetail(_ context.Context, source, id string) (core.ArtistDetail, error) {
@@ -196,5 +197,37 @@ func TestBatchDownloadEmptyReturns400(t *testing.T) {
 	srv.Handler().ServeHTTP(rec, req)
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want 400", rec.Code)
+	}
+}
+
+// A body that exceeds the 500-track cap must be rejected with 400 BEFORE any
+// Enqueue is attempted (Fix 3: cap the batch-download endpoint).
+func TestBatchDownloadOverCapReturns400(t *testing.T) {
+	mgr := newFakeManager()
+	srv, cookie := coverageTestServer(t, &fakeCoverage{}, mgr)
+
+	var sb strings.Builder
+	sb.WriteString(`{"tracks":[`)
+	for i := 0; i < 501; i++ {
+		if i > 0 {
+			sb.WriteByte(',')
+		}
+		sb.WriteString(`{"source":"spotify","externalId":"sp` + strconv.Itoa(i) + `","title":"t","artist":"a"}`)
+	}
+	sb.WriteString(`]}`)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/downloads/batch", strings.NewReader(sb.String()))
+	req.AddCookie(cookie)
+	srv.Handler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "too many tracks") {
+		t.Fatalf("body = %q, want \"too many tracks\"", rec.Body.String())
+	}
+	if len(mgr.jobs) != 0 {
+		t.Fatalf("Enqueue called %d times, want 0 (rejected before enqueue)", len(mgr.jobs))
 	}
 }
