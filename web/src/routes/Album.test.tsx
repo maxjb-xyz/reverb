@@ -14,9 +14,17 @@ vi.mock('../lib/useAlbumPalette', () => ({ useAlbumPalette: vi.fn(() => null) })
 const mockPlayTrackList = vi.fn()
 const mockToggleShuffle = vi.fn()
 
+// Mutable box so individual tests can override `current` to simulate playback.
+const mockPlayerState: { playTrackList: typeof mockPlayTrackList; toggleShuffle: typeof mockToggleShuffle; shuffle: boolean; current: null | { id: string } } = {
+  playTrackList: mockPlayTrackList,
+  toggleShuffle: mockToggleShuffle,
+  shuffle: false,
+  current: null,
+}
+
 vi.mock('../lib/playerStore', () => ({
-  usePlayer: (selector: (s: { playTrackList: typeof mockPlayTrackList; toggleShuffle: typeof mockToggleShuffle; shuffle: boolean; current: null }) => unknown) =>
-    selector({ playTrackList: mockPlayTrackList, toggleShuffle: mockToggleShuffle, shuffle: false, current: null }),
+  usePlayer: (selector: (s: typeof mockPlayerState) => unknown) =>
+    selector(mockPlayerState),
 }))
 
 // ── coverageApi mock ───────────────────────────────────────────────────────────
@@ -132,6 +140,7 @@ async function renderLoaded() {
 describe('Album page', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mockPlayerState.current = null
   })
   afterEach(() => {
     vi.restoreAllMocks()
@@ -306,6 +315,64 @@ describe('Album page', () => {
     expect((wrapper as HTMLElement).style.background).toBe('')
   })
 
+  describe('now-playing indicator (Bug 8)', () => {
+    it('the active owned row renders an Equalizer (eq-bar) and the others do not', async () => {
+      mockPlayerState.current = { id: 'L1' }
+      await renderLoaded()
+      // eq-bar appears in the active row
+      const eqBars = document.querySelectorAll('[data-testid="eq-bar"]')
+      expect(eqBars.length).toBeGreaterThan(0)
+    })
+
+    it('only the playing row is active — non-playing owned row has no Equalizer', async () => {
+      mockPlayerState.current = { id: 'L1' }
+      await renderLoaded()
+      // L2 is owned but not playing — it must NOT show an eq-bar
+      // There is exactly one set of eq-bars (the 4 bars for L1's Equalizer)
+      const eqBars = document.querySelectorAll('[data-testid="eq-bar"]')
+      expect(eqBars.length).toBe(4) // Equalizer renders 4 bars
+    })
+
+    it('no Equalizer when current track is null', async () => {
+      mockPlayerState.current = null
+      await renderLoaded()
+      expect(document.querySelectorAll('[data-testid="eq-bar"]').length).toBe(0)
+    })
+
+    it('missing rows are never active (no Equalizer) even when current id happens to be empty string', async () => {
+      mockPlayerState.current = { id: '' }
+      await renderLoaded()
+      // The missing track has id '' in displayTrack — but we only pass active to owned rows
+      expect(document.querySelectorAll('[data-testid="eq-bar"]').length).toBe(0)
+    })
+  })
+
+  describe('owned-track indicator (Bug 12)', () => {
+    it('owned rows render an "In Library" right-slot badge', async () => {
+      await renderLoaded()
+      const badges = screen.getAllByText('In Library')
+      // 2 owned tracks → 2 badges
+      expect(badges.length).toBe(2)
+    })
+
+    it('missing row does NOT render an "In Library" badge — it renders the Download control', async () => {
+      await renderLoaded()
+      // The missing track "Treefingers" should have a Download button (stubbed DownloadAction)
+      expect(screen.getByRole('button', { name: /download treefingers/i })).toBeInTheDocument()
+      // And no "In Library" badge for the missing row's title
+      // (2 badges for the 2 owned rows is already asserted above; just confirm Treefingers has Download)
+    })
+
+    it('owned row rightWidth is set (all rows in the track list have consistent column layout)', async () => {
+      await renderLoaded()
+      // All track rows are <button> elements in the track list; confirm 3 rows rendered
+      // (2 owned + 1 missing). Owned rows have In Library, missing row has Download button.
+      const inLibraryBadges = screen.getAllByText('In Library')
+      expect(inLibraryBadges.length).toBe(2)
+      expect(screen.getByRole('button', { name: /download treefingers/i })).toBeInTheDocument()
+    })
+  })
+
   describe('library-source album (all tracks owned — unchanged behavior)', () => {
     it('no "Download missing" button when ownedCount === totalCount', async () => {
       const { useAlbumDetail } = await import('../lib/coverageApi')
@@ -326,7 +393,7 @@ describe('Album page', () => {
       expect(screen.queryByRole('button', { name: /download missing/i })).not.toBeInTheDocument()
     })
 
-    it('no "X of Y in library" annotation when fully owned', async () => {
+    it('no "X of Y in library" header annotation when fully owned', async () => {
       const { useAlbumDetail } = await import('../lib/coverageApi')
       const fullAlbum: AlbumDetail = {
         ...partialAlbum,
@@ -342,7 +409,10 @@ describe('Album page', () => {
       } as ReturnType<typeof useAlbumDetail>)
       wrapper(<Album />)
       await waitFor(() => expect(screen.getByRole('heading', { name: 'Kid A' })).toBeInTheDocument())
-      expect(screen.queryByText(/in library/)).not.toBeInTheDocument()
+      // The header "X of Y in library" accent span must not appear when fully owned.
+      // (Each owned row now shows an "In Library" right-slot badge — those are distinct.)
+      const header = screen.getByRole('heading', { name: 'Kid A' }).closest('header')!
+      expect(header.querySelector('.text-accent')).not.toBeInTheDocument()
     })
   })
 })

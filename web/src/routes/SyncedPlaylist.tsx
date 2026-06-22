@@ -10,7 +10,7 @@ import {
 } from '../lib/syncedPlaylistApi'
 import { TrackRow } from '../components/ui/TrackRow'
 import { DownloadAction } from '../components/download/DownloadAction'
-import { Button, IconButton, Cover, Skeleton, EmptyState, Badge, Toggle, Select } from '../components/ui'
+import { Button, IconButton, Cover, Skeleton, EmptyState, Badge, Toggle, Select, Icon } from '../components/ui'
 import { PortalMenu } from '../components/PortalMenu'
 import type { ExternalResult, ExternalTrackRef, AlbumDetailTrack, Track } from '../lib/types'
 import { usePlayer } from '../lib/playerStore'
@@ -79,6 +79,7 @@ export default function SyncedPlaylist() {
   const qc = useQueryClient()
   const { data: detail, isLoading, isError } = useSyncedPlaylist(id)
   const playTrackList = usePlayer((s) => s.playTrackList)
+  const currentTrack = usePlayer((s) => s.current)
 
   // "…" menu state
   const [menuOpen, setMenuOpen] = useState(false)
@@ -342,13 +343,22 @@ export default function SyncedPlaylist() {
         {detail.tracks.map((t, i) => {
           if (t.state === 'full' && t.libraryTrack) {
             const ownedIdx = ownedIndexMap.get(t.libraryTrack.id) ?? 0
+            const isActive = currentTrack?.id === t.libraryTrack.id
             return (
               <TrackRow
                 key={t.libraryTrack.id}
                 track={t.libraryTrack}
                 index={i}
+                active={isActive}
                 onPlay={() => playTrackList(ownedTracks, ownedIdx)}
                 coverSrc={t.libraryTrack?.coverArtId ? undefined : t.coverUrl}
+                right={
+                  <Badge kind="in-library">
+                    <Icon name="check" className="text-xs" />
+                    In Library
+                  </Badge>
+                }
+                rightWidth="120px"
               />
             )
           }

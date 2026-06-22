@@ -79,7 +79,10 @@ test('completeness: artist coverage -> partial album -> download missing -> flip
   await page.goto('/album/spotify/al-1')
   await expect(page.getByRole('heading', { name: 'Mock Album' })).toBeVisible()
   await expect(page.getByText('Missing Song', { exact: true })).toBeVisible()
-  await expect(page.getByText('in library')).toHaveCount(0)
+  // The header "X of Y in library" partial-ownership banner must be gone when fully owned.
+  // (Per-row "In Library" right-slot badges are now present for owned rows — those are
+  // distinct from the header annotation and do NOT indicate missing tracks.)
+  await expect(page.getByText(/of \d+ in library/)).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'Download Missing Song', exact: true })).toHaveCount(0)
   await expect(page.getByRole('button', { name: /^Download missing/ })).toHaveCount(0)
 

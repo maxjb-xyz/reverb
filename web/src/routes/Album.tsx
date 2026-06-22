@@ -7,7 +7,7 @@ import { postBatchDownload } from '../lib/downloadApi'
 import { formatDuration } from '../lib/types'
 import type { AlbumDetailTrack, ExternalResult, ExternalTrackRef, Track } from '../lib/types'
 import { usePlayer } from '../lib/playerStore'
-import { Button, IconButton, Cover, Skeleton, EmptyState } from '../components/ui'
+import { Button, IconButton, Cover, Skeleton, EmptyState, Badge, Icon } from '../components/ui'
 import { useAlbumPalette } from '../lib/useAlbumPalette'
 import { rgbToCss } from '../lib/palette'
 
@@ -54,6 +54,7 @@ export default function Album() {
   const playTrackList = usePlayer((s) => s.playTrackList)
   const toggleShuffle = usePlayer((s) => s.toggleShuffle)
   const shuffle = usePlayer((s) => s.shuffle)
+  const currentTrack = usePlayer((s) => s.current)
   const palette = useAlbumPalette(album?.coverArtId ? coverUrl(album.coverArtId, 300) : album?.coverUrl)
 
   if (isLoading) {
@@ -195,13 +196,22 @@ export default function Album() {
         {album.tracks.map((t, i) => {
           if (t.state === 'full' && t.libraryTrack) {
             const ownedIdx = ownedIndexMap.get(t.libraryTrack.id) ?? 0
+            const isActive = currentTrack?.id === t.libraryTrack.id
             return (
               <TrackRow
                 key={t.libraryTrack.id}
                 track={t.libraryTrack}
                 index={i}
+                active={isActive}
                 onPlay={() => playTrackList(ownedTracks, ownedIdx)}
                 coverSrc={t.libraryTrack.coverArtId ? undefined : t.coverUrl}
+                right={
+                  <Badge kind="in-library">
+                    <Icon name="check" className="text-xs" />
+                    In Library
+                  </Badge>
+                }
+                rightWidth="120px"
               />
             )
           }

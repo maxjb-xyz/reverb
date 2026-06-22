@@ -13,9 +13,16 @@ vi.mock('../lib/useAlbumPalette', () => ({ useAlbumPalette: vi.fn(() => null) })
 // ── Player mock ────────────────────────────────────────────────────────────────
 const mockPlayTrackList = vi.fn()
 
+// Mutable box so individual tests can set `current` to simulate playback.
+const mockSyncedPlayerState: { playTrackList: typeof mockPlayTrackList; shuffle: boolean; current: null | { id: string } } = {
+  playTrackList: mockPlayTrackList,
+  shuffle: false,
+  current: null,
+}
+
 vi.mock('../lib/playerStore', () => ({
-  usePlayer: (selector: (s: { playTrackList: typeof mockPlayTrackList; shuffle: boolean; current: null }) => unknown) =>
-    selector({ playTrackList: mockPlayTrackList, shuffle: false, current: null }),
+  usePlayer: (selector: (s: typeof mockSyncedPlayerState) => unknown) =>
+    selector(mockSyncedPlayerState),
 }))
 
 // ── syncedPlaylistApi mocks ────────────────────────────────────────────────────
@@ -133,6 +140,7 @@ async function renderLoaded() {
 describe('SyncedPlaylist page', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mockSyncedPlayerState.current = null
   })
   afterEach(() => {
     vi.restoreAllMocks()
@@ -376,5 +384,40 @@ describe('SyncedPlaylist page', () => {
     const gradientWrapper = heading.closest('[class*="from-raised"]')
     expect(gradientWrapper).toBeTruthy()
     expect((gradientWrapper as HTMLElement).style.background).toBe('')
+  })
+
+  describe('now-playing indicator (Bug 8)', () => {
+    it('the active owned row renders an Equalizer (eq-bar)', async () => {
+      mockSyncedPlayerState.current = { id: 't1' }
+      await renderLoaded()
+      const eqBars = document.querySelectorAll('[data-testid="eq-bar"]')
+      expect(eqBars.length).toBeGreaterThan(0)
+    })
+
+    it('only the playing row shows Equalizer — other owned row does not', async () => {
+      mockSyncedPlayerState.current = { id: 't1' }
+      await renderLoaded()
+      // Equalizer renders 4 bars total; only 1 row is active
+      expect(document.querySelectorAll('[data-testid="eq-bar"]').length).toBe(4)
+    })
+
+    it('no Equalizer when current is null', async () => {
+      mockSyncedPlayerState.current = null
+      await renderLoaded()
+      expect(document.querySelectorAll('[data-testid="eq-bar"]').length).toBe(0)
+    })
+  })
+
+  describe('owned-track indicator (Bug 12)', () => {
+    it('owned rows render an "In Library" right-slot badge', async () => {
+      await renderLoaded()
+      // 2 owned tracks → 2 "In Library" badges
+      expect(screen.getAllByText('In Library').length).toBe(2)
+    })
+
+    it('missing row renders the Download control, not an "In Library" badge', async () => {
+      await renderLoaded()
+      expect(screen.getByRole('button', { name: /download missing track/i })).toBeInTheDocument()
+    })
   })
 })
