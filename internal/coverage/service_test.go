@@ -12,14 +12,18 @@ import (
 
 // fakeDisco implements DiscoSource for tests.
 type fakeDisco struct {
-	artists []core.ExternalResult
-	albums  map[string]core.ExternalAlbum // externalAlbumID -> full album (with tracks)
-	disco   []core.ExternalAlbum
+	artists      []core.ExternalResult
+	albumSearch  []core.ExternalResult              // returned for EntityAlbum searches
+	albums       map[string]core.ExternalAlbum      // externalAlbumID -> full album (with tracks)
+	disco        []core.ExternalAlbum
 }
 
 func (f fakeDisco) Search(_ context.Context, q string, t core.EntityType) ([]core.ExternalResult, error) {
 	if t == core.EntityArtist {
 		return f.artists, nil
+	}
+	if t == core.EntityAlbum {
+		return f.albumSearch, nil
 	}
 	return nil, nil
 }
@@ -41,6 +45,16 @@ func (fakeLibrary) GetArtist(_ context.Context, id string) (core.Artist, error) 
 }
 
 func (fakeLibrary) GetAlbum(_ context.Context, id string) (core.Album, error) {
+	if id == "libAlbum1" {
+		return core.Album{
+			ID: "libAlbum1", Name: "Kid A", Artist: "Radiohead", ArtistID: "libArtist1",
+			Tracks: []core.Track{
+				{ID: "lt1", Title: "Everything in Its Right Place", Artist: "Radiohead", TrackNumber: 1},
+				{ID: "lt2", Title: "Kid A", Artist: "Radiohead", TrackNumber: 2},
+				{ID: "lt3", Title: "The National Anthem", Artist: "Radiohead", TrackNumber: 3},
+			},
+		}, nil
+	}
 	return core.Album{ID: id}, nil
 }
 
@@ -201,5 +215,85 @@ func TestStreamCoverageRecomputesWhenLibraryVersionStale(t *testing.T) {
 	}
 	if len(got) != 1 || got[0].State != core.CoveragePartial || got[0].OwnedCount != 1 {
 		t.Fatalf("stale row must be recomputed to partial 1/2, got %+v", got)
+	}
+}
+
+// TestAlbumDetailLibraryMergesFullTracklist: library album "Kid A" resolves to a
+// 3-track Spotify album; matcher owns 2 of 3 external track ids → merged view.
+func TestAlbumDetailLibraryMergesFullTracklist(t *testing.T) {
+	extAlbum := core.ExternalAlbum{
+		Source: "spotify", ExternalID: "AL", Name: "Kid A", Artist: "Radiohead",
+		Tracks: []core.ExternalResult{
+			{Source: "spotify", ExternalID: "et1", Title: "Everything in Its Right Place", Artist: "Radiohead", Type: core.EntityTrack},
+			{Source: "spotify", ExternalID: "et2", Title: "Kid A", Artist: "Radiohead", Type: core.EntityTrack},
+			{Source: "spotify", ExternalID: "et3", Title: "The National Anthem", Artist: "Radiohead", Type: core.EntityTrack},
+		},
+	}
+	disco := fakeDisco{
+		albumSearch: []core.ExternalResult{
+			{Source: "spotify", ExternalID: "AL", Title: "Kid A", Artist: "Radiohead", Type: core.EntityAlbum},
+		},
+		albums: map[string]core.ExternalAlbum{"AL": extAlbum},
+	}
+	// matcher owns et1 and et2 but not et3
+	m := fakeMatcher{owned: map[string]string{"et1": "lt1", "et2": "lt2"}}
+	svc := NewService(disco, m, fakeLibrary{}, newMemCache(), func() int64 { return 1 }, func(context.Context) (int64, error) { return 1, nil })
+	det, err := svc.AlbumDetail(context.Background(), "library", "libAlbum1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if det.TotalCount != 3 {
+		t.Errorf("TotalCount: want 3, got %d", det.TotalCount)
+	}
+	if det.OwnedCount != 2 {
+		t.Errorf("OwnedCount: want 2, got %d", det.OwnedCount)
+	}
+	if det.Source != "library" {
+		t.Errorf("Source: want %q, got %q", "library", det.Source)
+	}
+	if det.Name != "Kid A" {
+		t.Errorf("Name: want %q, got %q", "Kid A", det.Name)
+	}
+	if det.LibraryAlbumID != "libAlbum1" {
+		t.Errorf("LibraryAlbumID: want %q, got %q", "libAlbum1", det.LibraryAlbumID)
+	}
+	noneCount := 0
+	for _, tr := range det.Tracks {
+		if tr.State == core.CoverageNone {
+			noneCount++
+		}
+	}
+	if noneCount != 1 {
+		t.Errorf("want 1 track with state:none, got %d", noneCount)
+	}
+}
+
+// TestAlbumDetailLibraryDegradesWhenNoMatch: no matching Spotify album candidate →
+// falls back to the library album's own tracks, all state:full, source=="library".
+func TestAlbumDetailLibraryDegradesWhenNoMatch(t *testing.T) {
+	disco := fakeDisco{
+		albumSearch: nil, // no candidates
+		albums:      map[string]core.ExternalAlbum{},
+	}
+	m := fakeMatcher{}
+	svc := NewService(disco, m, fakeLibrary{}, newMemCache(), func() int64 { return 1 }, func(context.Context) (int64, error) { return 1, nil })
+	det, err := svc.AlbumDetail(context.Background(), "library", "libAlbum1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if det.Source != "library" {
+		t.Errorf("Source: want %q, got %q", "library", det.Source)
+	}
+	// fakeLibrary returns 3 tracks for libAlbum1; all should be state:full
+	if det.TotalCount != 3 {
+		t.Errorf("TotalCount: want 3, got %d", det.TotalCount)
+	}
+	if det.OwnedCount != 3 {
+		t.Errorf("OwnedCount: want 3, got %d", det.OwnedCount)
+	}
+	for _, tr := range det.Tracks {
+		if tr.State != core.CoverageFull {
+			t.Errorf("fallback track %q: want state:full, got %s", tr.Title, tr.State)
+		}
 	}
 }

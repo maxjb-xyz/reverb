@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 
 	"github.com/maxjb-xyz/reverb/internal/core"
+	"github.com/maxjb-xyz/reverb/internal/matching"
 )
 
 // DiscoSource is the external source used for discography + resolution.
@@ -184,32 +185,10 @@ func (s *Service) backfillLibraryAlbumID(ctx context.Context, cov core.AlbumCove
 	return ""
 }
 
-// AlbumDetail returns per-track ownership for an album. source "library" returns
-// all-owned; "spotify" matches each external track against the library.
-func (s *Service) AlbumDetail(ctx context.Context, source, id string) (core.AlbumDetail, error) {
-	if source == "library" {
-		al, err := s.lib.GetAlbum(ctx, id)
-		if err != nil {
-			return core.AlbumDetail{}, err
-		}
-		det := core.AlbumDetail{
-			Source: "library", ID: al.ID, Name: al.Name, Artist: al.Artist, ArtistID: al.ArtistID,
-			CoverArtID: al.CoverArtID, Year: al.Year, LibraryAlbumID: al.ID,
-			OwnedCount: len(al.Tracks), TotalCount: len(al.Tracks),
-		}
-		for _, t := range al.Tracks {
-			tt := t
-			det.Tracks = append(det.Tracks, core.AlbumDetailTrack{
-				State: core.CoverageFull, LibraryTrack: &tt, Title: t.Title, Artist: t.Artist,
-				TrackNumber: t.TrackNumber, DurationMs: t.DurationMs,
-			})
-		}
-		return det, nil
-	}
-	full, err := s.src.GetAlbum(ctx, id)
-	if err != nil {
-		return core.AlbumDetail{}, err
-	}
+// albumDetailFromExternal builds an AlbumDetail from a full external album by
+// matching each track against the library. spotify-source defaults are applied;
+// callers that need different metadata (e.g. the library branch) override afterwards.
+func (s *Service) albumDetailFromExternal(ctx context.Context, full core.ExternalAlbum) (core.AlbumDetail, error) {
 	det := core.AlbumDetail{
 		Source: "spotify", ID: full.ExternalID, Name: full.Name, Artist: full.Artist,
 		CoverURL: full.CoverURL, Year: full.Year, TotalCount: len(full.Tracks),
@@ -232,4 +211,77 @@ func (s *Service) AlbumDetail(ctx context.Context, source, id string) (core.Albu
 		det.Tracks = append(det.Tracks, dt)
 	}
 	return det, nil
+}
+
+// resolveExternalAlbum searches the external source for an album matching al by
+// normalized title+artist. Returns the external ID and true on success.
+func (s *Service) resolveExternalAlbum(ctx context.Context, al core.Album) (string, bool) {
+	if s.src == nil {
+		return "", false
+	}
+	cands, err := s.src.Search(ctx, al.Artist+" "+al.Name, core.EntityAlbum)
+	if err != nil || len(cands) == 0 {
+		return "", false
+	}
+	normName := matching.Normalize(al.Name)
+	normArtist := matching.Normalize(al.Artist)
+	for _, c := range cands {
+		if matching.Normalize(c.Title) == normName && matching.Normalize(c.Artist) == normArtist {
+			return c.ExternalID, true
+		}
+	}
+	return "", false
+}
+
+// AlbumDetail returns per-track ownership for an album. source "library" merges
+// the full Spotify tracklist (owned + missing) when a match is found; falls back
+// to library-only when Spotify isn't configured or no match is found. source
+// "spotify" takes the external id directly.
+func (s *Service) AlbumDetail(ctx context.Context, source, id string) (core.AlbumDetail, error) {
+	if source == "library" {
+		al, err := s.lib.GetAlbum(ctx, id)
+		if err != nil {
+			return core.AlbumDetail{}, err
+		}
+		extID, ok := s.resolveExternalAlbum(ctx, al)
+		if ok {
+			full, fErr := s.src.GetAlbum(ctx, extID)
+			if fErr != nil {
+				return core.AlbumDetail{}, fErr
+			}
+			det, dErr := s.albumDetailFromExternal(ctx, full)
+			if dErr != nil {
+				return core.AlbumDetail{}, dErr
+			}
+			// Override with library-authoritative metadata.
+			det.Source = "library"
+			det.ID = al.ID
+			det.LibraryAlbumID = al.ID
+			det.Name = al.Name
+			det.Artist = al.Artist
+			det.ArtistID = al.ArtistID
+			det.CoverArtID = al.CoverArtID
+			det.Year = al.Year
+			return det, nil
+		}
+		// Fallback: no external match — return all library tracks as owned.
+		det := core.AlbumDetail{
+			Source: "library", ID: al.ID, Name: al.Name, Artist: al.Artist, ArtistID: al.ArtistID,
+			CoverArtID: al.CoverArtID, Year: al.Year, LibraryAlbumID: al.ID,
+			OwnedCount: len(al.Tracks), TotalCount: len(al.Tracks),
+		}
+		for _, t := range al.Tracks {
+			tt := t
+			det.Tracks = append(det.Tracks, core.AlbumDetailTrack{
+				State: core.CoverageFull, LibraryTrack: &tt, Title: t.Title, Artist: t.Artist,
+				TrackNumber: t.TrackNumber, DurationMs: t.DurationMs,
+			})
+		}
+		return det, nil
+	}
+	full, err := s.src.GetAlbum(ctx, id)
+	if err != nil {
+		return core.AlbumDetail{}, err
+	}
+	return s.albumDetailFromExternal(ctx, full)
 }
