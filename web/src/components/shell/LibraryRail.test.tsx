@@ -14,7 +14,13 @@ vi.mock('../../lib/libraryApi', () => ({
   coverUrl: vi.fn((id: string) => `/covers/${id}`),
 }))
 
+// Mock synced playlist API
+vi.mock('../../lib/syncedPlaylistApi', () => ({
+  useSyncedPlaylists: vi.fn(),
+}))
+
 import { usePlaylists, useArtists, useAlbums } from '../../lib/libraryApi'
+import { useSyncedPlaylists } from '../../lib/syncedPlaylistApi'
 
 const PLAYLISTS = [
   { id: 'p1', name: 'Chill Mix', coverArtId: 'c1', songCount: 10, durationMs: 3600000 },
@@ -47,17 +53,23 @@ function renderRail(initialPath = '/') {
           <Route path="/album/:source/:id" element={<div data-testid="album-page" />} />
           <Route path="/artist/:source/:id" element={<div data-testid="artist-page" />} />
           <Route path="/playlist/:id" element={<div data-testid="playlist-page" />} />
+          <Route path="/synced-playlist/:id" element={<div data-testid="synced-playlist-page" />} />
         </Routes>
       </MemoryRouter>
     </QueryClientProvider>,
   )
 }
 
+const SYNCED_PLAYLISTS = [
+  { id: 'sp1', name: 'Synced One', coverUrl: 'http://img/sp1.jpg', source: 'spotify', externalId: 'ext1', syncEnabled: true, syncIntervalSec: 3600, autoDownload: false, lastSyncedAt: 0, trackCount: 12 },
+]
+
 describe('LibraryRail', () => {
   beforeEach(() => {
     vi.mocked(usePlaylists).mockReturnValue({ data: PLAYLISTS, isLoading: false } as unknown as ReturnType<typeof usePlaylists>)
     vi.mocked(useArtists).mockReturnValue({ data: ARTISTS, isLoading: false } as unknown as ReturnType<typeof useArtists>)
     vi.mocked(useAlbums).mockReturnValue({ data: ALBUMS, isLoading: false } as unknown as ReturnType<typeof useAlbums>)
+    vi.mocked(useSyncedPlaylists).mockReturnValue({ data: [], isLoading: false } as unknown as ReturnType<typeof useSyncedPlaylists>)
     // Reset player
     usePlayer.setState({ current: null, queue: [], index: -1, playing: false, currentTimeMs: 0, durationMs: 0, bufferedMs: 0, volume: 1, shuffle: false, repeat: 'off' })
   })
@@ -140,6 +152,31 @@ describe('LibraryRail', () => {
     // Playlists are shown by default
     const playlistBtn = screen.getByRole('button', { name: 'Chill Mix' })
     expect(playlistBtn).toBeInTheDocument()
+    fireEvent.click(playlistBtn)
+    expect(screen.getByTestId('playlist-page')).toBeInTheDocument()
+  })
+
+  it('renders synced playlists alongside library playlists with a synced badge', () => {
+    vi.mocked(useSyncedPlaylists).mockReturnValue({ data: SYNCED_PLAYLISTS, isLoading: false } as unknown as ReturnType<typeof useSyncedPlaylists>)
+    renderRail()
+    expect(screen.getByText('Synced One')).toBeInTheDocument()
+    // Synced badge marker present
+    expect(screen.getByTestId('synced-badge-sp1')).toBeInTheDocument()
+  })
+
+  it('clicking a synced playlist row navigates to /synced-playlist/:id', () => {
+    vi.mocked(useSyncedPlaylists).mockReturnValue({ data: SYNCED_PLAYLISTS, isLoading: false } as unknown as ReturnType<typeof useSyncedPlaylists>)
+    renderRail()
+    const syncedBtn = screen.getByRole('button', { name: 'Synced One' })
+    expect(syncedBtn).toBeInTheDocument()
+    fireEvent.click(syncedBtn)
+    expect(screen.getByTestId('synced-playlist-page')).toBeInTheDocument()
+  })
+
+  it('library playlists still navigate to /playlist/:id when synced playlists are present', () => {
+    vi.mocked(useSyncedPlaylists).mockReturnValue({ data: SYNCED_PLAYLISTS, isLoading: false } as unknown as ReturnType<typeof useSyncedPlaylists>)
+    renderRail()
+    const playlistBtn = screen.getByRole('button', { name: 'Chill Mix' })
     fireEvent.click(playlistBtn)
     expect(screen.getByTestId('playlist-page')).toBeInTheDocument()
   })

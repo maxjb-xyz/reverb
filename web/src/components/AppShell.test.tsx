@@ -23,6 +23,11 @@ vi.mock('../lib/libraryApi', async (importOriginal) => {
   }
 })
 
+// Suppress synced playlist fetches in tests
+vi.mock('../lib/syncedPlaylistApi', () => ({
+  useSyncedPlaylists: () => ({ isLoading: false, data: [] }),
+}))
+
 function track(id: string): Track {
   return {
     id, title: 'Song ' + id, albumId: 'al', album: 'Album', artistId: 'ar', artist: 'Artist',

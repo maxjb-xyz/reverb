@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAlbums, useArtists, usePlaylists } from '../lib/libraryApi'
-import { Chip, MediaCard, Skeleton, EmptyState, Button } from '../components/ui'
+import { useSyncedPlaylists } from '../lib/syncedPlaylistApi'
+import { Chip, MediaCard, Skeleton, EmptyState, Button, Badge } from '../components/ui'
 import { ImportPlaylistDialog } from '../components/ImportPlaylistDialog'
 
 type Filter = 'albums' | 'artists' | 'playlists'
@@ -40,6 +41,7 @@ export default function Library() {
   const albums = useAlbums('newest')
   const artists = useArtists()
   const playlists = usePlaylists()
+  const syncedPlaylists = useSyncedPlaylists()
 
   return (
     <div className="space-y-6">
@@ -129,7 +131,7 @@ export default function Library() {
           </div>
           {playlists.isLoading ? (
             <SkeletonGrid rounded="md" />
-          ) : (playlists.data ?? []).length === 0 ? (
+          ) : (playlists.data ?? []).length === 0 && (syncedPlaylists.data ?? []).length === 0 ? (
             <EmptyState
               icon="browse"
               title="Nothing here yet"
@@ -145,6 +147,24 @@ export default function Library() {
                   coverId={pl.coverArtId || undefined}
                   rounded="md"
                   onClick={() => navigate(`/playlist/${pl.id}`)}
+                />
+              ))}
+              {(syncedPlaylists.data ?? []).map((pl) => (
+                <MediaCard
+                  key={`synced-${pl.id}`}
+                  title={pl.name}
+                  subtitle={`${pl.trackCount} track${pl.trackCount !== 1 ? 's' : ''}`}
+                  coverSrc={pl.coverUrl}
+                  rounded="md"
+                  badge={
+                    <span
+                      data-testid={`synced-badge-${pl.id}`}
+                      className="inline-flex items-center"
+                    >
+                      <Badge kind="status" tone="success">Synced</Badge>
+                    </span>
+                  }
+                  onClick={() => navigate(`/synced-playlist/${pl.id}`)}
                 />
               ))}
             </div>

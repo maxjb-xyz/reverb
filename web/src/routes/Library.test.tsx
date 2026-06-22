@@ -31,10 +31,27 @@ function wrapWithRoutes(ui: React.ReactNode) {
           <Route path="/album/:source/:id" element={<div data-testid="album-page" />} />
           <Route path="/artist/:source/:id" element={<div data-testid="artist-page" />} />
           <Route path="/playlist/:id" element={<div data-testid="playlist-page" />} />
+          <Route path="/synced-playlist/:id" element={<div data-testid="synced-playlist-page" />} />
         </Routes>
       </MemoryRouter>
     </QueryClientProvider>
   )
+}
+
+function makeSyncedPlaylist(overrides: Partial<SyncedPlaylist> = {}): SyncedPlaylist {
+  return {
+    id: 'sp1',
+    name: 'Synced One',
+    coverUrl: 'http://img/sp1.jpg',
+    source: 'spotify',
+    externalId: 'ext1',
+    syncEnabled: true,
+    syncIntervalSec: 3600,
+    autoDownload: false,
+    lastSyncedAt: 0,
+    trackCount: 12,
+    ...overrides,
+  }
 }
 
 function makeAlbum(overrides: Partial<Album> = {}): Album {
@@ -88,6 +105,13 @@ vi.mock('../lib/libraryApi', async (importOriginal) => {
   }
 })
 
+vi.mock('../lib/syncedPlaylistApi', () => ({
+  useSyncedPlaylists: vi.fn(),
+}))
+
+import { useSyncedPlaylists } from '../lib/syncedPlaylistApi'
+import type { SyncedPlaylist } from '../lib/types'
+
 // ------------------------------------------------------------------
 // Suites
 // ------------------------------------------------------------------
@@ -98,6 +122,7 @@ describe('Library page', () => {
     vi.mocked(useAlbums).mockReturnValue({ data: [], isLoading: false, error: null } as unknown as UseQueryResult<Album[], Error>)
     vi.mocked(useArtists).mockReturnValue({ data: [], isLoading: false, error: null } as unknown as UseQueryResult<Artist[], Error>)
     vi.mocked(usePlaylists).mockReturnValue({ data: [], isLoading: false, error: null } as unknown as UseQueryResult<Playlist[], Error>)
+    vi.mocked(useSyncedPlaylists).mockReturnValue({ data: [], isLoading: false, error: null } as unknown as ReturnType<typeof useSyncedPlaylists>)
   })
 
   afterEach(() => {
@@ -260,5 +285,55 @@ describe('Library page', () => {
     fireEvent.click(importBtn)
     expect(screen.getByRole('dialog')).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: /import from spotify/i })).toBeInTheDocument()
+  })
+
+  it('renders synced playlists in the Playlists grid with a synced badge', async () => {
+    const { usePlaylists } = await import('../lib/libraryApi')
+    vi.mocked(usePlaylists).mockReturnValue({ data: [], isLoading: false, error: null } as unknown as UseQueryResult<Playlist[], Error>)
+    vi.mocked(useSyncedPlaylists).mockReturnValue({
+      data: [makeSyncedPlaylist({ id: 'sp1', name: 'Synced One' })],
+      isLoading: false,
+      error: null,
+    } as unknown as ReturnType<typeof useSyncedPlaylists>)
+
+    render(wrap(<Library />))
+    fireEvent.click(screen.getByRole('button', { name: /^playlists$/i }))
+
+    expect(screen.getByRole('button', { name: /synced one/i })).toBeInTheDocument()
+    expect(screen.getByTestId('synced-badge-sp1')).toBeInTheDocument()
+  })
+
+  it('navigates to /synced-playlist/:id when a synced playlist card is clicked', async () => {
+    const { usePlaylists } = await import('../lib/libraryApi')
+    vi.mocked(usePlaylists).mockReturnValue({ data: [], isLoading: false, error: null } as unknown as UseQueryResult<Playlist[], Error>)
+    vi.mocked(useSyncedPlaylists).mockReturnValue({
+      data: [makeSyncedPlaylist({ id: 'sp42', name: 'Top Hits' })],
+      isLoading: false,
+      error: null,
+    } as unknown as ReturnType<typeof useSyncedPlaylists>)
+
+    render(wrapWithRoutes(<Library />))
+    fireEvent.click(screen.getByRole('button', { name: /^playlists$/i }))
+    fireEvent.click(screen.getByRole('button', { name: /top hits/i }))
+    expect(screen.getByTestId('synced-playlist-page')).toBeInTheDocument()
+  })
+
+  it('library playlists still navigate to /playlist/:id when synced playlists are present', async () => {
+    const { usePlaylists } = await import('../lib/libraryApi')
+    vi.mocked(usePlaylists).mockReturnValue({
+      data: [makePlaylist({ id: 'pl99', name: 'My Vibes' })],
+      isLoading: false,
+      error: null,
+    } as unknown as UseQueryResult<Playlist[], Error>)
+    vi.mocked(useSyncedPlaylists).mockReturnValue({
+      data: [makeSyncedPlaylist({ id: 'sp1', name: 'Synced One' })],
+      isLoading: false,
+      error: null,
+    } as unknown as ReturnType<typeof useSyncedPlaylists>)
+
+    render(wrapWithRoutes(<Library />))
+    fireEvent.click(screen.getByRole('button', { name: /^playlists$/i }))
+    fireEvent.click(screen.getByRole('button', { name: /my vibes/i }))
+    expect(screen.getByTestId('playlist-page')).toBeInTheDocument()
   })
 })
