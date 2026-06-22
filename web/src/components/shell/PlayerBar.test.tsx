@@ -269,5 +269,19 @@ describe('PlayerBar (shell)', () => {
       const bar = screen.getByTestId('player-bar')
       expect(bar.style.backgroundColor).toBe('')
     })
+
+    it('title does NOT have text-text-primary when a light palette is active (inherits palette.text)', () => {
+      vi.mocked(useAlbumPalette).mockReturnValue({ rgb: [240, 240, 240], text: '#1a1a1a', scrim: false })
+      render(<PlayerBar />)
+      const title = screen.getByText('Song 1')
+      expect(title.className).not.toContain('text-text-primary')
+    })
+
+    it('title DOES have text-text-primary when there is no palette', () => {
+      vi.mocked(useAlbumPalette).mockReturnValue(null)
+      render(<PlayerBar />)
+      const title = screen.getByText('Song 1')
+      expect(title.className).toContain('text-text-primary')
+    })
   })
 })
