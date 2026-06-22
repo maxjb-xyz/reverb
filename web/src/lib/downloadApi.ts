@@ -1,5 +1,5 @@
 import { api } from './api'
-import type { DownloadJob, ExternalResult } from './types'
+import type { DownloadJob, ExternalResult, ExternalTrackRef } from './types'
 
 export interface CreateDownloadReq {
   source: string
@@ -42,4 +42,20 @@ export function cancelDownload(id: string): Promise<unknown> {
 
 export function retryDownload(id: string): Promise<DownloadJob> {
   return api.post<DownloadJob>(`/downloads/${encodeURIComponent(id)}/retry`)
+}
+
+export function postBatchDownload(tracks: ExternalTrackRef[]): Promise<DownloadJob[]> {
+  return api.post<DownloadJob[]>('/downloads/batch', { tracks })
+}
+
+export function reqFromExternalRef(t: ExternalTrackRef): CreateDownloadReq {
+  return {
+    source: t.source,
+    externalId: t.externalId,
+    artist: t.artist ?? '',
+    title: t.title,
+    album: t.album ?? '',
+    isrc: t.isrc,
+    durationMs: t.durationMs,
+  }
 }

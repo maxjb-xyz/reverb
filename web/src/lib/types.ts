@@ -57,6 +57,75 @@ export function formatDuration(ms: number): string {
   return `${m}:${s.toString().padStart(2, '0')}`
 }
 
+export type CoverageState = 'pending' | 'none' | 'partial' | 'full'
+
+export interface ExternalTrackRef {
+  source: string
+  externalId: string
+  title: string
+  artist?: string
+  album?: string
+  isrc?: string
+  durationMs: number
+}
+
+export interface AlbumCoverage {
+  source: string
+  externalAlbumId: string
+  state: CoverageState
+  ownedCount: number
+  totalCount: number
+  libraryAlbumId?: string
+  missingTracks: ExternalTrackRef[]
+}
+
+export interface DiscographyAlbum {
+  source: string
+  externalId: string
+  name: string
+  coverUrl?: string
+  year: number
+  kind: 'album' | 'single'
+  totalTracks: number
+}
+
+export interface ArtistDetail {
+  source: string
+  id: string
+  name: string
+  coverArtId?: string
+  coverUrl?: string
+  libraryArtistId?: string
+  externalArtistId?: string
+  resolved: boolean
+  albums: DiscographyAlbum[]
+}
+
+export interface AlbumDetailTrack {
+  state: CoverageState
+  libraryTrack?: Track
+  externalRef?: ExternalTrackRef
+  title: string
+  artist: string
+  trackNumber: number
+  durationMs: number
+}
+
+export interface AlbumDetail {
+  source: string
+  id: string
+  name: string
+  artist: string
+  artistId?: string
+  coverArtId?: string
+  coverUrl?: string
+  year: number
+  libraryAlbumId?: string
+  ownedCount: number
+  totalCount: number
+  tracks: AlbumDetailTrack[]
+}
+
 export type MatchStatus = 'in_library' | 'not_in_library' | 'unknown'
 export type MatchMethod = 'isrc' | 'mbid' | 'fuzzy' | 'none'
 
