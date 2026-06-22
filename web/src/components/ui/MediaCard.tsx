@@ -92,7 +92,9 @@ export function MediaCard({
               'absolute right-3 bottom-3 w-10 h-10 rounded-full bg-accent text-surface',
               'inline-grid place-items-center shadow-cover',
               'opacity-0 translate-y-2 group-hover:opacity-100 group-hover:translate-y-0',
-              'transition-all duration-150 focus-visible:opacity-100',
+              'transition-all duration-150',
+              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
+              'focus-visible:opacity-100 focus-visible:translate-y-0',
             ].join(' ')}
           >
             <Icon name="dl" className="w-4 h-4" />
