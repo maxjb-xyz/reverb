@@ -52,7 +52,7 @@ type memCache struct {
 	albumCov    map[string]CoverageRow    // key: source+"|"+externalAlbumID
 }
 
-func newMemCache() CoverageCache {
+func newMemCache() *memCache {
 	return &memCache{
 		artistMap: map[string]ArtistMapRow{},
 		disco:     map[string]DiscoRow{},
@@ -105,22 +105,19 @@ func (m *memCache) GetAlbumCoverage(_ context.Context, source, externalAlbumID s
 	return row, nil
 }
 
-func (m *memCache) UpsertAlbumCoverage(_ context.Context, source, externalAlbumID, coverageJSON, libraryAlbumID string, _ int64) error {
+func (m *memCache) UpsertAlbumCoverage(_ context.Context, source, externalAlbumID, coverageJSON, libraryAlbumID string, libraryVersion int64, _ int64) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.albumCov[source+"|"+externalAlbumID] = CoverageRow{CoverageJSON: coverageJSON, LibraryAlbumID: libraryAlbumID, Found: true}
+	m.albumCov[source+"|"+externalAlbumID] = CoverageRow{CoverageJSON: coverageJSON, LibraryAlbumID: libraryAlbumID, LibraryVersion: libraryVersion, Found: true}
 	return nil
 }
 
-func (m *memCache) DeleteAlbumCoverageForLibraryAlbum(_ context.Context, libraryAlbumID string) error {
+// upsertAlbumCoverageRaw seeds a coverage row directly (for tests that need to
+// prime the cache with a specific library_version, e.g. a stale-row test).
+func (m *memCache) upsertAlbumCoverageRaw(source, externalAlbumID, coverageJSON, libraryAlbumID string, libraryVersion int64) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	for k, v := range m.albumCov {
-		if v.LibraryAlbumID == libraryAlbumID {
-			delete(m.albumCov, k)
-		}
-	}
-	return nil
+	m.albumCov[source+"|"+externalAlbumID] = CoverageRow{CoverageJSON: coverageJSON, LibraryAlbumID: libraryAlbumID, LibraryVersion: libraryVersion, Found: true}
 }
 
 func TestStreamCoverageComputesPerAlbum(t *testing.T) {
@@ -130,7 +127,7 @@ func TestStreamCoverageComputesPerAlbum(t *testing.T) {
 		albums:  map[string]core.ExternalAlbum{"AL": album("t1", "t2")},
 	}
 	m := fakeMatcher{owned: map[string]string{"t1": "L1"}} // t2 missing → partial
-	svc := NewService(disco, m, fakeLibrary{}, newMemCache(), func() int64 { return 1 })
+	svc := NewService(disco, m, fakeLibrary{}, newMemCache(), func() int64 { return 1 }, func(context.Context) (int64, error) { return 1, nil })
 	ch := svc.StreamCoverage(context.Background(), "library", "libArtist1")
 	var got []core.AlbumCoverage
 	for c := range ch {
@@ -138,5 +135,28 @@ func TestStreamCoverageComputesPerAlbum(t *testing.T) {
 	}
 	if len(got) != 1 || got[0].State != core.CoveragePartial || got[0].OwnedCount != 1 {
 		t.Fatalf("bad stream: %+v", got)
+	}
+}
+
+func TestStreamCoverageRecomputesWhenLibraryVersionStale(t *testing.T) {
+	disco := fakeDisco{
+		artists: []core.ExternalResult{{Source: "spotify", ExternalID: "art1", Title: "Radiohead", Type: core.EntityArtist}},
+		disco:   []core.ExternalAlbum{{Source: "spotify", ExternalID: "AL", Name: "Kid A", Kind: "album", TotalTracks: 2}},
+		albums:  map[string]core.ExternalAlbum{"AL": album("t1", "t2")},
+	}
+	cache := newMemCache()
+	// Seed a STALE cached row (computed at version 1) claiming full coverage.
+	cache.upsertAlbumCoverageRaw("spotify", "AL", `{"source":"spotify","externalAlbumId":"AL","state":"full","ownedCount":2,"totalCount":2,"missingTracks":[]}`, "", 1)
+	// Current version is 2 → the row is stale and must be recomputed.
+	curVer := int64(2)
+	m := fakeMatcher{owned: map[string]string{"t1": "L1"}} // only t1 owned → recompute yields partial 1/2
+	svc := NewService(disco, m, fakeLibrary{}, cache, func() int64 { return 1 },
+		func(context.Context) (int64, error) { return curVer, nil })
+	var got []core.AlbumCoverage
+	for c := range svc.StreamCoverage(context.Background(), "library", "libArtist1") {
+		got = append(got, c)
+	}
+	if len(got) != 1 || got[0].State != core.CoveragePartial || got[0].OwnedCount != 1 {
+		t.Fatalf("stale row must be recomputed to partial 1/2, got %+v", got)
 	}
 }

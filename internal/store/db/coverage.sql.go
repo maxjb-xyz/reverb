@@ -9,17 +9,8 @@ import (
 	"context"
 )
 
-const deleteAlbumCoverageForLibraryAlbum = `-- name: DeleteAlbumCoverageForLibraryAlbum :exec
-DELETE FROM album_coverage WHERE library_album_id = ?
-`
-
-func (q *Queries) DeleteAlbumCoverageForLibraryAlbum(ctx context.Context, libraryAlbumID string) error {
-	_, err := q.db.ExecContext(ctx, deleteAlbumCoverageForLibraryAlbum, libraryAlbumID)
-	return err
-}
-
 const getAlbumCoverage = `-- name: GetAlbumCoverage :one
-SELECT source, external_album_id, coverage_json, library_album_id, fetched_at FROM album_coverage WHERE source = ? AND external_album_id = ?
+SELECT source, external_album_id, coverage_json, library_album_id, fetched_at, library_version FROM album_coverage WHERE source = ? AND external_album_id = ?
 `
 
 type GetAlbumCoverageParams struct {
@@ -36,6 +27,7 @@ func (q *Queries) GetAlbumCoverage(ctx context.Context, arg GetAlbumCoveragePara
 		&i.CoverageJson,
 		&i.LibraryAlbumID,
 		&i.FetchedAt,
+		&i.LibraryVersion,
 	)
 	return i, err
 }
@@ -84,10 +76,11 @@ func (q *Queries) GetDiscographyCache(ctx context.Context, arg GetDiscographyCac
 }
 
 const upsertAlbumCoverage = `-- name: UpsertAlbumCoverage :exec
-INSERT INTO album_coverage (source, external_album_id, coverage_json, library_album_id, fetched_at)
-VALUES (?, ?, ?, ?, ?)
+INSERT INTO album_coverage (source, external_album_id, coverage_json, library_album_id, library_version, fetched_at)
+VALUES (?, ?, ?, ?, ?, ?)
 ON CONFLICT(source, external_album_id) DO UPDATE SET
-  coverage_json = excluded.coverage_json, library_album_id = excluded.library_album_id, fetched_at = excluded.fetched_at
+  coverage_json = excluded.coverage_json, library_album_id = excluded.library_album_id,
+  library_version = excluded.library_version, fetched_at = excluded.fetched_at
 `
 
 type UpsertAlbumCoverageParams struct {
@@ -95,6 +88,7 @@ type UpsertAlbumCoverageParams struct {
 	ExternalAlbumID string `json:"external_album_id"`
 	CoverageJson    string `json:"coverage_json"`
 	LibraryAlbumID  string `json:"library_album_id"`
+	LibraryVersion  int64  `json:"library_version"`
 	FetchedAt       int64  `json:"fetched_at"`
 }
 
@@ -104,6 +98,7 @@ func (q *Queries) UpsertAlbumCoverage(ctx context.Context, arg UpsertAlbumCovera
 		arg.ExternalAlbumID,
 		arg.CoverageJson,
 		arg.LibraryAlbumID,
+		arg.LibraryVersion,
 		arg.FetchedAt,
 	)
 	return err

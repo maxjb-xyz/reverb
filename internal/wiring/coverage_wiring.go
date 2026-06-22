@@ -83,22 +83,20 @@ func (c *coverageCache) GetAlbumCoverage(ctx context.Context, source, externalAl
 	return coverage.CoverageRow{
 		CoverageJSON:   row.CoverageJson,
 		LibraryAlbumID: row.LibraryAlbumID,
+		LibraryVersion: row.LibraryVersion,
 		Found:          true,
 	}, nil
 }
 
-func (c *coverageCache) UpsertAlbumCoverage(ctx context.Context, source, externalAlbumID, coverageJSON, libraryAlbumID string, now int64) error {
+func (c *coverageCache) UpsertAlbumCoverage(ctx context.Context, source, externalAlbumID, coverageJSON, libraryAlbumID string, libraryVersion int64, now int64) error {
 	return c.q.UpsertAlbumCoverage(ctx, db.UpsertAlbumCoverageParams{
 		Source:          source,
 		ExternalAlbumID: externalAlbumID,
 		CoverageJson:    coverageJSON,
 		LibraryAlbumID:  libraryAlbumID,
+		LibraryVersion:  libraryVersion,
 		FetchedAt:       now,
 	})
-}
-
-func (c *coverageCache) DeleteAlbumCoverageForLibraryAlbum(ctx context.Context, libraryAlbumID string) error {
-	return c.q.DeleteAlbumCoverageForLibraryAlbum(ctx, libraryAlbumID)
 }
 
 // BuildCoverageService constructs a *coverage.Service from the built services: the
@@ -127,5 +125,5 @@ func (b *Builder) BuildCoverageService(
 	}
 	matcher := matching.NewService(lib, b.queries, b.version.LibraryVersion)
 	cache := NewCoverageCache(b.queries)
-	return coverage.NewService(src, matcher, lib, cache, nowFn)
+	return coverage.NewService(src, matcher, lib, cache, nowFn, b.version.LibraryVersion)
 }

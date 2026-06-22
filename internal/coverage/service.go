@@ -21,6 +21,9 @@ type LibraryArtist interface {
 	GetAlbum(ctx context.Context, id string) (core.Album, error)
 }
 
+// VersionProvider returns the current monotonic library_version.
+type VersionProvider func(ctx context.Context) (int64, error)
+
 // CoverageCache is the persistence slice (satisfied by a thin wrapper over *db.Queries).
 type CoverageCache interface {
 	GetArtistExternalMap(ctx context.Context, libraryArtistID, source string) (ArtistMapRow, error)
@@ -28,24 +31,24 @@ type CoverageCache interface {
 	GetDiscographyCache(ctx context.Context, source, externalArtistID string) (DiscoRow, error)
 	UpsertDiscographyCache(ctx context.Context, source, externalArtistID, albumsJSON string, now int64) error
 	GetAlbumCoverage(ctx context.Context, source, externalAlbumID string) (CoverageRow, error)
-	UpsertAlbumCoverage(ctx context.Context, source, externalAlbumID, coverageJSON, libraryAlbumID string, now int64) error
-	DeleteAlbumCoverageForLibraryAlbum(ctx context.Context, libraryAlbumID string) error
+	UpsertAlbumCoverage(ctx context.Context, source, externalAlbumID, coverageJSON, libraryAlbumID string, libraryVersion int64, now int64) error
 }
 
 type ArtistMapRow struct{ ExternalArtistID string; Confidence float64 }
 type DiscoRow struct{ AlbumsJSON string }
-type CoverageRow struct{ CoverageJSON, LibraryAlbumID string; Found bool }
+type CoverageRow struct{ CoverageJSON, LibraryAlbumID string; LibraryVersion int64; Found bool }
 
 type Service struct {
-	src   DiscoSource
-	match Matcher
-	lib   LibraryArtist
-	cache CoverageCache
-	now   func() int64
+	src     DiscoSource
+	match   Matcher
+	lib     LibraryArtist
+	cache   CoverageCache
+	now     func() int64
+	version VersionProvider
 }
 
-func NewService(src DiscoSource, m Matcher, lib LibraryArtist, cache CoverageCache, now func() int64) *Service {
-	return &Service{src: src, match: m, lib: lib, cache: cache, now: now}
+func NewService(src DiscoSource, m Matcher, lib LibraryArtist, cache CoverageCache, now func() int64, version VersionProvider) *Service {
+	return &Service{src: src, match: m, lib: lib, cache: cache, now: now, version: version}
 }
 
 // ArtistDetail returns the page skeleton. source is "library" or "spotify".
@@ -143,7 +146,11 @@ func (s *Service) StreamCoverage(ctx context.Context, source, id string) <-chan 
 }
 
 func (s *Service) coverageForAlbum(ctx context.Context, extAlbumID string) (core.AlbumCoverage, error) {
-	if row, err := s.cache.GetAlbumCoverage(ctx, "spotify", extAlbumID); err == nil && row.Found {
+	curVer, err := s.version(ctx)
+	if err != nil {
+		return core.AlbumCoverage{}, err
+	}
+	if row, err := s.cache.GetAlbumCoverage(ctx, "spotify", extAlbumID); err == nil && row.Found && row.LibraryVersion >= curVer {
 		var cov core.AlbumCoverage
 		if json.Unmarshal([]byte(row.CoverageJSON), &cov) == nil {
 			return cov, nil
@@ -159,7 +166,7 @@ func (s *Service) coverageForAlbum(ctx context.Context, extAlbumID string) (core
 	}
 	cov.LibraryAlbumID = s.backfillLibraryAlbumID(ctx, cov)
 	if b, mErr := json.Marshal(cov); mErr == nil {
-		_ = s.cache.UpsertAlbumCoverage(ctx, "spotify", extAlbumID, string(b), cov.LibraryAlbumID, s.now())
+		_ = s.cache.UpsertAlbumCoverage(ctx, "spotify", extAlbumID, string(b), cov.LibraryAlbumID, curVer, s.now())
 	}
 	return cov, nil
 }
@@ -175,11 +182,6 @@ func (s *Service) backfillLibraryAlbumID(ctx context.Context, cov core.AlbumCove
 	// linkage when known. For MVP, leave empty unless the rollup is extended; the
 	// client falls back to the external album view. (See Task 8 for album-page play.)
 	return ""
-}
-
-// InvalidateLibraryAlbum drops cached coverage rows for a library album id.
-func (s *Service) InvalidateLibraryAlbum(ctx context.Context, libraryAlbumID string) error {
-	return s.cache.DeleteAlbumCoverageForLibraryAlbum(ctx, libraryAlbumID)
 }
 
 // AlbumDetail returns per-track ownership for an album. source "library" returns

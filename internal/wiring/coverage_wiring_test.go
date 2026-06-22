@@ -86,32 +86,21 @@ func TestCoverageCacheMissMapsToZero(t *testing.T) {
 	}
 }
 
-// TestCoverageCacheRoundTrip proves an upsert is readable back through the adapter.
+// TestCoverageCacheRoundTrip proves an upsert is readable back through the adapter,
+// including that library_version is stored and returned correctly.
 func TestCoverageCacheRoundTrip(t *testing.T) {
 	st := newTestStore(t)
 	cache := NewCoverageCache(st.Q())
 	ctx := context.Background()
 
-	if err := cache.UpsertAlbumCoverage(ctx, "spotify", "alb-1", `{"state":"full"}`, "lib-alb-9", 123); err != nil {
+	if err := cache.UpsertAlbumCoverage(ctx, "spotify", "alb-1", `{"state":"full"}`, "lib-alb-9", 7, 123); err != nil {
 		t.Fatal(err)
 	}
 	cov, err := cache.GetAlbumCoverage(ctx, "spotify", "alb-1")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !cov.Found || cov.CoverageJSON != `{"state":"full"}` || cov.LibraryAlbumID != "lib-alb-9" {
+	if !cov.Found || cov.CoverageJSON != `{"state":"full"}` || cov.LibraryAlbumID != "lib-alb-9" || cov.LibraryVersion != 7 {
 		t.Fatalf("round-trip mismatch: %+v", cov)
-	}
-
-	// Delete-by-library-album drops it.
-	if err := cache.DeleteAlbumCoverageForLibraryAlbum(ctx, "lib-alb-9"); err != nil {
-		t.Fatal(err)
-	}
-	cov, err = cache.GetAlbumCoverage(ctx, "spotify", "alb-1")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if cov.Found {
-		t.Fatal("expected the row to be gone after delete-by-library-album")
 	}
 }

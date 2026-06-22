@@ -110,13 +110,6 @@ func main() {
 	}
 	srv := api.NewServer(deps)
 
-	// Coverage cache invalidation: when a scan-driven re-match updates the library,
-	// drop the cached coverage rows for the affected albums so the next page load
-	// recomputes ownership. Best-effort + non-blocking; the bus drops on a full sub.
-	if bundle.Coverage != nil {
-		startCoverageInvalidation(context.Background(), bus, bundle.Coverage)
-	}
-
 	addr := fmt.Sprintf(":%d", cfg.Port)
 	log.Printf("reverb listening on %s (dev=%v)", addr, cfg.Dev)
 	if err := http.ListenAndServe(addr, srv.Handler()); err != nil {

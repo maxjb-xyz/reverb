@@ -20,10 +20,8 @@ ON CONFLICT(source, external_artist_id) DO UPDATE SET
 SELECT * FROM album_coverage WHERE source = ? AND external_album_id = ?;
 
 -- name: UpsertAlbumCoverage :exec
-INSERT INTO album_coverage (source, external_album_id, coverage_json, library_album_id, fetched_at)
-VALUES (?, ?, ?, ?, ?)
+INSERT INTO album_coverage (source, external_album_id, coverage_json, library_album_id, library_version, fetched_at)
+VALUES (?, ?, ?, ?, ?, ?)
 ON CONFLICT(source, external_album_id) DO UPDATE SET
-  coverage_json = excluded.coverage_json, library_album_id = excluded.library_album_id, fetched_at = excluded.fetched_at;
-
--- name: DeleteAlbumCoverageForLibraryAlbum :exec
-DELETE FROM album_coverage WHERE library_album_id = ?;
+  coverage_json = excluded.coverage_json, library_album_id = excluded.library_album_id,
+  library_version = excluded.library_version, fetched_at = excluded.fetched_at;

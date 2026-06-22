@@ -25,6 +25,7 @@ type AlbumCoverage struct {
 	CoverageJson    string `json:"coverage_json"`
 	LibraryAlbumID  string `json:"library_album_id"`
 	FetchedAt       int64  `json:"fetched_at"`
+	LibraryVersion  int64  `json:"library_version"`
 }
 
 type ArtistExternalMap struct {
