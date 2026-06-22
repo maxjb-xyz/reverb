@@ -32,6 +32,28 @@ func (q *Queries) GetAlbumCoverage(ctx context.Context, arg GetAlbumCoveragePara
 	return i, err
 }
 
+const getAlbumExternalMap = `-- name: GetAlbumExternalMap :one
+SELECT library_album_id, source, external_album_id, confidence, created_at FROM album_external_map WHERE library_album_id = ? AND source = ?
+`
+
+type GetAlbumExternalMapParams struct {
+	LibraryAlbumID string `json:"library_album_id"`
+	Source         string `json:"source"`
+}
+
+func (q *Queries) GetAlbumExternalMap(ctx context.Context, arg GetAlbumExternalMapParams) (AlbumExternalMap, error) {
+	row := q.db.QueryRowContext(ctx, getAlbumExternalMap, arg.LibraryAlbumID, arg.Source)
+	var i AlbumExternalMap
+	err := row.Scan(
+		&i.LibraryAlbumID,
+		&i.Source,
+		&i.ExternalAlbumID,
+		&i.Confidence,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const getArtistExternalMap = `-- name: GetArtistExternalMap :one
 SELECT library_artist_id, source, external_artist_id, confidence, created_at FROM artist_external_map WHERE library_artist_id = ? AND source = ?
 `
@@ -100,6 +122,32 @@ func (q *Queries) UpsertAlbumCoverage(ctx context.Context, arg UpsertAlbumCovera
 		arg.LibraryAlbumID,
 		arg.LibraryVersion,
 		arg.FetchedAt,
+	)
+	return err
+}
+
+const upsertAlbumExternalMap = `-- name: UpsertAlbumExternalMap :exec
+INSERT INTO album_external_map (library_album_id, source, external_album_id, confidence, created_at)
+VALUES (?, ?, ?, ?, ?)
+ON CONFLICT(library_album_id, source) DO UPDATE SET
+  external_album_id = excluded.external_album_id, confidence = excluded.confidence
+`
+
+type UpsertAlbumExternalMapParams struct {
+	LibraryAlbumID  string  `json:"library_album_id"`
+	Source          string  `json:"source"`
+	ExternalAlbumID string  `json:"external_album_id"`
+	Confidence      float64 `json:"confidence"`
+	CreatedAt       int64   `json:"created_at"`
+}
+
+func (q *Queries) UpsertAlbumExternalMap(ctx context.Context, arg UpsertAlbumExternalMapParams) error {
+	_, err := q.db.ExecContext(ctx, upsertAlbumExternalMap,
+		arg.LibraryAlbumID,
+		arg.Source,
+		arg.ExternalAlbumID,
+		arg.Confidence,
+		arg.CreatedAt,
 	)
 	return err
 }

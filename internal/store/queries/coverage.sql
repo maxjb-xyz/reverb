@@ -16,6 +16,15 @@ VALUES (?, ?, ?, ?)
 ON CONFLICT(source, external_artist_id) DO UPDATE SET
   albums_json = excluded.albums_json, fetched_at = excluded.fetched_at;
 
+-- name: GetAlbumExternalMap :one
+SELECT * FROM album_external_map WHERE library_album_id = ? AND source = ?;
+
+-- name: UpsertAlbumExternalMap :exec
+INSERT INTO album_external_map (library_album_id, source, external_album_id, confidence, created_at)
+VALUES (?, ?, ?, ?, ?)
+ON CONFLICT(library_album_id, source) DO UPDATE SET
+  external_album_id = excluded.external_album_id, confidence = excluded.confidence;
+
 -- name: GetAlbumCoverage :one
 SELECT * FROM album_coverage WHERE source = ? AND external_album_id = ?;
 

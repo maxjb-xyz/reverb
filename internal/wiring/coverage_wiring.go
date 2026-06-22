@@ -46,6 +46,30 @@ func (c *coverageCache) UpsertArtistExternalMap(ctx context.Context, libraryArti
 	})
 }
 
+func (c *coverageCache) GetAlbumExternalMap(ctx context.Context, libraryAlbumID, source string) (coverage.AlbumMapRow, error) {
+	row, err := c.q.GetAlbumExternalMap(ctx, db.GetAlbumExternalMapParams{
+		LibraryAlbumID: libraryAlbumID,
+		Source:         source,
+	})
+	if err == sql.ErrNoRows {
+		return coverage.AlbumMapRow{}, nil
+	}
+	if err != nil {
+		return coverage.AlbumMapRow{}, err
+	}
+	return coverage.AlbumMapRow{ExternalAlbumID: row.ExternalAlbumID, Confidence: row.Confidence}, nil
+}
+
+func (c *coverageCache) UpsertAlbumExternalMap(ctx context.Context, libraryAlbumID, source, externalID string, confidence float64, now int64) error {
+	return c.q.UpsertAlbumExternalMap(ctx, db.UpsertAlbumExternalMapParams{
+		LibraryAlbumID:  libraryAlbumID,
+		Source:          source,
+		ExternalAlbumID: externalID,
+		Confidence:      confidence,
+		CreatedAt:       now,
+	})
+}
+
 func (c *coverageCache) GetDiscographyCache(ctx context.Context, source, externalArtistID string) (coverage.DiscoRow, error) {
 	row, err := c.q.GetDiscographyCache(ctx, db.GetDiscographyCacheParams{
 		Source:           source,

@@ -29,6 +29,8 @@ type VersionProvider func(ctx context.Context) (int64, error)
 type CoverageCache interface {
 	GetArtistExternalMap(ctx context.Context, libraryArtistID, source string) (ArtistMapRow, error)
 	UpsertArtistExternalMap(ctx context.Context, libraryArtistID, source, externalID string, confidence float64, now int64) error
+	GetAlbumExternalMap(ctx context.Context, libraryAlbumID, source string) (AlbumMapRow, error)
+	UpsertAlbumExternalMap(ctx context.Context, libraryAlbumID, source, externalID string, confidence float64, now int64) error
 	GetDiscographyCache(ctx context.Context, source, externalArtistID string) (DiscoRow, error)
 	UpsertDiscographyCache(ctx context.Context, source, externalArtistID, albumsJSON string, now int64) error
 	GetAlbumCoverage(ctx context.Context, source, externalAlbumID string) (CoverageRow, error)
@@ -36,6 +38,7 @@ type CoverageCache interface {
 }
 
 type ArtistMapRow struct{ ExternalArtistID string; Confidence float64 }
+type AlbumMapRow struct{ ExternalAlbumID string; Confidence float64 }
 type DiscoRow struct{ AlbumsJSON string }
 type CoverageRow struct{ CoverageJSON, LibraryAlbumID string; LibraryVersion int64; Found bool }
 
@@ -214,10 +217,16 @@ func (s *Service) albumDetailFromExternal(ctx context.Context, full core.Externa
 }
 
 // resolveExternalAlbum searches the external source for an album matching al by
-// normalized title+artist. Returns the external ID and true on success.
+// normalized title+artist. Checks the album_external_map cache first; on a miss,
+// performs the live Spotify Search and caches a successful resolution. Returns the
+// external ID and true on success.
 func (s *Service) resolveExternalAlbum(ctx context.Context, al core.Album) (string, bool) {
 	if s.src == nil {
 		return "", false
+	}
+	// Cache-first: if we already resolved this library album, skip the Search.
+	if row, err := s.cache.GetAlbumExternalMap(ctx, al.ID, "spotify"); err == nil && row.ExternalAlbumID != "" {
+		return row.ExternalAlbumID, true
 	}
 	cands, err := s.src.Search(ctx, al.Artist+" "+al.Name, core.EntityAlbum)
 	if err != nil || len(cands) == 0 {
@@ -227,9 +236,11 @@ func (s *Service) resolveExternalAlbum(ctx context.Context, al core.Album) (stri
 	normArtist := matching.Normalize(al.Artist)
 	for _, c := range cands {
 		if matching.Normalize(c.Title) == normName && matching.Normalize(c.Artist) == normArtist {
+			_ = s.cache.UpsertAlbumExternalMap(ctx, al.ID, "spotify", c.ExternalID, 1.0, s.now())
 			return c.ExternalID, true
 		}
 	}
+	// No confident match — do not cache a negative resolution, same as artist.
 	return "", false
 }
 

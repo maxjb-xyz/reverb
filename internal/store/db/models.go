@@ -28,6 +28,14 @@ type AlbumCoverage struct {
 	LibraryVersion  int64  `json:"library_version"`
 }
 
+type AlbumExternalMap struct {
+	LibraryAlbumID  string  `json:"library_album_id"`
+	Source          string  `json:"source"`
+	ExternalAlbumID string  `json:"external_album_id"`
+	Confidence      float64 `json:"confidence"`
+	CreatedAt       int64   `json:"created_at"`
+}
+
 type ArtistExternalMap struct {
 	LibraryArtistID  string  `json:"library_artist_id"`
 	Source           string  `json:"source"`

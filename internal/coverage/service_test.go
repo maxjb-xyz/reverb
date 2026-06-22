@@ -62,6 +62,7 @@ func (fakeLibrary) GetAlbum(_ context.Context, id string) (core.Album, error) {
 type memCache struct {
 	mu        sync.Mutex
 	artistMap map[string]ArtistMapRow // key: libraryArtistID+"|"+source
+	albumMap  map[string]AlbumMapRow  // key: libraryAlbumID+"|"+source
 	disco     map[string]DiscoRow     // key: source+"|"+externalArtistID
 	albumCov  map[string]CoverageRow  // key: source+"|"+externalAlbumID
 }
@@ -69,6 +70,7 @@ type memCache struct {
 func newMemCache() *memCache {
 	return &memCache{
 		artistMap: map[string]ArtistMapRow{},
+		albumMap:  map[string]AlbumMapRow{},
 		disco:     map[string]DiscoRow{},
 		albumCov:  map[string]CoverageRow{},
 	}
@@ -88,6 +90,23 @@ func (m *memCache) UpsertArtistExternalMap(_ context.Context, libraryArtistID, s
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.artistMap[libraryArtistID+"|"+source] = ArtistMapRow{ExternalArtistID: externalID, Confidence: confidence}
+	return nil
+}
+
+func (m *memCache) GetAlbumExternalMap(_ context.Context, libraryAlbumID, source string) (AlbumMapRow, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	row, ok := m.albumMap[libraryAlbumID+"|"+source]
+	if !ok {
+		return AlbumMapRow{}, errors.New("not found")
+	}
+	return row, nil
+}
+
+func (m *memCache) UpsertAlbumExternalMap(_ context.Context, libraryAlbumID, source, externalID string, confidence float64, _ int64) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.albumMap[libraryAlbumID+"|"+source] = AlbumMapRow{ExternalAlbumID: externalID, Confidence: confidence}
 	return nil
 }
 
@@ -272,6 +291,98 @@ func TestAlbumDetailLibraryMergesFullTracklist(t *testing.T) {
 		if tr.CoverURL != wantCover {
 			t.Errorf("track[%d] CoverURL: want %q, got %q", i, wantCover, tr.CoverURL)
 		}
+	}
+}
+
+// countingDisco wraps fakeDisco and counts Search calls for EntityAlbum.
+type countingDisco struct {
+	fakeDisco
+	mu           sync.Mutex
+	albumSearchN int
+}
+
+func (c *countingDisco) Search(ctx context.Context, q string, t core.EntityType) ([]core.ExternalResult, error) {
+	if t == core.EntityAlbum {
+		c.mu.Lock()
+		c.albumSearchN++
+		c.mu.Unlock()
+	}
+	return c.fakeDisco.Search(ctx, q, t)
+}
+
+// TestAlbumDetailCachesResolution: after a successful AlbumDetail("library", id),
+// the album_external_map entry is populated; a second call must NOT re-hit Search.
+func TestAlbumDetailCachesResolution(t *testing.T) {
+	extAlbum := core.ExternalAlbum{
+		Source: "spotify", ExternalID: "AL", Name: "Kid A", Artist: "Radiohead",
+		Tracks: []core.ExternalResult{
+			{Source: "spotify", ExternalID: "et1", Title: "Everything in Its Right Place", Artist: "Radiohead", Type: core.EntityTrack},
+		},
+	}
+	cd := &countingDisco{
+		fakeDisco: fakeDisco{
+			albumSearch: []core.ExternalResult{
+				{Source: "spotify", ExternalID: "AL", Title: "Kid A", Artist: "Radiohead", Type: core.EntityAlbum},
+			},
+			albums: map[string]core.ExternalAlbum{"AL": extAlbum},
+		},
+	}
+	m := fakeMatcher{owned: map[string]string{"et1": "lt1"}}
+	cache := newMemCache()
+	svc := NewService(cd, m, fakeLibrary{}, cache, func() int64 { return 1 }, func(context.Context) (int64, error) { return 1, nil })
+
+	// First call: Search must be invoked once.
+	if _, err := svc.AlbumDetail(context.Background(), "library", "libAlbum1"); err != nil {
+		t.Fatal(err)
+	}
+	if cd.albumSearchN != 1 {
+		t.Fatalf("first call: expected 1 Search, got %d", cd.albumSearchN)
+	}
+
+	// Second call: cache hit → Search must NOT be called again.
+	if _, err := svc.AlbumDetail(context.Background(), "library", "libAlbum1"); err != nil {
+		t.Fatal(err)
+	}
+	if cd.albumSearchN != 1 {
+		t.Fatalf("second call: expected Search count to stay at 1 (cached), got %d", cd.albumSearchN)
+	}
+
+	// Confirm the cache entry was actually written.
+	row, err := cache.GetAlbumExternalMap(context.Background(), "libAlbum1", "spotify")
+	if err != nil || row.ExternalAlbumID != "AL" {
+		t.Fatalf("expected cache entry AL, got row=%+v err=%v", row, err)
+	}
+}
+
+// TestAlbumDetailCachePreseededSkipsSearch: if the cache is pre-seeded with an
+// album map entry, AlbumDetail must skip Search entirely.
+func TestAlbumDetailCachePreseededSkipsSearch(t *testing.T) {
+	extAlbum := core.ExternalAlbum{
+		Source: "spotify", ExternalID: "AL", Name: "Kid A", Artist: "Radiohead",
+		Tracks: []core.ExternalResult{
+			{Source: "spotify", ExternalID: "et1", Title: "Everything in Its Right Place", Artist: "Radiohead", Type: core.EntityTrack},
+		},
+	}
+	cd := &countingDisco{
+		fakeDisco: fakeDisco{
+			albumSearch: []core.ExternalResult{
+				{Source: "spotify", ExternalID: "AL", Title: "Kid A", Artist: "Radiohead", Type: core.EntityAlbum},
+			},
+			albums: map[string]core.ExternalAlbum{"AL": extAlbum},
+		},
+	}
+	m := fakeMatcher{owned: map[string]string{"et1": "lt1"}}
+	cache := newMemCache()
+	// Pre-seed the album map.
+	_ = cache.UpsertAlbumExternalMap(context.Background(), "libAlbum1", "spotify", "AL", 1.0, 0)
+
+	svc := NewService(cd, m, fakeLibrary{}, cache, func() int64 { return 1 }, func(context.Context) (int64, error) { return 1, nil })
+
+	if _, err := svc.AlbumDetail(context.Background(), "library", "libAlbum1"); err != nil {
+		t.Fatal(err)
+	}
+	if cd.albumSearchN != 0 {
+		t.Fatalf("pre-seeded cache: expected 0 Search calls, got %d", cd.albumSearchN)
 	}
 }
 
