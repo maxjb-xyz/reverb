@@ -4,9 +4,9 @@ import { CoverageStream } from './coverageStream'
 
 export type CoverageMap = Record<string, AlbumCoverage>
 
-type Action = { type: 'reset' } | { type: 'coverage'; c: AlbumCoverage }
+export type Action = { type: 'reset' } | { type: 'coverage'; c: AlbumCoverage }
 
-function reducer(state: CoverageMap, action: Action): CoverageMap {
+export function reducer(state: CoverageMap, action: Action): CoverageMap {
   if (action.type === 'reset') return {}
   const prev = state[action.c.externalAlbumId]
   // Idempotent: if the same frame is re-delivered (e.g. EventSource reconnect),

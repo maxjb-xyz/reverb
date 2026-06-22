@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
 import { CoverageStream } from './coverageStream'
-import { useCoverageStream } from './coverageStore'
+import { useCoverageStream, reducer } from './coverageStore'
 import type { AlbumCoverage } from './types'
 
 // StubSource lets the test fire messages/errors synchronously; records the URL + close.
@@ -80,30 +80,11 @@ describe('useCoverageStream', () => {
   })
 
   it('builds a map from two pushed coverage frames', () => {
-    const stubs: StubSource[] = []
-
-    // Override the module's CoverageStream via vi.mock or by testing the reducer directly.
-    // We test via the exported reducer shape (pure function tests).
-    // For the hook integration, use a fake factory via the module seam.
-    // Since useCoverageStream hardcodes `new CoverageStream(...)`, we test coverage
-    // accumulation logic by testing the reducer inline with the same logic.
-
     // Push two different albums → both keys present
     const c1 = makeCoverage({ externalAlbumId: 'alb1', ownedCount: 5, totalCount: 10, state: 'partial' })
     const c2 = makeCoverage({ externalAlbumId: 'alb2', ownedCount: 10, totalCount: 10, state: 'full' })
 
-    // Mirror the reducer directly (same logic as coverageStore.ts):
-    type CoverageMap = Record<string, AlbumCoverage>
-    type Action = { type: 'reset' } | { type: 'coverage'; c: AlbumCoverage }
-    function reducer(state: CoverageMap, action: Action): CoverageMap {
-      if (action.type === 'reset') return {}
-      const prev = state[action.c.externalAlbumId]
-      if (prev && prev.state === action.c.state && prev.ownedCount === action.c.ownedCount) return state
-      return { ...state, [action.c.externalAlbumId]: action.c }
-    }
-
-    let state: CoverageMap = {}
-    state = reducer(state, { type: 'coverage', c: c1 })
+    let state = reducer({}, { type: 'coverage', c: c1 })
     state = reducer(state, { type: 'coverage', c: c2 })
 
     expect(Object.keys(state)).toHaveLength(2)
@@ -114,35 +95,14 @@ describe('useCoverageStream', () => {
   it('is idempotent: re-delivering the same frame returns the SAME reference', () => {
     const c1 = makeCoverage({ externalAlbumId: 'alb1', ownedCount: 10, totalCount: 10, state: 'full' })
 
-    type CoverageMap = Record<string, AlbumCoverage>
-    type Action = { type: 'reset' } | { type: 'coverage'; c: AlbumCoverage }
-    function reducer(state: CoverageMap, action: Action): CoverageMap {
-      if (action.type === 'reset') return {}
-      const prev = state[action.c.externalAlbumId]
-      if (prev && prev.state === action.c.state && prev.ownedCount === action.c.ownedCount) return state
-      return { ...state, [action.c.externalAlbumId]: action.c }
-    }
-
-    let state: CoverageMap = {}
-    state = reducer(state, { type: 'coverage', c: c1 })
-    const ref = state
-    state = reducer(state, { type: 'coverage', c: c1 }) // same frame again
-    expect(state).toBe(ref) // same reference → no re-render
+    const prev = reducer({}, { type: 'coverage', c: c1 })
+    const next = reducer(prev, { type: 'coverage', c: c1 }) // same frame again
+    expect(next).toBe(prev) // same reference → no re-render
   })
 
   it('resets to empty map on key change', () => {
-    type CoverageMap = Record<string, AlbumCoverage>
-    type Action = { type: 'reset' } | { type: 'coverage'; c: AlbumCoverage }
-    function reducer(state: CoverageMap, action: Action): CoverageMap {
-      if (action.type === 'reset') return {}
-      const prev = state[action.c.externalAlbumId]
-      if (prev && prev.state === action.c.state && prev.ownedCount === action.c.ownedCount) return state
-      return { ...state, [action.c.externalAlbumId]: action.c }
-    }
-
-    let state: CoverageMap = {}
     const c1 = makeCoverage({ externalAlbumId: 'alb1' })
-    state = reducer(state, { type: 'coverage', c: c1 })
+    let state = reducer({}, { type: 'coverage', c: c1 })
     expect(Object.keys(state)).toHaveLength(1)
 
     // Reset simulates key change (source/id/enabled change)
