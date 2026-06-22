@@ -9,6 +9,8 @@ interface MediaCardProps {
   title: string
   subtitle?: string
   coverId?: string
+  /** Direct image URL (e.g. Spotify CDN). When set, overrides coverId proxy URL. */
+  coverSrc?: string
   rounded?: 'md' | 'full'
   onClick?: () => void
   onPlay?: () => void
@@ -21,6 +23,7 @@ export function MediaCard({
   title,
   subtitle,
   coverId,
+  coverSrc,
   rounded = 'md',
   onClick,
   onPlay,
@@ -28,7 +31,7 @@ export function MediaCard({
   coverage,
   onDownload,
 }: MediaCardProps) {
-  const src = coverId ? coverUrl(coverId, 300) : undefined
+  const src = coverSrc ?? (coverId ? coverUrl(coverId, 300) : undefined)
 
   function handlePlay(e: React.MouseEvent) {
     e.stopPropagation()

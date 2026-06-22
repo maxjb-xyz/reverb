@@ -105,4 +105,21 @@ describe('MediaCard', () => {
     render(<MediaCard title="OK Computer" onPlay={vi.fn()} onDownload={vi.fn()} />)
     expect(screen.queryByRole('button', { name: /download/i })).not.toBeInTheDocument()
   })
+
+  it('uses coverSrc directly as the img src when provided', () => {
+    const { container } = render(
+      <MediaCard title="Kid A" coverSrc="https://cdn.example.com/kida.jpg" />,
+    )
+    const img = container.querySelector('img')
+    expect(img).toBeInTheDocument()
+    expect(img?.src).toBe('https://cdn.example.com/kida.jpg')
+  })
+
+  it('coverSrc takes precedence over coverId', () => {
+    const { container } = render(
+      <MediaCard title="Kid A" coverSrc="https://cdn.example.com/kida.jpg" coverId="art-123" />,
+    )
+    const img = container.querySelector('img')
+    expect(img?.src).toBe('https://cdn.example.com/kida.jpg')
+  })
 })
