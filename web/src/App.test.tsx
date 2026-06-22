@@ -9,6 +9,11 @@ vi.mock('./lib/session')
 vi.mock('./lib/useAlbumPalette', () => ({ useAlbumPalette: () => null }))
 vi.mock('./lib/realtimeWiring', () => ({ useRealtime: () => {} }))
 
+// Stub heavy route components so App routing tests don't need API mocks.
+vi.mock('./routes/Album', () => ({ default: () => <div>Album page</div> }))
+vi.mock('./routes/Artist', () => ({ default: () => <div>Artist page</div> }))
+vi.mock('./routes/Playlist', () => ({ default: () => <div>Playlist page</div> }))
+
 function mockStatus(s: SessionStatus) {
   vi.mocked(session.useSessionStatus).mockReturnValue(s)
 }
@@ -53,4 +58,25 @@ test('error renders the server error state with retry button', () => {
   )
   expect(screen.getByText(/can't reach the reverb server/i)).toBeInTheDocument()
   expect(screen.getByText('Retry')).toBeInTheDocument()
+})
+
+test('/album/:id redirects to /album/library/:id and renders Album page', () => {
+  mockStatus({ loading: false, setupRequired: false, authenticated: true, error: false })
+  render(
+    <MemoryRouter initialEntries={['/album/abc123']}>
+      <App />
+    </MemoryRouter>,
+  )
+  // After redirect, the Album stub should render
+  expect(screen.getByText('Album page')).toBeInTheDocument()
+})
+
+test('/artist/:id redirects to /artist/library/:id and renders Artist page', () => {
+  mockStatus({ loading: false, setupRequired: false, authenticated: true, error: false })
+  render(
+    <MemoryRouter initialEntries={['/artist/xyz456']}>
+      <App />
+    </MemoryRouter>,
+  )
+  expect(screen.getByText('Artist page')).toBeInTheDocument()
 })

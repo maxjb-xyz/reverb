@@ -1,4 +1,4 @@
-import { Navigate, Route, Routes } from 'react-router-dom'
+import { Navigate, Route, Routes, useParams } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { AppShell } from './components/AppShell'
 import { ApiError } from './lib/api'
@@ -12,6 +12,15 @@ import Album from './routes/Album'
 import Artist from './routes/Artist'
 import Home from './routes/Home'
 import Admin from './routes/Admin'
+import Playlist from './routes/Playlist'
+
+/** Redirect bare `/album/:id` or `/artist/:id` URLs to the source-qualified form
+ *  `/album/library/:id` / `/artist/library/:id`. These old URLs may exist in
+ *  bookmarks or nav links written before the source segment was introduced. */
+function RedirectToLibrary({ kind }: { kind: 'album' | 'artist' }) {
+  const { id = '' } = useParams()
+  return <Navigate to={`/${kind}/library/${id}`} replace />
+}
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -50,8 +59,11 @@ function Routed() {
         <Route path="/" element={<Home />} />
         <Route path="/search" element={<Search />} />
         <Route path="/library" element={<Library />} />
-        <Route path="/album/:id" element={<Album />} />
-        <Route path="/artist/:id" element={<Artist />} />
+        <Route path="/album/:source/:id" element={<Album />} />
+        <Route path="/album/:id" element={<RedirectToLibrary kind="album" />} />
+        <Route path="/artist/:source/:id" element={<Artist />} />
+        <Route path="/artist/:id" element={<RedirectToLibrary kind="artist" />} />
+        <Route path="/playlist/:id" element={<Playlist />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="/admin" element={<Admin />} />
         <Route path="*" element={<Navigate to="/" replace />} />
