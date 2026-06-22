@@ -203,6 +203,18 @@ describe('Playlist page', () => {
     expect(mockRenamePlaylist).toHaveBeenCalledWith('p1', 'Late Night')
   })
 
+  it('committing rename (blur) calls renamePlaylist with new name', async () => {
+    await renderLoaded()
+    fireEvent.click(screen.getByRole('button', { name: /more options/i }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Rename' }))
+    const input = screen.getByRole('textbox', { name: /rename playlist/i })
+    fireEvent.change(input, { target: { value: 'Morning Coffee' } })
+    await act(async () => {
+      fireEvent.blur(input)
+    })
+    expect(mockRenamePlaylist).toHaveBeenCalledWith('p1', 'Morning Coffee')
+  })
+
   it('Escape cancels rename without calling renamePlaylist', async () => {
     await renderLoaded()
     fireEvent.click(screen.getByRole('button', { name: /more options/i }))

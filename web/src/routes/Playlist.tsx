@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { usePlaylistDetail } from '../lib/coverageApi'
@@ -23,7 +23,6 @@ export default function Playlist() {
   // Inline rename state
   const [renaming, setRenaming] = useState(false)
   const [renameValue, setRenameValue] = useState('')
-  const renameInputRef = useRef<HTMLInputElement>(null)
 
   if (isLoading) {
     return (
@@ -67,7 +66,6 @@ export default function Playlist() {
     setRenameValue(playlist!.name)
     setRenaming(true)
     setMenuOpen(false)
-    // Focus is set via autoFocus on the input
   }
 
   async function commitRename() {
@@ -76,10 +74,15 @@ export default function Playlist() {
       setRenaming(false)
       return
     }
-    setRenaming(false)
-    await renamePlaylist(id, name)
-    qc.invalidateQueries({ queryKey: ['playlist-detail', id] })
-    qc.invalidateQueries({ queryKey: ['library', 'playlists'] })
+    try {
+      await renamePlaylist(id, name)
+      setRenaming(false)
+      qc.invalidateQueries({ queryKey: ['playlist-detail', id] })
+      qc.invalidateQueries({ queryKey: ['library', 'playlists'] })
+    } catch (err) {
+      console.error('Failed to rename playlist:', err)
+      // Keep the input open so the user can retry
+    }
   }
 
   function cancelRename() {
@@ -89,14 +92,23 @@ export default function Playlist() {
   async function handleDelete() {
     setMenuOpen(false)
     if (!window.confirm(`Delete playlist "${playlist!.name}"?`)) return
-    await deletePlaylist(id)
-    qc.invalidateQueries({ queryKey: ['library', 'playlists'] })
-    navigate('/library')
+    try {
+      await deletePlaylist(id)
+      qc.invalidateQueries({ queryKey: ['library', 'playlists'] })
+      navigate('/library')
+    } catch (err) {
+      console.error('Failed to delete playlist:', err)
+      // Stay on the page; the playlist remains visible
+    }
   }
 
   async function handleRemoveTrack(index: number) {
-    await removePlaylistTrack(id, index)
-    qc.invalidateQueries({ queryKey: ['playlist-detail', id] })
+    try {
+      await removePlaylistTrack(id, index)
+      qc.invalidateQueries({ queryKey: ['playlist-detail', id] })
+    } catch (err) {
+      console.error('Failed to remove track from playlist:', err)
+    }
   }
 
   return (
@@ -117,7 +129,6 @@ export default function Playlist() {
             </div>
             {renaming ? (
               <input
-                ref={renameInputRef}
                 autoFocus
                 type="text"
                 value={renameValue}
