@@ -28,7 +28,7 @@ export function CoverageChip({ state, owned, total }: Props) {
   // partial
   const pct = total > 0 ? Math.round((owned / total) * 100) : 0
   return (
-    <span className={`${base} text-white`}>
+    <span className={`${base} text-text-primary`}>
       <ProgressRing value={pct} size={14} />
       {owned}/{total}
     </span>
