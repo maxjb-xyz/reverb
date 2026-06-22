@@ -77,7 +77,7 @@ export default function Library() {
                   subtitle={al.artist}
                   coverId={al.coverArtId || undefined}
                   rounded="md"
-                  onClick={() => navigate(`/album/${al.id}`)}
+                  onClick={() => navigate(`/album/library/${al.id}`)}
                 />
               ))}
             </div>
@@ -104,7 +104,7 @@ export default function Library() {
                   title={ar.name}
                   coverId={ar.coverArtId || undefined}
                   rounded="full"
-                  onClick={() => navigate(`/artist/${ar.id}`)}
+                  onClick={() => navigate(`/artist/library/${ar.id}`)}
                 />
               ))}
             </div>
@@ -132,6 +132,7 @@ export default function Library() {
                   subtitle={`${pl.songCount} track${pl.songCount !== 1 ? 's' : ''}`}
                   coverId={pl.coverArtId || undefined}
                   rounded="md"
+                  onClick={() => navigate(`/playlist/${pl.id}`)}
                 />
               ))}
             </div>

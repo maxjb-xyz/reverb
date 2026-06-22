@@ -179,8 +179,8 @@ export default function Home() {
   // Handlers
   // ------------------------------------------------------------------
   function handleShortcutClick(item: { id: string; type: 'album' | 'playlist' }) {
-    if (item.type === 'album') navigate(`/album/${item.id}`)
-    // playlists don't have a route yet — no-op
+    if (item.type === 'album') navigate(`/album/library/${item.id}`)
+    else navigate(`/playlist/${item.id}`)
   }
 
   async function handleHeroPlay() {
@@ -328,7 +328,7 @@ export default function Home() {
                 title={album.name}
                 subtitle={album.artist}
                 coverId={album.coverArtId}
-                onClick={() => navigate(`/album/${album.id}`)}
+                onClick={() => navigate(`/album/library/${album.id}`)}
                 onPlay={() => handleAlbumPlay(album)}
               />
             ))}

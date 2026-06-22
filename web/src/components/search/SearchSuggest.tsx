@@ -120,7 +120,7 @@ export function SearchSuggest({ query, onNavigateAll, onClose, onEmptyChange }: 
                   subtitle={al.artist}
                   accessibleName={`Open album ${al.name}`}
                   onClick={() => {
-                    navigate(`/album/${al.id}`)
+                    navigate(`/album/library/${al.id}`)
                     onClose()
                   }}
                 />
@@ -139,7 +139,7 @@ export function SearchSuggest({ query, onNavigateAll, onClose, onEmptyChange }: 
                   subtitle="Artist"
                   accessibleName={`Open artist ${ar.name}`}
                   onClick={() => {
-                    navigate(`/artist/${ar.id}`)
+                    navigate(`/artist/library/${ar.id}`)
                     onClose()
                   }}
                 />

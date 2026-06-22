@@ -1,6 +1,6 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { UseQueryResult } from '@tanstack/react-query'
 import Library from './Library'
@@ -14,7 +14,25 @@ function wrap(ui: React.ReactNode) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return (
     <QueryClientProvider client={qc}>
-      <MemoryRouter>{ui}</MemoryRouter>
+      <MemoryRouter>
+        {ui}
+      </MemoryRouter>
+    </QueryClientProvider>
+  )
+}
+
+function wrapWithRoutes(ui: React.ReactNode) {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  return (
+    <QueryClientProvider client={qc}>
+      <MemoryRouter>
+        <Routes>
+          <Route path="/" element={<>{ui}</>} />
+          <Route path="/album/:source/:id" element={<div data-testid="album-page" />} />
+          <Route path="/artist/:source/:id" element={<div data-testid="artist-page" />} />
+          <Route path="/playlist/:id" element={<div data-testid="playlist-page" />} />
+        </Routes>
+      </MemoryRouter>
     </QueryClientProvider>
   )
 }
@@ -181,7 +199,7 @@ describe('Library page', () => {
     expect(skeletons.length).toBeGreaterThan(0)
   })
 
-  it('navigates to /album/:id when an album card is clicked', async () => {
+  it('navigates to /album/library/:id when an album card is clicked', async () => {
     const { useAlbums } = await import('../lib/libraryApi')
     vi.mocked(useAlbums).mockReturnValue({
       data: [makeAlbum({ id: 'al42', name: 'Kid A', artist: 'Radiohead' })],
@@ -189,15 +207,29 @@ describe('Library page', () => {
       error: null,
     } as unknown as UseQueryResult<Album[], Error>)
 
-    render(wrap(<Library />))
+    render(wrapWithRoutes(<Library />))
 
     const card = screen.getByRole('button', { name: /kid a/i })
     expect(card).toBeInTheDocument()
-    // Clicking should not throw — navigation happens inside MemoryRouter
     fireEvent.click(card)
+    expect(screen.getByTestId('album-page')).toBeInTheDocument()
   })
 
-  it('playlist cards are non-navigating (no dead-route nav to /playlist/:id)', async () => {
+  it('navigates to /artist/library/:id when an artist card is clicked', async () => {
+    const { useArtists } = await import('../lib/libraryApi')
+    vi.mocked(useArtists).mockReturnValue({
+      data: [makeArtist({ id: 'ar42', name: 'Radiohead' })],
+      isLoading: false,
+      error: null,
+    } as unknown as UseQueryResult<Artist[], Error>)
+
+    render(wrapWithRoutes(<Library />))
+    fireEvent.click(screen.getByRole('button', { name: /^artists$/i }))
+    fireEvent.click(screen.getByRole('button', { name: /radiohead/i }))
+    expect(screen.getByTestId('artist-page')).toBeInTheDocument()
+  })
+
+  it('navigates to /playlist/:id when a playlist card is clicked', async () => {
     const { usePlaylists } = await import('../lib/libraryApi')
     vi.mocked(usePlaylists).mockReturnValue({
       data: [makePlaylist({ id: 'pl99', name: 'My Vibes' })],
@@ -205,16 +237,12 @@ describe('Library page', () => {
       error: null,
     } as unknown as UseQueryResult<Playlist[], Error>)
 
-    render(wrap(<Library />))
+    render(wrapWithRoutes(<Library />))
     fireEvent.click(screen.getByRole('button', { name: /^playlists$/i }))
 
-    // The playlist card should render but have no onClick that navigates
-    const card = screen.queryByRole('button', { name: /my vibes/i })
-    // Card may render as a non-interactive element when no onClick is provided
-    // Either way, no navigation to /playlist/:id should occur — the route doesn't exist.
-    // Clicking it (if it's a button) should not throw or navigate away.
-    if (card) fireEvent.click(card)
-    // Still on same view — playlist heading still visible
-    expect(screen.getByRole('button', { name: /^playlists$/i })).toBeInTheDocument()
+    const card = screen.getByRole('button', { name: /my vibes/i })
+    expect(card).toBeInTheDocument()
+    fireEvent.click(card)
+    expect(screen.getByTestId('playlist-page')).toBeInTheDocument()
   })
 })

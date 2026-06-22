@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { Icon } from './ui'
 import {
@@ -22,6 +23,7 @@ const FOCUSABLE = 'button, [href], input, [tabindex]:not([tabindex="-1"])'
 export function AddToPlaylistMenu({ trackId, onClose }: AddToPlaylistMenuProps) {
   const panelRef = useRef<HTMLDivElement>(null)
   const qc = useQueryClient()
+  const navigate = useNavigate()
   const { data: playlists, isLoading } = usePlaylists()
 
   const [newName, setNewName] = useState('')
@@ -68,8 +70,11 @@ export function AddToPlaylistMenu({ trackId, onClose }: AddToPlaylistMenuProps) 
     }
   }, [onClose])
 
-  function done() {
+  function done(playlistId?: string) {
     qc.invalidateQueries({ queryKey: ['library', 'playlists'] })
+    if (playlistId) {
+      qc.invalidateQueries({ queryKey: ['playlist-detail', playlistId] })
+    }
     onClose()
   }
 
@@ -79,7 +84,7 @@ export function AddToPlaylistMenu({ trackId, onClose }: AddToPlaylistMenuProps) 
     setError(null)
     try {
       await addTracksToPlaylist(id, [trackId])
-      done()
+      done(id)
     } catch {
       setError('Could not add to playlist.')
       setBusy(false)
@@ -94,7 +99,8 @@ export function AddToPlaylistMenu({ trackId, onClose }: AddToPlaylistMenuProps) 
     try {
       const pl = await createPlaylist(name)
       await addTracksToPlaylist(pl.id, [trackId])
-      done()
+      done(pl.id)
+      navigate(`/playlist/${pl.id}`)
     } catch {
       setError('Could not create playlist.')
       setBusy(false)

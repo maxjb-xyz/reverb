@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
+import { MemoryRouter } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { AddToPlaylistMenu } from './AddToPlaylistMenu'
 
@@ -20,7 +21,9 @@ function renderMenu(onClose = vi.fn()) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   const utils = render(
     <QueryClientProvider client={qc}>
-      <AddToPlaylistMenu trackId="t1" onClose={onClose} />
+      <MemoryRouter>
+        <AddToPlaylistMenu trackId="t1" onClose={onClose} />
+      </MemoryRouter>
     </QueryClientProvider>,
   )
   return { ...utils, onClose }

@@ -117,6 +117,7 @@ function SkeletonRows() {
 
 // ---- Playlist list ----
 function PlaylistList({ items }: { items: Playlist[] }) {
+  const navigate = useNavigate()
   if (items.length === 0) {
     return <EmptyState icon="queue" title="No playlists yet" hint="Create your first playlist to get started." />
   }
@@ -131,6 +132,7 @@ function PlaylistList({ items }: { items: Playlist[] }) {
           meta={`Playlist · ${p.songCount} songs`}
           rounded="md"
           isPlaying={false} // no playlist-context signal on Track yet
+          onClick={() => navigate(`/playlist/${p.id}`)}
         />
       ))}
     </>
@@ -156,7 +158,7 @@ function AlbumList({ items, current }: { items: Album[]; current: ReturnType<typ
             meta={`Album · ${al.artist}`}
             rounded="md"
             isPlaying={isPlaying}
-            onClick={() => navigate(`/album/${al.id}`)}
+            onClick={() => navigate(`/album/library/${al.id}`)}
           />
         )
       })}
@@ -183,7 +185,7 @@ function ArtistList({ items, current }: { items: Artist[]; current: ReturnType<t
             meta={`Artist · ${ar.albumCount} album${ar.albumCount !== 1 ? 's' : ''}`}
             rounded="full"
             isPlaying={isPlaying}
-            onClick={() => navigate(`/artist/${ar.id}`)}
+            onClick={() => navigate(`/artist/library/${ar.id}`)}
           />
         )
       })}

@@ -62,7 +62,16 @@ describe('SearchSuggest', () => {
     render(wrap(<SearchSuggest query="found" onNavigateAll={vi.fn()} onClose={onClose} />))
     await waitFor(() => expect(screen.getByText('Found Album')).toBeInTheDocument())
     fireEvent.click(screen.getByRole('option', { name: /open album found album/i }))
-    expect(mockNavigate).toHaveBeenCalledWith('/album/al1')
+    expect(mockNavigate).toHaveBeenCalledWith('/album/library/al1')
+    expect(onClose).toHaveBeenCalled()
+  })
+
+  it('clicking an artist row navigates to the artist and closes', async () => {
+    const onClose = vi.fn()
+    render(wrap(<SearchSuggest query="found" onNavigateAll={vi.fn()} onClose={onClose} />))
+    await waitFor(() => expect(screen.getByText('Found Artist')).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('option', { name: /open artist found artist/i }))
+    expect(mockNavigate).toHaveBeenCalledWith('/artist/library/ar1')
     expect(onClose).toHaveBeenCalled()
   })
 

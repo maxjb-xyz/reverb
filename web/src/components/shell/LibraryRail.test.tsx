@@ -44,8 +44,9 @@ function renderRail(initialPath = '/') {
         <Routes>
           <Route path="*" element={<LibraryRail />} />
           <Route path="/library" element={<div data-testid="library-page" />} />
-          <Route path="/album/:id" element={<div data-testid="album-page" />} />
-          <Route path="/artist/:id" element={<div data-testid="artist-page" />} />
+          <Route path="/album/:source/:id" element={<div data-testid="album-page" />} />
+          <Route path="/artist/:source/:id" element={<div data-testid="artist-page" />} />
+          <Route path="/playlist/:id" element={<div data-testid="playlist-page" />} />
         </Routes>
       </MemoryRouter>
     </QueryClientProvider>,
@@ -134,14 +135,12 @@ describe('LibraryRail', () => {
     expect(screen.getByTestId('artist-page')).toBeInTheDocument()
   })
 
-  it('playlist rows are not interactive (no button role, no onClick navigation)', () => {
+  it('clicking a playlist row navigates to /playlist/:id', () => {
     renderRail()
-    // Playlists are shown by default; rows should not have role=button
-    const playlistNames = ['Chill Mix', 'Road Trip']
-    for (const name of playlistNames) {
-      expect(screen.getByText(name)).toBeInTheDocument()
-      // The row element should not be a button
-      expect(screen.queryByRole('button', { name })).not.toBeInTheDocument()
-    }
+    // Playlists are shown by default
+    const playlistBtn = screen.getByRole('button', { name: 'Chill Mix' })
+    expect(playlistBtn).toBeInTheDocument()
+    fireEvent.click(playlistBtn)
+    expect(screen.getByTestId('playlist-page')).toBeInTheDocument()
   })
 })

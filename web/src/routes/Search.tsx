@@ -208,7 +208,7 @@ export default function Search() {
                     title={al.name}
                     subtitle={al.artist}
                     coverId={al.coverArtId}
-                    onClick={() => navigate(`/album/${al.id}`)}
+                    onClick={() => navigate(`/album/library/${al.id}`)}
                   />
                 ))}
               </div>
@@ -225,7 +225,7 @@ export default function Search() {
                     title={ar.name}
                     coverId={ar.coverArtId}
                     rounded="full"
-                    onClick={() => navigate(`/artist/${ar.id}`)}
+                    onClick={() => navigate(`/artist/library/${ar.id}`)}
                   />
                 ))}
               </div>
@@ -324,6 +324,7 @@ export default function Search() {
                     key={`${a.source}:${a.externalId}`}
                     title={a.title}
                     subtitle={a.artist}
+                    onClick={() => navigate(`/album/${a.source}/${a.externalId}`)}
                     badge={
                       a.match?.status === 'in_library' ? (
                         <Badge kind="in-library">
@@ -334,7 +335,8 @@ export default function Search() {
                           variant="secondary"
                           size="sm"
                           aria-label={`Download all of ${a.title}`}
-                          onClick={() => {
+                          onClick={(e) => {
+                            e.stopPropagation()
                             void postDownload({
                               source: a.source,
                               externalId: a.externalId,
@@ -365,6 +367,7 @@ export default function Search() {
                     key={`${r.source}:${r.externalId}`}
                     title={r.title}
                     rounded="full"
+                    onClick={() => navigate(`/artist/${r.source}/${r.externalId}`)}
                   />
                 ))}
               </div>
