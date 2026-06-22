@@ -122,7 +122,9 @@ func TestStartUnknownProgressIsNotAnError(t *testing.T) {
 func TestStartPassesOutputDirAndQuery(t *testing.T) {
 	r := &fakeRunner{lines: []string{`Downloaded: ok`}}
 	a := newAdapter(t, r)
-	_, _ = a.Start(context.Background(), core.DownloadRequest{Source: "spotify", ExternalID: "e1", Artist: "Daft Punk", Title: "One More Time"}, func(int) {})
+	// Use a non-Spotify source so the text fallback is exercised here; the Spotify
+	// URL path is covered by TestStartUsesSpotifyTrackURLWhenAvailable.
+	_, _ = a.Start(context.Background(), core.DownloadRequest{Source: "youtube", Artist: "Daft Punk", Title: "One More Time"}, func(int) {})
 	if r.gotName != "spotdl" {
 		t.Fatalf("binary = %q, want spotdl", r.gotName)
 	}
@@ -212,6 +214,38 @@ func TestStartStageProgress(t *testing.T) {
 	}
 	if !has(25) || !has(90) || !has(100) {
 		t.Fatalf("expected stage progress to include 25/90/100, got %v", seen)
+	}
+}
+
+func TestStartUsesSpotifyTrackURLWhenAvailable(t *testing.T) {
+	// When Source=="spotify" and ExternalID is set, the trailing query arg must be
+	// the Spotify track URL (far more reliable for obscure/classical titles).
+	r := &fakeRunner{lines: []string{`Downloaded: ok`}}
+	a := newAdapter(t, r)
+	_, _ = a.Start(context.Background(), core.DownloadRequest{Source: "spotify", ExternalID: "abc123", Artist: "Ludovico Einaudi", Title: "Una mattina"}, func(int) {})
+	n := len(r.gotArgs)
+	if n == 0 {
+		t.Fatal("no args captured")
+	}
+	wantURL := "https://open.spotify.com/track/abc123"
+	if r.gotArgs[n-1] != wantURL {
+		t.Fatalf("trailing query arg: got %q, want %q (Spotify URL path)", r.gotArgs[n-1], wantURL)
+	}
+}
+
+func TestStartFallsBackToTextQueryForNonSpotify(t *testing.T) {
+	// When Source!="spotify" (or ExternalID is empty), the trailing query arg must
+	// be the "<artist> - <title>" text fallback.
+	r := &fakeRunner{lines: []string{`Downloaded: ok`}}
+	a := newAdapter(t, r)
+	_, _ = a.Start(context.Background(), core.DownloadRequest{Source: "youtube", ExternalID: "yt123", Artist: "Daft Punk", Title: "One More Time"}, func(int) {})
+	n := len(r.gotArgs)
+	if n == 0 {
+		t.Fatal("no args captured")
+	}
+	wantQuery := "Daft Punk - One More Time"
+	if r.gotArgs[n-1] != wantQuery {
+		t.Fatalf("trailing query arg: got %q, want %q (text fallback)", r.gotArgs[n-1], wantQuery)
 	}
 }
 

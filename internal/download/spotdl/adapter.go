@@ -131,7 +131,18 @@ func redactArgs(args []string) string {
 // the output directory as the path hint (spotDL writes the file under output_dir;
 // the scan picks it up — the exact filename is spotDL's concern).
 func (a *Adapter) Start(ctx context.Context, req core.DownloadRequest, onProgress func(int)) (string, error) {
-	query := strings.TrimSpace(req.Artist + " - " + req.Title)
+	// Prefer a Spotify track URL when available: spotDL fetches exact metadata via
+	// the configured client creds and matches YouTube far more reliably than a
+	// free-form text query — essential for obscure/long classical titles that
+	// YouTube Music text search fails to find (e.g. LookupError on Einaudi,
+	// Purcell "Dido and Aeneas" arrangements, etc.).
+	// Fallback: "<artist> - <title>" text search for non-Spotify sources or missing IDs.
+	var query string
+	if req.Source == "spotify" && req.ExternalID != "" {
+		query = "https://open.spotify.com/track/" + req.ExternalID
+	} else {
+		query = strings.TrimSpace(req.Artist + " - " + req.Title)
+	}
 	// spotDL's CLI is `spotdl [options] <operation> <query>`. It does NOT accept a
 	// "--" end-of-options separator (it reports it as an unrecognized argument), so
 	// every option must come BEFORE the "download" operation, query trailing.
