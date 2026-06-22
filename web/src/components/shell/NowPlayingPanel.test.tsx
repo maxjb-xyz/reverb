@@ -6,7 +6,6 @@ import { NowPlayingPanel } from './NowPlayingPanel'
 import { usePlayer } from '../../lib/playerStore'
 import { useUI } from '../../lib/uiStore'
 import type { Track, Artist } from '../../lib/types'
-import { coverUrl } from '../../lib/libraryApi'
 
 const mockNavigate = vi.fn()
 vi.mock('react-router-dom', async (importOriginal) => {
@@ -126,7 +125,7 @@ describe('NowPlayingPanel', () => {
   })
 
   it('shows cover-placeholder (no broken img) when artist has no coverArtId', () => {
-    const artistWithoutCover: Artist = { id: 'ar1', name: 'Test Artist', albumCount: 3 }
+    const artistWithoutCover: Artist = { id: 'ar1', name: 'Test Artist', coverArtId: '', albumCount: 3 }
     vi.mocked(useArtist).mockReturnValue({ data: artistWithoutCover } as ReturnType<typeof useArtist>)
     renderPanel()
     expect(screen.getAllByTestId('cover-placeholder').length).toBeGreaterThan(0)
