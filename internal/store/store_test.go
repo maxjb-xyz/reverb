@@ -190,6 +190,29 @@ func TestAlbumCoverageRoundTrip(t *testing.T) {
 	}
 }
 
+func TestSyncedPlaylistRoundTrip(t *testing.T) {
+	st := openMigrated(t)
+	q := st.Q()
+	ctx := context.Background()
+	row, err := q.UpsertSyncedPlaylist(ctx, db.UpsertSyncedPlaylistParams{
+		ID: "sp1", Source: "spotify", ExternalID: "ext1", Name: "Chill",
+		CoverUrl: "http://img", TracksJson: `[]`, CreatedAt: 100,
+	})
+	if err != nil || row.Name != "Chill" {
+		t.Fatalf("upsert: %+v err=%v", row, err)
+	}
+	// Upsert again with same (source, external_id) updates, not duplicates.
+	if _, err := q.UpsertSyncedPlaylist(ctx, db.UpsertSyncedPlaylistParams{
+		ID: "sp1", Source: "spotify", ExternalID: "ext1", Name: "Renamed", TracksJson: `[]`, CreatedAt: 100,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	all, _ := q.ListSyncedPlaylists(ctx)
+	if len(all) != 1 || all[0].Name != "Renamed" {
+		t.Fatalf("want 1 row 'Renamed', got %+v", all)
+	}
+}
+
 func TestAdapterInstanceCRUD(t *testing.T) {
 	st, err := Open(t.TempDir() + "/ai.db")
 	if err != nil {
