@@ -211,3 +211,22 @@ export interface RealtimeEvent {
   type: string
   payload: unknown
 }
+
+export interface SyncedPlaylist {
+  id: string
+  source: string
+  externalId: string
+  name: string
+  coverUrl?: string
+  syncEnabled: boolean
+  syncIntervalSec: number
+  autoDownload: boolean
+  lastSyncedAt: number
+  trackCount: number
+}
+
+export interface SyncedPlaylistDetail extends SyncedPlaylist {
+  ownedCount: number
+  totalCount: number
+  tracks: AlbumDetailTrack[]
+}
