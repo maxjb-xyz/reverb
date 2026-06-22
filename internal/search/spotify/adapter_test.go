@@ -187,6 +187,49 @@ func TestGetPlaylistMapsAndPaginates(t *testing.T) {
 	}
 }
 
+func TestGetPlaylistPaginationOffsetUsesItemsSeen(t *testing.T) {
+	// Page 1: 2 items, BOTH local tracks (empty id) + next != "".
+	// Page 2: 1 real track, next == null.
+	// The offset for page 2 must be 2 (items SEEN), not 0 (accepted tracks).
+	page1 := `{"name":"Local","images":[],"tracks":{
+	  "items":[
+	    {"track":{"id":"","name":"Local1","artists":[],"duration_ms":0,"album":{"name":"","images":[]}}},
+	    {"track":{"id":"","name":"Local2","artists":[],"duration_ms":0,"album":{"name":"","images":[]}}}
+	  ],
+	  "next":"NEXTURL"}}`
+	page2 := `{"items":[{"track":{"id":"real1","name":"Real","artists":[{"name":"C"}],"duration_ms":3000,"album":{"name":"AL3"}}}],"next":null}`
+
+	var capturedOffset string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.Contains(r.URL.Path, "/playlists/") && strings.HasSuffix(r.URL.Path, "/tracks"):
+			capturedOffset = r.URL.Query().Get("offset")
+			_, _ = w.Write([]byte(page2))
+		case strings.Contains(r.URL.Path, "/playlists/"):
+			_, _ = w.Write([]byte(page1))
+		default:
+			_, _ = w.Write([]byte(`{"access_token":"t","expires_in":3600}`))
+		}
+	}))
+	defer srv.Close()
+	a := New().WithBaseURLs(srv.URL, srv.URL)
+	if err := a.Init(map[string]any{"client_id": "x", "client_secret": "y"}); err != nil {
+		t.Fatal(err)
+	}
+	pl, err := a.GetPlaylist(context.Background(), "pl2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// (a) offset must be 2 (items seen), not 0 (accepted tracks)
+	if capturedOffset != "2" {
+		t.Fatalf("want offset=2, got %q (offset must count all items seen, not just accepted tracks)", capturedOffset)
+	}
+	// (b) exactly 1 real track; loop terminated (no hang)
+	if len(pl.Tracks) != 1 || pl.Tracks[0].ExternalID != "real1" {
+		t.Fatalf("want 1 track with id=real1, got %+v", pl.Tracks)
+	}
+}
+
 func TestGetArtistDiscographyMapsAndFilters(t *testing.T) {
 	page := `{"items":[
 	  {"id":"al1","name":"OK Computer","album_type":"album","total_tracks":12,"release_date":"1997-05-21","images":[{"url":"http://img/1"}],"artists":[{"id":"art1","name":"Radiohead"}]},

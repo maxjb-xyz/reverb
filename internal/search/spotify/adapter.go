@@ -244,8 +244,10 @@ func (a *Adapter) GetPlaylist(ctx context.Context, externalID string) (core.Exte
 		CoverURL: firstImage(obj.Images), Tracks: []core.ExternalResult{},
 	}
 	page := obj.Tracks
+	seen := 0 // total items processed (including skipped local tracks)
 	for {
 		for _, it := range page.Items {
+			seen++ // advance for every item, regardless of whether we keep it
 			if it.Track.ID == "" { // local/unavailable tracks have no id
 				continue
 			}
@@ -255,9 +257,11 @@ func (a *Adapter) GetPlaylist(ctx context.Context, externalID string) (core.Exte
 			break
 		}
 		// Follow the absolute next URL; apiGet takes a path+params, so re-issue the
-		// tracks endpoint with an offset derived from accumulated count.
+		// tracks endpoint with an offset derived from items seen (NOT accepted tracks),
+		// so the offset always advances by the full page size even when all items were
+		// skipped (e.g. a page of 100 local tracks), preventing an infinite loop.
 		params := url.Values{}
-		params.Set("offset", strconv.Itoa(len(pl.Tracks)))
+		params.Set("offset", strconv.Itoa(seen))
 		params.Set("limit", "100")
 		var next playlistPageDTO
 		if err := a.client.apiGet(ctx, "/playlists/"+url.PathEscape(externalID)+"/tracks", params, &next); err != nil {
