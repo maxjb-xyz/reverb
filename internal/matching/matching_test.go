@@ -105,6 +105,171 @@ func TestMatchZeroDurationStillMatches(t *testing.T) {
 	}
 }
 
+// TestMatchCompositeArtistAndDurationDrift covers the live-app download-match bug:
+// spotDL pulls audio from YouTube (so duration drifts several seconds from Spotify's
+// metadata) into Navidrome, which joins composite "Composer/Performer/Ensemble"
+// artists while Spotify gives only the primary. The matcher must tolerate BOTH —
+// without loosening into cross-version false positives. Cases use the real live data.
+func TestMatchCompositeArtistAndDurationDrift(t *testing.T) {
+	cases := []struct {
+		name       string
+		ext        core.ExternalResult
+		lib        []core.Track
+		wantStatus core.MatchStatus
+		wantID     string
+		wantMethod core.MatchMethod
+	}{
+		{
+			// Chopin Nocturne: composite artist + EXACT album + 7040ms drift (>3000ms
+			// gate). Album corroboration bypasses the duration reject → fuzzy match.
+			name: "chopin composite artist + album match + 7040ms drift",
+			ext: core.ExternalResult{
+				Source: "spotify", ExternalID: "sp-chopin", Type: core.EntityTrack,
+				Title:  "Nocturnes, Op. 55: No. 1 in F Minor",
+				Artist: "Frédéric Chopin",
+				Album:  "Chopin: Nocturnes - Sony Classical Originals",
+				DurationMs: 341040, ISRC: "",
+			},
+			lib: []core.Track{{
+				ID:     "lib-chopin",
+				Title:  "Nocturnes, Op. 55: No. 1 in F Minor",
+				Artist: "Frédéric Chopin/Arthur Rubinstein",
+				Album:  "Chopin: Nocturnes - Sony Classical Originals",
+				DurationMs: 334000, ISRC: "",
+			}},
+			wantStatus: core.MatchInLibrary, wantID: "lib-chopin", wantMethod: core.MatchFuzzy,
+		},
+		{
+			// Vivaldi: composite artist, duration WITHIN tolerance (880ms). Matches on
+			// the subset-artist rung regardless of the album bypass.
+			name: "vivaldi composite artist + in-tolerance 880ms",
+			ext: core.ExternalResult{
+				Source: "spotify", ExternalID: "sp-vivaldi", Type: core.EntityTrack,
+				Title:  "The Four Seasons, Violin Concerto in E Major, RV 269 \"Spring\": I. Allegro",
+				Artist: "Antonio Vivaldi",
+				Album:  "Vivaldi: The Four Seasons",
+				DurationMs: 200000,
+			},
+			lib: []core.Track{{
+				ID:     "lib-vivaldi",
+				Title:  "The Four Seasons, Violin Concerto in E Major, RV 269 \"Spring\": I. Allegro",
+				Artist: "Antonio Vivaldi/Adrian Chandler/La Serenissima",
+				Album:  "Vivaldi: The Four Seasons",
+				DurationMs: 200880,
+			}},
+			wantStatus: core.MatchInLibrary, wantID: "lib-vivaldi", wantMethod: core.MatchFuzzy,
+		},
+		{
+			// Post-download job re-match: the job carries no duration (DurationMs:0).
+			// Composite artist + album match → linked via the ext.DurationMs==0 guard.
+			name: "post-download re-match (duration 0) + composite artist + album match",
+			ext: core.ExternalResult{
+				Source: "spotify", ExternalID: "sp-satie", Type: core.EntityTrack,
+				Title:  "Gymnopédie No. 1",
+				Artist: "Erik Satie",
+				Album:  "Satie: Piano Works",
+				DurationMs: 0,
+			},
+			lib: []core.Track{{
+				ID:     "lib-satie",
+				Title:  "Gymnopédie No. 1",
+				Artist: "Erik Satie/Philippe Entremont",
+				Album:  "Satie: Piano Works",
+				DurationMs: 120000,
+			}},
+			wantStatus: core.MatchInLibrary, wantID: "lib-satie", wantMethod: core.MatchFuzzy,
+		},
+		{
+			// NEGATIVE: different artist with NO token overlap → must not match, even
+			// though title is identical. Protects against composite-subset false wins.
+			name: "different artist no token overlap rejected",
+			ext: core.ExternalResult{
+				Source: "spotify", ExternalID: "sp-bach", Type: core.EntityTrack,
+				Title:  "Nocturnes, Op. 55: No. 1 in F Minor",
+				Artist: "Johann Sebastian Bach",
+				Album:  "Chopin: Nocturnes - Sony Classical Originals",
+				DurationMs: 341040,
+			},
+			lib: []core.Track{{
+				ID:     "lib-chopin",
+				Title:  "Nocturnes, Op. 55: No. 1 in F Minor",
+				Artist: "Frédéric Chopin/Arthur Rubinstein",
+				Album:  "Chopin: Nocturnes - Sony Classical Originals",
+				DurationMs: 334000,
+			}},
+			wantStatus: core.MatchNotInLibrary,
+		},
+		{
+			// NEGATIVE: same title+artist but DIFFERENT album and a 60000ms drift with
+			// NO album corroboration → the duration gate must still reject, preserving
+			// the live-vs-studio cross-version protection.
+			name: "same title+artist different album 60000ms drift rejected",
+			ext: core.ExternalResult{
+				Source: "spotify", ExternalID: "sp-ver", Type: core.EntityTrack,
+				Title:  "Falling",
+				Artist: "Cinder",
+				Album:  "Embers",
+				DurationMs: 244000,
+			},
+			lib: []core.Track{{
+				ID:     "lib-live",
+				Title:  "Falling",
+				Artist: "Cinder",
+				Album:  "Live at the Hall",
+				DurationMs: 304000,
+			}},
+			wantStatus: core.MatchNotInLibrary,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			svc := NewService(fakeLib{tracks: tc.lib}, newMemCache(), func(context.Context) (int64, error) { return 1, nil })
+			got, err := svc.Match(context.Background(), tc.ext)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got.Status != tc.wantStatus {
+				t.Fatalf("status=%q want %q (result %+v)", got.Status, tc.wantStatus, got)
+			}
+			if got.LibraryTrackID != tc.wantID {
+				t.Fatalf("libraryTrackId=%q want %q (result %+v)", got.LibraryTrackID, tc.wantID, got)
+			}
+			if tc.wantMethod != "" && got.Method != tc.wantMethod {
+				t.Fatalf("method=%q want %q", got.Method, tc.wantMethod)
+			}
+		})
+	}
+}
+
+// TestArtistMatches unit-tests the composite-aware artist comparator directly:
+// exact equality, subset both directions, feat markers, and the NEGATIVE no-overlap
+// case. Confirms we do NOT split on plain comma or " x "/" vs " (single-name risk).
+func TestArtistMatches(t *testing.T) {
+	cases := []struct {
+		ext, lib string
+		want     bool
+	}{
+		{"Frédéric Chopin", "Frédéric Chopin/Arthur Rubinstein", true},
+		{"Antonio Vivaldi", "Antonio Vivaldi/Adrian Chandler/La Serenissima", true},
+		{"Erik Satie", "Erik Satie/Philippe Entremont", true},
+		{"Frédéric Chopin", "Frédéric Chopin", true},                 // exact
+		{"DJ Sol feat. Aluna", "DJ Sol", true},                       // feat marker subset
+		{"Nova & Mara", "Nova", true},                                // ampersand subset
+		{"Johann Sebastian Bach", "Frédéric Chopin/Arthur Rubinstein", false},
+		{"Radiohead", "TLC", false},
+		// Plain comma is NOT a separator (single-name protection): "Earth, Wind & Fire"
+		// tokenizes via & only → {earth wind, fire}; an unrelated "Fire" is a subset and
+		// would match, but a totally unrelated comma'd name does not get falsely split.
+		{"Tyler, The Creator", "Drake", false},
+	}
+	for _, c := range cases {
+		if got := artistMatches(c.ext, c.lib); got != c.want {
+			t.Errorf("artistMatches(%q, %q)=%v want %v", c.ext, c.lib, got, c.want)
+		}
+	}
+}
+
 func TestMatchCacheFirstAndInvalidation(t *testing.T) {
 	cands := []core.Track{{ID: "t1", Title: "Song", Artist: "A", Album: "X", DurationMs: 200000, ISRC: "USX1"}}
 	cache := newMemCache()

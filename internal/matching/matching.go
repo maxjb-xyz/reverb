@@ -3,6 +3,7 @@ package matching
 import (
 	"context"
 	"database/sql"
+	"strings"
 
 	"github.com/maxjb-xyz/reverb/internal/core"
 	"github.com/maxjb-xyz/reverb/internal/store/db"
@@ -10,8 +11,89 @@ import (
 
 // DurationToleranceMs is the max |external-library| duration delta accepted by
 // the fuzzy rung. A live cut is rarely within 3s of the studio cut, so duration
-// is the disambiguator that prevents cross-version false positives.
+// is the disambiguator that prevents cross-version false positives. This gate is
+// BYPASSED when the album corroborates the match (exact normalized album equality):
+// a downloaded track sourced from YouTube drifts several seconds from Spotify's
+// metadata, and exact title + (subset) artist + exact album is a stronger signal
+// than a tight duration window. With no album corroboration the gate still applies,
+// preserving the live-vs-studio protection against cross-version false positives.
 const DurationToleranceMs = 3000
+
+// artistSeparators splits a composite "Composer/Performer/Ensemble" artist field
+// (as Navidrome joins them) into its constituent artist tokens. We intentionally
+// do NOT split on plain comma or " x "/" vs " — those appear inside legitimate
+// single-artist names and would manufacture false token overlaps.
+var artistSeparators = []string{"/", "&", ";", "·", "•", " featuring ", " feat. ", " feat ", " ft. ", " ft ", " with "}
+
+// artistTokenSet tokenizes a (possibly composite) artist string into a set of
+// normalized artist tokens, splitting on composite separators and feat markers
+// case-insensitively. Empty tokens are dropped.
+func artistTokenSet(artist string) map[string]bool {
+	parts := []string{artist}
+	for _, sep := range artistSeparators {
+		var next []string
+		for _, p := range parts {
+			// Case-insensitive split on the (multi-rune) feat/with markers.
+			next = append(next, splitFold(p, sep)...)
+		}
+		parts = next
+	}
+	set := map[string]bool{}
+	for _, p := range parts {
+		n := Normalize(p)
+		if n != "" {
+			set[n] = true
+		}
+	}
+	return set
+}
+
+// splitFold splits s on sep case-insensitively (sep is matched against a folded
+// copy of s, then the cut points are applied to the original).
+func splitFold(s, sep string) []string {
+	lower := strings.ToLower(s)
+	lsep := strings.ToLower(sep)
+	var out []string
+	for {
+		i := strings.Index(lower, lsep)
+		if i < 0 {
+			out = append(out, s)
+			break
+		}
+		out = append(out, s[:i])
+		s = s[i+len(sep):]
+		lower = lower[i+len(lsep):]
+	}
+	return out
+}
+
+// artistMatches reports whether the external and library artist strings name the
+// same primary artist, tolerating Navidrome's composite "Composer/Performer/…"
+// joins. True when the normalized strings are equal, OR when one side's token set
+// is a (non-empty) subset of the other's — Spotify gives just the primary artist
+// while the library file carries the full composite credit.
+func artistMatches(extArtist, libArtist string) bool {
+	if Normalize(extArtist) == Normalize(libArtist) {
+		return true
+	}
+	a := artistTokenSet(extArtist)
+	b := artistTokenSet(libArtist)
+	return isSubset(a, b) || isSubset(b, a)
+}
+
+// isSubset reports whether every token of sub is present in sup. Both must be
+// non-empty (an empty set is never treated as a meaningful subset).
+func isSubset(sub, sup map[string]bool) bool {
+	if len(sub) == 0 || len(sup) == 0 {
+		return false
+	}
+	for tok := range sub {
+		if !sup[tok] {
+			return false
+		}
+	}
+	return true
+}
 
 // LibrarySearcher is the slice of LibraryAdapter that matching needs.
 // *library.Adapter satisfies this structurally — matching does not import library.
@@ -178,9 +260,9 @@ func (s *Service) resolve(ext core.ExternalResult, cands []core.Track) core.Matc
 	// placeholder that becomes active when a library MBID source is added (P2).
 	// It is intentionally a no-op here.
 
-	// Fuzzy rung: normalized title+artist equality, then duration disambiguation.
+	// Fuzzy rung: normalized title + (composite-aware) artist equality, then
+	// duration disambiguation.
 	nTitle := Normalize(ext.Title)
-	nArtist := Normalize(ext.Artist)
 	nAlbum := Normalize(ext.Album)
 
 	best := -1
@@ -188,22 +270,27 @@ func (s *Service) resolve(ext core.ExternalResult, cands []core.Track) core.Matc
 	bestAlbumMatch := false
 
 	for i, c := range cands {
-		if Normalize(c.Title) != nTitle || Normalize(c.Artist) != nArtist {
+		if Normalize(c.Title) != nTitle || !artistMatches(ext.Artist, c.Artist) {
 			continue
 		}
+		// Album corroboration: exact normalized album equality. Computed BEFORE the
+		// duration gate so it can bypass a REJECT (see DurationToleranceMs doc).
+		albumMatch := nAlbum != "" && Normalize(c.Album) == nAlbum
 		// Duration only DISAMBIGUATES; it must not REJECT when the external side
 		// has no duration. The post-download re-match carries no DurationMs (the
 		// job doesn't store one), so ext.DurationMs is 0 — without this guard every
 		// candidate's delta is its full length and nothing ever matches, leaving
-		// downloads permanently unlinked (no play / no cover).
+		// downloads permanently unlinked (no play / no cover). It also must not
+		// reject when the album corroborates: a YouTube-sourced download drifts
+		// several seconds from Spotify's metadata, and title+artist+album is a
+		// stronger signal than a tight duration window.
 		delta := 0
 		if ext.DurationMs > 0 {
 			delta = absInt(c.DurationMs - ext.DurationMs)
-			if delta > DurationToleranceMs {
+			if delta > DurationToleranceMs && !albumMatch {
 				continue
 			}
 		}
-		albumMatch := nAlbum != "" && Normalize(c.Album) == nAlbum
 		// Prefer smaller delta; on tie, prefer album match.
 		better := delta < bestDelta || (delta == bestDelta && albumMatch && !bestAlbumMatch)
 		if best == -1 || better {
