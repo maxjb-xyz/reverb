@@ -10,8 +10,12 @@ import (
 )
 
 // discoSource is a stubSource that also implements coverage.DiscoSource via
-// GetArtistDiscography (the optional capability the spotify adapter provides).
+// GetArtist + GetArtistDiscography (the optional capabilities the spotify adapter provides).
 type discoSource struct{ stubSource }
+
+func (d *discoSource) GetArtist(ctx context.Context, id string) (core.ExternalArtist, error) {
+	return core.ExternalArtist{}, nil
+}
 
 func (d *discoSource) GetArtistDiscography(ctx context.Context, id string) ([]core.ExternalAlbum, error) {
 	return nil, nil

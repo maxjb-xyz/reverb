@@ -202,6 +202,24 @@ func (a *Adapter) Search(ctx context.Context, q string, t core.EntityType) ([]co
 	return out, nil
 }
 
+// GetArtist fetches the artist profile (name + images) from GET /artists/{id}.
+func (a *Adapter) GetArtist(ctx context.Context, externalID string) (core.ExternalArtist, error) {
+	var dto artistDTO
+	if err := a.client.apiGet(ctx, "/artists/"+url.PathEscape(externalID), url.Values{}, &dto); err != nil {
+		return core.ExternalArtist{}, err
+	}
+	return core.ExternalArtist{
+		Source:     "spotify",
+		ExternalID: dto.ID,
+		Name:       dto.Name,
+		CoverURL:   firstImage(dto.Images),
+	}, nil
+}
+
+// maxDiscographyPages caps pagination at ~300 albums (6 pages × 50 per page) to
+// avoid 13.8s hangs for prolific/composer artists (e.g. Chopin has 1289+ entries).
+const maxDiscographyPages = 6
+
 // GetArtistDiscography returns the artist's Albums + Singles/EPs (no tracklists).
 // It follows Spotify pagination and asks only for album,single groups so
 // compilations and "appears on" never reach the dedup stage.
@@ -211,7 +229,7 @@ func (a *Adapter) GetArtistDiscography(ctx context.Context, externalID string) (
 	params.Set("include_groups", "album,single")
 	params.Set("limit", "50")
 	offset := 0
-	for {
+	for page := 0; page < maxDiscographyPages; page++ {
 		params.Set("offset", strconv.Itoa(offset))
 		var resp artistAlbumsResponse
 		if err := a.client.apiGet(ctx, "/artists/"+url.PathEscape(externalID)+"/albums", params, &resp); err != nil {

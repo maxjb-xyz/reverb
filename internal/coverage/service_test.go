@@ -16,6 +16,7 @@ type fakeDisco struct {
 	albumSearch  []core.ExternalResult              // returned for EntityAlbum searches
 	albums       map[string]core.ExternalAlbum      // externalAlbumID -> full album (with tracks)
 	disco        []core.ExternalAlbum
+	artist       *core.ExternalArtist               // returned by GetArtist; nil → error (not found)
 }
 
 func (f fakeDisco) Search(_ context.Context, q string, t core.EntityType) ([]core.ExternalResult, error) {
@@ -29,6 +30,12 @@ func (f fakeDisco) Search(_ context.Context, q string, t core.EntityType) ([]cor
 }
 func (f fakeDisco) GetAlbum(_ context.Context, id string) (core.ExternalAlbum, error) {
 	return f.albums[id], nil
+}
+func (f fakeDisco) GetArtist(_ context.Context, _ string) (core.ExternalArtist, error) {
+	if f.artist != nil {
+		return *f.artist, nil
+	}
+	return core.ExternalArtist{}, errors.New("not found")
 }
 func (f fakeDisco) GetArtistDiscography(_ context.Context, _ string) ([]core.ExternalAlbum, error) {
 	return f.disco, nil
@@ -200,6 +207,40 @@ func TestArtistDetailSpotifySourceNameFromDiscography(t *testing.T) {
 	}
 	if det.Name != "Radiohead" {
 		t.Fatalf("name must fall back to albums[0].Artist, got %q", det.Name)
+	}
+}
+
+// TestArtistDetailSpotifyUsesRealProfile: when GetArtist succeeds, ArtistDetail must
+// use the real profile name+cover, not derive the name from albums[0].Artist.
+// This is the Chopin fix: albums[0].Artist would be "Martha Argerich" (performer),
+// but GetArtist returns "Frédéric Chopin" with a real image.
+func TestArtistDetailSpotifyUsesRealProfile(t *testing.T) {
+	chopinCover := "https://img/chopin.jpg"
+	disco := fakeDisco{
+		artist: &core.ExternalArtist{
+			Source:     "spotify",
+			ExternalID: "chopin_id",
+			Name:       "Frédéric Chopin",
+			CoverURL:   chopinCover,
+		},
+		disco: []core.ExternalAlbum{
+			// First album's artist is a performer, not the composer — the old bug.
+			{Source: "spotify", ExternalID: "AL1", Name: "Chopin: Ballades", Artist: "Martha Argerich", Kind: "album", TotalTracks: 4},
+		},
+	}
+	svc := NewService(disco, fakeMatcher{}, fakeLibrary{}, newMemCache(), func() int64 { return 1 }, func(context.Context) (int64, error) { return 1, nil })
+	det, err := svc.ArtistDetail(context.Background(), "spotify", "chopin_id")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !det.Resolved {
+		t.Fatalf("spotify source must resolve, got %+v", det)
+	}
+	if det.Name != "Frédéric Chopin" {
+		t.Errorf("Name: want %q (real profile), got %q (must not use performer name)", "Frédéric Chopin", det.Name)
+	}
+	if det.CoverURL != chopinCover {
+		t.Errorf("CoverURL: want %q, got %q", chopinCover, det.CoverURL)
 	}
 }
 

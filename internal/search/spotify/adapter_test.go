@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -233,6 +234,83 @@ func TestGetPlaylistPaginationOffsetUsesItemsSeen(t *testing.T) {
 	// (b) exactly 1 real track; loop terminated (no hang)
 	if len(pl.Tracks) != 1 || pl.Tracks[0].ExternalID != "real1" {
 		t.Fatalf("want 1 track with id=real1, got %+v", pl.Tracks)
+	}
+}
+
+func TestGetArtistMapsProfile(t *testing.T) {
+	fixture := `{"id":"sp_ar1","name":"Frédéric Chopin","images":[{"url":"https://img/chopin_large.jpg","width":640,"height":640},{"url":"https://img/chopin_small.jpg","width":160,"height":160}]}`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/artists/") && !strings.HasSuffix(r.URL.Path, "/albums") {
+			_, _ = w.Write([]byte(fixture))
+			return
+		}
+		_, _ = w.Write([]byte(`{"access_token":"t","expires_in":3600}`))
+	}))
+	defer srv.Close()
+	a := New().WithBaseURLs(srv.URL, srv.URL)
+	if err := a.Init(map[string]any{"client_id": "x", "client_secret": "y"}); err != nil {
+		t.Fatal(err)
+	}
+	prof, err := a.GetArtist(context.Background(), "sp_ar1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if prof.Name != "Frédéric Chopin" {
+		t.Errorf("Name: want %q, got %q", "Frédéric Chopin", prof.Name)
+	}
+	if prof.CoverURL != "https://img/chopin_large.jpg" {
+		t.Errorf("CoverURL: want %q, got %q", "https://img/chopin_large.jpg", prof.CoverURL)
+	}
+	if prof.Source != "spotify" {
+		t.Errorf("Source: want %q, got %q", "spotify", prof.Source)
+	}
+	if prof.ExternalID != "sp_ar1" {
+		t.Errorf("ExternalID: want %q, got %q", "sp_ar1", prof.ExternalID)
+	}
+}
+
+func TestGetArtistDiscographyCappedAtMaxPages(t *testing.T) {
+	// Build a response page with 50 items and next != "". The handler counts how
+	// many times the /albums endpoint is called; the loop must stop at maxDiscographyPages.
+	const pageSize = 50
+	pageBody := func(next string) string {
+		items := make([]string, pageSize)
+		for i := range items {
+			items[i] = `{"id":"al` + strconv.Itoa(i) + `","name":"Album","album_type":"album","total_tracks":1,"release_date":"2020","images":[],"artists":[{"id":"a","name":"Prolific"}]}`
+		}
+		nextVal := "null"
+		if next != "" {
+			nextVal = `"` + next + `"`
+		}
+		return `{"items":[` + strings.Join(items, ",") + `],"next":` + nextVal + `}`
+	}
+
+	var albumsCallCount int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.Contains(r.URL.Path, "/albums"):
+			albumsCallCount++
+			// Always return a full page with a next URL so it would loop forever without cap.
+			_, _ = w.Write([]byte(pageBody("http://next")))
+		default:
+			_, _ = w.Write([]byte(`{"access_token":"t","expires_in":3600}`))
+		}
+	}))
+	defer srv.Close()
+	a := New().WithBaseURLs(srv.URL, srv.URL)
+	if err := a.Init(map[string]any{"client_id": "x", "client_secret": "y"}); err != nil {
+		t.Fatal(err)
+	}
+	albums, err := a.GetArtistDiscography(context.Background(), "prolific_artist")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if albumsCallCount != maxDiscographyPages {
+		t.Errorf("expected exactly %d page requests, got %d", maxDiscographyPages, albumsCallCount)
+	}
+	wantAlbums := maxDiscographyPages * pageSize
+	if len(albums) != wantAlbums {
+		t.Errorf("expected %d albums (%d pages × %d per page), got %d", wantAlbums, maxDiscographyPages, pageSize, len(albums))
 	}
 }
 

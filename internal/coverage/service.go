@@ -13,6 +13,7 @@ import (
 type DiscoSource interface {
 	Search(ctx context.Context, q string, t core.EntityType) ([]core.ExternalResult, error)
 	GetAlbum(ctx context.Context, externalID string) (core.ExternalAlbum, error)
+	GetArtist(ctx context.Context, externalID string) (core.ExternalArtist, error)
 	GetArtistDiscography(ctx context.Context, externalID string) ([]core.ExternalAlbum, error)
 }
 
@@ -81,11 +82,17 @@ func (s *Service) ArtistDetail(ctx context.Context, source, id string) (core.Art
 	}
 	det.Resolved = true
 	det.ExternalArtistID = extID
+	// Fetch the artist's real profile (name + image) from the external source.
+	if prof, pErr := s.src.GetArtist(ctx, extID); pErr == nil {
+		det.Name = prof.Name
+		det.CoverURL = prof.CoverURL
+	}
 	albums, err := s.discography(ctx, extID)
 	if err != nil {
 		return det, err
 	}
 	det.Albums = Canonicalize(albums)
+	// Last-resort fallback: if GetArtist failed or returned no name, derive from discography.
 	if det.Name == "" && len(albums) > 0 {
 		det.Name = albums[0].Artist
 	}

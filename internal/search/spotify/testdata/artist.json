@@ -1,0 +1,8 @@
+{
+  "id": "sp_ar1",
+  "name": "Frédéric Chopin",
+  "images": [
+    {"url": "https://img/chopin_large.jpg", "width": 640, "height": 640},
+    {"url": "https://img/chopin_small.jpg", "width": 160, "height": 160}
+  ]
+}

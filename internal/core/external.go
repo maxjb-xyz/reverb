@@ -59,6 +59,14 @@ type ExternalResult struct {
 	Match            *MatchResult `json:"match,omitempty"`
 }
 
+// ExternalArtist is an artist profile fetched from an external source (GetArtist).
+type ExternalArtist struct {
+	Source     string `json:"source"`
+	ExternalID string `json:"externalId"`
+	Name       string `json:"name"`
+	CoverURL   string `json:"coverUrl"`
+}
+
 // ExternalAlbum is an album fetched from a SearchSource (GetAlbum).
 type ExternalAlbum struct {
 	Source      string           `json:"source"`
