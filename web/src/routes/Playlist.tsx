@@ -21,6 +21,7 @@ export default function Playlist() {
   const toggleShuffle = usePlayer((s) => s.toggleShuffle)
   const shuffle = usePlayer((s) => s.shuffle)
   const currentTrack = usePlayer((s) => s.current)
+  const isPlaying = usePlayer((s) => s.playing)
 
   // "…" menu state
   const [menuOpen, setMenuOpen] = useState(false)
@@ -226,6 +227,7 @@ export default function Playlist() {
             track={t}
             index={i}
             active={currentTrack?.id === t.id}
+            playing={currentTrack?.id === t.id ? isPlaying : undefined}
             onPlay={() => playTrackList(tracks, i)}
             right={
               <IconButton

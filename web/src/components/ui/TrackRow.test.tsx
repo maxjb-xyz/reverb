@@ -182,6 +182,25 @@ describe('TrackRow', () => {
     expect(bars.length).toBe(0)
   })
 
+  it('active+playing=true → eq bars have animate-eq', () => {
+    const { container } = renderRow({ active: true, playing: true, onPlay: vi.fn() })
+    const bars = container.querySelectorAll('[data-testid="eq-bar"]')
+    expect(bars.length).toBeGreaterThan(0)
+    bars.forEach((bar) => {
+      expect(bar.className).toMatch(/animate-eq/)
+    })
+  })
+
+  it('active+playing=false → eq bars have paused state and no animate-eq', () => {
+    const { container } = renderRow({ active: true, playing: false, onPlay: vi.fn() })
+    const bars = container.querySelectorAll('[data-testid="eq-bar"]')
+    expect(bars.length).toBeGreaterThan(0)
+    bars.forEach((bar) => {
+      expect(bar.className).toMatch(/animation-play-state:paused/)
+      expect(bar.className).not.toMatch(/animate-eq/)
+    })
+  })
+
   // ── Right slot ────────────────────────────────────────────────────────────
 
   it('renders the right slot when provided', () => {

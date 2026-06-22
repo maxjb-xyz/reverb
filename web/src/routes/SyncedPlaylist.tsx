@@ -82,6 +82,7 @@ export default function SyncedPlaylist() {
   const { data: detail, isLoading, isError } = useSyncedPlaylist(id)
   const playTrackList = usePlayer((s) => s.playTrackList)
   const currentTrack = usePlayer((s) => s.current)
+  const isPlaying = usePlayer((s) => s.playing)
 
   // "…" menu state
   const [menuOpen, setMenuOpen] = useState(false)
@@ -352,6 +353,7 @@ export default function SyncedPlaylist() {
                 track={t.libraryTrack}
                 index={i}
                 active={isActive}
+                playing={isActive ? isPlaying : undefined}
                 onPlay={() => playTrackList(ownedTracks, ownedIdx)}
                 coverSrc={t.libraryTrack?.coverArtId ? undefined : t.coverUrl}
                 artistTo={t.artistExternalId ? `/artist/spotify/${t.artistExternalId}` : undefined}

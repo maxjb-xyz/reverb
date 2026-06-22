@@ -11,6 +11,7 @@ interface TrackRowProps {
   track: Track
   index?: number
   active?: boolean
+  playing?: boolean
   onPlay: () => void
   right?: ReactNode
   /** Direct cover image URL (e.g. an external Spotify image). Overrides the
@@ -31,7 +32,7 @@ interface TrackRowProps {
   albumTo?: string
 }
 
-export function TrackRow({ track, index, active = false, onPlay, right, coverSrc, rightWidth = 'auto', artistNode, albumNode, artistTo, albumTo }: TrackRowProps) {
+export function TrackRow({ track, index, active = false, playing, onPlay, right, coverSrc, rightWidth = 'auto', artistNode, albumNode, artistTo, albumTo }: TrackRowProps) {
   const src = coverSrc ?? (track.coverArtId ? coverUrl(track.coverArtId, 80) : undefined)
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
@@ -58,7 +59,7 @@ export function TrackRow({ track, index, active = false, onPlay, right, coverSrc
       {/* Lead: index or Equalizer when active */}
       <span className="grid place-items-center text-sm font-bold text-text-muted">
         {active ? (
-          <Equalizer />
+          <Equalizer playing={playing} />
         ) : (
           <span>{index !== undefined ? index + 1 : ''}</span>
         )}

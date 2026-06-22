@@ -57,6 +57,7 @@ export default function Album() {
   const toggleShuffle = usePlayer((s) => s.toggleShuffle)
   const shuffle = usePlayer((s) => s.shuffle)
   const currentTrack = usePlayer((s) => s.current)
+  const isPlaying = usePlayer((s) => s.playing)
   const palette = useAlbumPalette(album?.coverArtId ? coverUrl(album.coverArtId, 300) : album?.coverUrl)
 
   if (isLoading) {
@@ -205,6 +206,7 @@ export default function Album() {
                 track={t.libraryTrack}
                 index={i}
                 active={isActive}
+                playing={isActive ? isPlaying : undefined}
                 onPlay={() => playTrackList(ownedTracks, ownedIdx)}
                 coverSrc={t.libraryTrack.coverArtId ? undefined : t.coverUrl}
                 artistTo={t.artistExternalId ? `/artist/spotify/${t.artistExternalId}` : undefined}
