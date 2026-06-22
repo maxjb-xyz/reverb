@@ -236,6 +236,25 @@ describe('Album page', () => {
     await waitFor(() => expect(screen.getByText(/album not found/i)).toBeInTheDocument())
   })
 
+  // Explicit guard: external (spotify) source error also shows EmptyState, not a crash.
+  // (useParams returns source='spotify' for this test file, but naming it explicitly
+  //  makes the graceful-degrade contract clear.)
+  it('shows EmptyState (not a crash) for spotify source when isError=true', async () => {
+    const { useAlbumDetail } = await import('../lib/coverageApi')
+    vi.mocked(useAlbumDetail).mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      isError: true,
+    } as ReturnType<typeof useAlbumDetail>)
+    wrapper(<Album />)
+    await waitFor(() => {
+      expect(screen.getByText(/album not found/i)).toBeInTheDocument()
+    })
+    // Must not render any track rows or album header
+    expect(screen.queryByTestId('album-skeleton')).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Kid A' })).not.toBeInTheDocument()
+  })
+
   describe('library-source album (all tracks owned — unchanged behavior)', () => {
     it('no "Download missing" button when ownedCount === totalCount', async () => {
       const { useAlbumDetail } = await import('../lib/coverageApi')

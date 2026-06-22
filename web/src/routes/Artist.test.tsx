@@ -178,4 +178,57 @@ describe('Artist page', () => {
     wrapper(<Artist />)
     expect(screen.queryByRole('button', { name: /download all missing/i })).not.toBeInTheDocument()
   })
+
+  it('unresolved artist: album cards still render (library-only mode, no crash)', () => {
+    vi.mocked(useArtistDetail).mockReturnValue({
+      data: { ...STUB_DETAIL, resolved: false },
+      isLoading: false,
+      isError: false,
+    } as ReturnType<typeof useArtistDetail>)
+    vi.mocked(useCoverageStream).mockReturnValue({})
+    wrapper(<Artist />)
+    // Both album cards should still be present — library-only render, no error screen
+    expect(screen.getByRole('button', { name: 'Kid A' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Creep' })).toBeInTheDocument()
+    expect(screen.queryByText(/artist not found/i)).not.toBeInTheDocument()
+  })
+
+  it('unresolved artist: useCoverageStream is called with enabled=false (no SSE stream opened)', () => {
+    vi.mocked(useArtistDetail).mockReturnValue({
+      data: { ...STUB_DETAIL, resolved: false },
+      isLoading: false,
+      isError: false,
+    } as ReturnType<typeof useArtistDetail>)
+    vi.mocked(useCoverageStream).mockReturnValue({})
+    wrapper(<Artist />)
+    // Third argument must be false so no SSE connection is established
+    expect(vi.mocked(useCoverageStream)).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.any(String),
+      false,
+    )
+  })
+
+  it('album with coverage state "none" renders no coverage chip at rest', () => {
+    // AL has no entry in coverage → state will be 'pending' when resolved=true,
+    // but here we pass a coverage map where AL has state 'none' to confirm CoverageChip returns null.
+    const noneCoverage = {
+      AL: {
+        source: 'spotify',
+        externalAlbumId: 'AL',
+        state: 'none' as const,
+        ownedCount: 0,
+        totalCount: 10,
+        missingTracks: [],
+      },
+    }
+    vi.mocked(useCoverageStream).mockReturnValue(noneCoverage)
+    wrapper(<Artist />)
+    // The 'none' state chip must be absent (CoverageChip returns null for state='none')
+    expect(screen.queryByTestId('coverage-full')).not.toBeInTheDocument()
+    // Partial chip text "0/10" must also be absent
+    expect(screen.queryByText('0/10')).not.toBeInTheDocument()
+    // The card itself must still render
+    expect(screen.getByRole('button', { name: 'Kid A' })).toBeInTheDocument()
+  })
 })
