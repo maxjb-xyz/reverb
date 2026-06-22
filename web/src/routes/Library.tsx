@@ -161,7 +161,7 @@ export default function Library() {
                       data-testid={`synced-badge-${pl.id}`}
                       className="inline-flex items-center"
                     >
-                      <Badge kind="status" tone="success">Synced</Badge>
+                      <Badge kind="in-library">Synced</Badge>
                     </span>
                   }
                   onClick={() => navigate(`/synced-playlist/${pl.id}`)}

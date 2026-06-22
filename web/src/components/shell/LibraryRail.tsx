@@ -237,7 +237,7 @@ function LibItem({ coverSrc, name, meta, rounded, isPlaying, syncedBadgeId, onCl
             <span
               data-testid={`synced-badge-${syncedBadgeId}`}
               className="flex-none text-accent"
-              aria-label="Synced playlist"
+              aria-hidden="true"
             >
               <Icon name="retry" className="w-3 h-3" />
             </span>
