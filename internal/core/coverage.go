@@ -70,6 +70,12 @@ type AlbumDetailTrack struct {
 	TrackNumber int               `json:"trackNumber"`
 	DurationMs  int               `json:"durationMs"`
 	CoverURL    string            `json:"coverUrl,omitempty"`
+	// ArtistExternalID and AlbumExternalID carry the Spotify IDs for the track's
+	// primary artist and album. Set on both owned and missing rows so synced-playlist
+	// and album-detail rows can render clickable artist/album links to the Spotify
+	// source — used by the FE to navigate to artist/album pages from synced rows.
+	ArtistExternalID string `json:"artistExternalId,omitempty"`
+	AlbumExternalID  string `json:"albumExternalId,omitempty"`
 }
 
 // AlbumDetail is the album-page response with per-track ownership.

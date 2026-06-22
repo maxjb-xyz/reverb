@@ -514,3 +514,54 @@ func TestListTrackCountViaSQLCount(t *testing.T) {
 		t.Fatalf("PL2 TrackCount = %d, want 1", counts["One"])
 	}
 }
+
+// TestDetailCarriesArtistAlbumExternalIDs asserts that Detail propagates
+// ArtistExternalID and AlbumExternalID from the stored ExternalResult onto both
+// owned (CoverageFull) and missing (CoverageNone) AlbumDetailTrack rows, so the
+// FE can render clickable artist/album links on synced-playlist rows.
+func TestDetailCarriesArtistAlbumExternalIDs(t *testing.T) {
+	ownedTrack := core.ExternalResult{
+		Source: "spotify", ExternalID: "t-owned", Title: "Owned Track", Artist: "Artist", Album: "Album",
+		Type: core.EntityTrack, ArtistExternalID: "sp-artist-1", AlbumExternalID: "sp-album-1",
+	}
+	missingTrack := core.ExternalResult{
+		Source: "spotify", ExternalID: "t-missing", Title: "Missing Track", Artist: "Artist", Album: "Album",
+		Type: core.EntityTrack, ArtistExternalID: "sp-artist-2", AlbumExternalID: "sp-album-2",
+	}
+	src := &fakeSource{playlists: map[string]core.ExternalPlaylist{
+		"PL": {Source: "spotify", ExternalID: "PL", Name: "Ext ID Test", Tracks: []core.ExternalResult{ownedTrack, missingTrack}},
+	}}
+	m := fakeMatcher{owned: map[string]string{"t-owned": "lib-owned-1"}}
+	svc := NewService(src, m, &fakeDownloader{}, newMemStore(), func() int64 { return 100 }, seqID())
+	det, err := svc.Import(context.Background(), "spotify:playlist:PL", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(det.Tracks) != 2 {
+		t.Fatalf("expected 2 tracks, got %d", len(det.Tracks))
+	}
+
+	// Owned track.
+	owned := det.Tracks[0]
+	if owned.State != core.CoverageFull {
+		t.Fatalf("track[0] expected CoverageFull, got %v", owned.State)
+	}
+	if owned.ArtistExternalID != "sp-artist-1" {
+		t.Fatalf("owned track ArtistExternalID = %q, want %q", owned.ArtistExternalID, "sp-artist-1")
+	}
+	if owned.AlbumExternalID != "sp-album-1" {
+		t.Fatalf("owned track AlbumExternalID = %q, want %q", owned.AlbumExternalID, "sp-album-1")
+	}
+
+	// Missing track.
+	missing := det.Tracks[1]
+	if missing.State != core.CoverageNone {
+		t.Fatalf("track[1] expected CoverageNone, got %v", missing.State)
+	}
+	if missing.ArtistExternalID != "sp-artist-2" {
+		t.Fatalf("missing track ArtistExternalID = %q, want %q", missing.ArtistExternalID, "sp-artist-2")
+	}
+	if missing.AlbumExternalID != "sp-album-2" {
+		t.Fatalf("missing track AlbumExternalID = %q, want %q", missing.AlbumExternalID, "sp-album-2")
+	}
+}
