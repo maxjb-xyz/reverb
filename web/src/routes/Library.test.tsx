@@ -271,12 +271,16 @@ describe('Library page', () => {
     expect(screen.getByTestId('playlist-page')).toBeInTheDocument()
   })
 
-  it('shows "Import from Spotify" button in Playlists section that opens the dialog', () => {
+  it('shows "Import from Spotify" button on the default Albums filter (always visible)', () => {
     render(wrap(<Library />))
-    fireEvent.click(screen.getByRole('button', { name: /^playlists$/i }))
-
+    // Default filter is albums — button must already be present without switching tabs
     const importBtn = screen.getByRole('button', { name: /import from spotify/i })
     expect(importBtn).toBeInTheDocument()
+  })
+
+  it('"Import from Spotify" button opens the dialog regardless of active filter', () => {
+    render(wrap(<Library />))
+    const importBtn = screen.getByRole('button', { name: /import from spotify/i })
 
     // Dialog is closed initially
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()

@@ -46,7 +46,16 @@ export default function Library() {
   return (
     <div className="space-y-6">
       {/* Page header */}
-      <h1 className="text-2xl font-bold text-text-primary">Your Library</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold text-text-primary">Your Library</h1>
+        <Button
+          size="sm"
+          variant="secondary"
+          onClick={() => setImportOpen(true)}
+        >
+          + Import from Spotify
+        </Button>
+      </div>
 
       {/* Filter chips */}
       <div className="flex gap-2 flex-wrap" role="group" aria-label="Library filter">
@@ -119,16 +128,6 @@ export default function Library() {
       {/* Playlists grid */}
       {filter === 'playlists' && (
         <>
-          <div className="flex items-center justify-between">
-            <span className="text-sm font-semibold text-text-muted">Playlists</span>
-            <Button
-              size="sm"
-              variant="secondary"
-              onClick={() => setImportOpen(true)}
-            >
-              + Import from Spotify
-            </Button>
-          </div>
           {playlists.isLoading ? (
             <SkeletonGrid rounded="md" />
           ) : (playlists.data ?? []).length === 0 && (syncedPlaylists.data ?? []).length === 0 ? (

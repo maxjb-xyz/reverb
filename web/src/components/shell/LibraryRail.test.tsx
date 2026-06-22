@@ -12,11 +12,13 @@ vi.mock('../../lib/libraryApi', () => ({
   useArtists: vi.fn(),
   useAlbums: vi.fn(),
   coverUrl: vi.fn((id: string) => `/covers/${id}`),
+  createPlaylist: vi.fn(),
 }))
 
-// Mock synced playlist API
+// Mock synced playlist API — also mock importPlaylist used by ImportPlaylistDialog
 vi.mock('../../lib/syncedPlaylistApi', () => ({
   useSyncedPlaylists: vi.fn(),
+  importPlaylist: vi.fn(),
 }))
 
 import { usePlaylists, useArtists, useAlbums } from '../../lib/libraryApi'
@@ -179,5 +181,24 @@ describe('LibraryRail', () => {
     const playlistBtn = screen.getByRole('button', { name: 'Chill Mix' })
     fireEvent.click(playlistBtn)
     expect(screen.getByTestId('playlist-page')).toBeInTheDocument()
+  })
+
+  it('renders an "Import from Spotify" icon button in the rail header', () => {
+    renderRail()
+    expect(screen.getByRole('button', { name: /import from spotify/i })).toBeInTheDocument()
+  })
+
+  it('clicking the "Import from Spotify" rail button opens the import dialog', () => {
+    renderRail()
+    // Dialog should not be open initially
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /import from spotify/i }))
+
+    // Dialog should now be open
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: /import from spotify/i })).toBeInTheDocument()
+    // URL input inside the dialog is visible
+    expect(screen.getByLabelText(/playlist url/i)).toBeInTheDocument()
   })
 })

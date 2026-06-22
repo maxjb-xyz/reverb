@@ -5,6 +5,7 @@ import { IconButton, Chip, Cover, Skeleton, EmptyState, Equalizer, Icon } from '
 import { usePlaylists, useArtists, useAlbums, coverUrl, createPlaylist } from '../../lib/libraryApi'
 import { useSyncedPlaylists } from '../../lib/syncedPlaylistApi'
 import { usePlayer } from '../../lib/playerStore'
+import { ImportPlaylistDialog } from '../ImportPlaylistDialog'
 import type { Playlist, Album, Artist, SyncedPlaylist } from '../../lib/types'
 
 type Filter = 'playlists' | 'albums' | 'artists'
@@ -14,6 +15,7 @@ export function LibraryRail() {
   const qc = useQueryClient()
   const [filter, setFilter] = useState<Filter>('playlists')
   const [creating, setCreating] = useState(false)
+  const [importOpen, setImportOpen] = useState(false)
   const current = usePlayer((s) => s.current)
 
   const playlists = usePlaylists()
@@ -61,6 +63,12 @@ export function LibraryRail() {
           </button>
           <div className="ml-auto flex gap-1.5 text-text-secondary">
             <IconButton
+              name="dl"
+              label="Import from Spotify"
+              size="sm"
+              onClick={() => setImportOpen(true)}
+            />
+            <IconButton
               name="plus"
               label="Create playlist"
               size="sm"
@@ -96,6 +104,8 @@ export function LibraryRail() {
           <ArtistList items={artists.data ?? []} current={current} />
         )}
       </div>
+
+      <ImportPlaylistDialog open={importOpen} onClose={() => setImportOpen(false)} />
     </aside>
   )
 }
