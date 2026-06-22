@@ -1,13 +1,54 @@
 import { Link, useParams } from 'react-router-dom'
-import { useAlbum, coverUrl } from '../lib/libraryApi'
+import { useAlbumDetail } from '../lib/coverageApi'
+import { coverUrl } from '../lib/libraryApi'
 import { TrackRow } from '../components/ui/TrackRow'
+import { DownloadAction } from '../components/download/DownloadAction'
+import { postBatchDownload } from '../lib/downloadApi'
 import { formatDuration } from '../lib/types'
+import type { AlbumDetailTrack, ExternalResult, ExternalTrackRef, Track } from '../lib/types'
 import { usePlayer } from '../lib/playerStore'
 import { Button, IconButton, Cover, Skeleton, EmptyState } from '../components/ui'
 
+// ── Local helpers ─────────────────────────────────────────────────────────────
+
+/** Build a display-only Track from a missing AlbumDetailTrack (no library id). */
+function asTrack(t: AlbumDetailTrack): Track {
+  return {
+    id: '',
+    title: t.title,
+    album: '',
+    albumId: '',
+    artist: t.artist,
+    artistId: '',
+    coverArtId: '',
+    trackNumber: t.trackNumber,
+    discNumber: 1,
+    durationMs: t.durationMs,
+    bitRate: 0,
+    suffix: '',
+    contentType: '',
+  }
+}
+
+/** Build an ExternalResult from an ExternalTrackRef so DownloadAction can drive it. */
+function refToExternalResult(ref: ExternalTrackRef, albumName: string, albumArtist: string): ExternalResult {
+  return {
+    source: ref.source,
+    externalId: ref.externalId,
+    title: ref.title,
+    artist: ref.artist ?? albumArtist,
+    album: ref.album ?? albumName,
+    durationMs: ref.durationMs,
+    isrc: ref.isrc,
+    type: 'track',
+  }
+}
+
+// ── Component ─────────────────────────────────────────────────────────────────
+
 export default function Album() {
-  const { id = '' } = useParams()
-  const { data: album, isLoading, isError } = useAlbum(id)
+  const { source = 'library', id = '' } = useParams()
+  const { data: album, isLoading, isError } = useAlbumDetail(source, id)
   const playTrackList = usePlayer((s) => s.playTrackList)
   const toggleShuffle = usePlayer((s) => s.toggleShuffle)
   const shuffle = usePlayer((s) => s.shuffle)
@@ -45,9 +86,30 @@ export default function Album() {
     )
   }
 
-  const tracks = album.tracks ?? []
+  // ── Derived data ────────────────────────────────────────────────────────────
 
-  const coverSrc = album.coverArtId ? coverUrl(album.coverArtId, 300) : undefined
+  // Owned tracks in order — used for Play/Shuffle and ownedIndexOf
+  const ownedTracks: Track[] = album.tracks
+    .filter((t) => t.state === 'full' && t.libraryTrack)
+    .map((t) => t.libraryTrack!)
+
+  // Missing externalRefs for batch download
+  const missingRefs: ExternalTrackRef[] = album.tracks
+    .filter((t) => t.state === 'none' && t.externalRef)
+    .map((t) => t.externalRef!)
+
+  const hasMissing = album.ownedCount < album.totalCount
+
+  // Map from libraryTrack id → index within ownedTracks (for per-row onPlay)
+  const ownedIndexMap = new Map<string, number>(
+    ownedTracks.map((t, i) => [t.id, i]),
+  )
+
+  // Cover source: prefer coverArtId proxy, fall back to direct coverUrl
+  const coverSrc = album.coverArtId ? coverUrl(album.coverArtId, 300) : album.coverUrl
+
+  // Total duration: sum across all tracks (owned + missing)
+  const totalDurationMs = album.tracks.reduce((acc, t) => acc + t.durationMs, 0)
 
   return (
     <div className="space-y-6">
@@ -69,22 +131,29 @@ export default function Album() {
               {album.name}
             </h1>
             <div className="mt-2 text-sm text-text-secondary flex flex-wrap items-center gap-x-1">
-              <Link
-                to={`/artist/${album.artistId}`}
-                className="font-semibold text-text-primary hover:text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded"
-              >
-                {album.artist}
-              </Link>
+              {album.artistId ? (
+                <Link
+                  to={`/artist/library/${album.artistId}`}
+                  className="font-semibold text-text-primary hover:text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded"
+                >
+                  {album.artist}
+                </Link>
+              ) : (
+                <span className="font-semibold text-text-primary">{album.artist}</span>
+              )}
               {album.year ? <span>· {album.year}</span> : null}
-              {album.songCount ? <span>· {album.songCount} songs</span> : null}
-              {album.durationMs ? <span>· {formatDuration(album.durationMs)}</span> : null}
+              {album.totalCount ? <span>· {album.totalCount} songs</span> : null}
+              {totalDurationMs > 0 ? <span>· {formatDuration(totalDurationMs)}</span> : null}
+              {hasMissing ? (
+                <span className="text-accent">· {album.ownedCount} of {album.totalCount} in library</span>
+              ) : null}
             </div>
             <div className="mt-4 flex items-center gap-3">
               <Button
                 variant="primary"
                 size="md"
-                disabled={tracks.length === 0}
-                onClick={() => tracks.length && playTrackList(tracks, 0)}
+                disabled={ownedTracks.length === 0}
+                onClick={() => ownedTracks.length && playTrackList(ownedTracks, 0)}
                 aria-label={`Play ${album.name}`}
               >
                 Play
@@ -93,12 +162,22 @@ export default function Album() {
                 name="shuffle"
                 label={`Shuffle ${album.name}`}
                 onClick={() => {
-                  if (!tracks.length) return
+                  if (!ownedTracks.length) return
                   if (!shuffle) toggleShuffle()
-                  playTrackList(tracks, 0)
+                  playTrackList(ownedTracks, 0)
                 }}
-                disabled={tracks.length === 0}
+                disabled={ownedTracks.length === 0}
               />
+              {hasMissing && (
+                <Button
+                  variant="secondary"
+                  size="md"
+                  onClick={() => postBatchDownload(missingRefs)}
+                  aria-label={`Download missing · ${missingRefs.length}`}
+                >
+                  Download missing · {missingRefs.length}
+                </Button>
+              )}
               <IconButton name="heart" label={`Like ${album.name}`} />
             </div>
           </div>
@@ -107,15 +186,39 @@ export default function Album() {
 
       {/* Track list */}
       <div className="space-y-0.5">
-        {tracks.map((t, i) => (
-          <TrackRow
-            key={t.id}
-            track={t}
-            index={i}
-            onPlay={() => playTrackList(tracks, i)}
-          />
-        ))}
-        {tracks.length === 0 && (
+        {album.tracks.map((t, i) => {
+          if (t.state === 'full' && t.libraryTrack) {
+            const ownedIdx = ownedIndexMap.get(t.libraryTrack.id) ?? 0
+            return (
+              <TrackRow
+                key={t.libraryTrack.id}
+                track={t.libraryTrack}
+                index={i}
+                onPlay={() => playTrackList(ownedTracks, ownedIdx)}
+              />
+            )
+          }
+
+          // Missing track
+          if (t.state === 'none' && t.externalRef) {
+            const displayTrack = asTrack(t)
+            const result = refToExternalResult(t.externalRef, album.name, album.artist)
+            return (
+              <TrackRow
+                key={`missing-${t.externalRef.source}-${t.externalRef.externalId}`}
+                track={displayTrack}
+                index={i}
+                onPlay={() => {}}
+                coverSrc={album.coverUrl}
+                right={<DownloadAction result={result} />}
+                rightWidth="120px"
+              />
+            )
+          }
+
+          return null
+        })}
+        {album.tracks.length === 0 && (
           <EmptyState icon="browse" title="No tracks in this album" />
         )}
       </div>
