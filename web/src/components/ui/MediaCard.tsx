@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { Cover } from './Cover'
 import { Icon } from './Icon'
+import { ProgressRing } from './ProgressRing'
 import { coverUrl } from '../../lib/libraryApi'
 import { CoverageChip } from './CoverageChip'
 import type { CoverageState } from '../../lib/types'
@@ -17,6 +18,8 @@ interface MediaCardProps {
   badge?: ReactNode
   coverage?: { state: CoverageState; owned: number; total: number }
   onDownload?: () => void
+  /** When active, replaces the download button with a progress ring (always visible, not hover-gated). */
+  downloadProgress?: { active: boolean; value: number; indeterminate: boolean }
 }
 
 export function MediaCard({
@@ -30,6 +33,7 @@ export function MediaCard({
   badge,
   coverage,
   onDownload,
+  downloadProgress,
 }: MediaCardProps) {
   const src = coverSrc ?? (coverId ? coverUrl(coverId, 300) : undefined)
 
@@ -85,8 +89,18 @@ export function MediaCard({
             <Icon name="play" className="w-4 h-4" />
           </button>
         )}
-        {/* Download button — accent reveal on hover, only when no onPlay */}
-        {!onPlay && onDownload && (
+        {/* Download progress ring — always visible when active, replaces the download button */}
+        {!onPlay && downloadProgress?.active && (
+          <div className="absolute right-3 bottom-3 text-accent">
+            <ProgressRing
+              value={downloadProgress.value}
+              indeterminate={downloadProgress.indeterminate}
+              size={36}
+            />
+          </div>
+        )}
+        {/* Download button — accent reveal on hover, only when no onPlay and no active download */}
+        {!onPlay && onDownload && !downloadProgress?.active && (
           <button
             type="button"
             aria-label={`Download ${title}`}

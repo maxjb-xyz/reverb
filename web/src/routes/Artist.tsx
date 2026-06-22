@@ -1,17 +1,92 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useCallback } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useArtistDetail } from '../lib/coverageApi'
 import { useCoverageStream } from '../lib/coverageStore'
 import { postBatchDownload } from '../lib/downloadApi'
+import { useDownloads } from '../lib/downloadStore'
 import { coverUrl } from '../lib/libraryApi'
 import { Cover, Skeleton, EmptyState, MediaCard } from '../components/ui'
 import { Chip } from '../components/ui/Chip'
 import { Button } from '../components/ui/Button'
-import type { DiscographyAlbum } from '../lib/types'
+import type { AlbumCoverage, DiscographyAlbum } from '../lib/types'
 import { useAlbumPalette } from '../lib/useAlbumPalette'
 import { rgbToCss } from '../lib/palette'
 
 type KindFilter = 'all' | 'album' | 'single'
+
+// ---------------------------------------------------------------------------
+// AlbumCard — per-card component so each card has its own hook subscriptions.
+// ---------------------------------------------------------------------------
+
+interface AlbumCardProps {
+  album: DiscographyAlbum
+  cov: AlbumCoverage | undefined
+  resolved: boolean
+  onNavigate: () => void
+}
+
+function AlbumCard({ album, cov, resolved, onNavigate }: AlbumCardProps) {
+  const [optimistic, setOptimistic] = useState(false)
+
+  // Build the set of externalIds for this album's missing tracks so we can
+  // look them up in the download store without storing derived data.
+  const missingIds = useMemo(
+    () => new Set((cov?.missingTracks ?? []).map((t) => t.externalId)),
+    [cov?.missingTracks],
+  )
+
+  // Subscribe to the download store, aggregating state across all missing-track jobs.
+  const downloadState = useDownloads(
+    useCallback(
+      (s) => {
+        const jobs = Object.values(s.jobs).filter(
+          (j) => j.source === album.source && missingIds.has(j.externalId),
+        )
+        const activeJobs = jobs.filter(
+          (j) => j.status === 'queued' || j.status === 'running',
+        )
+        const runningJobs = jobs.filter((j) => j.status === 'running')
+        const active = optimistic || activeJobs.length > 0
+        const value =
+          runningJobs.length > 0
+            ? runningJobs.reduce((sum, j) => sum + j.progress, 0) / runningJobs.length
+            : 0
+        const indeterminate = active && (activeJobs.length === 0 || runningJobs.every((j) => j.progress <= 0))
+        return { active, value, indeterminate }
+      },
+      [album.source, missingIds, optimistic],
+    ),
+  )
+
+  const hasMissing = resolved && cov && cov.missingTracks.length > 0
+
+  function handleDownload() {
+    if (!cov) return
+    setOptimistic(true)
+    postBatchDownload(cov.missingTracks).catch(() => setOptimistic(false))
+  }
+
+  return (
+    <MediaCard
+      title={album.name}
+      subtitle={String(album.year)}
+      coverSrc={album.coverUrl}
+      rounded="md"
+      coverage={
+        resolved
+          ? {
+              state: cov?.state ?? 'pending',
+              owned: cov?.ownedCount ?? 0,
+              total: cov?.totalCount || album.totalTracks,
+            }
+          : undefined
+      }
+      onDownload={hasMissing && !downloadState.active ? handleDownload : undefined}
+      downloadProgress={downloadState.active ? downloadState : undefined}
+      onClick={onNavigate}
+    />
+  )
+}
 
 export default function Artist() {
   const { source = 'library', id = '' } = useParams()
@@ -188,32 +263,15 @@ export default function Artist() {
       <section>
         {visibleAlbums.length > 0 ? (
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-            {visibleAlbums.map((al) => {
-              const cov = coverage[al.externalId]
-              const hasMissing = detail.resolved && cov && cov.missingTracks.length > 0
-              return (
-                <MediaCard
-                  key={al.externalId}
-                  title={al.name}
-                  subtitle={String(al.year)}
-                  coverSrc={al.coverUrl}
-                  rounded="md"
-                  coverage={
-                    detail.resolved
-                      ? {
-                          state: cov?.state ?? 'pending',
-                          owned: cov?.ownedCount ?? 0,
-                          total: cov?.totalCount || al.totalTracks,
-                        }
-                      : undefined
-                  }
-                  onDownload={
-                    hasMissing ? () => postBatchDownload(cov.missingTracks) : undefined
-                  }
-                  onClick={() => navigate(`/album/${al.source}/${al.externalId}`)}
-                />
-              )
-            })}
+            {visibleAlbums.map((al) => (
+              <AlbumCard
+                key={al.externalId}
+                album={al}
+                cov={coverage[al.externalId]}
+                resolved={detail.resolved}
+                onNavigate={() => navigate(`/album/${al.source}/${al.externalId}`)}
+              />
+            ))}
           </div>
         ) : (
           <EmptyState icon="browse" title="No albums" />

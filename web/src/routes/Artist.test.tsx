@@ -21,6 +21,19 @@ vi.mock('../lib/downloadApi', () => ({
   postBatchDownload: vi.fn().mockResolvedValue([]),
 }))
 
+// Mock downloadStore so we can control which jobs are active per test.
+// Default: empty jobs map → no active downloads.
+vi.mock('../lib/downloadStore', () => ({
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  useDownloads: vi.fn((selector: (s: any) => unknown) => selector({ jobs: {} })),
+}))
+
+// Mock libraryRevisionStore (used by coverageStore; irrelevant in Artist tests).
+vi.mock('../lib/libraryRevisionStore', () => ({
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  useLibraryRevision: vi.fn((selector: (s: any) => unknown) => selector({ revision: 0 })),
+}))
+
 vi.mock('react-router-dom', async (importOriginal) => {
   const actual = await importOriginal<typeof import('react-router-dom')>()
   return {
@@ -33,6 +46,7 @@ vi.mock('react-router-dom', async (importOriginal) => {
 import { useArtistDetail } from '../lib/coverageApi'
 import { useCoverageStream } from '../lib/coverageStore'
 import { postBatchDownload } from '../lib/downloadApi'
+import { useDownloads } from '../lib/downloadStore'
 import { useAlbumPalette } from '../lib/useAlbumPalette'
 
 // ---------------------------------------------------------------------------
@@ -115,6 +129,10 @@ describe('Artist page', () => {
     vi.mocked(useCoverageStream).mockReturnValue(STUB_COVERAGE)
 
     vi.mocked(postBatchDownload).mockClear()
+
+    // Default: no active downloads
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    vi.mocked(useDownloads).mockImplementation((selector: (s: any) => unknown) => selector({ jobs: {} }))
   })
 
   it('renders loading skeleton while fetching', () => {
@@ -269,5 +287,31 @@ describe('Artist page', () => {
     const gradientWrapper = heading.closest('[class*="from-raised"]')
     expect(gradientWrapper).toBeTruthy()
     expect((gradientWrapper as HTMLElement).style.background).toBe('')
+  })
+
+  it('shows a progress ring for an album card whose missing track has a running job', () => {
+    // Simulate a running job for the missing track externalId 'm1' of album AL.
+    const runningJob = {
+      id: 'j-m1',
+      dedupKey: 'dk-m1',
+      status: 'running' as const,
+      progress: 55,
+      downloaderName: 'spotdl',
+      priority: 0,
+      attempts: 0,
+      source: 'spotify',
+      externalId: 'm1',
+      playWhenReady: false,
+      createdAt: 1,
+      startedAt: 0,
+      finishedAt: 0,
+    }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    vi.mocked(useDownloads).mockImplementation((selector: any) => selector({ jobs: { 'j-m1': runningJob } }))
+    wrapper(<Artist />)
+    // The Kid A card should now show the progress ring (determinate, 55%).
+    expect(screen.getByRole('img', { name: /55%/i })).toBeInTheDocument()
+    // The plain download button should be gone.
+    expect(screen.queryByRole('button', { name: /download kid a/i })).not.toBeInTheDocument()
   })
 })

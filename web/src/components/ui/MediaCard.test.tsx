@@ -106,6 +106,45 @@ describe('MediaCard', () => {
     expect(screen.queryByRole('button', { name: /download/i })).not.toBeInTheDocument()
   })
 
+  it('renders progress ring and hides download button when downloadProgress.active=true (determinate)', () => {
+    render(
+      <MediaCard
+        title="OK Computer"
+        onDownload={vi.fn()}
+        downloadProgress={{ active: true, value: 40, indeterminate: false }}
+      />,
+    )
+    // ProgressRing renders an SVG with aria-label "40% complete"
+    expect(screen.getByRole('img', { name: /40%/i })).toBeInTheDocument()
+    // Plain download button must NOT be present while ring is shown
+    expect(screen.queryByRole('button', { name: /download/i })).not.toBeInTheDocument()
+  })
+
+  it('renders indeterminate progress ring when downloadProgress.indeterminate=true', () => {
+    render(
+      <MediaCard
+        title="OK Computer"
+        onDownload={vi.fn()}
+        downloadProgress={{ active: true, value: 0, indeterminate: true }}
+      />,
+    )
+    // Indeterminate ProgressRing has aria-label "Loading"
+    expect(screen.getByRole('img', { name: /loading/i })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /download/i })).not.toBeInTheDocument()
+  })
+
+  it('still renders download button when downloadProgress.active=false', () => {
+    render(
+      <MediaCard
+        title="OK Computer"
+        onDownload={vi.fn()}
+        downloadProgress={{ active: false, value: 0, indeterminate: false }}
+      />,
+    )
+    expect(screen.getByRole('button', { name: 'Download OK Computer' })).toBeInTheDocument()
+    expect(screen.queryByRole('img', { name: /loading|% complete/i })).not.toBeInTheDocument()
+  })
+
   it('uses coverSrc directly as the img src when provided', () => {
     const { container } = render(
       <MediaCard title="Kid A" coverSrc="https://cdn.example.com/kida.jpg" />,

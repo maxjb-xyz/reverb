@@ -4,6 +4,7 @@ import { createElement, type ReactNode } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { useRealtime } from './realtimeWiring'
 import { useDownloads } from './downloadStore'
+import { useLibraryRevision } from './libraryRevisionStore'
 import type { WebSocketLike } from './realtime'
 
 // Player spy: usePlayer((s) => s.playTrackList) must return our spy.
@@ -48,6 +49,7 @@ describe('useRealtime', () => {
     sockets.length = 0
     playTrackList.mockClear()
     useDownloads.setState({ jobs: {} })
+    useLibraryRevision.setState({ revision: 0 })
     qc = new QueryClient()
     invalidateSpy = vi.spyOn(qc, 'invalidateQueries')
   })
@@ -95,6 +97,30 @@ describe('useRealtime', () => {
     // Unmount closes the socket.
     unmount()
     expect(s.closed).toBe(true)
+  })
+
+  it('bumps library revision on download.complete', () => {
+    useDownloads.getState().upsert({
+      id: 'j3', dedupKey: 'dk3', status: 'running', progress: 0, downloaderName: 'spotdl',
+      priority: 0, attempts: 0, source: 'spotify', externalId: 'sp3', playWhenReady: false,
+      title: 'Song3', artist: 'Artist3', album: 'Album3', createdAt: 1, startedAt: 0, finishedAt: 0,
+    } as never)
+
+    renderHook(() => useRealtime((url) => new StubSocket(url)), { wrapper })
+    const s = sockets[0]
+    expect(useLibraryRevision.getState().revision).toBe(0)
+
+    s.onmessage?.(frame('download.complete', { jobId: 'j3', dedupKey: 'dk3', status: 'completed', progress: 100, source: 'spotify', externalId: 'sp3', libraryTrackId: 't3' }))
+    expect(useLibraryRevision.getState().revision).toBe(1)
+  })
+
+  it('bumps library revision on library.updated', () => {
+    renderHook(() => useRealtime((url) => new StubSocket(url)), { wrapper })
+    const s = sockets[0]
+    expect(useLibraryRevision.getState().revision).toBe(0)
+
+    s.onmessage?.(frame('library.updated', { artistIds: [], albumIds: [] }))
+    expect(useLibraryRevision.getState().revision).toBe(1)
   })
 
   it('does NOT auto-play a completion whose job had playWhenReady=false', () => {

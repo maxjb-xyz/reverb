@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { RealtimeConnection, type WebSocketLike } from './realtime'
 import { useDownloads } from './downloadStore'
+import { useLibraryRevision } from './libraryRevisionStore'
 import { getDownloads } from './downloadApi'
 import { usePlayer } from './playerStore'
 import type { DownloadEvent, LibraryUpdatedEvent, RealtimeEvent, Track } from './types'
@@ -75,6 +76,8 @@ export function useRealtime(makeSocket?: (url: string) => WebSocketLike): void {
             )
           }
           invalidateLibrary({ artistId: ev.artistId, albumId: ev.albumId })
+          // Bump the library revision so coverage streams re-open and chips flip.
+          useLibraryRevision.getState().bump()
           break
         }
         case 'library.updated': {
@@ -82,6 +85,8 @@ export function useRealtime(makeSocket?: (url: string) => WebSocketLike): void {
           const albumId = ev.albumIds?.[0]
           const artistId = ev.artistIds?.[0]
           invalidateLibrary({ artistId, albumId })
+          // Bump the library revision so coverage streams re-open and chips flip.
+          useLibraryRevision.getState().bump()
           break
         }
         default:

@@ -1,6 +1,7 @@
 import { useEffect, useReducer } from 'react'
 import type { AlbumCoverage } from './types'
 import { CoverageStream } from './coverageStream'
+import { useLibraryRevision } from './libraryRevisionStore'
 
 export type CoverageMap = Record<string, AlbumCoverage>
 
@@ -18,8 +19,11 @@ export function reducer(state: CoverageMap, action: Action): CoverageMap {
 // useCoverageStream opens a CoverageStream for (source, id) when enabled,
 // accumulating per-album coverage frames into a map keyed by externalAlbumId.
 // The stream is closed on unmount / when source/id/enabled change (no leaks).
+// It also re-opens when the library revision bumps (i.e. after a download
+// completes) so coverage chips flip to "full" without a hard reload.
 export function useCoverageStream(source: string, id: string, enabled: boolean): CoverageMap {
   const [state, dispatch] = useReducer(reducer, {})
+  const revision = useLibraryRevision((s) => s.revision)
 
   useEffect(() => {
     dispatch({ type: 'reset' })
@@ -28,7 +32,7 @@ export function useCoverageStream(source: string, id: string, enabled: boolean):
       onCoverage: (c) => dispatch({ type: 'coverage', c }),
     })
     return () => stream.close()
-  }, [source, id, enabled])
+  }, [source, id, enabled, revision])
 
   return state
 }
