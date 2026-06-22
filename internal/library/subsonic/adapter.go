@@ -203,6 +203,19 @@ func (a *Adapter) GetPlaylists(ctx context.Context) ([]core.Playlist, error) {
 	return out, nil
 }
 
+func (a *Adapter) GetPlaylist(ctx context.Context, id string) (core.Playlist, error) {
+	params := url.Values{}
+	params.Set("id", id)
+	var resp subsonicResponse
+	if err := a.client.GetJSON(ctx, "getPlaylist", params, &resp); err != nil {
+		return core.Playlist{}, err
+	}
+	if resp.Playlist == nil {
+		return core.Playlist{}, fmt.Errorf("subsonic getPlaylist %q: empty response", id)
+	}
+	return mapPlaylist(resp.Playlist.playlistDTO), nil
+}
+
 // CreatePlaylist creates a new (empty) playlist via the Subsonic createPlaylist
 // endpoint and returns the created playlist. Subsonic echoes the new playlist in
 // the response; if the body omits it (older servers) we synthesize a minimal

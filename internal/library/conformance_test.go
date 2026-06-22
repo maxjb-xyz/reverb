@@ -35,6 +35,15 @@ func (fakeAdapter) GetAlbum(ctx context.Context, id string) (core.Album, error) 
 func (fakeAdapter) GetPlaylists(ctx context.Context) ([]core.Playlist, error) {
 	return []core.Playlist{{ID: "p1", Name: "Mix"}}, nil
 }
+func (fakeAdapter) GetPlaylist(ctx context.Context, id string) (core.Playlist, error) {
+	return core.Playlist{
+		ID:   id,
+		Name: "Mix",
+		Tracks: []core.Track{
+			{ID: "t1", Title: "Song", DurationMs: 180000},
+		},
+	}, nil
+}
 func (fakeAdapter) CreatePlaylist(ctx context.Context, name string) (core.Playlist, error) {
 	return core.Playlist{ID: "p-new", Name: name}, nil
 }

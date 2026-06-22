@@ -18,6 +18,8 @@ type LibraryAdapter interface {
 	GetArtist(ctx context.Context, id string) (core.Artist, error)
 	GetAlbum(ctx context.Context, id string) (core.Album, error)
 	GetPlaylists(ctx context.Context) ([]core.Playlist, error)
+	// GetPlaylist returns one playlist with its tracks populated.
+	GetPlaylist(ctx context.Context, id string) (core.Playlist, error)
 
 	// CreatePlaylist creates an empty (or single-seed) playlist and returns it.
 	CreatePlaylist(ctx context.Context, name string) (core.Playlist, error)

@@ -24,6 +24,7 @@ func fixtureServer(t *testing.T) *httptest.Server {
 		"getAlbum":      "getAlbum.json",
 		"getAlbumList2": "getAlbumList2.json",
 		"getPlaylists":  "getPlaylists.json",
+		"getPlaylist":   "getPlaylist.json",
 		"getScanStatus": "getScanStatus.json",
 	}
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

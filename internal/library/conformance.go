@@ -65,6 +65,19 @@ func RunConformance(t *testing.T, a LibraryAdapter) {
 		}
 	})
 
+	t.Run("GetPlaylist/tracks-populated", func(t *testing.T) {
+		pl, err := a.GetPlaylist(ctx, "p1")
+		if err != nil {
+			t.Fatalf("GetPlaylist: %v", err)
+		}
+		if pl.ID == "" {
+			t.Error("GetPlaylist returned empty ID")
+		}
+		if len(pl.Tracks) == 0 {
+			t.Error("GetPlaylist returned no tracks")
+		}
+	})
+
 	t.Run("Stream/range-aware", func(t *testing.T) {
 		h, err := a.Stream(ctx, "t1", core.StreamOpts{}, "")
 		if err != nil {
