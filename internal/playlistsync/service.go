@@ -64,11 +64,20 @@ func (s *Service) Import(ctx context.Context, rawURL string, downloadMissing boo
 		return core.SyncedPlaylistDetail{}, err
 	}
 	tj, _ := json.Marshal(pl.Tracks)
+	now := s.now()
 	id, err := s.store.Upsert(ctx, core.SyncedPlaylist{
 		ID: s.newID(), Source: pl.Source, ExternalID: pl.ExternalID, Name: pl.Name, CoverURL: pl.CoverURL,
-	}, string(tj), s.now())
+	}, string(tj), now)
 	if err != nil {
 		return core.SyncedPlaylistDetail{}, err
+	}
+	// Stamp last_synced_at on import. UpsertSyncedPlaylist only writes created_at, so
+	// without this a freshly-imported playlist has last_synced_at=0 and the UI reads
+	// "Never synced" until the first Sync. An import IS a sync (we just fetched the
+	// live tracklist), so record it as "synced just now". Mirrors the Sync path's
+	// UpdateTracks stamping; the tracklist/name/cover written here match the upsert.
+	if uErr := s.store.UpdateTracks(ctx, id, pl.Name, pl.CoverURL, string(tj), now); uErr != nil {
+		return core.SyncedPlaylistDetail{}, uErr
 	}
 	det, err := s.Detail(ctx, id)
 	if err != nil {
@@ -94,11 +103,11 @@ func (s *Service) Detail(ctx context.Context, id string) (core.SyncedPlaylistDet
 		if mErr != nil {
 			return core.SyncedPlaylistDetail{}, mErr
 		}
-		dt := core.AlbumDetailTrack{Title: tr.Title, Artist: tr.Artist, TrackNumber: i + 1, DurationMs: tr.DurationMs, CoverURL: tr.CoverURL}
+		dt := core.AlbumDetailTrack{Title: tr.Title, Artist: tr.Artist, Album: tr.Album, TrackNumber: i + 1, DurationMs: tr.DurationMs, CoverURL: tr.CoverURL}
 		if res.Status == core.MatchInLibrary && res.LibraryTrackID != "" {
 			det.OwnedCount++
 			dt.State = core.CoverageFull
-			dt.LibraryTrack = &core.Track{ID: res.LibraryTrackID, Title: tr.Title, Artist: tr.Artist, DurationMs: tr.DurationMs}
+			dt.LibraryTrack = &core.Track{ID: res.LibraryTrackID, Title: tr.Title, Artist: tr.Artist, Album: tr.Album, DurationMs: tr.DurationMs}
 		} else {
 			dt.State = core.CoverageNone
 			ref := core.ExternalTrackRef{Source: tr.Source, ExternalID: tr.ExternalID, Title: tr.Title, Artist: tr.Artist, Album: tr.Album, ISRC: tr.ISRC, DurationMs: tr.DurationMs}

@@ -55,22 +55,45 @@ func (d *fakeDL) Start(ctx context.Context, req core.DownloadRequest, onProgress
 }
 func (d *fakeDL) starts() int { d.mu.Lock(); defer d.mu.Unlock(); return d.startCount }
 
-// fakeScanner records StartScan calls and reports a completed scan immediately.
+// fakeScanner records StartScan calls and models the Navidrome scan lifecycle.
+//
+// By default it reports a completed scan immediately (scanning=false) — the
+// already-idle / instantaneous-scan path. When statusSeq is set, ScanStatus
+// returns each element in turn (then sticks on the last), letting a test drive the
+// realistic false→true→…→false transition that waitForScan must wait through.
 type fakeScanner struct {
-	mu    sync.Mutex
-	scans int
+	mu        sync.Mutex
+	scans     int
+	statusSeq []bool // scanning values returned in order; nil → always false
+	statusIdx int
+	statusN   int // number of ScanStatus calls observed
 }
 
 func (s *fakeScanner) StartScan(context.Context) error {
 	s.mu.Lock()
 	s.scans++
+	// Reset the status sequence cursor each scan so reused scanners replay it.
+	s.statusIdx = 0
 	s.mu.Unlock()
 	return nil
 }
 func (s *fakeScanner) ScanStatus(context.Context) (core.ScanStatus, error) {
-	return core.ScanStatus{Scanning: false, Count: 1}, nil
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.statusN++
+	scanning := false
+	if len(s.statusSeq) > 0 {
+		if s.statusIdx >= len(s.statusSeq) {
+			scanning = s.statusSeq[len(s.statusSeq)-1]
+		} else {
+			scanning = s.statusSeq[s.statusIdx]
+			s.statusIdx++
+		}
+	}
+	return core.ScanStatus{Scanning: scanning, Count: 1}, nil
 }
-func (s *fakeScanner) count() int { s.mu.Lock(); defer s.mu.Unlock(); return s.scans }
+func (s *fakeScanner) count() int       { s.mu.Lock(); defer s.mu.Unlock(); return s.scans }
+func (s *fakeScanner) statusCalls() int { s.mu.Lock(); defer s.mu.Unlock(); return s.statusN }
 
 // fakeRematcher returns a fixed in-library match and records the last ExternalResult it saw.
 type fakeRematcher struct {
@@ -193,7 +216,7 @@ func testManager(t *testing.T, downloaders []Downloader, store JobStore, rematch
 	if clk == nil {
 		clk = RealClock{}
 	}
-	m := NewManager(Config{Workers: 2, DebounceWindow: 5 * time.Second, ScanPollEvery: time.Millisecond, ScanPollMax: time.Second},
+	m := NewManager(Config{Workers: 2, DebounceWindow: 5 * time.Second, ScanPollEvery: time.Millisecond, ScanPollMax: time.Second, ScanSettleMax: 10 * time.Millisecond},
 		downloaders, store, bus, scanner, rematch, ver, clk)
 	t.Cleanup(m.Stop)
 	m.Start()
@@ -366,7 +389,7 @@ func TestCompletionDebouncesIntoOneScan(t *testing.T) {
 	scanner := &fakeScanner{}
 	ver := &fakeVersion{v: 1}
 	bus := events.New()
-	m := NewManager(Config{Workers: 3, DebounceWindow: 5 * time.Second, ScanPollEvery: time.Millisecond, ScanPollMax: time.Second},
+	m := NewManager(Config{Workers: 3, DebounceWindow: 5 * time.Second, ScanPollEvery: time.Millisecond, ScanPollMax: time.Second, ScanSettleMax: 10 * time.Millisecond},
 		[]Downloader{dl}, store, bus, scanner, &fakeRematcher{trackID: "t1"}, ver, clk)
 	t.Cleanup(m.Stop)
 	m.Start()
@@ -422,7 +445,7 @@ func TestCompletionSetsLibraryTrackIDAndPublishesComplete(t *testing.T) {
 	store := newMemStore()
 	bus := events.New()
 	rematcher := &fakeRematcher{trackID: "lib-track-9"}
-	m := NewManager(Config{Workers: 1, DebounceWindow: 5 * time.Second, ScanPollEvery: time.Millisecond, ScanPollMax: time.Second},
+	m := NewManager(Config{Workers: 1, DebounceWindow: 5 * time.Second, ScanPollEvery: time.Millisecond, ScanPollMax: time.Second, ScanSettleMax: 10 * time.Millisecond},
 		[]Downloader{dl}, store, bus, &fakeScanner{}, rematcher, &fakeVersion{v: 1}, clk)
 	t.Cleanup(m.Stop)
 	m.Start()
@@ -533,6 +556,67 @@ checkEvents:
 	}
 	if found.ExternalID != "e1" {
 		t.Fatalf("complete event externalId: got %q want %q", found.ExternalID, "e1")
+	}
+}
+
+// TestRunScanWaitsForScanToCompleteBeforeRematch is the regression test for the
+// scan-start RACE (Bug A): Navidrome's startScan is async, so getScanStatus
+// reports scanning=false for a window before the scan engages. The manager must
+// NOT re-match during that window (it would search the pre-download index and miss
+// the file forever). With a scanner that returns false (settle), then true
+// (scanning), then false (done), waitForScan must observe the scanning phase and
+// only re-match after it ends — leaving the job linked to its library track.
+func TestRunScanWaitsForScanToCompleteBeforeRematch(t *testing.T) {
+	clk := newFakeClock()
+	dl := &fakeDL{name: "dl", canDownload: true}
+	store := newMemStore()
+	bus := events.New()
+	// false on the first poll (scan not engaged yet) → true (scanning) → false (done).
+	// If the manager broke out of the poll on the first false (the bug), it would
+	// re-match too early; this sequence asserts it waits through the scanning phase.
+	scanner := &fakeScanner{statusSeq: []bool{false, true, true, false}}
+	rematcher := &fakeRematcher{trackID: "lib-track-classical"}
+	m := NewManager(Config{Workers: 1, DebounceWindow: 5 * time.Second, ScanPollEvery: time.Millisecond, ScanPollMax: time.Second, ScanSettleMax: time.Second},
+		[]Downloader{dl}, store, bus, scanner, rematcher, &fakeVersion{v: 1}, clk)
+	t.Cleanup(m.Stop)
+	m.Start()
+
+	job, err := m.Enqueue(context.Background(), core.DownloadRequest{
+		Source: "spotify", ExternalID: "cl1", Artist: "Glenn Gould",
+		Title: "Goldberg Variations, BWV 988: Aria", Album: "Bach: The Goldberg Variations",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Wait for the download to complete in the store.
+	deadline := time.After(2 * time.Second)
+	for {
+		cur, _, _ := store.Get(context.Background(), job.ID)
+		if cur.Status == core.DownloadCompleted {
+			break
+		}
+		select {
+		case <-deadline:
+			t.Fatal("job never completed")
+		default:
+			time.Sleep(time.Millisecond)
+		}
+	}
+
+	// Fire the debounced scan: runScan → waitForScan (settle→drain) → re-match.
+	clk.Advance(5 * time.Second)
+
+	// The scanner must have been polled enough to traverse the false→true→false
+	// sequence (at least 3 ScanStatus calls), proving the manager waited rather than
+	// bailing on the first scanning=false.
+	if n := scanner.statusCalls(); n < 3 {
+		t.Fatalf("waitForScan polled ScanStatus %d times; expected >=3 (it bailed before the scan engaged — the race)", n)
+	}
+
+	cur, _, _ := store.Get(context.Background(), job.ID)
+	if cur.LibraryTrackID != "lib-track-classical" {
+		t.Fatalf("library_track_id not set after scan-complete re-match, got %q", cur.LibraryTrackID)
 	}
 }
 

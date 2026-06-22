@@ -18,7 +18,7 @@ function asTrack(t: AlbumDetailTrack): Track {
   return {
     id: '',
     title: t.title,
-    album: '',
+    album: t.album ?? '',
     albumId: '',
     artist: t.artist,
     artistId: '',

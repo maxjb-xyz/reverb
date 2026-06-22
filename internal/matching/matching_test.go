@@ -204,6 +204,57 @@ func TestMatchNonTrackExternalReturnsNotInLibrary(t *testing.T) {
 	}
 }
 
+// queryLib returns candidates keyed by the search query, modelling Navidrome's
+// behaviour where a long exact title returns nothing but an artist query returns
+// the artist's catalogue.
+type queryLib struct {
+	byQuery map[string][]core.Track
+	queries []string
+}
+
+func (q *queryLib) Search(_ context.Context, query string, _ []core.EntityType) (core.SearchResults, error) {
+	q.queries = append(q.queries, query)
+	return core.SearchResults{Tracks: q.byQuery[query]}, nil
+}
+
+// TestMatchFallsBackToArtistQueryForLongTitle is the matching-side regression for
+// Bug A: a long classical title returns ZERO songs from a title search, but an
+// artist search returns the catalogue, and the ISRC rung then links the track. The
+// old title-only matcher would have returned not_in_library, leaving the download
+// unlinked forever.
+func TestMatchFallsBackToArtistQueryForLongTitle(t *testing.T) {
+	const longTitle = "Goldberg Variations, BWV 988: Aria (Remastered 2015)"
+	lib := &queryLib{byQuery: map[string][]core.Track{
+		// Title query → nothing (Navidrome tokenizer misses the long exact string).
+		longTitle: nil,
+		// Artist query → the artist's catalogue, including our track (with ISRC).
+		"Glenn Gould": {
+			{ID: "lib-other", Title: "Some Other Piece", Artist: "Glenn Gould", ISRC: "ZZZ0000000000"},
+			{ID: "lib-aria", Title: longTitle, Artist: "Glenn Gould", Album: "Bach: Goldberg Variations", ISRC: "USABC1234567"},
+		},
+	}}
+	svc := NewService(lib, newMemCache(), func(context.Context) (int64, error) { return 1, nil })
+	ext := core.ExternalResult{
+		Source: "spotify", ExternalID: "sp-aria", Type: core.EntityTrack,
+		Title: longTitle, Artist: "Glenn Gould", ISRC: "USABC1234567",
+	}
+
+	res, err := svc.Match(context.Background(), ext)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Status != core.MatchInLibrary || res.LibraryTrackID != "lib-aria" {
+		t.Fatalf("expected ISRC match to lib-aria via artist fallback, got %+v", res)
+	}
+	if res.Method != core.MatchISRC {
+		t.Fatalf("expected ISRC method, got %q", res.Method)
+	}
+	// It must have tried the title query first, then fallen back to the artist query.
+	if len(lib.queries) != 2 || lib.queries[0] != longTitle || lib.queries[1] != "Glenn Gould" {
+		t.Fatalf("expected [title, artist] query order, got %v", lib.queries)
+	}
+}
+
 func TestMatchNegativeIsCached(t *testing.T) {
 	cache := newMemCache()
 	svc := NewService(fakeLib{tracks: nil}, cache, func(context.Context) (int64, error) { return 1, nil })

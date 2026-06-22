@@ -64,6 +64,14 @@ type Config struct {
 	DebounceWindow time.Duration
 	ScanPollEvery  time.Duration
 	ScanPollMax    time.Duration
+	// ScanSettleMax bounds how long waitForScan waits for Navidrome to actually
+	// BEGIN scanning (flip getScanStatus.scanning → true) after StartScan. startScan
+	// is async: getScanStatus reports scanning=false for a brief window before the
+	// scan engages. Without this grace the poll loop saw scanning=false on the first
+	// tick and returned immediately — re-matching against the PRE-download index, so
+	// the freshly-downloaded file was never found and library_track_id stayed empty
+	// forever. A short settle window lets the scan engage before we wait for it to end.
+	ScanSettleMax time.Duration
 	// JobTimeout caps how long a single download may run before it is killed and
 	// marked failed — so a stuck/rate-limited downloader (e.g. spotDL backing off
 	// for 24h) can't pin a worker forever.
@@ -82,6 +90,9 @@ func (c Config) withDefaults() Config {
 	}
 	if c.ScanPollMax <= 0 {
 		c.ScanPollMax = 30 * time.Second
+	}
+	if c.ScanSettleMax <= 0 {
+		c.ScanSettleMax = 5 * time.Second
 	}
 	if c.JobTimeout <= 0 {
 		c.JobTimeout = 15 * time.Minute
@@ -470,18 +481,7 @@ func (m *Manager) runScan() {
 		log.Printf("library scan after download failed: %v", err)
 		return
 	}
-	// Poll ScanStatus until idle or the poll budget elapses.
-	deadline := m.clock.Now().Add(m.cfg.ScanPollMax)
-	for {
-		st, err := m.scanner.ScanStatus(ctx)
-		if err != nil || !st.Scanning {
-			break
-		}
-		if !m.clock.Now().Before(deadline) {
-			break
-		}
-		time.Sleep(m.cfg.ScanPollEvery)
-	}
+	m.waitForScan(ctx)
 
 	// Bump library_version FIRST so re-matches recompute against fresh data
 	// (invalidates match_cache rows whose library_version is now stale).
@@ -521,6 +521,58 @@ func (m *Manager) runScan() {
 	// the frontend does broad library invalidation on this event.
 	if m.bus != nil {
 		m.bus.Publish(events.Event{Topic: TopicLibraryUpdate, Payload: core.LibraryUpdatedEvent{}})
+	}
+}
+
+// waitForScan blocks until the Navidrome scan triggered by StartScan has run to
+// completion (or a budget elapses). It is deliberately two-phase to defeat the
+// scan-start RACE:
+//
+//  1. SETTLE: poll until getScanStatus.scanning flips true (the scan has actually
+//     engaged) OR a short settle budget (ScanSettleMax) elapses. startScan is
+//     asynchronous on Navidrome — for a brief window after it returns, getScanStatus
+//     still reports scanning=false. The OLD code broke out of its poll loop on that
+//     first false, re-matching against the PRE-download index, so a just-downloaded
+//     file was never found (library_track_id stayed empty permanently).
+//  2. DRAIN: once scanning has been observed (or the settle budget lapsed for an
+//     instantaneous scan), poll until scanning=false again OR the poll budget
+//     (ScanPollMax) elapses — the file is now indexed and re-match can find it.
+//
+// All budgets use wall-clock time (this runs inside the debounce timer fn, off the
+// hot path) so a frozen test clock can't stall the loop; the cadence is ScanPollEvery.
+func (m *Manager) waitForScan(ctx context.Context) {
+	poll := m.cfg.ScanPollEvery
+	if poll <= 0 {
+		poll = 500 * time.Millisecond
+	}
+
+	// Phase 1 — SETTLE: wait for the scan to begin.
+	settleDeadline := time.Now().Add(m.cfg.ScanSettleMax)
+	started := false
+	for time.Now().Before(settleDeadline) {
+		st, err := m.scanner.ScanStatus(ctx)
+		if err != nil {
+			break
+		}
+		if st.Scanning {
+			started = true
+			break
+		}
+		time.Sleep(poll)
+	}
+
+	// Phase 2 — DRAIN: wait for the scan to finish. If we never observed it start
+	// (an already-idle/instantaneous scan), there is nothing to drain.
+	if !started {
+		return
+	}
+	drainDeadline := time.Now().Add(m.cfg.ScanPollMax)
+	for time.Now().Before(drainDeadline) {
+		st, err := m.scanner.ScanStatus(ctx)
+		if err != nil || !st.Scanning {
+			break
+		}
+		time.Sleep(poll)
 	}
 }
 

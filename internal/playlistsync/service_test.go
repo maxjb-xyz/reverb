@@ -243,6 +243,33 @@ func TestImportThenDetailComputesOwnership(t *testing.T) {
 	}
 }
 
+// TestImportStampsLastSyncedAt is the regression for Bug 7: after Import, the row's
+// last_synced_at must be set to the import time (an import IS a sync — we just
+// fetched the live tracklist). UpsertSyncedPlaylist only writes created_at, so
+// without the explicit stamp the UI reads "Never synced" right after import.
+func TestImportStampsLastSyncedAt(t *testing.T) {
+	src := &fakeSource{playlists: map[string]core.ExternalPlaylist{
+		"PL": {Source: "spotify", ExternalID: "PL", Name: "Chill", Tracks: []core.ExternalResult{track("t1")}},
+	}}
+	store := newMemStore()
+	const importTime int64 = 1717_000_000
+	svc := NewService(src, fakeMatcher{}, &fakeDownloader{}, store, func() int64 { return importTime }, seqID())
+	det, err := svc.Import(context.Background(), "spotify:playlist:PL", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if det.LastSyncedAt != importTime {
+		t.Fatalf("detail.lastSyncedAt = %d, want %d (import should stamp it, not leave 0/'Never synced')", det.LastSyncedAt, importTime)
+	}
+	row, err := store.Get(context.Background(), det.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if row.LastSyncedAt != importTime {
+		t.Fatalf("row.LastSyncedAt = %d, want %d", row.LastSyncedAt, importTime)
+	}
+}
+
 func TestSyncReplacesTracklist(t *testing.T) {
 	src := &fakeSource{playlists: map[string]core.ExternalPlaylist{
 		"PL": {Source: "spotify", ExternalID: "PL", Name: "Chill", Tracks: []core.ExternalResult{track("t1")}},

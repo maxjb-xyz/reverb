@@ -201,7 +201,7 @@ func (s *Service) albumDetailFromExternal(ctx context.Context, full core.Externa
 		if mErr != nil {
 			return core.AlbumDetail{}, mErr
 		}
-		dt := core.AlbumDetailTrack{Title: tr.Title, Artist: tr.Artist, TrackNumber: i + 1, DurationMs: tr.DurationMs, CoverURL: tr.CoverURL}
+		dt := core.AlbumDetailTrack{Title: tr.Title, Artist: tr.Artist, Album: full.Name, TrackNumber: i + 1, DurationMs: tr.DurationMs, CoverURL: tr.CoverURL}
 		if res.Status == core.MatchInLibrary && res.LibraryTrackID != "" {
 			det.OwnedCount++
 			dt.State = core.CoverageFull

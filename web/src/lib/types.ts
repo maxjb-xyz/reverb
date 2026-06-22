@@ -107,6 +107,7 @@ export interface AlbumDetailTrack {
   externalRef?: ExternalTrackRef
   title: string
   artist: string
+  album?: string
   trackNumber: number
   durationMs: number
   coverUrl?: string

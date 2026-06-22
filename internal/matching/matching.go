@@ -78,19 +78,26 @@ func (s *Service) Match(ctx context.Context, ext core.ExternalResult) (core.Matc
 		return core.MatchResult{Status: core.MatchNotInLibrary, Method: core.MatchNone, Confidence: 0}, nil
 	}
 
-	// 3. Candidate fetch. Title-only query; fall back to Artist if Title is empty.
-	query := ext.Title
-	if query == "" {
-		query = ext.Artist
+	// 3. Candidate fetch + priority chain. Try the title query first; if that yields
+	// no in-library decision, retry with the artist as a BROADER query. Long titles
+	// (notably classical: "Goldberg Variations, BWV 988: Aria — …") frequently return
+	// ZERO songs from Navidrome's search3 (its tokenizer matches poorly on long exact
+	// strings), so a title-only query left the candidate set empty and the ISRC/fuzzy
+	// rungs never had anything to compare — a downloaded classical track stayed
+	// permanently unlinked. An artist query returns that artist's catalogue, giving
+	// the ISRC rung (and fuzzy) real candidates to resolve against.
+	queries := candidateQueries(ext)
+	var result core.MatchResult
+	for _, q := range queries {
+		res, err := s.lib.Search(ctx, q, []core.EntityType{core.EntityTrack})
+		if err != nil {
+			return core.MatchResult{}, err
+		}
+		result = s.resolve(ext, res.Tracks)
+		if result.Status == core.MatchInLibrary {
+			break
+		}
 	}
-	res, err := s.lib.Search(ctx, query, []core.EntityType{core.EntityTrack})
-	if err != nil {
-		return core.MatchResult{}, err
-	}
-	cands := res.Tracks
-
-	// 4. Priority chain.
-	result := s.resolve(ext, cands)
 
 	// 5. Write-through cache (positive and negative).
 	if s.cache != nil {
@@ -113,6 +120,24 @@ func (s *Service) Match(ctx context.Context, ext core.ExternalResult) (core.Matc
 		}
 	}
 	return result, nil
+}
+
+// candidateQueries returns the library Search queries to try, in order: the title
+// (the precise query), then the artist (a broader net that returns the artist's
+// catalogue when an exact long-title search returns nothing). Empties are dropped
+// and duplicates collapsed, so a track with only an artist still gets one query and
+// title==artist doesn't double-search.
+func candidateQueries(ext core.ExternalResult) []string {
+	var qs []string
+	seen := map[string]bool{}
+	for _, q := range []string{ext.Title, ext.Artist} {
+		if q == "" || seen[q] {
+			continue
+		}
+		seen[q] = true
+		qs = append(qs, q)
+	}
+	return qs
 }
 
 // cachedToResult reconstructs a MatchResult from a cached row.

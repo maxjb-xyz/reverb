@@ -65,6 +65,7 @@ type AlbumDetailTrack struct {
 	ExternalRef  *ExternalTrackRef `json:"externalRef,omitempty"`
 	Title       string            `json:"title"`
 	Artist      string            `json:"artist"`
+	Album       string            `json:"album,omitempty"`
 	TrackNumber int               `json:"trackNumber"`
 	DurationMs  int               `json:"durationMs"`
 	CoverURL    string            `json:"coverUrl,omitempty"`
