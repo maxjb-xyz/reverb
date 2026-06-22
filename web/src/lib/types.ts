@@ -203,6 +203,7 @@ export interface DownloadEvent {
   source: string
   externalId: string
   libraryTrackId?: string
+  coverArtId?: string
   artistId?: string
   albumId?: string
 }

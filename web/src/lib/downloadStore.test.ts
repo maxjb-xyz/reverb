@@ -41,6 +41,22 @@ describe('downloadStore', () => {
     expect(useDownloads.getState().jobs['j1'].status).toBe('completed')
   })
 
+  it('complete event sets coverArtId and does not clobber existing value', () => {
+    // Completion event WITH coverArtId sets it.
+    useDownloads.getState().upsert(job({ id: 'j1' }))
+    useDownloads.getState().applyEvent({ jobId: 'j1', dedupKey: 'dk', status: 'completed', progress: 100, source: 'spotify', externalId: 'sp1', coverArtId: 'art-42' })
+    expect(useDownloads.getState().jobs['j1'].coverArtId).toBe('art-42')
+
+    // A subsequent event WITHOUT coverArtId must NOT clobber the stored value.
+    useDownloads.getState().applyEvent({ jobId: 'j1', dedupKey: 'dk', status: 'completed', progress: 100, source: 'spotify', externalId: 'sp1' })
+    expect(useDownloads.getState().jobs['j1'].coverArtId).toBe('art-42')
+  })
+
+  it('jobFromEvent (unknown job) carries coverArtId from the event', () => {
+    useDownloads.getState().applyEvent({ jobId: 'jnew', dedupKey: 'dk', status: 'completed', progress: 100, source: 'spotify', externalId: 'sp1', coverArtId: 'art-99' })
+    expect(useDownloads.getState().jobs['jnew'].coverArtId).toBe('art-99')
+  })
+
   it('active() returns only queued/running newest-first', () => {
     useDownloads.getState().setAll([
       job({ id: 'a', status: 'completed', createdAt: 3 }),

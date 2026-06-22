@@ -299,6 +299,7 @@ func (m *Manager) publishEvent(topic string, job core.DownloadJob, errMsg string
 		Source:         job.Source,
 		ExternalID:     job.ExternalID,
 		LibraryTrackID: job.LibraryTrackID,
+		CoverArtID:     job.CoverArtID,
 	}})
 }
 
@@ -587,6 +588,7 @@ func (m *Manager) publishComplete(job core.DownloadJob, libraryTrackID string) {
 	m.bus.Publish(events.Event{Topic: TopicComplete, Payload: core.DownloadEvent{
 		JobID: job.ID, DedupKey: job.DedupKey, Status: core.DownloadCompleted, Progress: 100,
 		Source: job.Source, ExternalID: job.ExternalID, LibraryTrackID: libraryTrackID,
+		CoverArtID: job.CoverArtID,
 	}})
 }
 

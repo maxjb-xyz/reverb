@@ -20,7 +20,7 @@ type FilterChip = 'All' | 'Music' | 'Downloads'
 
 // Synthesize a minimal library Track from a completed download job so it can be
 // played. Only valid once the job has a libraryTrackId (i.e. the scan matched the
-// downloaded file to a library track); the id doubles as the cover-art id.
+// downloaded file to a library track). Cover art comes from job.coverArtId.
 function trackFromJob(job: DownloadJob): Track {
   return {
     id: job.libraryTrackId ?? '',

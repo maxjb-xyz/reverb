@@ -20,6 +20,7 @@ function jobFromEvent(ev: DownloadEvent): DownloadJob {
     progress: ev.progress,
     error: ev.error,
     libraryTrackId: ev.libraryTrackId,
+    coverArtId: ev.coverArtId,
     downloaderName: '',
     priority: 0,
     attempts: 0,
@@ -45,6 +46,7 @@ export const useDownloads = create<DownloadStore>((set, get) => ({
             progress: ev.progress,
             error: ev.error ?? existing.error,
             libraryTrackId: ev.libraryTrackId || existing.libraryTrackId,
+            coverArtId: ev.coverArtId || existing.coverArtId,
           }
         : jobFromEvent(ev)
       return { jobs: { ...s.jobs, [ev.jobId]: next } }

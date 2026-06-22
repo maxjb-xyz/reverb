@@ -67,6 +67,7 @@ type DownloadEvent struct {
 	Source         string         `json:"source"`
 	ExternalID     string         `json:"externalId"`
 	LibraryTrackID string         `json:"libraryTrackId,omitempty"`
+	CoverArtID     string         `json:"coverArtId,omitempty"`
 	ArtistID       string         `json:"artistId,omitempty"`
 	AlbumID        string         `json:"albumId,omitempty"`
 }

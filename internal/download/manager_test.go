@@ -555,6 +555,9 @@ checkEvents:
 		t.Fatalf("no download.complete event with libraryTrackId=%q for job %q; got events: %+v",
 			"lib-track-9", job.ID, evs)
 	}
+	if found.CoverArtID != "mf-lib-track-9_abc123" {
+		t.Fatalf("complete event coverArtId: got %q want %q (must be carried on WS event for live recently-downloaded covers)", found.CoverArtID, "mf-lib-track-9_abc123")
+	}
 	if found.Source != "spotify" {
 		t.Fatalf("complete event source: got %q want %q", found.Source, "spotify")
 	}

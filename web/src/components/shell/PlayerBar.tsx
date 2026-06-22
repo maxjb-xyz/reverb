@@ -161,19 +161,19 @@ export function PlayerBar() {
           className="shadow-cover flex-none"
         />
         <div className="min-w-0">
-          <div className={['truncate text-sm font-semibold', palette ? '' : 'text-text-primary'].join(' ')}>
+          <div className={['truncate text-sm font-semibold', palette ? '' : 'text-text-primary'].filter(Boolean).join(' ')}>
             {current ? current.title : 'Nothing playing'}
           </div>
           {current?.artist && current.artistId ? (
             <button
               type="button"
               onClick={() => navigate(`/artist/library/${current.artistId}`)}
-              className={['block max-w-full truncate text-left text-xs hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent', palette ? 'opacity-70 hover:opacity-100' : 'text-text-secondary hover:text-text-primary'].join(' ')}
+              className={['block max-w-full truncate text-left text-xs hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent', palette ? 'opacity-70 hover:opacity-100' : 'text-text-secondary hover:text-text-primary'].filter(Boolean).join(' ')}
             >
               {current.artist}
             </button>
           ) : (
-            <div className={['truncate text-xs', palette ? 'opacity-70' : 'text-text-secondary'].join(' ')}>
+            <div className={['truncate text-xs', palette ? 'opacity-70' : 'text-text-secondary'].filter(Boolean).join(' ')}>
               {current?.artist ?? ''}
             </div>
           )}
