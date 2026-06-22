@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, waitFor, fireEvent } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent, act } from '@testing-library/react'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import Playlist from './Playlist'
@@ -20,12 +20,30 @@ vi.mock('../lib/coverageApi', () => ({
   usePlaylistDetail: vi.fn(),
 }))
 
-// ── react-router params ───────────────────────────────────────────────────────
+// ── libraryApi mock ────────────────────────────────────────────────────────────
+const mockRenamePlaylist = vi.fn().mockResolvedValue({ ok: true })
+const mockDeletePlaylist = vi.fn().mockResolvedValue({ ok: true })
+const mockRemovePlaylistTrack = vi.fn().mockResolvedValue({ ok: true })
+
+vi.mock('../lib/libraryApi', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../lib/libraryApi')>()
+  return {
+    ...actual,
+    renamePlaylist: (...args: Parameters<typeof mockRenamePlaylist>) => mockRenamePlaylist(...args),
+    deletePlaylist: (...args: Parameters<typeof mockDeletePlaylist>) => mockDeletePlaylist(...args),
+    removePlaylistTrack: (...args: Parameters<typeof mockRemovePlaylistTrack>) => mockRemovePlaylistTrack(...args),
+  }
+})
+
+// ── react-router mocks ────────────────────────────────────────────────────────
+const mockNavigate = vi.fn()
+
 vi.mock('react-router-dom', async (importOriginal) => {
   const actual = await importOriginal<typeof import('react-router-dom')>()
   return {
     ...actual,
     useParams: () => ({ id: 'p1' }),
+    useNavigate: () => mockNavigate,
   }
 })
 
@@ -51,6 +69,7 @@ function wrapper(ui: React.ReactElement) {
       <MemoryRouter initialEntries={['/playlist/p1']}>
         <Routes>
           <Route path="/playlist/:id" element={ui} />
+          <Route path="/library" element={<div>Library</div>} />
         </Routes>
       </MemoryRouter>
     </QueryClientProvider>,
@@ -152,5 +171,86 @@ describe('Playlist page', () => {
     await renderLoaded()
     // 600000ms = 10:00
     expect(screen.getByText(/10:00/)).toBeInTheDocument()
+  })
+
+  // ── Playlist management ────────────────────────────────────────────────────
+
+  it('opens the "…" menu with Rename and Delete playlist options', async () => {
+    await renderLoaded()
+    fireEvent.click(screen.getByRole('button', { name: /more options/i }))
+    expect(screen.getByRole('menuitem', { name: 'Rename' })).toBeInTheDocument()
+    expect(screen.getByRole('menuitem', { name: 'Delete playlist' })).toBeInTheDocument()
+  })
+
+  it('Rename turns the title into an input pre-filled with the name', async () => {
+    await renderLoaded()
+    fireEvent.click(screen.getByRole('button', { name: /more options/i }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Rename' }))
+    const input = screen.getByRole('textbox', { name: /rename playlist/i })
+    expect(input).toBeInTheDocument()
+    expect((input as HTMLInputElement).value).toBe('Chill')
+  })
+
+  it('committing rename (Enter) calls renamePlaylist with new name', async () => {
+    await renderLoaded()
+    fireEvent.click(screen.getByRole('button', { name: /more options/i }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Rename' }))
+    const input = screen.getByRole('textbox', { name: /rename playlist/i })
+    fireEvent.change(input, { target: { value: 'Late Night' } })
+    await act(async () => {
+      fireEvent.keyDown(input, { key: 'Enter' })
+    })
+    expect(mockRenamePlaylist).toHaveBeenCalledWith('p1', 'Late Night')
+  })
+
+  it('Escape cancels rename without calling renamePlaylist', async () => {
+    await renderLoaded()
+    fireEvent.click(screen.getByRole('button', { name: /more options/i }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Rename' }))
+    const input = screen.getByRole('textbox', { name: /rename playlist/i })
+    fireEvent.change(input, { target: { value: 'Changed' } })
+    fireEvent.keyDown(input, { key: 'Escape' })
+    expect(mockRenamePlaylist).not.toHaveBeenCalled()
+    // heading should be restored
+    expect(screen.getByRole('heading', { name: 'Chill' })).toBeInTheDocument()
+  })
+
+  it('Delete (confirm=true) calls deletePlaylist and navigates to /library', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    await renderLoaded()
+    fireEvent.click(screen.getByRole('button', { name: /more options/i }))
+    await act(async () => {
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Delete playlist' }))
+    })
+    expect(mockDeletePlaylist).toHaveBeenCalledWith('p1')
+    await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/library'))
+  })
+
+  it('Delete (confirm=false) does NOT call deletePlaylist', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(false)
+    await renderLoaded()
+    fireEvent.click(screen.getByRole('button', { name: /more options/i }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Delete playlist' }))
+    expect(mockDeletePlaylist).not.toHaveBeenCalled()
+    expect(mockNavigate).not.toHaveBeenCalled()
+  })
+
+  it('clicking a track remove button calls removePlaylistTrack with the right index', async () => {
+    await renderLoaded()
+    // track2 is at index 1
+    const removeBtn = screen.getByRole('button', { name: /remove song two from playlist/i })
+    await act(async () => {
+      fireEvent.click(removeBtn)
+    })
+    expect(mockRemovePlaylistTrack).toHaveBeenCalledWith('p1', 1)
+  })
+
+  it('clicking the remove button does NOT trigger row play', async () => {
+    await renderLoaded()
+    const removeBtn = screen.getByRole('button', { name: /remove song one from playlist/i })
+    await act(async () => {
+      fireEvent.click(removeBtn)
+    })
+    expect(mockPlayTrackList).not.toHaveBeenCalled()
   })
 })

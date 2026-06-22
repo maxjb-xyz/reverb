@@ -1,6 +1,8 @@
-import { useParams } from 'react-router-dom'
+import { useRef, useState } from 'react'
+import { useParams, useNavigate } from 'react-router-dom'
+import { useQueryClient } from '@tanstack/react-query'
 import { usePlaylistDetail } from '../lib/coverageApi'
-import { coverUrl } from '../lib/libraryApi'
+import { coverUrl, renamePlaylist, deletePlaylist, removePlaylistTrack } from '../lib/libraryApi'
 import { formatDuration } from '../lib/types'
 import type { Track } from '../lib/types'
 import { usePlayer } from '../lib/playerStore'
@@ -9,10 +11,19 @@ import { Button, IconButton, Cover, Skeleton, EmptyState } from '../components/u
 
 export default function Playlist() {
   const { id = '' } = useParams()
+  const navigate = useNavigate()
+  const qc = useQueryClient()
   const { data: playlist, isLoading, isError } = usePlaylistDetail(id)
   const playTrackList = usePlayer((s) => s.playTrackList)
   const toggleShuffle = usePlayer((s) => s.toggleShuffle)
   const shuffle = usePlayer((s) => s.shuffle)
+
+  // "…" menu state
+  const [menuOpen, setMenuOpen] = useState(false)
+  // Inline rename state
+  const [renaming, setRenaming] = useState(false)
+  const [renameValue, setRenameValue] = useState('')
+  const renameInputRef = useRef<HTMLInputElement>(null)
 
   if (isLoading) {
     return (
@@ -52,6 +63,42 @@ export default function Playlist() {
 
   const coverSrc = playlist.coverArtId ? coverUrl(playlist.coverArtId, 300) : undefined
 
+  function openRename() {
+    setRenameValue(playlist!.name)
+    setRenaming(true)
+    setMenuOpen(false)
+    // Focus is set via autoFocus on the input
+  }
+
+  async function commitRename() {
+    const name = renameValue.trim()
+    if (!name || name === playlist!.name) {
+      setRenaming(false)
+      return
+    }
+    setRenaming(false)
+    await renamePlaylist(id, name)
+    qc.invalidateQueries({ queryKey: ['playlist-detail', id] })
+    qc.invalidateQueries({ queryKey: ['library', 'playlists'] })
+  }
+
+  function cancelRename() {
+    setRenaming(false)
+  }
+
+  async function handleDelete() {
+    setMenuOpen(false)
+    if (!window.confirm(`Delete playlist "${playlist!.name}"?`)) return
+    await deletePlaylist(id)
+    qc.invalidateQueries({ queryKey: ['library', 'playlists'] })
+    navigate('/library')
+  }
+
+  async function handleRemoveTrack(index: number) {
+    await removePlaylistTrack(id, index)
+    qc.invalidateQueries({ queryKey: ['playlist-detail', id] })
+  }
+
   return (
     <div className="space-y-6">
       {/* Subtle gradient wash behind header */}
@@ -68,9 +115,26 @@ export default function Playlist() {
             <div className="text-xs font-semibold uppercase tracking-widest text-text-muted mb-1">
               Playlist
             </div>
-            <h1 className="text-4xl font-black leading-tight tracking-tight text-text-primary truncate">
-              {playlist.name}
-            </h1>
+            {renaming ? (
+              <input
+                ref={renameInputRef}
+                autoFocus
+                type="text"
+                value={renameValue}
+                aria-label="Rename playlist"
+                onChange={(e) => setRenameValue(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') { e.preventDefault(); void commitRename() }
+                  if (e.key === 'Escape') { e.preventDefault(); cancelRename() }
+                }}
+                onBlur={() => void commitRename()}
+                className="text-4xl font-black leading-tight tracking-tight text-text-primary bg-transparent border-b border-accent focus-visible:outline-none w-full"
+              />
+            ) : (
+              <h1 className="text-4xl font-black leading-tight tracking-tight text-text-primary truncate">
+                {playlist.name}
+              </h1>
+            )}
             <div className="mt-2 text-sm text-text-secondary flex flex-wrap items-center gap-x-1">
               {playlist.songCount > 0 ? <span>{playlist.songCount} songs</span> : null}
               {playlist.durationMs > 0 ? <span>· {formatDuration(playlist.durationMs)}</span> : null}
@@ -95,6 +159,47 @@ export default function Playlist() {
                 }}
                 disabled={!hasTracks}
               />
+              {/* "…" overflow menu */}
+              <div className="relative">
+                <IconButton
+                  name="down"
+                  label="More options"
+                  onClick={() => setMenuOpen((o) => !o)}
+                  aria-label="More options"
+                />
+                {menuOpen && (
+                  <>
+                    {/* backdrop */}
+                    <div
+                      className="fixed inset-0 z-20"
+                      aria-hidden="true"
+                      onClick={() => setMenuOpen(false)}
+                    />
+                    <div
+                      role="menu"
+                      aria-label="Playlist options"
+                      className="absolute left-0 top-full z-30 mt-1 w-48 rounded-xl border border-border-subtle bg-raised shadow-pop"
+                    >
+                      <button
+                        type="button"
+                        role="menuitem"
+                        onClick={openRename}
+                        className="flex w-full items-center gap-3 rounded-t-xl px-3 py-2.5 text-sm text-text-primary hover:bg-raised-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                      >
+                        Rename
+                      </button>
+                      <button
+                        type="button"
+                        role="menuitem"
+                        onClick={() => void handleDelete()}
+                        className="flex w-full items-center gap-3 rounded-b-xl px-3 py-2.5 text-sm text-text-primary hover:bg-raised-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                      >
+                        Delete playlist
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
             </div>
           </div>
         </header>
@@ -108,6 +213,18 @@ export default function Playlist() {
             track={t}
             index={i}
             onPlay={() => playTrackList(tracks, i)}
+            right={
+              <IconButton
+                name="x"
+                size="sm"
+                label={`Remove ${t.title} from playlist`}
+                className="opacity-0 group-hover:opacity-100 transition-opacity"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  void handleRemoveTrack(i)
+                }}
+              />
+            }
           />
         ))}
         {tracks.length === 0 && (

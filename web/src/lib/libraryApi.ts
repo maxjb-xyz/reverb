@@ -63,3 +63,15 @@ export function createPlaylist(name: string): Promise<Playlist> {
 export function addTracksToPlaylist(id: string, trackIds: string[]): Promise<{ ok: boolean }> {
   return api.post(`/library/playlists/${encodeURIComponent(id)}/tracks`, { trackIds })
 }
+
+export function renamePlaylist(id: string, name: string): Promise<{ ok: boolean }> {
+  return api.put(`/library/playlist/${encodeURIComponent(id)}`, { name })
+}
+
+export function deletePlaylist(id: string): Promise<{ ok: boolean }> {
+  return api.del(`/library/playlist/${encodeURIComponent(id)}`)
+}
+
+export function removePlaylistTrack(id: string, index: number): Promise<{ ok: boolean }> {
+  return api.post(`/library/playlist/${encodeURIComponent(id)}/remove`, { indices: [index] })
+}
