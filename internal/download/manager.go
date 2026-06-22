@@ -148,13 +148,60 @@ func NewManager(cfg Config, downloaders []Downloader, store JobStore, bus Publis
 	}
 }
 
-// Start launches the worker pool.
+// Start launches the worker pool and kicks off a one-shot startup backfill (in a
+// goroutine) that re-matches any completed job whose LibraryTrackID is still empty.
+// This handles jobs that finished under an older/weaker matcher before the post-scan
+// rematch path was in place, or whose scan-window closed before the file was indexed.
+// The backfill runs once at startup and never retries still-unmatchable jobs.
 func (m *Manager) Start() {
 	for i := 0; i < m.cfg.Workers; i++ {
 		m.wg.Add(1)
 		go m.worker()
 	}
 	log.Printf("download manager: %d worker(s) started, %d downloader(s) available", m.cfg.Workers, len(m.downloaders))
+	go m.backfillUnlinked()
+}
+
+// backfillUnlinked is a one-shot startup pass that re-matches every completed job
+// whose LibraryTrackID is empty. A job that still can't be matched is left alone
+// (no retry loop). Jobs that now match get LibraryTrackID + CoverArtID set and a
+// download.complete event published so the FE updates live.
+func (m *Manager) backfillUnlinked() {
+	if m.rematcher == nil {
+		return
+	}
+	ctx := context.Background()
+	jobs, err := m.store.List(ctx)
+	if err != nil {
+		log.Printf("download backfill: list jobs failed: %v", err)
+		return
+	}
+	matched := 0
+	for _, j := range jobs {
+		if j.Status != core.DownloadCompleted || j.LibraryTrackID != "" {
+			continue
+		}
+		res, merr := m.rematcher.Match(ctx, core.ExternalResult{
+			Source: j.Source, ExternalID: j.ExternalID, Type: core.EntityTrack,
+			Title: j.Title, Artist: j.Artist, Album: j.Album, ISRC: j.ISRC,
+			DurationMs: j.DurationMs,
+		})
+		if merr != nil || res.Status != core.MatchInLibrary {
+			continue
+		}
+		j.LibraryTrackID = res.LibraryTrackID
+		j.CoverArtID = res.CoverArtID
+		if err := m.store.Update(ctx, j); err != nil {
+			log.Printf("download backfill: update job %s failed: %v", shortID(j.ID), err)
+			continue
+		}
+		m.publishComplete(j, res.LibraryTrackID)
+		matched++
+		log.Printf("download backfill: re-linked job %s -> library track %s", shortID(j.ID), res.LibraryTrackID)
+	}
+	if matched > 0 {
+		log.Printf("download backfill: re-linked %d previously unmatched completed job(s)", matched)
+	}
 }
 
 // Stop signals workers to drain and waits for them. It ALSO cancels any pending

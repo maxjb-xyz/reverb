@@ -689,6 +689,138 @@ func TestRetryResetsFailedJob(t *testing.T) {
 	}
 }
 
+// TestBackfillUnlinkedReLinksCompletedJobs asserts that on startup, the manager
+// re-matches completed jobs that have no LibraryTrackID (e.g. finished under an
+// older matcher) and sets LibraryTrackID + CoverArtID and publishes a complete event.
+func TestBackfillUnlinkedReLinksCompletedJobs(t *testing.T) {
+	store := newMemStore()
+
+	// Seed a completed job with empty LibraryTrackID — simulates a job that
+	// completed before the rematcher could link it.
+	seeded := core.DownloadJob{
+		ID: "backfill-j1", DedupKey: "dk-backfill", Status: core.DownloadCompleted,
+		DownloaderName: "dl", Source: "spotify", ExternalID: "ext-bf1",
+		Artist: "Bach", Title: "Goldberg Variations", Album: "Goldberg",
+		Progress: 100,
+	}
+	_ = store.Insert(context.Background(), seeded, core.DownloadRequest{
+		Source: "spotify", ExternalID: "ext-bf1", Artist: "Bach", Title: "Goldberg Variations",
+	})
+
+	rematcher := &fakeRematcher{trackID: "lib-bf-1", coverArtID: "cover-bf-1"}
+	bus := events.New()
+	dl := &fakeDL{name: "dl", canDownload: true}
+	m := NewManager(Config{Workers: 1, DebounceWindow: 5 * time.Second, ScanPollEvery: time.Millisecond, ScanPollMax: time.Second, ScanSettleMax: 10 * time.Millisecond},
+		[]Downloader{dl}, store, bus, &fakeScanner{}, rematcher, &fakeVersion{v: 1}, RealClock{})
+	t.Cleanup(m.Stop)
+
+	// Subscribe to complete events BEFORE starting so we don't miss the backfill publish.
+	completeCh, unsub := bus.Subscribe(TopicComplete)
+	defer unsub()
+
+	var backfillEvents []core.DownloadEvent
+	var evMu sync.Mutex
+	gotEvent := make(chan struct{}, 1)
+	go func() {
+		for ev := range completeCh {
+			if de, ok := ev.Payload.(core.DownloadEvent); ok && de.JobID == seeded.ID {
+				evMu.Lock()
+				backfillEvents = append(backfillEvents, de)
+				evMu.Unlock()
+				select {
+				case gotEvent <- struct{}{}:
+				default:
+				}
+			}
+		}
+	}()
+
+	m.Start()
+
+	// Wait for the backfill goroutine to publish the complete event.
+	select {
+	case <-gotEvent:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for backfill to publish a complete event")
+	}
+
+	// Job must now have LibraryTrackID and CoverArtID set.
+	updated, ok, err := store.Get(context.Background(), seeded.ID)
+	if err != nil || !ok {
+		t.Fatalf("job not found: %v", err)
+	}
+	if updated.LibraryTrackID != "lib-bf-1" {
+		t.Fatalf("backfill LibraryTrackID: got %q, want %q", updated.LibraryTrackID, "lib-bf-1")
+	}
+	if updated.CoverArtID != "cover-bf-1" {
+		t.Fatalf("backfill CoverArtID: got %q, want %q", updated.CoverArtID, "cover-bf-1")
+	}
+
+	// The published event must carry the library track id and cover art id.
+	evMu.Lock()
+	evs := make([]core.DownloadEvent, len(backfillEvents))
+	copy(evs, backfillEvents)
+	evMu.Unlock()
+
+	var found *core.DownloadEvent
+	for i := range evs {
+		if evs[i].LibraryTrackID == "lib-bf-1" {
+			found = &evs[i]
+			break
+		}
+	}
+	if found == nil {
+		t.Fatalf("no backfill complete event with libraryTrackId=%q; got: %+v", "lib-bf-1", evs)
+	}
+	if found.CoverArtID != "cover-bf-1" {
+		t.Fatalf("backfill event CoverArtID: got %q, want %q", found.CoverArtID, "cover-bf-1")
+	}
+}
+
+// TestBackfillSkipsAlreadyLinkedAndNonCompleted ensures the backfill only touches
+// completed jobs with empty LibraryTrackID.
+func TestBackfillSkipsAlreadyLinkedAndNonCompleted(t *testing.T) {
+	store := newMemStore()
+
+	// Already-linked completed job — must NOT get a second rematch call.
+	linked := core.DownloadJob{
+		ID: "linked-j1", DedupKey: "dk-linked", Status: core.DownloadCompleted,
+		DownloaderName: "dl", Source: "spotify", ExternalID: "ext-linked",
+		Artist: "Artist", Title: "Linked Track", LibraryTrackID: "already-linked",
+	}
+	_ = store.Insert(context.Background(), linked, core.DownloadRequest{})
+
+	// Failed job — must not be touched.
+	failed := core.DownloadJob{
+		ID: "failed-j1", DedupKey: "dk-failed", Status: core.DownloadFailed,
+		DownloaderName: "dl", Source: "spotify", ExternalID: "ext-failed",
+		Artist: "Artist", Title: "Failed Track",
+	}
+	_ = store.Insert(context.Background(), failed, core.DownloadRequest{})
+
+	rematcher := &fakeRematcher{trackID: "should-not-be-set"}
+	dl := &fakeDL{name: "dl", canDownload: true}
+	m := NewManager(Config{Workers: 1, DebounceWindow: 5 * time.Second, ScanPollEvery: time.Millisecond, ScanPollMax: time.Second, ScanSettleMax: 10 * time.Millisecond},
+		[]Downloader{dl}, store, nil, &fakeScanner{}, rematcher, &fakeVersion{v: 1}, RealClock{})
+	t.Cleanup(m.Stop)
+	m.Start()
+
+	// Give the backfill goroutine time to run (it's fast — no I/O).
+	time.Sleep(50 * time.Millisecond)
+
+	// The already-linked job must still have its original library_track_id.
+	j, _, _ := store.Get(context.Background(), linked.ID)
+	if j.LibraryTrackID != "already-linked" {
+		t.Fatalf("backfill must not overwrite an already-linked job: got %q", j.LibraryTrackID)
+	}
+
+	// The failed job must still be failed (LibraryTrackID empty, status unchanged).
+	fj, _, _ := store.Get(context.Background(), failed.ID)
+	if fj.LibraryTrackID != "" {
+		t.Fatalf("backfill must not touch failed jobs: got LibraryTrackID=%q", fj.LibraryTrackID)
+	}
+}
+
 func TestFailedDownloadPublishesFailedEvent(t *testing.T) {
 	dlErr := errors.New("network timeout")
 	dl := &fakeDL{name: "dl", canDownload: true, errOnStart: dlErr}
