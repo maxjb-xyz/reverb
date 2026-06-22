@@ -58,18 +58,19 @@ type ConfigDirty interface {
 	Dirty() bool
 }
 
-// ServiceReloader rebuilds the active library/search/download services from the
-// current DB state and returns them. The returned Manager (if any) is already
-// Started; the server Stops the previous one after swapping the new one in.
+// ServiceReloader rebuilds the active library/search/download/coverage services
+// from the current DB state and returns them. The returned Manager (if any) is
+// already Started; the server Stops the previous one after swapping the new one in.
 // A nil interface result means "no service of that kind is configured".
 type ServiceReloader interface {
-	Reload(ctx context.Context) (lib library.LibraryAdapter, search Streamer, downloads DownloadManager, err error)
+	Reload(ctx context.Context) (lib library.LibraryAdapter, search Streamer, coverage CoverageService, downloads DownloadManager, err error)
 }
 
 type Deps struct {
 	Auth             *auth.Service
 	Library          library.LibraryAdapter
 	SearchAggregator Streamer
+	Coverage         CoverageService
 	Search           *registry.Registry
 	Downloader       *registry.Registry
 	Lib              *registry.Registry
@@ -93,6 +94,7 @@ type Server struct {
 	live struct {
 		library   library.LibraryAdapter
 		search    Streamer
+		coverage  CoverageService
 		downloads DownloadManager
 	}
 }
@@ -101,6 +103,7 @@ func NewServer(deps Deps) *Server {
 	s := &Server{deps: deps, router: chi.NewRouter()}
 	s.live.library = deps.Library
 	s.live.search = deps.SearchAggregator
+	s.live.coverage = deps.Coverage
 	s.live.downloads = deps.Downloads
 	s.routes()
 	return s
@@ -133,13 +136,13 @@ func (s *Server) reload(ctx context.Context) error {
 	if s.deps.Reload == nil {
 		return nil
 	}
-	lib, srch, dl, err := s.deps.Reload.Reload(ctx)
+	lib, srch, cov, dl, err := s.deps.Reload.Reload(ctx)
 	if err != nil {
 		return err
 	}
 	s.mu.Lock()
 	old := s.live.downloads
-	s.live.library, s.live.search, s.live.downloads = lib, srch, dl
+	s.live.library, s.live.search, s.live.coverage, s.live.downloads = lib, srch, cov, dl
 	s.mu.Unlock()
 	// Stop the previous Manager only after the new one is swapped in, and never
 	// stop a nil or unchanged Manager.
@@ -188,6 +191,11 @@ func (s *Server) routes() {
 			pr.Get("/stream/{id}", s.handleStream)
 			pr.Get("/cover/{id}", s.handleCover)
 			pr.Get("/search/everywhere", s.handleEverywhere)
+			pr.Get("/artist/{source}/{id}", s.handleArtistDetail)
+			pr.Get("/artist/{source}/{id}/coverage", s.handleArtistCoverage)
+			pr.Get("/album/{source}/{id}", s.handleAlbumDetail)
+			pr.Get("/library/playlist/{id}", s.handleLibraryPlaylist)
+			pr.Post("/downloads/batch", s.handleBatchDownload)
 			pr.Post("/downloads", s.handleCreateDownload)
 			pr.Get("/downloads", s.handleListDownloads)
 			pr.Post("/downloads/{id}/cancel", s.handleCancelDownload)

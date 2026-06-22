@@ -19,6 +19,29 @@ type AdapterInstance struct {
 	UpdatedAt  int64  `json:"updated_at"`
 }
 
+type AlbumCoverage struct {
+	Source          string `json:"source"`
+	ExternalAlbumID string `json:"external_album_id"`
+	CoverageJson    string `json:"coverage_json"`
+	LibraryAlbumID  string `json:"library_album_id"`
+	FetchedAt       int64  `json:"fetched_at"`
+}
+
+type ArtistExternalMap struct {
+	LibraryArtistID  string  `json:"library_artist_id"`
+	Source           string  `json:"source"`
+	ExternalArtistID string  `json:"external_artist_id"`
+	Confidence       float64 `json:"confidence"`
+	CreatedAt        int64   `json:"created_at"`
+}
+
+type DiscographyCache struct {
+	Source           string `json:"source"`
+	ExternalArtistID string `json:"external_artist_id"`
+	AlbumsJson       string `json:"albums_json"`
+	FetchedAt        int64  `json:"fetched_at"`
+}
+
 type DownloadJob struct {
 	ID             string         `json:"id"`
 	DedupKey       string         `json:"dedup_key"`

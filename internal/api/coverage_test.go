@@ -1,0 +1,200 @@
+package api
+
+import (
+	"bufio"
+	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/maxjb-xyz/reverb/internal/auth"
+	"github.com/maxjb-xyz/reverb/internal/core"
+	"github.com/maxjb-xyz/reverb/internal/registry"
+	"github.com/maxjb-xyz/reverb/internal/store"
+)
+
+// fakeCoverage is a controllable CoverageService for handler tests.
+type fakeCoverage struct {
+	artist      core.ArtistDetail
+	artistErr   error
+	album       core.AlbumDetail
+	albumErr    error
+	covs        []core.AlbumCoverage
+	lastSource  string
+	lastID      string
+}
+
+func (f *fakeCoverage) ArtistDetail(_ context.Context, source, id string) (core.ArtistDetail, error) {
+	f.lastSource, f.lastID = source, id
+	return f.artist, f.artistErr
+}
+
+func (f *fakeCoverage) AlbumDetail(_ context.Context, source, id string) (core.AlbumDetail, error) {
+	f.lastSource, f.lastID = source, id
+	return f.album, f.albumErr
+}
+
+func (f *fakeCoverage) StreamCoverage(ctx context.Context, source, id string) <-chan core.AlbumCoverage {
+	f.lastSource, f.lastID = source, id
+	ch := make(chan core.AlbumCoverage)
+	go func() {
+		defer close(ch)
+		for _, c := range f.covs {
+			select {
+			case ch <- c:
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+	return ch
+}
+
+// coverageTestServer builds a Server with a fake coverage service + download manager.
+func coverageTestServer(t *testing.T, cov CoverageService, mgr DownloadManager) (*Server, *http.Cookie) {
+	t.Helper()
+	st, err := store.Open(t.TempDir() + "/api.db")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { st.Close() })
+	if err := st.Migrate(); err != nil {
+		t.Fatal(err)
+	}
+	authSvc := auth.NewService(st.Q(), time.Now)
+	if err := authSvc.SetAdminPassword(context.Background(), "pw"); err != nil {
+		t.Fatal(err)
+	}
+	tok, _ := authSvc.CreateSession(context.Background())
+	srv := NewServer(Deps{
+		Auth:       authSvc,
+		Coverage:   cov,
+		Downloads:  mgr,
+		Search:     registry.NewRegistry("search"),
+		Downloader: registry.NewRegistry("downloader"),
+	})
+	return srv, &http.Cookie{Name: sessionCookie, Value: tok}
+}
+
+func TestCoverageArtistDetail(t *testing.T) {
+	cov := &fakeCoverage{artist: core.ArtistDetail{
+		Source: "library", ID: "abc", Name: "The Band", Resolved: true,
+		Albums: []core.DiscographyAlbum{{Source: "spotify", ExternalID: "sp1", Name: "Debut"}},
+	}}
+	srv, cookie := coverageTestServer(t, cov, nil)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/artist/library/abc", nil)
+	req.AddCookie(cookie)
+	srv.Handler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d: %s", rec.Code, rec.Body.String())
+	}
+	var det core.ArtistDetail
+	if err := json.Unmarshal(rec.Body.Bytes(), &det); err != nil {
+		t.Fatal(err)
+	}
+	if len(det.Albums) != 1 || det.Albums[0].ExternalID != "sp1" {
+		t.Fatalf("albums = %+v", det.Albums)
+	}
+	if cov.lastSource != "library" || cov.lastID != "abc" {
+		t.Fatalf("params = %q/%q", cov.lastSource, cov.lastID)
+	}
+	// Body must contain the "albums" key.
+	if !strings.Contains(rec.Body.String(), `"albums"`) {
+		t.Fatalf("body missing albums: %s", rec.Body.String())
+	}
+}
+
+func TestCoverageStreamSSE(t *testing.T) {
+	cov := &fakeCoverage{covs: []core.AlbumCoverage{
+		{Source: "spotify", ExternalAlbumID: "a1", State: core.CoverageFull, OwnedCount: 10, TotalCount: 10, MissingTracks: []core.ExternalTrackRef{}},
+		{Source: "spotify", ExternalAlbumID: "a2", State: core.CoveragePartial, OwnedCount: 4, TotalCount: 10, MissingTracks: []core.ExternalTrackRef{}},
+	}}
+	srv, cookie := coverageTestServer(t, cov, nil)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/artist/spotify/xyz/coverage", nil)
+	req.AddCookie(cookie)
+	srv.Handler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d", rec.Code)
+	}
+	if ct := rec.Header().Get("Content-Type"); !strings.HasPrefix(ct, "text/event-stream") {
+		t.Fatalf("content-type = %q", ct)
+	}
+	var parsed []core.AlbumCoverage
+	sc := bufio.NewScanner(strings.NewReader(rec.Body.String()))
+	for sc.Scan() {
+		line := sc.Text()
+		if strings.HasPrefix(line, "data: ") {
+			var c core.AlbumCoverage
+			if err := json.Unmarshal([]byte(strings.TrimPrefix(line, "data: ")), &c); err != nil {
+				t.Fatalf("bad event json: %v (%q)", err, line)
+			}
+			parsed = append(parsed, c)
+		}
+	}
+	if len(parsed) != 2 {
+		t.Fatalf("want 2 frames, got %d: %s", len(parsed), rec.Body.String())
+	}
+	if parsed[0].ExternalAlbumID != "a1" || parsed[1].State != core.CoveragePartial {
+		t.Fatalf("frames = %+v", parsed)
+	}
+}
+
+func TestCoverageBatchDownload(t *testing.T) {
+	mgr := newFakeManager()
+	srv, cookie := coverageTestServer(t, &fakeCoverage{}, mgr)
+
+	body := `{"tracks":[
+		{"source":"spotify","externalId":"sp1","title":"One","artist":"A"},
+		{"source":"spotify","externalId":"sp2","title":"Two","artist":"A"}
+	]}`
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/downloads/batch", strings.NewReader(body))
+	req.AddCookie(cookie)
+	srv.Handler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d: %s", rec.Code, rec.Body.String())
+	}
+	var jobs []core.DownloadJob
+	if err := json.Unmarshal(rec.Body.Bytes(), &jobs); err != nil {
+		t.Fatal(err)
+	}
+	if len(jobs) != 2 {
+		t.Fatalf("want 2 jobs, got %d: %+v", len(jobs), jobs)
+	}
+	if len(mgr.jobs) != 2 {
+		t.Fatalf("Enqueue called %d times, want 2", len(mgr.jobs))
+	}
+}
+
+func TestCoverageNilServiceReturns503(t *testing.T) {
+	srv, cookie := coverageTestServer(t, nil, nil)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/artist/library/abc", nil)
+	req.AddCookie(cookie)
+	srv.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want 503", rec.Code)
+	}
+}
+
+func TestBatchDownloadEmptyReturns400(t *testing.T) {
+	mgr := newFakeManager()
+	srv, cookie := coverageTestServer(t, &fakeCoverage{}, mgr)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/downloads/batch", strings.NewReader(`{"tracks":[]}`))
+	req.AddCookie(cookie)
+	srv.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", rec.Code)
+	}
+}

@@ -23,22 +23,24 @@ func (m *stoppableManager) Stop() { m.stopped.Store(true) }
 type fakeReloader struct {
 	lib   library.LibraryAdapter
 	srch  Streamer
+	cov   CoverageService
 	dl    DownloadManager
 	calls atomic.Int32
 }
 
 var _ ServiceReloader = (*fakeReloader)(nil)
 
-func (r *fakeReloader) Reload(context.Context) (library.LibraryAdapter, Streamer, DownloadManager, error) {
+func (r *fakeReloader) Reload(context.Context) (library.LibraryAdapter, Streamer, CoverageService, DownloadManager, error) {
 	r.calls.Add(1)
-	return r.lib, r.srch, r.dl, nil
+	return r.lib, r.srch, r.cov, r.dl, nil
 }
 
 func TestReloadSwapsDownloadsAndStopsOld(t *testing.T) {
 	oldMgr := newStoppableManager()
 	newMgr := newStoppableManager()
+	newCov := &fakeCoverage{}
 
-	rl := &fakeReloader{dl: newMgr}
+	rl := &fakeReloader{dl: newMgr, cov: newCov}
 	srv := NewServer(Deps{Downloads: oldMgr, Reload: rl})
 
 	if srv.downloads() != DownloadManager(oldMgr) {
@@ -53,6 +55,9 @@ func TestReloadSwapsDownloadsAndStopsOld(t *testing.T) {
 	}
 	if srv.downloads() != DownloadManager(newMgr) {
 		t.Fatal("expected the new manager to be live after reload")
+	}
+	if srv.coverage() != CoverageService(newCov) {
+		t.Fatal("expected the new coverage service to be live after reload")
 	}
 	if !oldMgr.stopped.Load() {
 		t.Fatal("old manager must be Stopped after the swap")

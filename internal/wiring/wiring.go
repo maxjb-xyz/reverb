@@ -11,6 +11,7 @@ import (
 	"log"
 	"time"
 
+	"github.com/maxjb-xyz/reverb/internal/coverage"
 	"github.com/maxjb-xyz/reverb/internal/download"
 	"github.com/maxjb-xyz/reverb/internal/library"
 	"github.com/maxjb-xyz/reverb/internal/matching"
@@ -224,6 +225,7 @@ func buildDefaultSpotdl(reg *registry.Registry, dir string, getenv func(string) 
 type ServiceBundle struct {
 	Library    library.LibraryAdapter // may be nil
 	Aggregator *search.Aggregator     // may be nil
+	Coverage   *coverage.Service      // may be nil (needs a library + a DiscoSource)
 	Manager    *download.Manager      // may be nil; NOT started yet
 }
 
@@ -271,6 +273,16 @@ func NewBuilder(
 	}
 }
 
+// nowMilli is the coverage cache clock (epoch millis). It honors an injected
+// download.Clock so tests that pin time see deterministic fetched_at values,
+// falling back to wall-clock time when no clock is configured.
+func (b *Builder) nowMilli() int64 {
+	if b.clock != nil {
+		return b.clock.Now().UnixMilli()
+	}
+	return time.Now().UnixMilli()
+}
+
 // Build reads the current enabled adapter_instance rows and constructs a fresh
 // ServiceBundle. It mirrors the composition-root logic: build library → build
 // search sources into an aggregator (with a matcher when a library is present) →
@@ -306,6 +318,14 @@ func (b *Builder) Build(ctx context.Context) (ServiceBundle, error) {
 		log.Printf("search sources active: %d", len(sources))
 	} else {
 		log.Printf("no search sources configured (add one via settings)")
+	}
+
+	// Coverage service (artist/album/coverage pages). Needs a library to match
+	// against AND a search source implementing coverage.DiscoSource (spotify does).
+	// Nil when either is missing — the API handlers 503 in that case.
+	bundle.Coverage = b.BuildCoverageService(sources, libAdapter, b.nowMilli)
+	if bundle.Coverage != nil {
+		log.Printf("coverage service active")
 	}
 
 	// Downloaders → Manager (constructed but not started).

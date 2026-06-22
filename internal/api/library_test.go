@@ -43,6 +43,9 @@ func (fakeLibrary) GetAlbum(ctx context.Context, id string) (core.Album, error) 
 func (fakeLibrary) GetPlaylists(ctx context.Context) ([]core.Playlist, error) {
 	return []core.Playlist{{ID: "p1", Name: "Mix"}}, nil
 }
+func (fakeLibrary) GetPlaylist(ctx context.Context, id string) (core.Playlist, error) {
+	return core.Playlist{ID: id, Name: "Mix", Tracks: []core.Track{{ID: "t1", Title: "Song"}}}, nil
+}
 func (f *fakeLibrary) CreatePlaylist(ctx context.Context, name string) (core.Playlist, error) {
 	f.createdName = name
 	return core.Playlist{ID: "p-new", Name: name}, nil
