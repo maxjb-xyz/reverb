@@ -122,6 +122,11 @@ paths:
     get:
       summary: List playlists
       responses: { "200": { description: ok } }
+  /library/playlist/{id}:
+    get:
+      summary: One playlist with its tracks
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses: { "200": { description: Playlist }, "404": { description: not found } }
   /stream/{id}:
     get:
       summary: Stream/transcode-proxy a library track by id (Range supported)
@@ -149,6 +154,34 @@ paths:
           content:
             text/event-stream:
               schema: { type: string }
+  /artist/{source}/{id}:
+    get:
+      summary: External artist detail (bio, albums, related)
+      parameters:
+        - { name: source, in: path, required: true, schema: { type: string } }
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses: { "200": { description: ArtistDetail }, "404": { description: not found } }
+  /artist/{source}/{id}/coverage:
+    get:
+      summary: >
+        SSE stream of album coverage status. Each event data is a JSON
+        AlbumCoverage indicating whether each album is in the local library.
+      parameters:
+        - { name: source, in: path, required: true, schema: { type: string } }
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: SSE stream of AlbumCoverage events
+          content:
+            text/event-stream:
+              schema: { type: string }
+  /album/{source}/{id}:
+    get:
+      summary: External album detail (tracks, metadata)
+      parameters:
+        - { name: source, in: path, required: true, schema: { type: string } }
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses: { "200": { description: AlbumDetail }, "404": { description: not found } }
   /downloads:
     get:
       summary: List download jobs
@@ -181,6 +214,30 @@ paths:
       summary: Retry a failed/canceled download
       parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
       responses: { "200": { description: DownloadJob }, "404": { description: not found } }
+  /downloads/batch:
+    post:
+      summary: Enqueue multiple downloads in one request
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                tracks:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      source: { type: string }
+                      externalId: { type: string }
+                      artist: { type: string }
+                      title: { type: string }
+                      album: { type: string }
+                      isrc: { type: string }
+                    required: [source, externalId, artist, title]
+              required: [tracks]
+      responses: { "200": { description: array of DownloadJob }, "400": { description: invalid } }
   /ws:
     get:
       summary: >
