@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { Link } from 'react-router-dom'
 import type { ExternalResult, Track } from '../lib/types'
 import { formatDuration } from '../lib/types'
 import { usePlayer } from '../lib/playerStore'
@@ -106,7 +107,20 @@ export function ExternalRow({ result }: Props) {
       {cover}
       <span className="flex-1 truncate">
         <span className="block truncate text-sm font-medium">{result.title}</span>
-        <span className="block truncate text-xs text-text-secondary">{result.artist}</span>
+        <span className="block truncate text-xs text-text-secondary">
+          {result.artistExternalId ? (
+            <Link
+              to={`/artist/${result.source}/${result.artistExternalId}`}
+              onClick={(e) => e.stopPropagation()}
+              onDoubleClick={(e) => e.stopPropagation()}
+              className="hover:underline"
+            >
+              {result.artist}
+            </Link>
+          ) : (
+            result.artist
+          )}
+        </span>
       </span>
       {action}
       <span className="w-12 text-right text-xs text-text-muted">{formatDuration(result.durationMs)}</span>

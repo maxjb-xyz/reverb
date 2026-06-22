@@ -347,6 +347,109 @@ describe('Search (everywhere mode)', () => {
     vi.unstubAllGlobals()
   })
 
+  it('external track WITH artistExternalId renders artist as a Link to /artist/spotify/:id', async () => {
+    let inst: { onmessage: ((ev: { data: string }) => void) | null; close(): void } | null = null
+    class StubES {
+      onmessage: ((ev: { data: string }) => void) | null = null
+      onerror: (() => void) | null = null
+      url: string
+      constructor(url: string) { this.url = url; inst = this }
+      close() {}
+    }
+    vi.stubGlobal('EventSource', StubES as unknown as typeof EventSource)
+
+    render(wrap(<Search />))
+    fireEvent.change(screen.getByPlaceholderText(/search/i), { target: { value: 'link-test' } })
+    clickTab(/everywhere/i)
+
+    act(() => {
+      inst!.onmessage?.({
+        data: JSON.stringify({
+          source: 'spotify',
+          status: 'ok',
+          results: [
+            { source: 'spotify', externalId: 'sp-ext', title: 'Linked Song', artist: 'Linked Artist', album: 'Linked Album', durationMs: 200000, type: 'track', match: { status: 'not_in_library', libraryTrackId: '', method: 'none', confidence: 0 }, artistExternalId: 'spotify-artist-id' },
+          ],
+        }),
+      })
+    })
+
+    await waitFor(() => expect(screen.getByText('Linked Artist')).toBeInTheDocument())
+    const artistLink = screen.getByRole('link', { name: 'Linked Artist' })
+    expect(artistLink).toHaveAttribute('href', '/artist/spotify/spotify-artist-id')
+
+    vi.unstubAllGlobals()
+  })
+
+  it('external track WITH albumExternalId renders album as a Link to /album/spotify/:id', async () => {
+    let inst: { onmessage: ((ev: { data: string }) => void) | null; close(): void } | null = null
+    class StubES {
+      onmessage: ((ev: { data: string }) => void) | null = null
+      onerror: (() => void) | null = null
+      url: string
+      constructor(url: string) { this.url = url; inst = this }
+      close() {}
+    }
+    vi.stubGlobal('EventSource', StubES as unknown as typeof EventSource)
+
+    render(wrap(<Search />))
+    fireEvent.change(screen.getByPlaceholderText(/search/i), { target: { value: 'album-link-test' } })
+    clickTab(/everywhere/i)
+
+    act(() => {
+      inst!.onmessage?.({
+        data: JSON.stringify({
+          source: 'spotify',
+          status: 'ok',
+          results: [
+            { source: 'spotify', externalId: 'sp-alb', title: 'Album Song', artist: 'Album Artist', album: 'Linked Album', durationMs: 200000, type: 'track', match: { status: 'not_in_library', libraryTrackId: '', method: 'none', confidence: 0 }, albumExternalId: 'spotify-album-id' },
+          ],
+        }),
+      })
+    })
+
+    await waitFor(() => expect(screen.getByText('Linked Album')).toBeInTheDocument())
+    const albumLink = screen.getByRole('link', { name: 'Linked Album' })
+    expect(albumLink).toHaveAttribute('href', '/album/spotify/spotify-album-id')
+
+    vi.unstubAllGlobals()
+  })
+
+  it('external track WITHOUT artist/albumExternalId renders artist and album as plain text', async () => {
+    let inst: { onmessage: ((ev: { data: string }) => void) | null; close(): void } | null = null
+    class StubES {
+      onmessage: ((ev: { data: string }) => void) | null = null
+      onerror: (() => void) | null = null
+      url: string
+      constructor(url: string) { this.url = url; inst = this }
+      close() {}
+    }
+    vi.stubGlobal('EventSource', StubES as unknown as typeof EventSource)
+
+    render(wrap(<Search />))
+    fireEvent.change(screen.getByPlaceholderText(/search/i), { target: { value: 'plain-test' } })
+    clickTab(/everywhere/i)
+
+    act(() => {
+      inst!.onmessage?.({
+        data: JSON.stringify({
+          source: 'spotify',
+          status: 'ok',
+          results: [
+            { source: 'spotify', externalId: 'sp-plain', title: 'Plain Song', artist: 'Plain Artist', album: 'Plain Album', durationMs: 200000, type: 'track', match: { status: 'not_in_library', libraryTrackId: '', method: 'none', confidence: 0 } },
+          ],
+        }),
+      })
+    })
+
+    await waitFor(() => expect(screen.getByText('Plain Artist')).toBeInTheDocument())
+    // artist and album should NOT be links
+    expect(screen.queryByRole('link', { name: 'Plain Artist' })).toBeNull()
+    expect(screen.queryByRole('link', { name: 'Plain Album' })).toBeNull()
+
+    vi.unstubAllGlobals()
+  })
+
   it('switch-back to Library: shows library UI after switching from Everywhere', async () => {
     let inst: { onmessage: ((ev: { data: string }) => void) | null; onerror: (() => void) | null; close(): void } | null = null
     class StubES3 {

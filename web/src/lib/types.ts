@@ -152,6 +152,8 @@ export interface ExternalResult {
   coverArtId?: string
   type: 'track' | 'album' | 'artist'
   match?: MatchResult
+  artistExternalId?: string
+  albumExternalId?: string
 }
 
 export type EnvelopeStatus = 'ok' | 'timeout' | 'error'

@@ -1,4 +1,4 @@
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { useLibrarySearch } from '../lib/libraryApi'
 import { useEverywhere } from '../lib/everywhereStore'
 import { usePlayer } from '../lib/playerStore'
@@ -280,6 +280,28 @@ export default function Search() {
                     isrc: r.isrc,
                   }
 
+                  // For non-library results, link artist/album to external pages if IDs are present.
+                  const artistNode = !syntheticTrack && r.artistExternalId ? (
+                    <Link
+                      to={`/artist/${r.source}/${r.artistExternalId}`}
+                      onClick={(e) => e.stopPropagation()}
+                      onDoubleClick={(e) => e.stopPropagation()}
+                      className="hover:underline"
+                    >
+                      {r.artist}
+                    </Link>
+                  ) : undefined
+                  const albumNode = !syntheticTrack && r.albumExternalId ? (
+                    <Link
+                      to={`/album/${r.source}/${r.albumExternalId}`}
+                      onClick={(e) => e.stopPropagation()}
+                      onDoubleClick={(e) => e.stopPropagation()}
+                      className="hover:underline"
+                    >
+                      {r.album}
+                    </Link>
+                  ) : undefined
+
                   return (
                     <TrackRow
                       key={`${r.source}:${r.externalId}`}
@@ -287,6 +309,8 @@ export default function Search() {
                       coverSrc={r.coverUrl || undefined}
                       rightWidth="8.5rem"
                       active={!!matchedId && currentTrackId === matchedId}
+                      artistNode={artistNode}
+                      albumNode={albumNode}
                       onPlay={() => {
                         if (syntheticTrack) {
                           playTrackList([syntheticTrack], 0)

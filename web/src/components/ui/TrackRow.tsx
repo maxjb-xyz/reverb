@@ -21,9 +21,13 @@ interface TrackRowProps {
    *  states), 'auto' reflows the title/album columns. Pass a fixed width to keep
    *  them anchored. */
   rightWidth?: string
+  /** Override the artist cell with a pre-built node (e.g. a Link for external results). */
+  artistNode?: ReactNode
+  /** Override the album cell with a pre-built node (e.g. a Link for external results). */
+  albumNode?: ReactNode
 }
 
-export function TrackRow({ track, index, active = false, onPlay, right, coverSrc, rightWidth = 'auto' }: TrackRowProps) {
+export function TrackRow({ track, index, active = false, onPlay, right, coverSrc, rightWidth = 'auto', artistNode, albumNode }: TrackRowProps) {
   const src = coverSrc ?? (track.coverArtId ? coverUrl(track.coverArtId, 80) : undefined)
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
@@ -85,7 +89,7 @@ export function TrackRow({ track, index, active = false, onPlay, right, coverSrc
           {track.title}
         </span>
         <span className="block truncate text-xs text-text-secondary mt-0.5">
-          {track.artistId ? (
+          {artistNode ?? (track.artistId ? (
             <Link
               to={`/artist/library/${track.artistId}`}
               onClick={(e) => e.stopPropagation()}
@@ -96,13 +100,13 @@ export function TrackRow({ track, index, active = false, onPlay, right, coverSrc
             </Link>
           ) : (
             track.artist
-          )}
+          ))}
         </span>
       </span>
 
       {/* Album */}
       <span className="truncate text-sm text-text-secondary hidden md:block">
-        {track.albumId ? (
+        {albumNode ?? (track.albumId ? (
           <Link
             to={`/album/library/${track.albumId}`}
             onClick={(e) => e.stopPropagation()}
@@ -113,7 +117,7 @@ export function TrackRow({ track, index, active = false, onPlay, right, coverSrc
           </Link>
         ) : (
           track.album
-        )}
+        ))}
       </span>
 
       {/* Right slot (Phase 5: download badge) */}

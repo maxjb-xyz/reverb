@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { MemoryRouter } from 'react-router-dom'
 import { ExternalRow } from './ExternalRow'
 import { useDownloads } from '../lib/downloadStore'
 import type { ExternalResult, DownloadJob } from '../lib/types'
@@ -22,6 +23,10 @@ function job(p: Partial<DownloadJob>): DownloadJob {
   return { id: 'j1', dedupKey: 'dk', status: 'running', progress: 50, downloaderName: 'spotdl', priority: 0, attempts: 0, source: 'spotify', externalId: 'sp1', playWhenReady: false, createdAt: 1, startedAt: 0, finishedAt: 0, ...p }
 }
 
+function renderRow(r: ExternalResult) {
+  return render(<MemoryRouter><ExternalRow result={r} /></MemoryRouter>)
+}
+
 describe('ExternalRow', () => {
   beforeEach(() => {
     useDownloads.setState({ jobs: {} })
@@ -29,7 +34,7 @@ describe('ExternalRow', () => {
   })
 
   it('in-library row shows ✓ and plays the matched library track id', () => {
-    render(<ExternalRow result={result({ match: { status: 'in_library', libraryTrackId: 't3', method: 'isrc', confidence: 1 } })} />)
+    renderRow(result({ match: { status: 'in_library', libraryTrackId: 't3', method: 'isrc', confidence: 1 } }))
     expect(screen.getByTitle(/in library/i)).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button'))
     expect(playTrackList).toHaveBeenCalledTimes(1)
@@ -38,7 +43,7 @@ describe('ExternalRow', () => {
   })
 
   it('not-in-library row shows ↓ and posts a download', async () => {
-    render(<ExternalRow result={result({ match: { status: 'not_in_library', libraryTrackId: '', method: 'none', confidence: 0 } })} />)
+    renderRow(result({ match: { status: 'not_in_library', libraryTrackId: '', method: 'none', confidence: 0 } }))
     const dl = screen.getByRole('button', { name: /download/i })
     fireEvent.click(dl)
     await waitFor(() => expect(postDownload).toHaveBeenCalled())
@@ -46,7 +51,7 @@ describe('ExternalRow', () => {
 
   it('active job shows the ⟳ progress ring (determinate)', () => {
     useDownloads.getState().upsert(job({ status: 'running', progress: 50 }))
-    render(<ExternalRow result={result({})} />)
+    renderRow(result({}))
     // Determinate ring labels with the percentage and is NOT a spinner.
     const ring = screen.getByLabelText('Downloading 50%')
     expect(ring).toBeInTheDocument()
@@ -55,7 +60,7 @@ describe('ExternalRow', () => {
 
   it('active job with unknown progress (-1) shows the indeterminate spinner', () => {
     useDownloads.getState().upsert(job({ status: 'running', progress: -1 }))
-    render(<ExternalRow result={result({})} />)
+    renderRow(result({}))
     // Indeterminate branch labels without a percentage and renders the spinner.
     const spinner = screen.getByLabelText('Downloading')
     expect(spinner).toBeInTheDocument()
@@ -64,11 +69,26 @@ describe('ExternalRow', () => {
 
   it('completed job with libraryTrackId flips to ✓ and plays that library track id', () => {
     useDownloads.getState().upsert(job({ status: 'completed', progress: 100, libraryTrackId: 't9' }))
-    render(<ExternalRow result={result({})} />)
+    renderRow(result({}))
     expect(screen.getByTitle(/in library/i)).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button'))
     expect(playTrackList).toHaveBeenCalledTimes(1)
     // Must play the completed job's library track id ('t9'), never the external id ('sp1') or ''.
     expect(playTrackList.mock.calls[0][0][0].id).toBe('t9')
+  })
+
+  // ── artist/album link tests ────────────────────────────────────────────────
+
+  it('renders artist as a Link when artistExternalId is present', () => {
+    renderRow(result({ artistExternalId: 'spotify-artist-id' }))
+    const link = screen.getByRole('link', { name: 'Artist' })
+    expect(link).toBeInTheDocument()
+    expect(link).toHaveAttribute('href', '/artist/spotify/spotify-artist-id')
+  })
+
+  it('renders artist as plain text when artistExternalId is absent', () => {
+    renderRow(result({}))
+    expect(screen.queryByRole('link', { name: 'Artist' })).toBeNull()
+    expect(screen.getByText('Artist')).toBeInTheDocument()
   })
 })
