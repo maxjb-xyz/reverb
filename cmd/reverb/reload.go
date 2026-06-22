@@ -20,10 +20,10 @@ type serviceReloader struct {
 
 var _ api.ServiceReloader = (*serviceReloader)(nil)
 
-func (r *serviceReloader) Reload(ctx context.Context) (library.LibraryAdapter, api.Streamer, api.CoverageService, api.DownloadManager, error) {
+func (r *serviceReloader) Reload(ctx context.Context) (library.LibraryAdapter, api.Streamer, api.CoverageService, api.DownloadManager, api.SyncService, error) {
 	bundle, err := r.builder.Build(ctx)
 	if err != nil {
-		return nil, nil, nil, nil, err
+		return nil, nil, nil, nil, nil, err
 	}
 
 	// LibraryAdapter is itself an interface; a nil bundle.Library is a usable nil
@@ -48,5 +48,10 @@ func (r *serviceReloader) Reload(ctx context.Context) (library.LibraryAdapter, a
 		dl = bundle.Manager
 	}
 
-	return lib, srch, cov, dl, nil
+	var snc api.SyncService
+	if bundle.Sync != nil {
+		snc = bundle.Sync
+	}
+
+	return lib, srch, cov, dl, snc, nil
 }

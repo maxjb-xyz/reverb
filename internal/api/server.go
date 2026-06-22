@@ -58,12 +58,12 @@ type ConfigDirty interface {
 	Dirty() bool
 }
 
-// ServiceReloader rebuilds the active library/search/download/coverage services
+// ServiceReloader rebuilds the active library/search/download/coverage/sync services
 // from the current DB state and returns them. The returned Manager (if any) is
 // already Started; the server Stops the previous one after swapping the new one in.
 // A nil interface result means "no service of that kind is configured".
 type ServiceReloader interface {
-	Reload(ctx context.Context) (lib library.LibraryAdapter, search Streamer, coverage CoverageService, downloads DownloadManager, err error)
+	Reload(ctx context.Context) (lib library.LibraryAdapter, search Streamer, coverage CoverageService, downloads DownloadManager, sync SyncService, err error)
 }
 
 type Deps struct {
@@ -97,9 +97,9 @@ type Server struct {
 		search    Streamer
 		coverage  CoverageService
 		downloads DownloadManager
-		// sync is intentionally NOT swapped by reload — the playlist-sync service
-		// is built once at startup and tied to a fixed Spotify credential/store.
-		// Enabling Spotify or changing the library after startup requires a restart.
+		// sync is reload-swapped alongside coverage: when the Spotify adapter or
+		// library changes, the new SyncService (or nil) is atomically installed
+		// without a restart.
 		sync SyncService
 	}
 }
@@ -142,13 +142,13 @@ func (s *Server) reload(ctx context.Context) error {
 	if s.deps.Reload == nil {
 		return nil
 	}
-	lib, srch, cov, dl, err := s.deps.Reload.Reload(ctx)
+	lib, srch, cov, dl, snc, err := s.deps.Reload.Reload(ctx)
 	if err != nil {
 		return err
 	}
 	s.mu.Lock()
 	old := s.live.downloads
-	s.live.library, s.live.search, s.live.coverage, s.live.downloads = lib, srch, cov, dl
+	s.live.library, s.live.search, s.live.coverage, s.live.downloads, s.live.sync = lib, srch, cov, dl, snc
 	s.mu.Unlock()
 	// Stop the previous Manager only after the new one is swapped in, and never
 	// stop a nil or unchanged Manager.
