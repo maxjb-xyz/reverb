@@ -28,6 +28,7 @@ export default function Artist() {
     () => Object.values(coverage).flatMap((c) => c.missingTracks),
     [coverage],
   )
+  const palette = useAlbumPalette(detail?.coverArtId ? coverUrl(detail.coverArtId, 300) : detail?.coverUrl)
 
   if (isLoading) {
     return (
@@ -72,8 +73,6 @@ export default function Artist() {
   const coverSrc = detail.coverArtId
     ? coverUrl(detail.coverArtId, 300)
     : detail.coverUrl
-
-  const palette = useAlbumPalette(coverSrc)
 
   const albums = detail.albums ?? []
 

@@ -54,6 +54,7 @@ export default function Album() {
   const playTrackList = usePlayer((s) => s.playTrackList)
   const toggleShuffle = usePlayer((s) => s.toggleShuffle)
   const shuffle = usePlayer((s) => s.shuffle)
+  const palette = useAlbumPalette(album?.coverArtId ? coverUrl(album.coverArtId, 300) : album?.coverUrl)
 
   if (isLoading) {
     return (
@@ -109,8 +110,6 @@ export default function Album() {
 
   // Cover source: prefer coverArtId proxy, fall back to direct coverUrl
   const coverSrc = album.coverArtId ? coverUrl(album.coverArtId, 300) : album.coverUrl
-
-  const palette = useAlbumPalette(coverSrc)
 
   // Total duration: sum across all tracks (owned + missing)
   const totalDurationMs = album.tracks.reduce((acc, t) => acc + t.durationMs, 0)

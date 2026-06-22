@@ -25,6 +25,7 @@ export default function Playlist() {
   // Inline rename state
   const [renaming, setRenaming] = useState(false)
   const [renameValue, setRenameValue] = useState('')
+  const palette = useAlbumPalette(playlist?.coverArtId ? coverUrl(playlist.coverArtId, 300) : undefined)
 
   if (isLoading) {
     return (
@@ -63,8 +64,6 @@ export default function Playlist() {
   const hasTracks = tracks.length > 0
 
   const coverSrc = playlist.coverArtId ? coverUrl(playlist.coverArtId, 300) : undefined
-
-  const palette = useAlbumPalette(coverSrc)
 
   function openRename() {
     setRenameValue(playlist!.name)
