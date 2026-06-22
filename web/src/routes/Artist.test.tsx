@@ -318,6 +318,13 @@ describe('Artist page', () => {
     expect(mockNavigate).toHaveBeenCalledWith('/album/library/libAlbum1')
   })
 
+  it('renders coverUrl as the artist header image when coverArtId is absent', () => {
+    // STUB_DETAIL has coverUrl set and no coverArtId → Cover should get the Spotify CDN URL
+    wrapper(<Artist />)
+    const coverImg = screen.getByRole('img', { name: 'Radiohead' })
+    expect(coverImg).toHaveAttribute('src', 'https://cdn.example.com/radiohead.jpg')
+  })
+
   it('clicking an album without libraryAlbumId navigates to /album/spotify/:externalId', () => {
     const mockNavigate = vi.fn()
     vi.mocked(useNavigate).mockReturnValue(mockNavigate)
