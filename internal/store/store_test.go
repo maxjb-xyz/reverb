@@ -174,6 +174,22 @@ func TestMatchCacheUpsertPositiveAndNegative(t *testing.T) {
 	}
 }
 
+func TestAlbumCoverageRoundTrip(t *testing.T) {
+	st := openMigrated(t)
+	q := st.Q()
+	ctx := context.Background()
+	if err := q.UpsertAlbumCoverage(ctx, db.UpsertAlbumCoverageParams{
+		Source: "spotify", ExternalAlbumID: "AL", CoverageJson: `{"state":"full"}`,
+		LibraryAlbumID: "L1", FetchedAt: 123,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	row, err := q.GetAlbumCoverage(ctx, db.GetAlbumCoverageParams{Source: "spotify", ExternalAlbumID: "AL"})
+	if err != nil || row.CoverageJson != `{"state":"full"}` || row.LibraryAlbumID != "L1" {
+		t.Fatalf("round-trip failed: %+v err=%v", row, err)
+	}
+}
+
 func TestAdapterInstanceCRUD(t *testing.T) {
 	st, err := Open(t.TempDir() + "/ai.db")
 	if err != nil {
