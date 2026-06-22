@@ -131,7 +131,7 @@ export default function SyncedPlaylist() {
     .filter((t) => t.state === 'full' && t.libraryTrack)
     .map((t) => t.libraryTrack!)
 
-  const missingCount = detail.tracks.filter((t) => t.state !== 'full').length
+  const missingCount = detail.tracks.filter((t) => t.state === 'none').length
 
   const ownedIndexMap = new Map<string, number>(
     ownedTracks.map((t, i) => [t.id, i]),
