@@ -113,4 +113,10 @@ describe('AppShell', () => {
     const root = screen.getByTestId('app-shell-root')
     expect(root.style.background).toBe('')
   })
+
+  it('root grid has a constrained single column to prevent horizontal overflow', () => {
+    renderShell()
+    const root = screen.getByTestId('app-shell-root')
+    expect(root.className).toContain('grid-cols-[minmax(0,1fr)]')
+  })
 })
