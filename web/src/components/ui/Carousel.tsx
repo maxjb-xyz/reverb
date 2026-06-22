@@ -32,7 +32,7 @@ export function Carousel({ title, onShowAll, children }: CarouselProps) {
       {/* Horizontal scroll row */}
       <div
         data-testid="carousel-scroll"
-        className="grid grid-flow-col gap-4 overflow-x-auto pb-2"
+        className="grid grid-flow-col gap-4 overflow-x-auto pb-2 w-full min-w-0"
         style={{ gridAutoColumns: '160px' }}
       >
         {children}

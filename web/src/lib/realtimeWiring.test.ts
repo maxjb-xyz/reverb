@@ -100,27 +100,39 @@ describe('useRealtime', () => {
   })
 
   it('bumps library revision on download.complete', () => {
-    useDownloads.getState().upsert({
-      id: 'j3', dedupKey: 'dk3', status: 'running', progress: 0, downloaderName: 'spotdl',
-      priority: 0, attempts: 0, source: 'spotify', externalId: 'sp3', playWhenReady: false,
-      title: 'Song3', artist: 'Artist3', album: 'Album3', createdAt: 1, startedAt: 0, finishedAt: 0,
-    } as never)
+    vi.useFakeTimers()
+    try {
+      useDownloads.getState().upsert({
+        id: 'j3', dedupKey: 'dk3', status: 'running', progress: 0, downloaderName: 'spotdl',
+        priority: 0, attempts: 0, source: 'spotify', externalId: 'sp3', playWhenReady: false,
+        title: 'Song3', artist: 'Artist3', album: 'Album3', createdAt: 1, startedAt: 0, finishedAt: 0,
+      } as never)
 
-    renderHook(() => useRealtime((url) => new StubSocket(url)), { wrapper })
-    const s = sockets[0]
-    expect(useLibraryRevision.getState().revision).toBe(0)
+      renderHook(() => useRealtime((url) => new StubSocket(url)), { wrapper })
+      const s = sockets[0]
+      expect(useLibraryRevision.getState().revision).toBe(0)
 
-    s.onmessage?.(frame('download.complete', { jobId: 'j3', dedupKey: 'dk3', status: 'completed', progress: 100, source: 'spotify', externalId: 'sp3', libraryTrackId: 't3' }))
-    expect(useLibraryRevision.getState().revision).toBe(1)
+      s.onmessage?.(frame('download.complete', { jobId: 'j3', dedupKey: 'dk3', status: 'completed', progress: 100, source: 'spotify', externalId: 'sp3', libraryTrackId: 't3' }))
+      vi.advanceTimersByTime(300)
+      expect(useLibraryRevision.getState().revision).toBe(1)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('bumps library revision on library.updated', () => {
-    renderHook(() => useRealtime((url) => new StubSocket(url)), { wrapper })
-    const s = sockets[0]
-    expect(useLibraryRevision.getState().revision).toBe(0)
+    vi.useFakeTimers()
+    try {
+      renderHook(() => useRealtime((url) => new StubSocket(url)), { wrapper })
+      const s = sockets[0]
+      expect(useLibraryRevision.getState().revision).toBe(0)
 
-    s.onmessage?.(frame('library.updated', { artistIds: [], albumIds: [] }))
-    expect(useLibraryRevision.getState().revision).toBe(1)
+      s.onmessage?.(frame('library.updated', { artistIds: [], albumIds: [] }))
+      vi.advanceTimersByTime(300)
+      expect(useLibraryRevision.getState().revision).toBe(1)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('does NOT auto-play a completion whose job had playWhenReady=false', () => {

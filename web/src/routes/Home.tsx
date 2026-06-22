@@ -261,7 +261,7 @@ export default function Home() {
 
       {/* Hero — "Just added to your library" */}
       {!isLoading && heroAlbum && (
-        <section className="flex gap-6 items-center mb-10" aria-label="Just added to your library">
+        <section className="flex gap-6 items-center mb-10 min-w-0 overflow-hidden" aria-label="Just added to your library">
           {/* Cover — clickable to open album detail */}
           <Link
             to={`/album/library/${heroAlbum.id}`}

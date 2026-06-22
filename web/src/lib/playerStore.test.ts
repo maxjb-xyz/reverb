@@ -28,4 +28,19 @@ describe('playerStore', () => {
     })
     expect(usePlayer.getState().current?.id).toBe('2')
   })
+
+  it('next() with no next track (single-track queue, repeat off) leaves playing state unchanged', () => {
+    act(() => {
+      usePlayer.getState().playTrackList([track('1')], 0)
+    })
+    // Manually set playing to true via the engine (playTrackList triggers autoplay)
+    // After playTrackList, engine emits playing: true
+    // Now call next() — with repeat=off and a single track, there is no next
+    act(() => {
+      usePlayer.getState().next()
+    })
+    // playing should still be true (no desync) and current track unchanged
+    expect(usePlayer.getState().current?.id).toBe('1')
+    expect(usePlayer.getState().playing).toBe(true)
+  })
 })

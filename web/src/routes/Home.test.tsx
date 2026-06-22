@@ -237,6 +237,25 @@ describe('Home feed', () => {
     expect(titleLink).toHaveAttribute('href', '/album/library/al99')
   })
 
+  it('hero section has min-w-0 and overflow-hidden, and h1 has truncate, with a very long album title', async () => {
+    const { useAlbums, usePlaylists } = await import('../lib/libraryApi')
+
+    const longTitle = 'A'.repeat(200)
+    const album = makeAlbum({ id: 'al-long', name: longTitle, artist: 'Test Artist' })
+    vi.mocked(useAlbums).mockReturnValue({ data: [album], isLoading: false, error: null } as unknown as UseQueryResult<Album[], Error>)
+    vi.mocked(usePlaylists).mockReturnValue({ data: [], isLoading: false, error: null } as unknown as UseQueryResult<Playlist[], Error>)
+
+    render(wrap(<Home />))
+
+    const heroSection = screen.getByRole('region', { name: /just added to your library/i })
+    expect(heroSection.classList.contains('min-w-0')).toBe(true)
+    expect(heroSection.classList.contains('overflow-hidden')).toBe(true)
+
+    const h1 = heroSection.querySelector('h1')
+    expect(h1).not.toBeNull()
+    expect(h1!.classList.contains('truncate')).toBe(true)
+  })
+
   it('clicking the hero Play button does NOT navigate — calls play instead', async () => {
     const { useAlbums, usePlaylists } = await import('../lib/libraryApi')
 

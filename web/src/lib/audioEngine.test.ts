@@ -76,8 +76,9 @@ describe('AudioEngine queue + transport', () => {
 
   it('next advances and wraps only with repeat all', () => {
     engine.playTrackList(list, 2)
-    engine.next() // at last track, repeat off → stops
-    expect(engine.getState().playing).toBe(false)
+    engine.next() // at last track, repeat off → NO-OP (playing stays true, index unchanged)
+    expect(engine.getState().playing).toBe(true)
+    expect(engine.getState().index).toBe(2)
 
     engine.cycleRepeat() // off -> all
     engine.playTrackList(list, 2)

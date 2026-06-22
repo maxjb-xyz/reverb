@@ -263,8 +263,7 @@ export class AudioEngine {
       if (np >= this.shuffleOrder.length) {
         if (this.repeat === 'all') np = 0
         else {
-          this.playing = false
-          this.emit()
+          if (fromEnded) { this.playing = false; this.emit() }
           return
         }
       }
@@ -278,8 +277,7 @@ export class AudioEngine {
     if (ni >= this.queue.length) {
       if (this.repeat === 'all') ni = 0
       else {
-        this.playing = false
-        this.emit()
+        if (fromEnded) { this.playing = false; this.emit() }
         return
       }
     }
