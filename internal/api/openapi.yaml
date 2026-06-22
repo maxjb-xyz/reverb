@@ -127,6 +127,39 @@ paths:
       summary: One playlist with its tracks
       parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
       responses: { "200": { description: Playlist }, "404": { description: not found } }
+    put:
+      summary: Rename a playlist
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+              required: [name]
+      responses: { "200": { description: '{"ok":true}' }, "400": { description: name is required }, "502": { description: upstream error } }
+    delete:
+      summary: Delete a playlist
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses: { "200": { description: '{"ok":true}' }, "502": { description: upstream error } }
+  /library/playlist/{id}/remove:
+    post:
+      summary: Remove tracks at given zero-based indices from a playlist
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                indices:
+                  type: array
+                  items: { type: integer }
+              required: [indices]
+      responses: { "200": { description: '{"ok":true}' }, "400": { description: indices is required }, "502": { description: upstream error } }
   /stream/{id}:
     get:
       summary: Stream/transcode-proxy a library track by id (Range supported)

@@ -24,6 +24,13 @@ type fakeLibrary struct {
 	createdName     string
 	addedPlaylistID string
 	addedTrackIDs   []string
+
+	// new mutation recorders
+	renamedPlaylistID   string
+	renamedName         string
+	removedPlaylistID   string
+	removedIndices      []int
+	deletedPlaylistID   string
 }
 
 func (fakeLibrary) Type() string                             { return "library" }
@@ -53,6 +60,20 @@ func (f *fakeLibrary) CreatePlaylist(ctx context.Context, name string) (core.Pla
 func (f *fakeLibrary) AddTracksToPlaylist(ctx context.Context, playlistID string, trackIDs []string) error {
 	f.addedPlaylistID = playlistID
 	f.addedTrackIDs = trackIDs
+	return nil
+}
+func (f *fakeLibrary) RenamePlaylist(ctx context.Context, id, name string) error {
+	f.renamedPlaylistID = id
+	f.renamedName = name
+	return nil
+}
+func (f *fakeLibrary) RemovePlaylistTracks(ctx context.Context, id string, indices []int) error {
+	f.removedPlaylistID = id
+	f.removedIndices = indices
+	return nil
+}
+func (f *fakeLibrary) DeletePlaylist(ctx context.Context, id string) error {
+	f.deletedPlaylistID = id
 	return nil
 }
 func (f *fakeLibrary) Stream(ctx context.Context, trackID string, opts core.StreamOpts, rangeHeader string) (core.StreamHandle, error) {
@@ -229,6 +250,77 @@ func TestAddTracksToPlaylistHandlerRejectsEmpty(t *testing.T) {
 	srv, cookie := libTestServer(t, &fakeLibrary{})
 	for _, body := range []string{`{"trackIds":[]}`, `{}`} {
 		rec := doAuthedBody(t, srv, http.MethodPost, "/api/v1/library/playlists/p1/tracks", body, cookie)
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("body %s: status = %d, want 400", body, rec.Code)
+		}
+	}
+}
+
+func TestRenamePlaylistHandler(t *testing.T) {
+	lib := &fakeLibrary{}
+	srv, cookie := libTestServer(t, lib)
+	rec := doAuthedBody(t, srv, http.MethodPut, "/api/v1/library/playlist/p1", `{"name":"Summer Hits"}`, cookie)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200: %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `"ok":true`) {
+		t.Fatalf("body missing ok: %s", rec.Body.String())
+	}
+	if lib.renamedPlaylistID != "p1" {
+		t.Fatalf("playlistID = %q, want p1", lib.renamedPlaylistID)
+	}
+	if lib.renamedName != "Summer Hits" {
+		t.Fatalf("name = %q, want Summer Hits", lib.renamedName)
+	}
+}
+
+func TestRenamePlaylistHandlerRejectsEmptyName(t *testing.T) {
+	srv, cookie := libTestServer(t, &fakeLibrary{})
+	for _, body := range []string{`{"name":""}`, `{"name":"   "}`, `{}`} {
+		rec := doAuthedBody(t, srv, http.MethodPut, "/api/v1/library/playlist/p1", body, cookie)
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("body %s: status = %d, want 400", body, rec.Code)
+		}
+	}
+}
+
+func TestDeletePlaylistHandler(t *testing.T) {
+	lib := &fakeLibrary{}
+	srv, cookie := libTestServer(t, lib)
+	rec := doAuthed(t, srv, http.MethodDelete, "/api/v1/library/playlist/p1", cookie)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200: %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `"ok":true`) {
+		t.Fatalf("body missing ok: %s", rec.Body.String())
+	}
+	if lib.deletedPlaylistID != "p1" {
+		t.Fatalf("playlistID = %q, want p1", lib.deletedPlaylistID)
+	}
+}
+
+func TestRemovePlaylistTracksHandler(t *testing.T) {
+	lib := &fakeLibrary{}
+	srv, cookie := libTestServer(t, lib)
+	rec := doAuthedBody(t, srv, http.MethodPost, "/api/v1/library/playlist/p1/remove", `{"indices":[2,5]}`, cookie)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200: %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `"ok":true`) {
+		t.Fatalf("body missing ok: %s", rec.Body.String())
+	}
+	if lib.removedPlaylistID != "p1" {
+		t.Fatalf("playlistID = %q, want p1", lib.removedPlaylistID)
+	}
+	if len(lib.removedIndices) != 2 || lib.removedIndices[0] != 2 || lib.removedIndices[1] != 5 {
+		t.Fatalf("indices = %v, want [2 5]", lib.removedIndices)
+	}
+}
+
+func TestRemovePlaylistTracksHandlerRejectsEmpty(t *testing.T) {
+	srv, cookie := libTestServer(t, &fakeLibrary{})
+	for _, body := range []string{`{"indices":[]}`, `{}`} {
+		rec := doAuthedBody(t, srv, http.MethodPost, "/api/v1/library/playlist/p1/remove", body, cookie)
 		if rec.Code != http.StatusBadRequest {
 			t.Fatalf("body %s: status = %d, want 400", body, rec.Code)
 		}
