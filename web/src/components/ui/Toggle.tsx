@@ -21,7 +21,7 @@ export function Toggle({ checked, onChange, label }: ToggleProps) {
     >
       <span
         className={[
-          'absolute top-[3px] w-[18px] h-[18px] rounded-full bg-black transition-transform',
+          'absolute top-[3px] w-[18px] h-[18px] rounded-full bg-on-accent transition-transform',
           checked ? 'translate-x-[22px]' : 'translate-x-[3px]',
         ].join(' ')}
       />

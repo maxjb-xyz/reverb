@@ -75,7 +75,7 @@ describe('ImportPlaylistDialog', () => {
 
   it('renders URL input, toggle, Import and Cancel buttons', () => {
     render(wrap(<ImportPlaylistDialog open onClose={vi.fn()} />))
-    expect(screen.getByLabelText(/spotify playlist url/i)).toBeInTheDocument()
+    expect(screen.getByLabelText(/playlist url/i)).toBeInTheDocument()
     expect(screen.getByRole('switch', { name: /download missing now/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /^import$/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /cancel/i })).toBeInTheDocument()
@@ -88,7 +88,7 @@ describe('ImportPlaylistDialog', () => {
 
   it('Import button is enabled after typing a URL', () => {
     render(wrap(<ImportPlaylistDialog open onClose={vi.fn()} />))
-    fireEvent.change(screen.getByLabelText(/spotify playlist url/i), {
+    fireEvent.change(screen.getByLabelText(/playlist url/i), {
       target: { value: 'https://open.spotify.com/playlist/abc' },
     })
     expect(screen.getByRole('button', { name: /^import$/i })).not.toBeDisabled()
@@ -101,7 +101,7 @@ describe('ImportPlaylistDialog', () => {
 
     render(wrap(<ImportPlaylistDialog open onClose={onClose} />))
 
-    fireEvent.change(screen.getByLabelText(/spotify playlist url/i), {
+    fireEvent.change(screen.getByLabelText(/playlist url/i), {
       target: { value: 'https://open.spotify.com/playlist/xyz' },
     })
 
@@ -131,7 +131,7 @@ describe('ImportPlaylistDialog', () => {
 
     render(wrap(<ImportPlaylistDialog open onClose={onClose} />))
 
-    fireEvent.change(screen.getByLabelText(/spotify playlist url/i), {
+    fireEvent.change(screen.getByLabelText(/playlist url/i), {
       target: { value: 'https://open.spotify.com/playlist/def' },
     })
 
@@ -151,7 +151,7 @@ describe('ImportPlaylistDialog', () => {
 
     render(wrap(<ImportPlaylistDialog open onClose={onClose} />))
 
-    fireEvent.change(screen.getByLabelText(/spotify playlist url/i), {
+    fireEvent.change(screen.getByLabelText(/playlist url/i), {
       target: { value: 'https://open.spotify.com/playlist/private' },
     })
 
@@ -168,7 +168,7 @@ describe('ImportPlaylistDialog', () => {
 
     render(wrap(<ImportPlaylistDialog open onClose={vi.fn()} />))
 
-    fireEvent.change(screen.getByLabelText(/spotify playlist url/i), {
+    fireEvent.change(screen.getByLabelText(/playlist url/i), {
       target: { value: 'https://open.spotify.com/playlist/slow' },
     })
 
@@ -179,6 +179,37 @@ describe('ImportPlaylistDialog', () => {
     })
 
     // Resolve to avoid hanging
+    resolve(makeDetail())
+  })
+
+  it('Cancel is clickable while import is in-flight: calls onClose and does NOT navigate', async () => {
+    let resolve!: (v: SyncedPlaylistDetail) => void
+    vi.mocked(importPlaylist).mockReturnValue(new Promise<SyncedPlaylistDetail>((r) => { resolve = r }))
+    const onClose = vi.fn()
+
+    render(wrap(<ImportPlaylistDialog open onClose={onClose} />))
+
+    fireEvent.change(screen.getByLabelText(/playlist url/i), {
+      target: { value: 'https://open.spotify.com/playlist/inflight' },
+    })
+
+    // Kick off the import (leaves busy=true, promise unresolved)
+    fireEvent.click(screen.getByRole('button', { name: /^import$/i }))
+
+    // Wait until busy state is active
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /importing/i })).toBeDisabled()
+    })
+
+    // Cancel must still be enabled and callable
+    const cancelBtn = screen.getByRole('button', { name: /cancel/i })
+    expect(cancelBtn).not.toBeDisabled()
+    fireEvent.click(cancelBtn)
+
+    expect(onClose).toHaveBeenCalled()
+    expect(mockNavigate).not.toHaveBeenCalled()
+
+    // Resolve to avoid hanging promise
     resolve(makeDetail())
   })
 

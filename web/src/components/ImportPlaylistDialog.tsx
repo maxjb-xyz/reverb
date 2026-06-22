@@ -133,7 +133,6 @@ export function ImportPlaylistDialog({ open, onClose }: ImportPlaylistDialogProp
                 }}
                 placeholder="Paste a public Spotify playlist link"
                 disabled={busy}
-                aria-label="Spotify playlist URL"
                 className="w-full rounded-lg border border-border-subtle bg-input px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-50"
               />
             </div>
@@ -157,7 +156,7 @@ export function ImportPlaylistDialog({ open, onClose }: ImportPlaylistDialogProp
 
             {/* Action buttons */}
             <div className="flex items-center justify-end gap-3 pt-1">
-              <Button variant="ghost" onClick={onClose} disabled={busy}>
+              <Button variant="ghost" onClick={onClose}>
                 Cancel
               </Button>
               <Button
