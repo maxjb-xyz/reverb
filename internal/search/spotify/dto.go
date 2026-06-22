@@ -64,6 +64,21 @@ type artistAlbumDTO struct {
 	Artists     []artistRefDTO `json:"artists"`
 }
 
+type playlistObjectDTO struct {
+	Name   string          `json:"name"`
+	Images []imageDTO      `json:"images"`
+	Tracks playlistPageDTO `json:"tracks"`
+}
+
+type playlistPageDTO struct {
+	Items []playlistItemDTO `json:"items"`
+	Next  string            `json:"next"`
+}
+
+type playlistItemDTO struct {
+	Track trackDTO `json:"track"`
+}
+
 // searchResponse mirrors GET /v1/search. Only the requested type is populated.
 type searchResponse struct {
 	Tracks  *struct{ Items []trackDTO }    `json:"tracks"`

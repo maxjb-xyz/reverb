@@ -24,6 +24,12 @@ type DiscographyProvider interface {
 	GetArtistDiscography(ctx context.Context, externalID string) ([]core.ExternalAlbum, error)
 }
 
+// PlaylistProvider is an OPTIONAL capability (P2 playlist sync). Detected via a
+// type assertion; conformance does not require it.
+type PlaylistProvider interface {
+	GetPlaylist(ctx context.Context, externalID string) (core.ExternalPlaylist, error)
+}
+
 // EnvelopeStatus is the per-source outcome streamed to the client.
 type EnvelopeStatus string
 

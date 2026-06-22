@@ -135,6 +135,58 @@ func TestSpotifyConformance(t *testing.T) {
 	search.RunConformance(t, a)
 }
 
+func TestParsePlaylistID(t *testing.T) {
+	cases := map[string]string{
+		"https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M":        "37i9dQZF1DXcBWIGoYBM5M",
+		"https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M?si=abc": "37i9dQZF1DXcBWIGoYBM5M",
+		"spotify:playlist:37i9dQZF1DXcBWIGoYBM5M":                        "37i9dQZF1DXcBWIGoYBM5M",
+	}
+	for in, want := range cases {
+		got, ok := ParsePlaylistID(in)
+		if !ok || got != want {
+			t.Fatalf("ParsePlaylistID(%q) = %q,%v; want %q,true", in, got, ok, want)
+		}
+	}
+	if _, ok := ParsePlaylistID("https://open.spotify.com/album/123"); ok {
+		t.Fatal("album URL must not parse as a playlist")
+	}
+}
+
+func TestGetPlaylistMapsAndPaginates(t *testing.T) {
+	page1 := `{"name":"Chill","images":[{"url":"http://img/p"}],"tracks":{
+	  "items":[{"track":{"id":"t1","name":"One","artists":[{"name":"A"}],"duration_ms":1000,"external_ids":{"isrc":"X1"},"album":{"name":"AL","images":[{"url":"http://img/a"}]}}}],
+	  "next":"NEXTURL"}}`
+	page2 := `{"items":[{"track":{"id":"t2","name":"Two","artists":[{"name":"B"}],"duration_ms":2000,"album":{"name":"AL2"}}}],"next":null}`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.Contains(r.URL.Path, "/playlists/") && strings.HasSuffix(r.URL.Path, "/tracks"):
+			_, _ = w.Write([]byte(page2)) // the "next" page
+		case strings.Contains(r.URL.Path, "/playlists/"):
+			_, _ = w.Write([]byte(page1)) // playlist object (meta + first tracks page)
+		default:
+			_, _ = w.Write([]byte(`{"access_token":"t","expires_in":3600}`))
+		}
+	}))
+	defer srv.Close()
+	a := New().WithBaseURLs(srv.URL, srv.URL)
+	if err := a.Init(map[string]any{"client_id": "x", "client_secret": "y"}); err != nil {
+		t.Fatal(err)
+	}
+	pl, err := a.GetPlaylist(context.Background(), "pl1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pl.Name != "Chill" || pl.CoverURL != "http://img/p" {
+		t.Fatalf("bad meta: %+v", pl)
+	}
+	if len(pl.Tracks) != 2 || pl.Tracks[0].ExternalID != "t1" || pl.Tracks[1].ExternalID != "t2" {
+		t.Fatalf("bad tracks: %+v", pl.Tracks)
+	}
+	if pl.Tracks[0].ISRC != "X1" || pl.Tracks[0].Type != core.EntityTrack {
+		t.Fatalf("bad track mapping: %+v", pl.Tracks[0])
+	}
+}
+
 func TestGetArtistDiscographyMapsAndFilters(t *testing.T) {
 	page := `{"items":[
 	  {"id":"al1","name":"OK Computer","album_type":"album","total_tracks":12,"release_date":"1997-05-21","images":[{"url":"http://img/1"}],"artists":[{"id":"art1","name":"Radiohead"}]},

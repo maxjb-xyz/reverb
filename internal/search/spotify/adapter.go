@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strconv"
 
 	"github.com/maxjb-xyz/reverb/internal/core"
@@ -16,7 +17,19 @@ var (
 	_ search.SearchSource        = (*Adapter)(nil)
 	_ registry.Plugin            = (*Adapter)(nil)
 	_ search.DiscographyProvider = (*Adapter)(nil)
+	_ search.PlaylistProvider    = (*Adapter)(nil)
 )
+
+var playlistIDRe = regexp.MustCompile(`(?:open\.spotify\.com/playlist/|spotify:playlist:)([A-Za-z0-9]+)`)
+
+// ParsePlaylistID extracts a Spotify playlist id from a URL or URI; ok=false if absent.
+func ParsePlaylistID(s string) (string, bool) {
+	m := playlistIDRe.FindStringSubmatch(s)
+	if len(m) < 2 {
+		return "", false
+	}
+	return m[1], true
+}
 
 const (
 	defaultAccountsURL = "https://accounts.spotify.com"
@@ -218,6 +231,44 @@ func (a *Adapter) GetArtistDiscography(ctx context.Context, externalID string) (
 		offset += len(resp.Items)
 	}
 	return out, nil
+}
+
+// GetPlaylist fetches a public Spotify playlist's metadata + all tracks (paginated).
+func (a *Adapter) GetPlaylist(ctx context.Context, externalID string) (core.ExternalPlaylist, error) {
+	var obj playlistObjectDTO
+	if err := a.client.apiGet(ctx, "/playlists/"+url.PathEscape(externalID), url.Values{}, &obj); err != nil {
+		return core.ExternalPlaylist{}, err
+	}
+	pl := core.ExternalPlaylist{
+		Source: "spotify", ExternalID: externalID, Name: obj.Name,
+		CoverURL: firstImage(obj.Images), Tracks: []core.ExternalResult{},
+	}
+	page := obj.Tracks
+	for {
+		for _, it := range page.Items {
+			if it.Track.ID == "" { // local/unavailable tracks have no id
+				continue
+			}
+			pl.Tracks = append(pl.Tracks, a.mapTrack(it.Track))
+		}
+		if page.Next == "" {
+			break
+		}
+		// Follow the absolute next URL; apiGet takes a path+params, so re-issue the
+		// tracks endpoint with an offset derived from accumulated count.
+		params := url.Values{}
+		params.Set("offset", strconv.Itoa(len(pl.Tracks)))
+		params.Set("limit", "100")
+		var next playlistPageDTO
+		if err := a.client.apiGet(ctx, "/playlists/"+url.PathEscape(externalID)+"/tracks", params, &next); err != nil {
+			return core.ExternalPlaylist{}, err
+		}
+		if len(next.Items) == 0 {
+			break
+		}
+		page = next
+	}
+	return pl, nil
 }
 
 func (a *Adapter) GetAlbum(ctx context.Context, externalID string) (core.ExternalAlbum, error) {
