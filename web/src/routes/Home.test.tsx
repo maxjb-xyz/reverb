@@ -218,12 +218,9 @@ describe('Home feed', () => {
 
     render(wrap(<Home />))
 
-    // The cover is a button with aria-label = album name (first match is the cover button)
-    const coverButtons = screen.getAllByRole('button', { name: 'Heros Cover Album' })
-    // There are two: cover + title. Click the first (cover).
-    fireEvent.click(coverButtons[0])
-
-    expect(mockNavigate).toHaveBeenCalledWith('/album/library/al99')
+    // The cover is a <Link> (renders as <a>) with a distinct aria-label
+    const coverLink = screen.getByRole('link', { name: 'Open album Heros Cover Album' })
+    expect(coverLink).toHaveAttribute('href', '/album/library/al99')
   })
 
   it('clicking the hero album title navigates to the album detail page', async () => {
@@ -235,11 +232,9 @@ describe('Home feed', () => {
 
     render(wrap(<Home />))
 
-    const titleButtons = screen.getAllByRole('button', { name: 'Heros Cover Album' })
-    // Click the second button (title)
-    fireEvent.click(titleButtons[1])
-
-    expect(mockNavigate).toHaveBeenCalledWith('/album/library/al99')
+    // The title is a <Link> inside an <h1>
+    const titleLink = screen.getByRole('link', { name: 'Heros Cover Album' })
+    expect(titleLink).toHaveAttribute('href', '/album/library/al99')
   })
 
   it('clicking the hero Play button does NOT navigate — calls play instead', async () => {

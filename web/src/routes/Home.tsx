@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Link } from 'react-router-dom'
 import { useAlbums, usePlaylists, coverUrl } from '../lib/libraryApi'
 import { useDownloads } from '../lib/downloadStore'
 import { usePlayer } from '../lib/playerStore'
@@ -263,10 +263,9 @@ export default function Home() {
       {!isLoading && heroAlbum && (
         <section className="flex gap-6 items-center mb-10" aria-label="Just added to your library">
           {/* Cover — clickable to open album detail */}
-          <button
-            type="button"
-            aria-label={heroAlbum.name}
-            onClick={() => navigate(`/album/library/${heroAlbum.id}`)}
+          <Link
+            to={`/album/library/${heroAlbum.id}`}
+            aria-label={`Open album ${heroAlbum.name}`}
             className={[
               'w-48 h-48 flex-none shadow-cover rounded-md overflow-hidden',
               'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
@@ -279,7 +278,7 @@ export default function Home() {
               rounded="md"
               className="w-full h-full"
             />
-          </button>
+          </Link>
 
           {/* Info */}
           <div className="min-w-0">
@@ -291,24 +290,27 @@ export default function Home() {
               Album · {heroAlbum.artist}
             </p>
             {/* Title — also clickable to open album detail */}
-            <button
-              type="button"
-              aria-label={heroAlbum.name}
-              onClick={() => navigate(`/album/library/${heroAlbum.id}`)}
+            <h1
               className={[
-                'text-4xl font-black tracking-tight text-text-primary leading-tight mb-5 truncate block text-left',
-                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded',
-                'hover:underline',
+                'text-4xl font-black tracking-tight text-text-primary leading-tight mb-5 truncate',
               ].join(' ')}
             >
-              {heroAlbum.name}
-            </button>
+              <Link
+                to={`/album/library/${heroAlbum.id}`}
+                className={[
+                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded',
+                  'hover:underline',
+                ].join(' ')}
+              >
+                {heroAlbum.name}
+              </Link>
+            </h1>
             <div className="flex items-center gap-5">
               <Button
                 variant="primary"
                 size="md"
                 aria-label={`Play ${heroAlbum.name}`}
-                onClick={(e) => { e.stopPropagation(); handleHeroPlay() }}
+                onClick={handleHeroPlay}
               >
                 <Icon name="play" className="w-5 h-5 mr-1" />
                 Play
