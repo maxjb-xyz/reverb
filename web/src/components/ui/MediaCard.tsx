@@ -2,6 +2,8 @@ import type { ReactNode } from 'react'
 import { Cover } from './Cover'
 import { Icon } from './Icon'
 import { coverUrl } from '../../lib/libraryApi'
+import { CoverageChip } from './CoverageChip'
+import type { CoverageState } from '../../lib/types'
 
 interface MediaCardProps {
   title: string
@@ -11,6 +13,8 @@ interface MediaCardProps {
   onClick?: () => void
   onPlay?: () => void
   badge?: ReactNode
+  coverage?: { state: CoverageState; owned: number; total: number }
+  onDownload?: () => void
 }
 
 export function MediaCard({
@@ -21,6 +25,8 @@ export function MediaCard({
   onClick,
   onPlay,
   badge,
+  coverage,
+  onDownload,
 }: MediaCardProps) {
   const src = coverId ? coverUrl(coverId, 300) : undefined
 
@@ -52,10 +58,11 @@ export function MediaCard({
           rounded={rounded}
           className="aspect-square w-full shadow-cover"
         />
-        {/* Badge slot (top-left overlay) */}
-        {badge && (
-          <div className="absolute left-2 top-2">{badge}</div>
+        {/* Badge / Coverage slot (top-left overlay) — coverage takes precedence */}
+        {coverage && (
+          <div className="absolute left-2 top-2"><CoverageChip state={coverage.state} owned={coverage.owned} total={coverage.total} /></div>
         )}
+        {badge && !coverage && <div className="absolute left-2 top-2">{badge}</div>}
         {/* Play button — accent reveal on hover */}
         {onPlay && (
           <button
@@ -73,6 +80,22 @@ export function MediaCard({
             ].join(' ')}
           >
             <Icon name="play" className="w-4 h-4" />
+          </button>
+        )}
+        {/* Download button — accent reveal on hover, only when no onPlay */}
+        {!onPlay && onDownload && (
+          <button
+            type="button"
+            aria-label={`Download ${title}`}
+            onClick={(e) => { e.stopPropagation(); onDownload() }}
+            className={[
+              'absolute right-3 bottom-3 w-10 h-10 rounded-full bg-accent text-surface',
+              'inline-grid place-items-center shadow-cover',
+              'opacity-0 translate-y-2 group-hover:opacity-100 group-hover:translate-y-0',
+              'transition-all duration-150 focus-visible:opacity-100',
+            ].join(' ')}
+          >
+            <Icon name="dl" className="w-4 h-4" />
           </button>
         )}
       </div>

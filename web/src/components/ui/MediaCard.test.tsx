@@ -66,4 +66,43 @@ describe('MediaCard', () => {
     const playBtn = screen.getByRole('button', { name: /play/i })
     expect(playBtn.className).toMatch(/focus-visible:ring/)
   })
+
+  it('renders coverage chip when coverage prop is provided (partial)', () => {
+    render(<MediaCard title="OK Computer" coverage={{ state: 'partial', owned: 7, total: 10 }} />)
+    expect(screen.getByText('7/10')).toBeInTheDocument()
+  })
+
+  it('coverage chip takes precedence over badge when both are provided', () => {
+    render(
+      <MediaCard
+        title="OK Computer"
+        coverage={{ state: 'partial', owned: 7, total: 10 }}
+        badge={<span>BadgeText</span>}
+      />
+    )
+    expect(screen.getByText('7/10')).toBeInTheDocument()
+    expect(screen.queryByText('BadgeText')).not.toBeInTheDocument()
+  })
+
+  it('renders download button when onDownload provided and no onPlay', () => {
+    const onDownload = vi.fn()
+    render(<MediaCard title="OK Computer" onDownload={onDownload} />)
+    const dlBtn = screen.getByRole('button', { name: 'Download OK Computer' })
+    expect(dlBtn).toBeInTheDocument()
+  })
+
+  it('fires onDownload and not onClick when download button clicked', () => {
+    const onDownload = vi.fn()
+    const onClick = vi.fn()
+    render(<MediaCard title="OK Computer" onDownload={onDownload} onClick={onClick} />)
+    const dlBtn = screen.getByRole('button', { name: 'Download OK Computer' })
+    fireEvent.click(dlBtn)
+    expect(onDownload).toHaveBeenCalledTimes(1)
+    expect(onClick).not.toHaveBeenCalled()
+  })
+
+  it('does not render download button when onPlay is also provided', () => {
+    render(<MediaCard title="OK Computer" onPlay={vi.fn()} onDownload={vi.fn()} />)
+    expect(screen.queryByRole('button', { name: /download/i })).not.toBeInTheDocument()
+  })
 })
