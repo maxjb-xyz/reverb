@@ -6,6 +6,7 @@ import { NowPlayingPanel } from './NowPlayingPanel'
 import { usePlayer } from '../../lib/playerStore'
 import { useUI } from '../../lib/uiStore'
 import type { Track, Artist } from '../../lib/types'
+import { coverUrl } from '../../lib/libraryApi'
 
 const mockNavigate = vi.fn()
 vi.mock('react-router-dom', async (importOriginal) => {
@@ -122,5 +123,28 @@ describe('NowPlayingPanel', () => {
     const albumBtn = screen.getByRole('button', { name: 'Test Album' })
     fireEvent.click(albumBtn)
     expect(mockNavigate).toHaveBeenCalledWith('/album/library/al1')
+  })
+
+  it('shows cover-placeholder (no broken img) when artist has no coverArtId', () => {
+    const artistWithoutCover: Artist = { id: 'ar1', name: 'Test Artist', albumCount: 3 }
+    vi.mocked(useArtist).mockReturnValue({ data: artistWithoutCover } as ReturnType<typeof useArtist>)
+    renderPanel()
+    expect(screen.getAllByTestId('cover-placeholder').length).toBeGreaterThan(0)
+    // No img rendered for the artist card header (no src means no <img> from Cover)
+    const imgs = screen.queryAllByRole('img')
+    const artistCardImgs = imgs.filter(
+      (img) => (img as HTMLImageElement).src?.includes('artist-cover'),
+    )
+    expect(artistCardImgs).toHaveLength(0)
+  })
+
+  it('renders artist cover img with correct src when artist has coverArtId', () => {
+    // beforeEach sets artist with coverArtId: 'artist-cover'; coverUrl mock returns /covers/<id>
+    renderPanel()
+    const imgs = screen.queryAllByRole('img')
+    const artistImg = imgs.find((img) =>
+      (img as HTMLImageElement).src?.includes('artist-cover'),
+    )
+    expect(artistImg).toBeDefined()
   })
 })
