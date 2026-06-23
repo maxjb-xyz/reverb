@@ -1,8 +1,25 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { TrackRow } from './TrackRow'
 import type { Track } from '../../lib/types'
+
+vi.mock('../../lib/libraryApi', () => ({
+  usePlaylists: vi.fn(),
+  createPlaylist: vi.fn(),
+  addTracksToPlaylist: vi.fn(),
+  coverUrl: vi.fn(() => ''),
+}))
+vi.mock('@tanstack/react-query', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@tanstack/react-query')>()
+  return {
+    ...actual,
+    useQueryClient: () => ({ invalidateQueries: vi.fn() }),
+  }
+})
+
+import { usePlaylists } from '../../lib/libraryApi'
 
 const track: Track = {
   id: 'trk-1',
@@ -27,12 +44,22 @@ const trackNoArtist: Track = {
 }
 
 function renderRow(props: Partial<Parameters<typeof TrackRow>[0]> & Pick<Parameters<typeof TrackRow>[0], 'onPlay'>) {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
-    <MemoryRouter>
-      <TrackRow track={track} {...props} />
-    </MemoryRouter>,
+    <QueryClientProvider client={qc}>
+      <MemoryRouter>
+        <TrackRow track={track} {...props} />
+      </MemoryRouter>
+    </QueryClientProvider>,
   )
 }
+
+beforeEach(() => {
+  vi.mocked(usePlaylists).mockReturnValue({
+    data: [],
+    isLoading: false,
+  } as unknown as ReturnType<typeof usePlaylists>)
+})
 
 describe('TrackRow', () => {
   it('renders the track title', () => {
@@ -120,10 +147,13 @@ describe('TrackRow', () => {
   })
 
   it('renders artist as plain text when artistId is empty', () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     render(
-      <MemoryRouter>
-        <TrackRow track={trackNoArtist} onPlay={vi.fn()} />
-      </MemoryRouter>,
+      <QueryClientProvider client={qc}>
+        <MemoryRouter>
+          <TrackRow track={trackNoArtist} onPlay={vi.fn()} />
+        </MemoryRouter>
+      </QueryClientProvider>,
     )
     expect(screen.getByText('Radiohead')).toBeInTheDocument()
     expect(screen.queryByRole('link', { name: 'Radiohead' })).toBeNull()
@@ -147,10 +177,13 @@ describe('TrackRow', () => {
   })
 
   it('renders album as plain text when albumId is empty', () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     render(
-      <MemoryRouter>
-        <TrackRow track={{ ...track, albumId: '' }} onPlay={vi.fn()} />
-      </MemoryRouter>,
+      <QueryClientProvider client={qc}>
+        <MemoryRouter>
+          <TrackRow track={{ ...track, albumId: '' }} onPlay={vi.fn()} />
+        </MemoryRouter>
+      </QueryClientProvider>,
     )
     expect(screen.getByText('OK Computer')).toBeInTheDocument()
     expect(screen.queryByRole('link', { name: 'OK Computer' })).toBeNull()
@@ -247,5 +280,25 @@ describe('TrackRow', () => {
     const { container } = renderRow({ onPlay: vi.fn() })
     const row = container.firstChild as HTMLElement
     expect(row.className).toMatch(/focus-visible:ring/)
+  })
+})
+
+describe('Add-to-playlist button', () => {
+  it('shows an "Add to playlist" button on a row with a truthy track.id', () => {
+    renderRow({ onPlay: vi.fn() })
+    expect(screen.getByRole('button', { name: /add to playlist/i })).toBeInTheDocument()
+  })
+
+  it('does NOT show an "Add to playlist" button when track.id is empty', () => {
+    renderRow({ onPlay: vi.fn(), track: { ...track, id: '' } })
+    expect(screen.queryByRole('button', { name: /add to playlist/i })).toBeNull()
+  })
+
+  it('clicking "Add to playlist" opens AddToPlaylistMenu and does NOT call onPlay', () => {
+    const onPlay = vi.fn()
+    renderRow({ onPlay })
+    fireEvent.click(screen.getByRole('button', { name: /add to playlist/i }))
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+    expect(onPlay).not.toHaveBeenCalled()
   })
 })
