@@ -226,39 +226,41 @@ describe('DownloadAction', () => {
     expect(screen.queryByRole('button', { name: /download/i })).not.toBeInTheDocument()
   })
 
-  // ── 10. failed: Retry option visible ─────────────────────────────────────
-  it('failed job → clicking trigger opens menu with Retry option', () => {
+  // ── 10. failed → direct Retry button calls retryDownload(id) with no url ──
+  it('failed job → clicking Retry button calls retryDownload(id) immediately with no url', async () => {
     useDownloads.getState().upsert(makeJob({ status: 'failed', progress: 0 }))
     render(<DownloadAction result={makeResult()} onPlay={onPlay} />)
 
-    const trigger = screen.getByRole('button', { name: /retry download/i })
-    fireEvent.click(trigger)
+    const retryBtn = screen.getByRole('button', { name: /retry download/i })
+    fireEvent.click(retryBtn)
 
-    // Menu should be open; PortalMenu renders role="menu"
-    expect(screen.getByRole('menu', { name: /retry options/i })).toBeInTheDocument()
-    // Retry menuitem visible
-    expect(screen.getByRole('menuitem', { name: /^retry$/i })).toBeInTheDocument()
+    await waitFor(() => expect(retryDownloadMock).toHaveBeenCalledTimes(1))
+    expect(retryDownloadMock).toHaveBeenCalledWith('job-1')
+    expect(retryDownloadMock).not.toHaveBeenCalledWith('job-1', expect.anything())
+
+    // No menu/dialog should open
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 
-  // ── 11. failed: "Download from a link…" affordance visible ───────────────
-  it('failed job → menu shows "Download from a link…" affordance', () => {
+  // ── 11. failed → "Download from a link" trigger opens modal ───────────────
+  it('failed job → "Download from a link" button opens modal (role="dialog")', () => {
     useDownloads.getState().upsert(makeJob({ status: 'failed', progress: 0 }))
     render(<DownloadAction result={makeResult()} onPlay={onPlay} />)
 
-    fireEvent.click(screen.getByRole('button', { name: /retry download/i }))
+    const linkBtn = screen.getByRole('button', { name: /download from a link/i })
+    fireEvent.click(linkBtn)
 
-    expect(screen.getByRole('menuitem', { name: /download from a link/i })).toBeInTheDocument()
+    expect(screen.getByRole('dialog', { name: /download from a link/i })).toBeInTheDocument()
   })
 
-  // ── 12. failed: valid URL submit calls retryDownload(id, url) ────────────
-  it('entering a valid URL and submitting calls retryDownload with jobId and url', async () => {
+  // ── 12. modal → submitting valid URL calls retryDownload(id, url) ─────────
+  it('entering a valid URL in the modal and submitting calls retryDownload with jobId and url', async () => {
     useDownloads.getState().upsert(makeJob({ status: 'failed', progress: 0 }))
     render(<DownloadAction result={makeResult()} onPlay={onPlay} />)
 
-    // Open menu
-    fireEvent.click(screen.getByRole('button', { name: /retry download/i }))
-    // Click "Download from a link…" to reveal input
-    fireEvent.click(screen.getByRole('menuitem', { name: /download from a link/i }))
+    // Open modal
+    fireEvent.click(screen.getByRole('button', { name: /download from a link/i }))
 
     const input = screen.getByRole('textbox', { name: /manual download url/i })
     fireEvent.change(input, { target: { value: 'https://youtube.com/watch?v=abc' } })
@@ -270,18 +272,20 @@ describe('DownloadAction', () => {
     expect(retryDownloadMock).toHaveBeenCalledWith('job-1', 'https://youtube.com/watch?v=abc')
   })
 
-  // ── 13. failed: plain Retry calls retryDownload(id) with no second arg ───
-  it('plain Retry calls retryDownload with jobId only (no manualUrl)', async () => {
+  // ── 13. modal → does NOT close on window scroll ───────────────────────────
+  it('modal stays open when window scroll event fires', () => {
     useDownloads.getState().upsert(makeJob({ status: 'failed', progress: 0 }))
     render(<DownloadAction result={makeResult()} onPlay={onPlay} />)
 
-    // Open menu then click Retry menuitem
-    fireEvent.click(screen.getByRole('button', { name: /retry download/i }))
-    fireEvent.click(screen.getByRole('menuitem', { name: /^retry$/i }))
+    // Open modal
+    fireEvent.click(screen.getByRole('button', { name: /download from a link/i }))
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
 
-    await waitFor(() => expect(retryDownloadMock).toHaveBeenCalledTimes(1))
-    expect(retryDownloadMock).toHaveBeenCalledWith('job-1')
-    expect(retryDownloadMock).not.toHaveBeenCalledWith('job-1', expect.anything())
+    // Dispatch a scroll event on the window
+    window.dispatchEvent(new Event('scroll'))
+
+    // Modal must still be open
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
   })
 
   // ── 14. non-failed states: no retry/link affordance ──────────────────────
@@ -296,21 +300,6 @@ describe('DownloadAction', () => {
 
     expect(screen.queryByRole('button', { name: /retry download/i })).not.toBeInTheDocument()
     expect(screen.queryByText(/download from a link/i)).not.toBeInTheDocument()
-  })
-
-  // ── 15. failed trigger: a11y attributes ──────────────────────────────────
-  it('failed job trigger has aria-haspopup="menu" and reflects aria-expanded', () => {
-    useDownloads.getState().upsert(makeJob({ status: 'failed', progress: 0 }))
-    render(<DownloadAction result={makeResult()} onPlay={onPlay} />)
-
-    const trigger = screen.getByRole('button', { name: /retry download/i })
-    // Before opening: aria-haspopup="menu", aria-expanded="false"
-    expect(trigger).toHaveAttribute('aria-haspopup', 'menu')
-    expect(trigger).toHaveAttribute('aria-expanded', 'false')
-
-    fireEvent.click(trigger)
-    // After opening: aria-expanded="true"
-    expect(trigger).toHaveAttribute('aria-expanded', 'true')
   })
 
   it('in-library state → no "Download from a link" affordance', () => {
