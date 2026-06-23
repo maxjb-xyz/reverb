@@ -311,4 +311,78 @@ describe('DownloadAction', () => {
     expect(screen.queryByRole('button', { name: /retry download/i })).not.toBeInTheDocument()
     expect(screen.queryByText(/download from a link/i)).not.toBeInTheDocument()
   })
+
+  // ── 15. modal auto-resets when status leaves failed ───────────────────────
+  it('modal closes and does NOT auto-reopen when status cycles failed→running→failed', async () => {
+    useDownloads.getState().upsert(makeJob({ status: 'failed', progress: 0 }))
+    const { rerender } = render(<DownloadAction result={makeResult()} onPlay={onPlay} />)
+
+    // Open the modal
+    fireEvent.click(screen.getByRole('button', { name: /download from a link/i }))
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+
+    // Job transitions to running — modal must close
+    useDownloads.getState().upsert(makeJob({ status: 'running', progress: 10 }))
+    rerender(<DownloadAction result={makeResult()} onPlay={onPlay} />)
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+
+    // Job fails again — modal must NOT auto-reopen (no user gesture)
+    useDownloads.getState().upsert(makeJob({ status: 'failed', progress: 0 }))
+    rerender(<DownloadAction result={makeResult()} onPlay={onPlay} />)
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
+  // ── 16. focus trap: Tab from last focusable wraps to first ────────────────
+  it('modal traps focus: Tab from last focusable element wraps to first', () => {
+    useDownloads.getState().upsert(makeJob({ status: 'failed', progress: 0 }))
+    render(<DownloadAction result={makeResult()} onPlay={onPlay} />)
+
+    fireEvent.click(screen.getByRole('button', { name: /download from a link/i }))
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+
+    // The modal contains: Close button, URL input, Download submit button.
+    // Tab from the last focusable (submit) should wrap to the first (close button or input).
+    const submitBtn = screen.getByRole('button', { name: /^download$/i })
+    submitBtn.focus()
+    expect(document.activeElement).toBe(submitBtn)
+
+    fireEvent.keyDown(document, { key: 'Tab', shiftKey: false })
+
+    // Focus should have wrapped inside the modal (not escaped to page behind)
+    const modal = screen.getByRole('dialog')
+    expect(modal.contains(document.activeElement)).toBe(true)
+  })
+
+  // ── 17. invalid URL ("httpfoo") shows error, does NOT call retryDownload ──
+  it('invalid URL "httpfoo" shows inline error and does not call retryDownload', () => {
+    useDownloads.getState().upsert(makeJob({ status: 'failed', progress: 0 }))
+    render(<DownloadAction result={makeResult()} onPlay={onPlay} />)
+
+    fireEvent.click(screen.getByRole('button', { name: /download from a link/i }))
+
+    const input = screen.getByRole('textbox', { name: /manual download url/i })
+    fireEvent.change(input, { target: { value: 'httpfoo' } })
+
+    const form = input.closest('form')!
+    fireEvent.submit(form)
+
+    expect(screen.getByRole('alert')).toBeInTheDocument()
+    expect(retryDownloadMock).not.toHaveBeenCalled()
+  })
+
+  // ── 18. valid URL calls retryDownload ─────────────────────────────────────
+  it('valid https URL calls retryDownload with the URL', async () => {
+    useDownloads.getState().upsert(makeJob({ status: 'failed', progress: 0 }))
+    render(<DownloadAction result={makeResult()} onPlay={onPlay} />)
+
+    fireEvent.click(screen.getByRole('button', { name: /download from a link/i }))
+
+    const input = screen.getByRole('textbox', { name: /manual download url/i })
+    fireEvent.change(input, { target: { value: 'https://youtube.com/watch?v=ok' } })
+
+    fireEvent.click(screen.getByRole('button', { name: /^download$/i }))
+
+    await waitFor(() => expect(retryDownloadMock).toHaveBeenCalledTimes(1))
+    expect(retryDownloadMock).toHaveBeenCalledWith('job-1', 'https://youtube.com/watch?v=ok')
+  })
 })

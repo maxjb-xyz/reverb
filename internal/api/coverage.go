@@ -49,7 +49,7 @@ func (s *Server) handleArtistProfile(w http.ResponseWriter, r *http.Request) {
 	}
 	prof, err := cov.ArtistProfile(r.Context(), chi.URLParam(r, "source"), chi.URLParam(r, "id"))
 	if err != nil {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
+		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
 		return
 	}
 	writeJSON(w, http.StatusOK, prof)

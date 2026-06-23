@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { Badge, ProgressRing, Icon, Button } from '../ui'
 import { DownloadPopover } from './DownloadPopover'
@@ -31,6 +31,7 @@ export function DownloadAction({ result, onPlay }: Props) {
   const [linkModalOpen, setLinkModalOpen] = useState(false)
   const [urlValue, setUrlValue] = useState('')
   const [urlError, setUrlError] = useState<string | null>(null)
+  const modalPanelRef = useRef<HTMLDivElement>(null)
 
   const job = useDownloads((s) => s.byExternal(result.source, result.externalId))
   const downloaders = useDownloaders()
@@ -41,18 +42,53 @@ export function DownloadAction({ result, onPlay }: Props) {
     (job?.status === 'completed' && job.libraryTrackId) ||
     ''
 
-  // Esc key closes the link modal
+  // Reset modal state whenever the job leaves the failed status (prevents auto-reopen
+  // after a failed → running → failed cycle without a user gesture).
+  useEffect(() => {
+    if (job?.status !== 'failed') {
+      setLinkModalOpen(false)
+      setUrlValue('')
+      setUrlError(null)
+    }
+  }, [job?.status])
+
+  // Focus trap + Esc close for the link modal — mirrors ImportPlaylistDialog pattern.
+  const FOCUSABLE = 'button, [href], input, [tabindex]:not([tabindex="-1"])'
   useEffect(() => {
     if (!linkModalOpen) return
+    const previouslyFocused = document.activeElement as HTMLElement | null
+
     function handleKey(e: KeyboardEvent) {
       if (e.key === 'Escape') {
         setLinkModalOpen(false)
         setUrlValue('')
         setUrlError(null)
+        return
+      }
+      if (e.key === 'Tab' && modalPanelRef.current) {
+        const focusable = Array.from(
+          modalPanelRef.current.querySelectorAll<HTMLElement>(FOCUSABLE),
+        ).filter((el) => !el.hasAttribute('disabled'))
+        if (focusable.length === 0) return
+        const first = focusable[0]
+        const last = focusable[focusable.length - 1]
+        if (e.shiftKey) {
+          if (document.activeElement === first) {
+            e.preventDefault()
+            last.focus()
+          }
+        } else if (document.activeElement === last) {
+          e.preventDefault()
+          first.focus()
+        }
       }
     }
+
     document.addEventListener('keydown', handleKey)
-    return () => document.removeEventListener('keydown', handleKey)
+    return () => {
+      document.removeEventListener('keydown', handleKey)
+      previouslyFocused?.focus()
+    }
   }, [linkModalOpen])
 
   // ── helper: enqueue with an optional downloader name ──────────────────────
@@ -139,8 +175,14 @@ export function DownloadAction({ result, onPlay }: Props) {
     function handleUrlSubmit(e: React.FormEvent) {
       e.preventDefault()
       const url = urlValue.trim()
-      if (!url || !url.startsWith('http')) {
-        setUrlError('Please enter a valid URL starting with http')
+      try {
+        const parsed = new URL(url)
+        if (!/^https?:$/.test(parsed.protocol)) {
+          setUrlError('Enter a valid URL')
+          return
+        }
+      } catch {
+        setUrlError('Enter a valid URL')
         return
       }
       setUrlError(null)
@@ -203,6 +245,7 @@ export function DownloadAction({ result, onPlay }: Props) {
 
               {/* Modal panel — centered via fixed positioning */}
               <div
+                ref={modalPanelRef}
                 role="dialog"
                 aria-modal="true"
                 aria-label="Download from a link"

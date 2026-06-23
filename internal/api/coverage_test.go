@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -215,6 +216,18 @@ func TestArtistProfileEndpoint(t *testing.T) {
 	}
 	if cov.lastSource != "spotify" || cov.lastID != "xyz" {
 		t.Errorf("params = %q/%q", cov.lastSource, cov.lastID)
+	}
+}
+
+func TestArtistProfileUpstreamErrorReturns502(t *testing.T) {
+	cov := &fakeCoverage{profileErr: fmt.Errorf("upstream Spotify timeout")}
+	srv, cookie := coverageTestServer(t, cov, nil)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/artist/spotify/xyz/profile", nil)
+	req.AddCookie(cookie)
+	srv.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadGateway {
+		t.Fatalf("status = %d, want 502", rec.Code)
 	}
 }
 
