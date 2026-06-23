@@ -476,6 +476,14 @@ func (m *Manager) process(id string) {
 			m.mu.Unlock()
 			return
 		default:
+			// The chosen downloader couldn't produce the file (e.g. spotDL
+			// LookupError). FUTURE: when more than one downloader is configured,
+			// try the next downloader whose CanDownload accepts this request HERE,
+			// before marking the job failed — only when every auto-downloader is
+			// exhausted should the job reach DownloadFailed. The manual
+			// "download from a link" fallback (DownloadRequest.ManualURL, surfaced
+			// only on the failed state) is deliberately the LAST resort, so it must
+			// stay gated behind that all-providers-failed condition.
 			cur.Status = core.DownloadFailed
 			cur.Error = serr.Error()
 			cur.FinishedAt = m.clock.Now().Unix()
