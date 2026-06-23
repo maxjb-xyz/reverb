@@ -1027,6 +1027,77 @@ func TestBackfillUnlinkedReLinksCompletedJobs(t *testing.T) {
 	}
 }
 
+// TestBackfillPlaylistAdderCalledWhenAddToPlaylistIDSet mirrors
+// TestPlaylistAdderCalledOnCompletionWithAddToPlaylistID but exercises the BACKFILL
+// path: a completed, unlinked job whose request carries AddToPlaylistID must have
+// AddTracksToPlaylist called when the manager starts and re-links it.
+func TestBackfillPlaylistAdderCalledWhenAddToPlaylistIDSet(t *testing.T) {
+	store := newMemStore()
+
+	const playlistID = "pl-backfill-123"
+	const libTrackID = "lib-backfill-pl-1"
+
+	// Seed a completed, unlinked job with AddToPlaylistID set on the job struct
+	// (mirrors how Enqueue stores it: AddToPlaylistID is copied from the request
+	// directly onto the job row so backfillUnlinked can read it from store.List).
+	seeded := core.DownloadJob{
+		ID: "backfill-pl-j1", DedupKey: "dk-backfill-pl", Status: core.DownloadCompleted,
+		DownloaderName: "dl", Source: "spotify", ExternalID: "ext-bf-pl1",
+		Artist: "Artist", Title: "Playlist Track", Album: "Album",
+		AddToPlaylistID: playlistID,
+		Progress:        100,
+	}
+	_ = store.Insert(context.Background(), seeded, core.DownloadRequest{
+		Source: "spotify", ExternalID: "ext-bf-pl1", Artist: "Artist",
+		Title: "Playlist Track", Album: "Album", AddToPlaylistID: playlistID,
+	})
+
+	rematcher := &fakeRematcher{trackID: libTrackID}
+	adder := &fakePlaylistAdder{}
+	bus := events.New()
+	dl := &fakeDL{name: "dl", canDownload: true}
+	m := NewManager(Config{Workers: 1, DebounceWindow: 5 * time.Second, ScanPollEvery: time.Millisecond, ScanPollMax: time.Second, ScanSettleMax: 10 * time.Millisecond},
+		[]Downloader{dl}, store, bus, &fakeScanner{}, rematcher, &fakeVersion{v: 1}, RealClock{}, adder)
+	t.Cleanup(m.Stop)
+
+	// Subscribe before Start so we don't miss the backfill publish.
+	completeCh, unsub := bus.Subscribe(TopicComplete)
+	defer unsub()
+	gotEvent := make(chan struct{}, 1)
+	go func() {
+		for ev := range completeCh {
+			if de, ok := ev.Payload.(core.DownloadEvent); ok && de.JobID == seeded.ID {
+				select {
+				case gotEvent <- struct{}{}:
+				default:
+				}
+			}
+		}
+	}()
+
+	m.Start()
+
+	// Wait for the backfill to publish the complete event.
+	select {
+	case <-gotEvent:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for backfill complete event")
+	}
+
+	// Give the playlist add a moment to execute (it runs synchronously inside the
+	// backfill loop, so by the time gotEvent fires it should already be called).
+	if adder.callCount() != 1 {
+		t.Fatalf("expected 1 AddTracksToPlaylist call from backfill, got %d", adder.callCount())
+	}
+	gotPlaylistID, gotTrackIDs := adder.getCall(0)
+	if gotPlaylistID != playlistID {
+		t.Fatalf("backfill AddTracksToPlaylist playlistID: got %q, want %q", gotPlaylistID, playlistID)
+	}
+	if len(gotTrackIDs) != 1 || gotTrackIDs[0] != libTrackID {
+		t.Fatalf("backfill AddTracksToPlaylist trackIDs: got %v, want [%q]", gotTrackIDs, libTrackID)
+	}
+}
+
 // fakePlaylistAdder records AddTracksToPlaylist calls for assertions.
 type fakePlaylistAdder struct {
 	mu    sync.Mutex

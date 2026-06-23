@@ -237,6 +237,9 @@ func (a *Adapter) CreatePlaylist(ctx context.Context, name string) (core.Playlis
 
 // AddTracksToPlaylist appends the given library track IDs to a playlist via the
 // Subsonic updatePlaylist endpoint (one songIdToAdd param per track).
+// NOTE: this is a non-idempotent APPEND — Subsonic blindly adds every track listed,
+// so callers must guard against re-adding (the download hook relies on the per-job
+// LibraryTrackID == "" gate to ensure each track is added exactly once).
 func (a *Adapter) AddTracksToPlaylist(ctx context.Context, playlistID string, trackIDs []string) error {
 	params := url.Values{}
 	params.Set("playlistId", playlistID)

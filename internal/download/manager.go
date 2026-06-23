@@ -212,6 +212,11 @@ func (m *Manager) backfillUnlinked() {
 			continue
 		}
 		m.publishComplete(j, res.LibraryTrackID)
+		if m.playlists != nil && j.AddToPlaylistID != "" {
+			if perr := m.playlists.AddTracksToPlaylist(ctx, j.AddToPlaylistID, []string{res.LibraryTrackID}); perr != nil {
+				log.Printf("download backfill: add to playlist %s failed for job %s: %v", j.AddToPlaylistID, shortID(j.ID), perr)
+			}
+		}
 		matched++
 		log.Printf("download backfill: re-linked job %s -> library track %s", shortID(j.ID), res.LibraryTrackID)
 	}
