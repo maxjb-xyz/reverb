@@ -11,6 +11,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
@@ -126,6 +127,34 @@ func redactArgs(args []string) string {
 	return strings.Join(out, " ")
 }
 
+// normalizeManualURL strips YouTube playlist/radio parameters so yt-dlp fetches only
+// the single video. Without this, a URL like ?v=abc&list=RDabc&start_radio=1 causes
+// yt-dlp to download the entire radio playlist — hanging the job for minutes.
+// For non-YouTube URLs (e.g. SoundCloud) the input is returned unchanged.
+func normalizeManualURL(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return raw
+	}
+	host := strings.TrimPrefix(u.Hostname(), "www.")
+	switch host {
+	case "youtube.com", "m.youtube.com", "music.youtube.com":
+		v := u.Query().Get("v")
+		if v == "" {
+			return raw
+		}
+		return "https://www.youtube.com/watch?v=" + v
+	case "youtu.be":
+		id := strings.TrimPrefix(u.Path, "/")
+		if id == "" {
+			return raw
+		}
+		return "https://www.youtube.com/watch?v=" + id
+	default:
+		return raw
+	}
+}
+
 // Start shells out to spotDL and streams progress. Unparseable lines degrade to
 // unknown progress (onProgress(-1) once), never an error. On success it returns
 // the output directory as the path hint (spotDL writes the file under output_dir;
@@ -153,6 +182,9 @@ func (a *Adapter) Start(ctx context.Context, req core.DownloadRequest, onProgres
 	// spotDL uses "|" as its metadata|audio separator; a "|" inside the user-supplied
 	// URL would create extra pipe tokens and break the metadata/audio split.
 	manualURL := strings.ReplaceAll(strings.TrimSpace(req.ManualURL), "|", "")
+	// Normalize YouTube URLs to a single-video URL — strips list/start_radio/pp/index/t/etc.
+	// so yt-dlp fetches only the one video instead of the entire playlist or radio queue.
+	manualURL = normalizeManualURL(manualURL)
 
 	var query string
 	if manualURL != "" && req.Source == "spotify" && req.ExternalID != "" {

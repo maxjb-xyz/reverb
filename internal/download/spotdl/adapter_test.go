@@ -363,7 +363,8 @@ func TestStartManualURLWithSpotifyUsesPipeSyntax(t *testing.T) {
 		t.Fatal("no args captured")
 	}
 	// spotDL requires the order "<audio-url>|<spotify-url>" — spotify URL SECOND.
-	want := "https://youtube.com/watch?v=XYZ|https://open.spotify.com/track/abc"
+	// The ManualURL is normalized to a canonical single-video URL before piping.
+	want := "https://www.youtube.com/watch?v=XYZ|https://open.spotify.com/track/abc"
 	if r.gotArgs[n-1] != want {
 		t.Fatalf("trailing query arg: got %q, want %q (pipe syntax)", r.gotArgs[n-1], want)
 	}
@@ -371,7 +372,7 @@ func TestStartManualURLWithSpotifyUsesPipeSyntax(t *testing.T) {
 
 func TestStartManualURLNonSpotifyIsDirectURL(t *testing.T) {
 	// Case 2: ManualURL set but Source is not "spotify" → download directly from the
-	// manual URL (no pipe, no Spotify lookup).
+	// manual URL (no pipe, no Spotify lookup). The URL is normalized before use.
 	r := &fakeRunner{lines: []string{`Downloaded: ok`}}
 	a := newAdapter(t, r)
 	manualURL := "https://youtube.com/watch?v=DIRECT"
@@ -385,8 +386,10 @@ func TestStartManualURLNonSpotifyIsDirectURL(t *testing.T) {
 	if n == 0 {
 		t.Fatal("no args captured")
 	}
-	if r.gotArgs[n-1] != manualURL {
-		t.Fatalf("trailing query arg: got %q, want %q (direct manual URL)", r.gotArgs[n-1], manualURL)
+	// normalizeManualURL canonicalizes the YouTube URL to the www. form.
+	wantURL := "https://www.youtube.com/watch?v=DIRECT"
+	if r.gotArgs[n-1] != wantURL {
+		t.Fatalf("trailing query arg: got %q, want %q (direct manual URL)", r.gotArgs[n-1], wantURL)
 	}
 }
 
@@ -447,4 +450,64 @@ func TestSpotdlConformance(t *testing.T) {
 	r := &fakeRunner{lines: []string{`Downloading "x": 50%`, `Downloaded: /tmp/music/x.mp3`}}
 	a := newAdapter(t, r)
 	download.RunConformance(t, a)
+}
+
+func TestNormalizeManualURL(t *testing.T) {
+	cases := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{
+			name:  "radio URL stripped to single video",
+			input: "https://www.youtube.com/watch?v=jh5u0wmau54&list=RDjh5u0wmau54&start_radio=1&pp=ygUKaGlwIGhvcCB1cw%3D%3D",
+			want:  "https://www.youtube.com/watch?v=jh5u0wmau54",
+		},
+		{
+			name:  "youtu.be short URL expanded",
+			input: "https://youtu.be/abc123",
+			want:  "https://www.youtube.com/watch?v=abc123",
+		},
+		{
+			name:  "already clean YouTube URL unchanged",
+			input: "https://www.youtube.com/watch?v=xyz789",
+			want:  "https://www.youtube.com/watch?v=xyz789",
+		},
+		{
+			name:  "SoundCloud URL returned unchanged",
+			input: "https://soundcloud.com/artist/track",
+			want:  "https://soundcloud.com/artist/track",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := normalizeManualURL(tc.input)
+			if got != tc.want {
+				t.Fatalf("normalizeManualURL(%q) = %q, want %q", tc.input, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestNormalizeAppliedInStart(t *testing.T) {
+	// Integration: verifies that normalizeManualURL is applied inside Start before
+	// the pipe query is assembled. A radio URL must arrive at spotDL as a clean
+	// single-video URL (list/start_radio params stripped).
+	r := &fakeRunner{lines: []string{`Downloaded: ok`}}
+	a := newAdapter(t, r)
+	_, _ = a.Start(context.Background(), core.DownloadRequest{
+		Source:     "spotify",
+		ExternalID: "abc123track",
+		Artist:     "A",
+		Title:      "T",
+		ManualURL:  "https://www.youtube.com/watch?v=jh5u0wmau54&list=RDjh5u0wmau54&start_radio=1",
+	}, func(int) {})
+	n := len(r.gotArgs)
+	if n == 0 {
+		t.Fatal("no args captured")
+	}
+	want := "https://www.youtube.com/watch?v=jh5u0wmau54|https://open.spotify.com/track/abc123track"
+	if r.gotArgs[n-1] != want {
+		t.Fatalf("trailing query arg: got %q, want %q", r.gotArgs[n-1], want)
+	}
 }
