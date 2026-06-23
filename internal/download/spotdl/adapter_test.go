@@ -515,12 +515,20 @@ func TestNormalizeAppliedInStart(t *testing.T) {
 }
 
 func TestEnsureSpotdlTempDirCreatesDir(t *testing.T) {
+	// Redirect the config dir cross-platform: Linux honors XDG_CONFIG_HOME, macOS
+	// derives os.UserConfigDir() from HOME (~/Library/Application Support). Set both
+	// and compute the expected path from the SAME os.UserConfigDir() the code uses.
 	tmp := t.TempDir()
-	t.Setenv("XDG_CONFIG_HOME", tmp)
+	t.Setenv("HOME", tmp)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(tmp, ".config"))
 	ensureSpotdlTempDir()
-	want := filepath.Join(tmp, "spotdl", "temp")
-	if fi, err := os.Stat(want); err != nil || !fi.IsDir() {
-		t.Fatalf("expected %s to exist as a dir; err=%v", want, err)
+	cfg, err := os.UserConfigDir()
+	if err != nil {
+		t.Fatalf("UserConfigDir: %v", err)
+	}
+	want := filepath.Join(cfg, "spotdl", "temp")
+	if fi, statErr := os.Stat(want); statErr != nil || !fi.IsDir() {
+		t.Fatalf("expected %s to exist as a dir; err=%v", want, statErr)
 	}
 	// Idempotent + concurrency-safe: a second call must not error or panic.
 	ensureSpotdlTempDir()
