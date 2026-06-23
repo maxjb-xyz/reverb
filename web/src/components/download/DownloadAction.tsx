@@ -165,10 +165,12 @@ export function DownloadAction({ result, onPlay }: Props) {
               role="menuitem"
               onClick={(e) => {
                 e.stopPropagation()
-                void retryDownload(failedJob.id).then((j) => {
-                  useDownloads.getState().upsert(j)
-                  closeFailedMenu()
-                })
+                void retryDownload(failedJob.id)
+                  .then((j) => {
+                    useDownloads.getState().upsert(j)
+                    closeFailedMenu()
+                  })
+                  .catch((err) => console.error('[DownloadAction] retry failed:', err))
               }}
               className="flex w-full items-center gap-2 rounded-t-xl px-3 py-2.5 text-sm text-text-primary hover:bg-raised-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
             >
