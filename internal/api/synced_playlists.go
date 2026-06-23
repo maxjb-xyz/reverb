@@ -205,12 +205,6 @@ type addSyncedTrackBody struct {
 	DurationMs int    `json:"durationMs"`
 }
 
-// removeSyncedTrackBody is the DELETE /synced-playlists/{id}/tracks request DTO.
-type removeSyncedTrackBody struct {
-	Source     string `json:"source"`
-	ExternalID string `json:"externalId"`
-}
-
 func (s *Server) handleAddSyncedTrack(w http.ResponseWriter, r *http.Request) {
 	svc := s.sync()
 	if svc == nil {
@@ -236,7 +230,7 @@ func (s *Server) handleAddSyncedTrack(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		status := http.StatusUnprocessableEntity
 		if errors.Is(err, playlistsync.ErrNotEditable) {
-			status = http.StatusUnprocessableEntity
+			status = http.StatusConflict // 409 — cannot mutate a synced playlist
 		}
 		writeJSON(w, status, map[string]string{"error": err.Error()})
 		return
@@ -250,12 +244,13 @@ func (s *Server) handleRemoveSyncedTrack(w http.ResponseWriter, r *http.Request)
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "playlist sync unavailable"})
 		return
 	}
-	var body removeSyncedTrackBody
-	if err := decode(r, &body); err != nil || body.Source == "" || body.ExternalID == "" {
+	source := r.URL.Query().Get("source")
+	externalID := r.URL.Query().Get("externalId")
+	if source == "" || externalID == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "source and externalId are required"})
 		return
 	}
-	det, err := svc.RemoveTrack(r.Context(), chi.URLParam(r, "id"), body.Source, body.ExternalID)
+	det, err := svc.RemoveTrack(r.Context(), chi.URLParam(r, "id"), source, externalID)
 	if err != nil {
 		status := http.StatusUnprocessableEntity
 		writeJSON(w, status, map[string]string{"error": err.Error()})

@@ -361,7 +361,7 @@ func TestAddSyncedTrackHappyPath(t *testing.T) {
 	}
 }
 
-func TestAddSyncedTrackNotEditableReturns422(t *testing.T) {
+func TestAddSyncedTrackNotEditableReturns409(t *testing.T) {
 	svc := &fakeSync{addTrackErr: playlistsync.ErrNotEditable}
 	srv, cookie := syncTestServer(t, svc)
 
@@ -371,8 +371,8 @@ func TestAddSyncedTrackNotEditableReturns422(t *testing.T) {
 	req.AddCookie(cookie)
 	srv.Handler().ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusUnprocessableEntity {
-		t.Fatalf("status = %d, want 422: %s", rec.Code, rec.Body.String())
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("status = %d, want 409: %s", rec.Code, rec.Body.String())
 	}
 }
 
@@ -383,15 +383,38 @@ func TestRemoveSyncedTrackHappyPath(t *testing.T) {
 	srv, cookie := syncTestServer(t, svc)
 
 	rec := httptest.NewRecorder()
-	body := `{"source":"spotify","externalId":"t-old"}`
-	req := httptest.NewRequest(http.MethodDelete, "/api/v1/synced-playlists/pl-1/tracks", strings.NewReader(body))
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/synced-playlists/SP1/tracks?source=spotify&externalId=t-old", nil)
 	req.AddCookie(cookie)
 	srv.Handler().ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d: %s", rec.Code, rec.Body.String())
 	}
-	if svc.removeTrackID != "pl-1" || svc.removeSource != "spotify" || svc.removeExtID != "t-old" {
+	if svc.removeTrackID != "SP1" || svc.removeSource != "spotify" || svc.removeExtID != "t-old" {
 		t.Fatalf("RemoveTrack args: id=%q src=%q extID=%q", svc.removeTrackID, svc.removeSource, svc.removeExtID)
+	}
+}
+
+func TestRemoveSyncedTrackMissingParamsReturns400(t *testing.T) {
+	srv, cookie := syncTestServer(t, &fakeSync{})
+
+	tests := []struct {
+		name string
+		url  string
+	}{
+		{"missing both", "/api/v1/synced-playlists/SP1/tracks"},
+		{"missing externalId", "/api/v1/synced-playlists/SP1/tracks?source=spotify"},
+		{"missing source", "/api/v1/synced-playlists/SP1/tracks?externalId=t-old"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodDelete, tc.url, nil)
+			req.AddCookie(cookie)
+			srv.Handler().ServeHTTP(rec, req)
+			if rec.Code != http.StatusBadRequest {
+				t.Fatalf("status = %d, want 400: %s", rec.Code, rec.Body.String())
+			}
+		})
 	}
 }
