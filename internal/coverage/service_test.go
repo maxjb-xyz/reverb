@@ -42,16 +42,21 @@ func (f fakeDisco) GetArtistDiscography(_ context.Context, _ string) ([]core.Ext
 }
 
 // fakeLibrary implements LibraryArtist for tests.
-type fakeLibrary struct{}
+type fakeLibrary struct {
+	// searchAlbums, if set, are returned when Search is called with EntityAlbum.
+	// When nil, no albums are returned. When searchErr is set, Search returns that error.
+	searchAlbums []core.Album
+	searchErr    error
+}
 
-func (fakeLibrary) GetArtist(_ context.Context, id string) (core.Artist, error) {
+func (f fakeLibrary) GetArtist(_ context.Context, id string) (core.Artist, error) {
 	if id == "libArtist1" {
 		return core.Artist{ID: "libArtist1", Name: "Radiohead"}, nil
 	}
 	return core.Artist{}, errors.New("not found")
 }
 
-func (fakeLibrary) GetAlbum(_ context.Context, id string) (core.Album, error) {
+func (f fakeLibrary) GetAlbum(_ context.Context, id string) (core.Album, error) {
 	if id == "libAlbum1" {
 		return core.Album{
 			ID: "libAlbum1", Name: "Kid A", Artist: "Radiohead", ArtistID: "libArtist1",
@@ -63,6 +68,23 @@ func (fakeLibrary) GetAlbum(_ context.Context, id string) (core.Album, error) {
 		}, nil
 	}
 	return core.Album{ID: id}, nil
+}
+
+func (f fakeLibrary) Search(_ context.Context, _ string, types []core.EntityType) (core.SearchResults, error) {
+	if f.searchErr != nil {
+		return core.SearchResults{}, f.searchErr
+	}
+	res := core.SearchResults{
+		Tracks:  []core.Track{},
+		Albums:  []core.Album{},
+		Artists: []core.Artist{},
+	}
+	for _, t := range types {
+		if t == core.EntityAlbum {
+			res.Albums = f.searchAlbums
+		}
+	}
+	return res, nil
 }
 
 // memCache is an in-memory CoverageCache for tests.
@@ -527,5 +549,96 @@ func TestArtistDetailLibraryAlbumIDBackfill(t *testing.T) {
 		default:
 			t.Errorf("unexpected album externalId %q", da.ExternalID)
 		}
+	}
+}
+
+// TestArtistDetailLibraryAlbumsPopulated: when the library search returns albums
+// for the artist name, ArtistDetail populates LibraryAlbums with deduped
+// DiscographyAlbum entries (source "library", LibraryAlbumID set).
+func TestArtistDetailLibraryAlbumsPopulated(t *testing.T) {
+	disco := fakeDisco{
+		artists: []core.ExternalResult{{Source: "spotify", ExternalID: "art1", Title: "Radiohead", Type: core.EntityArtist}},
+		disco: []core.ExternalAlbum{
+			{Source: "spotify", ExternalID: "AL", Name: "Kid A", Artist: "Radiohead", Kind: "album", TotalTracks: 2},
+		},
+		artist: &core.ExternalArtist{Source: "spotify", ExternalID: "art1", Name: "Radiohead"},
+	}
+	lib := fakeLibrary{
+		searchAlbums: []core.Album{
+			{ID: "libAlbum1", Name: "Kid A", Artist: "Radiohead", Year: 2000, SongCount: 10},
+			{ID: "libAlbum2", Name: "Amnesiac", Artist: "Radiohead", Year: 2001, SongCount: 11},
+		},
+	}
+	svc := NewService(disco, fakeMatcher{}, lib, newMemCache(), func() int64 { return 1 }, func(context.Context) (int64, error) { return 1, nil })
+	det, err := svc.ArtistDetail(context.Background(), "library", "libArtist1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(det.LibraryAlbums) != 2 {
+		t.Fatalf("LibraryAlbums: want 2, got %d: %+v", len(det.LibraryAlbums), det.LibraryAlbums)
+	}
+	for _, la := range det.LibraryAlbums {
+		if la.Source != "library" {
+			t.Errorf("LibraryAlbum %q: Source want %q, got %q", la.Name, "library", la.Source)
+		}
+		if la.LibraryAlbumID == "" {
+			t.Errorf("LibraryAlbum %q: LibraryAlbumID must not be empty", la.Name)
+		}
+		if la.LibraryAlbumID != la.ExternalID {
+			t.Errorf("LibraryAlbum %q: LibraryAlbumID %q != ExternalID %q", la.Name, la.LibraryAlbumID, la.ExternalID)
+		}
+	}
+}
+
+// TestArtistDetailLibraryAlbumsDedup: two search-result albums with the same ID
+// must produce only one LibraryAlbum entry (dedup by ID + normalized name).
+func TestArtistDetailLibraryAlbumsDedup(t *testing.T) {
+	disco := fakeDisco{
+		artists: []core.ExternalResult{{Source: "spotify", ExternalID: "art1", Title: "Radiohead", Type: core.EntityArtist}},
+		disco: []core.ExternalAlbum{
+			{Source: "spotify", ExternalID: "AL", Name: "Kid A", Artist: "Radiohead", Kind: "album", TotalTracks: 2},
+		},
+		artist: &core.ExternalArtist{Source: "spotify", ExternalID: "art1", Name: "Radiohead"},
+	}
+	// Return the same album twice — service must deduplicate.
+	lib := fakeLibrary{
+		searchAlbums: []core.Album{
+			{ID: "libAlbum1", Name: "Kid A", Artist: "Radiohead", Year: 2000, SongCount: 10},
+			{ID: "libAlbum1", Name: "Kid A", Artist: "Radiohead", Year: 2000, SongCount: 10},
+		},
+	}
+	svc := NewService(disco, fakeMatcher{}, lib, newMemCache(), func() int64 { return 1 }, func(context.Context) (int64, error) { return 1, nil })
+	det, err := svc.ArtistDetail(context.Background(), "library", "libArtist1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(det.LibraryAlbums) != 1 {
+		t.Fatalf("LibraryAlbums dedup: want 1, got %d: %+v", len(det.LibraryAlbums), det.LibraryAlbums)
+	}
+}
+
+// TestArtistDetailLibraryAlbumsSearchError: when the library Search fails,
+// ArtistDetail degrades gracefully — LibraryAlbums is empty, no error returned.
+func TestArtistDetailLibraryAlbumsSearchError(t *testing.T) {
+	disco := fakeDisco{
+		artists: []core.ExternalResult{{Source: "spotify", ExternalID: "art1", Title: "Radiohead", Type: core.EntityArtist}},
+		disco: []core.ExternalAlbum{
+			{Source: "spotify", ExternalID: "AL", Name: "Kid A", Artist: "Radiohead", Kind: "album", TotalTracks: 2},
+		},
+		artist: &core.ExternalArtist{Source: "spotify", ExternalID: "art1", Name: "Radiohead"},
+	}
+	lib := fakeLibrary{
+		searchErr: errors.New("subsonic unavailable"),
+	}
+	svc := NewService(disco, fakeMatcher{}, lib, newMemCache(), func() int64 { return 1 }, func(context.Context) (int64, error) { return 1, nil })
+	det, err := svc.ArtistDetail(context.Background(), "library", "libArtist1")
+	if err != nil {
+		t.Fatalf("ArtistDetail must not propagate search error: %v", err)
+	}
+	if det.LibraryAlbums == nil {
+		t.Fatal("LibraryAlbums must not be nil on search error, want empty slice")
+	}
+	if len(det.LibraryAlbums) != 0 {
+		t.Fatalf("LibraryAlbums: want empty on search error, got %d entries", len(det.LibraryAlbums))
 	}
 }

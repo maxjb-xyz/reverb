@@ -4,6 +4,8 @@ package coverage
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"log"
 
 	"github.com/maxjb-xyz/reverb/internal/core"
 	"github.com/maxjb-xyz/reverb/internal/matching"
@@ -21,6 +23,7 @@ type DiscoSource interface {
 type LibraryArtist interface {
 	GetArtist(ctx context.Context, id string) (core.Artist, error)
 	GetAlbum(ctx context.Context, id string) (core.Album, error)
+	Search(ctx context.Context, q string, types []core.EntityType) (core.SearchResults, error)
 }
 
 // VersionProvider returns the current monotonic library_version.
@@ -78,6 +81,7 @@ func (s *Service) ArtistDetail(ctx context.Context, source, id string) (core.Art
 		// Degrade: show library-owned albums as full.
 		det.Resolved = false
 		det.Albums = s.libraryAlbumsAsSkeleton(ctx, libArtistID)
+		det.LibraryAlbums = s.libraryAlbumsByArtistName(ctx, det.Name)
 		return det, nil
 	}
 	det.Resolved = true
@@ -104,6 +108,8 @@ func (s *Service) ArtistDetail(ctx context.Context, source, id string) (core.Art
 			det.Albums[i].LibraryAlbumID = libID
 		}
 	}
+	// Populate locally-owned albums by searching the library by artist name.
+	det.LibraryAlbums = s.libraryAlbumsByArtistName(ctx, det.Name)
 	return det, nil
 }
 
@@ -123,6 +129,44 @@ func (s *Service) discography(ctx context.Context, extID string) ([]core.Externa
 		_ = s.cache.UpsertDiscographyCache(ctx, "spotify", extID, string(b), s.now())
 	}
 	return albums, nil
+}
+
+// libraryAlbumsByArtistName searches the library for albums whose artist name
+// matches artistName and returns them as deduped DiscographyAlbum entries with
+// source "library". Errors are logged and an empty slice is returned (graceful degrade).
+func (s *Service) libraryAlbumsByArtistName(ctx context.Context, artistName string) []core.DiscographyAlbum {
+	if artistName == "" {
+		return []core.DiscographyAlbum{}
+	}
+	res, err := s.lib.Search(ctx, artistName, []core.EntityType{core.EntityAlbum})
+	if err != nil {
+		log.Printf("coverage: libraryAlbumsByArtistName search error for %q: %v", artistName, err)
+		return []core.DiscographyAlbum{}
+	}
+	normArtist := matching.Normalize(artistName)
+	seen := map[string]struct{}{}
+	out := []core.DiscographyAlbum{}
+	for _, al := range res.Albums {
+		// Only include albums whose artist matches this artist (normalized).
+		if matching.Normalize(al.Artist) != normArtist {
+			continue
+		}
+		key := fmt.Sprintf("%s|%s", matching.Normalize(al.Name), al.ID)
+		if _, dup := seen[key]; dup {
+			continue
+		}
+		seen[key] = struct{}{}
+		out = append(out, core.DiscographyAlbum{
+			Source:         "library",
+			ExternalID:     al.ID,
+			Name:           al.Name,
+			Year:           al.Year,
+			Kind:           "album",
+			TotalTracks:    al.SongCount,
+			LibraryAlbumID: al.ID,
+		})
+	}
+	return out
 }
 
 func (s *Service) libraryAlbumsAsSkeleton(ctx context.Context, libArtistID string) []core.DiscographyAlbum {

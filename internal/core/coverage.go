@@ -57,6 +57,10 @@ type ArtistDetail struct {
 	ExternalArtistID string             `json:"externalArtistId,omitempty"`
 	Resolved         bool               `json:"resolved"`
 	Albums           []DiscographyAlbum `json:"albums"`
+	// LibraryAlbums is the set of locally-owned albums for this artist, discovered
+	// by searching the library by artist name. Populated on both the library and
+	// spotify source paths so the FE can always show "owned" badges.
+	LibraryAlbums []DiscographyAlbum `json:"libraryAlbums"`
 }
 
 // AlbumDetailTrack is one track on the album page, owned or missing.
