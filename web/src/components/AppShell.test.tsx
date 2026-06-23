@@ -17,7 +17,6 @@ vi.mock('../lib/libraryApi', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../lib/libraryApi')>()
   return {
     ...actual,
-    usePlaylists: () => ({ isLoading: false, data: [] }),
     useAlbums: () => ({ isLoading: false, data: [] }),
     useArtists: () => ({ isLoading: false, data: [] }),
   }

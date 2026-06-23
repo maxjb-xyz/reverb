@@ -194,7 +194,7 @@ export function PlayerBar() {
             />
             {addMenuOpen && (
               <AddToPlaylistMenu
-                trackId={current.id}
+                track={current}
                 onClose={() => setAddMenuOpen(false)}
               />
             )}

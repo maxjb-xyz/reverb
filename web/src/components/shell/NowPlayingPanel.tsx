@@ -177,7 +177,7 @@ export function NowPlayingPanel() {
               />
               {addMenuOpen && (
                 <AddToPlaylistMenu
-                  trackId={current.id}
+                  track={current}
                   onClose={() => setAddMenuOpen(false)}
                 />
               )}

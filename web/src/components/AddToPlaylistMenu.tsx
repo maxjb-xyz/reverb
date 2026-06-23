@@ -3,14 +3,13 @@ import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { Icon } from './ui'
-import {
-  usePlaylists,
-  createPlaylist,
-  addTracksToPlaylist,
-} from '../lib/libraryApi'
+import { createPlaylist } from '../lib/libraryApi'
+import { useSyncedPlaylists, addSyncedTrack } from '../lib/syncedPlaylistApi'
+import type { SyncedTrackEntry } from '../lib/syncedPlaylistApi'
+import type { Track } from '../lib/types'
 
 interface AddToPlaylistMenuProps {
-  trackId: string
+  track: Track
   onClose: () => void
 }
 
@@ -18,14 +17,14 @@ const FOCUSABLE = 'button, [href], input, [tabindex]:not([tabindex="-1"])'
 
 /**
  * AddToPlaylistMenu — small popover that adds the given track to one of the
- * user's library playlists, or to a freshly created one. Mirrors the
+ * user's managed playlists, or to a freshly created one. Mirrors the
  * focus-trap / Esc / backdrop pattern of DownloadPopover.
  */
-export function AddToPlaylistMenu({ trackId, onClose }: AddToPlaylistMenuProps) {
+export function AddToPlaylistMenu({ track, onClose }: AddToPlaylistMenuProps) {
   const panelRef = useRef<HTMLDivElement>(null)
   const qc = useQueryClient()
   const navigate = useNavigate()
-  const { data: playlists, isLoading } = usePlaylists()
+  const { data: playlists, isLoading } = useSyncedPlaylists()
 
   const [newName, setNewName] = useState('')
   const [busy, setBusy] = useState(false)
@@ -71,10 +70,22 @@ export function AddToPlaylistMenu({ trackId, onClose }: AddToPlaylistMenuProps) 
     }
   }, [onClose])
 
+  function buildEntry(): SyncedTrackEntry {
+    return {
+      source: 'library',
+      externalId: track.id,
+      title: track.title,
+      artist: track.artist,
+      album: track.album,
+      isrc: track.isrc,
+      durationMs: track.durationMs,
+    }
+  }
+
   function done(playlistId?: string) {
-    qc.invalidateQueries({ queryKey: ['library', 'playlists'] })
+    qc.invalidateQueries({ queryKey: ['synced-playlists'] })
     if (playlistId) {
-      qc.invalidateQueries({ queryKey: ['playlist-detail', playlistId] })
+      qc.invalidateQueries({ queryKey: ['synced-playlist', playlistId] })
     }
     onClose()
   }
@@ -84,7 +95,7 @@ export function AddToPlaylistMenu({ trackId, onClose }: AddToPlaylistMenuProps) 
     setBusy(true)
     setError(null)
     try {
-      await addTracksToPlaylist(id, [trackId])
+      await addSyncedTrack(id, buildEntry())
       done(id)
     } catch {
       setError('Could not add to playlist.')
@@ -99,9 +110,9 @@ export function AddToPlaylistMenu({ trackId, onClose }: AddToPlaylistMenuProps) 
     setError(null)
     try {
       const pl = await createPlaylist(name)
-      await addTracksToPlaylist(pl.id, [trackId])
+      await addSyncedTrack(pl.id, buildEntry())
       done(pl.id)
-      navigate(`/playlist/${pl.id}`)
+      navigate(`/synced-playlist/${pl.id}`)
     } catch {
       setError('Could not create playlist.')
       setBusy(false)
@@ -161,7 +172,7 @@ export function AddToPlaylistMenu({ trackId, onClose }: AddToPlaylistMenuProps) 
           </div>
         </div>
 
-        {/* Existing playlists */}
+        {/* Existing managed playlists */}
         <ul className="max-h-60 overflow-y-auto p-1.5 pt-0" role="list">
           {isLoading && (
             <li className="px-2.5 py-2 text-xs text-text-muted">Loading playlists…</li>
@@ -188,7 +199,7 @@ export function AddToPlaylistMenu({ trackId, onClose }: AddToPlaylistMenuProps) 
                     {pl.name}
                   </span>
                   <span className="block text-xs text-text-muted">
-                    {pl.songCount} {pl.songCount === 1 ? 'song' : 'songs'}
+                    {pl.trackCount} {pl.trackCount === 1 ? 'track' : 'tracks'}
                   </span>
                 </span>
               </button>

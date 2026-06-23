@@ -159,7 +159,7 @@ export function TrackRow({ track, index, active = false, playing, onPlay, right,
         {formatDuration(track.durationMs)}
       </span>
     </div>
-    {menuOpen && <AddToPlaylistMenu trackId={track.id!} onClose={() => setMenuOpen(false)} />}
+    {menuOpen && <AddToPlaylistMenu track={track} onClose={() => setMenuOpen(false)} />}
     </>
   )
 }

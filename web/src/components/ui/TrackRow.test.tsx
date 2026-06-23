@@ -6,10 +6,12 @@ import { TrackRow } from './TrackRow'
 import type { Track } from '../../lib/types'
 
 vi.mock('../../lib/libraryApi', () => ({
-  usePlaylists: vi.fn(),
   createPlaylist: vi.fn(),
-  addTracksToPlaylist: vi.fn(),
   coverUrl: vi.fn(() => ''),
+}))
+vi.mock('../../lib/syncedPlaylistApi', () => ({
+  useSyncedPlaylists: vi.fn(),
+  addSyncedTrack: vi.fn(),
 }))
 vi.mock('@tanstack/react-query', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@tanstack/react-query')>()
@@ -19,7 +21,7 @@ vi.mock('@tanstack/react-query', async (importOriginal) => {
   }
 })
 
-import { usePlaylists } from '../../lib/libraryApi'
+import { useSyncedPlaylists } from '../../lib/syncedPlaylistApi'
 
 const track: Track = {
   id: 'trk-1',
@@ -55,10 +57,10 @@ function renderRow(props: Partial<Parameters<typeof TrackRow>[0]> & Pick<Paramet
 }
 
 beforeEach(() => {
-  vi.mocked(usePlaylists).mockReturnValue({
+  vi.mocked(useSyncedPlaylists).mockReturnValue({
     data: [],
     isLoading: false,
-  } as unknown as ReturnType<typeof usePlaylists>)
+  } as unknown as ReturnType<typeof useSyncedPlaylists>)
 })
 
 describe('TrackRow', () => {

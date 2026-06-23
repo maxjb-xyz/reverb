@@ -12,7 +12,6 @@ import Album from './routes/Album'
 import Artist from './routes/Artist'
 import Home from './routes/Home'
 import Admin from './routes/Admin'
-import Playlist from './routes/Playlist'
 import SyncedPlaylist from './routes/SyncedPlaylist'
 
 /** Redirect bare `/album/:id` or `/artist/:id` URLs to the source-qualified form
@@ -21,6 +20,12 @@ import SyncedPlaylist from './routes/SyncedPlaylist'
 function RedirectToLibrary({ kind }: { kind: 'album' | 'artist' }) {
   const { id = '' } = useParams()
   return <Navigate to={`/${kind}/library/${id}`} replace />
+}
+
+/** Redirect legacy `/playlist/:id` URLs to the managed `/synced-playlist/:id` form. */
+function RedirectToSyncedPlaylist() {
+  const { id = '' } = useParams()
+  return <Navigate to={`/synced-playlist/${id}`} replace />
 }
 
 const queryClient = new QueryClient({
@@ -64,7 +69,7 @@ function Routed() {
         <Route path="/album/:id" element={<RedirectToLibrary kind="album" />} />
         <Route path="/artist/:source/:id" element={<Artist />} />
         <Route path="/artist/:id" element={<RedirectToLibrary kind="artist" />} />
-        <Route path="/playlist/:id" element={<Playlist />} />
+        <Route path="/playlist/:id" element={<RedirectToSyncedPlaylist />} />
         <Route path="/synced-playlist/:id" element={<SyncedPlaylist />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="/admin" element={<Admin />} />

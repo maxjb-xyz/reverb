@@ -5,7 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { UseQueryResult } from '@tanstack/react-query'
 import Home from './Home'
 import { useDownloads } from '../lib/downloadStore'
-import type { Album, DownloadJob, Playlist, SyncedPlaylist } from '../lib/types'
+import type { Album, DownloadJob, SyncedPlaylist } from '../lib/types'
 
 // ------------------------------------------------------------------
 // Helpers
@@ -66,7 +66,6 @@ vi.mock('../lib/libraryApi', async (importOriginal) => {
   return {
     ...actual,
     useAlbums: vi.fn(),
-    usePlaylists: vi.fn(),
     coverUrl: vi.fn((id: string) => `/api/v1/cover/${id}`),
   }
 })
@@ -113,9 +112,8 @@ describe('Home feed', () => {
   })
 
   it('renders chip filter row with All, Music, Downloads when content exists', async () => {
-    const { useAlbums, usePlaylists } = await import('../lib/libraryApi')
+    const { useAlbums } = await import('../lib/libraryApi')
     vi.mocked(useAlbums).mockReturnValue({ data: [makeAlbum()], isLoading: false, error: null } as unknown as UseQueryResult<Album[], Error>)
-    vi.mocked(usePlaylists).mockReturnValue({ data: [], isLoading: false, error: null } as unknown as UseQueryResult<Playlist[], Error>)
 
     render(wrap(<Home />))
 
@@ -125,9 +123,8 @@ describe('Home feed', () => {
   })
 
   it('shows the first-run welcome state (not a blank void) when there is no content', async () => {
-    const { useAlbums, usePlaylists } = await import('../lib/libraryApi')
+    const { useAlbums } = await import('../lib/libraryApi')
     vi.mocked(useAlbums).mockReturnValue({ data: [], isLoading: false, error: null } as unknown as UseQueryResult<Album[], Error>)
-    vi.mocked(usePlaylists).mockReturnValue({ data: [], isLoading: false, error: null } as unknown as UseQueryResult<Playlist[], Error>)
 
     render(wrap(<Home />))
 
@@ -139,7 +136,7 @@ describe('Home feed', () => {
   })
 
   it('renders shortcut grid and "Jump back in" carousel when data is present', async () => {
-    const { useAlbums, usePlaylists } = await import('../lib/libraryApi')
+    const { useAlbums } = await import('../lib/libraryApi')
 
     const albums = [
       makeAlbum({ id: 'al1', name: 'OK Computer', artist: 'Radiohead' }),
@@ -147,7 +144,6 @@ describe('Home feed', () => {
     ]
 
     vi.mocked(useAlbums).mockReturnValue({ data: albums, isLoading: false, error: null } as unknown as UseQueryResult<Album[], Error>)
-    vi.mocked(usePlaylists).mockReturnValue({ data: [], isLoading: false, error: null } as unknown as UseQueryResult<Playlist[], Error>)
 
     render(wrap(<Home />))
 
@@ -159,11 +155,10 @@ describe('Home feed', () => {
   })
 
   it('hides "Recently downloaded" section when there are no completed downloads', async () => {
-    const { useAlbums, usePlaylists } = await import('../lib/libraryApi')
+    const { useAlbums } = await import('../lib/libraryApi')
 
     const albums = [makeAlbum({ id: 'al1', name: 'Album One', artist: 'Artist One' })]
     vi.mocked(useAlbums).mockReturnValue({ data: albums, isLoading: false, error: null } as unknown as UseQueryResult<Album[], Error>)
-    vi.mocked(usePlaylists).mockReturnValue({ data: [], isLoading: false, error: null } as unknown as UseQueryResult<Playlist[], Error>)
 
     // No completed jobs in the store
     useDownloads.setState({ jobs: {} })
@@ -174,11 +169,10 @@ describe('Home feed', () => {
   })
 
   it('shows "Recently downloaded" carousel when completed download jobs exist', async () => {
-    const { useAlbums, usePlaylists } = await import('../lib/libraryApi')
+    const { useAlbums } = await import('../lib/libraryApi')
 
     const albums = [makeAlbum({ id: 'al1', name: 'Some Album', artist: 'Some Artist' })]
     vi.mocked(useAlbums).mockReturnValue({ data: albums, isLoading: false, error: null } as unknown as UseQueryResult<Album[], Error>)
-    vi.mocked(usePlaylists).mockReturnValue({ data: [], isLoading: false, error: null } as unknown as UseQueryResult<Playlist[], Error>)
 
     const job = makeJob({ id: 'j1', status: 'completed', title: 'My DL Track', artist: 'DL Person', album: 'DL Collection' })
     useDownloads.setState({ jobs: { j1: job } })
@@ -189,11 +183,10 @@ describe('Home feed', () => {
   })
 
   it('completed job with coverArtId renders MediaCard with correct cover src', async () => {
-    const { useAlbums, usePlaylists } = await import('../lib/libraryApi')
+    const { useAlbums } = await import('../lib/libraryApi')
 
     const albums = [makeAlbum({ id: 'al1', name: 'Some Album', artist: 'Some Artist' })]
     vi.mocked(useAlbums).mockReturnValue({ data: albums, isLoading: false, error: null } as unknown as UseQueryResult<Album[], Error>)
-    vi.mocked(usePlaylists).mockReturnValue({ data: [], isLoading: false, error: null } as unknown as UseQueryResult<Playlist[], Error>)
 
     const job = makeJob({ id: 'j2', status: 'completed', title: 'Cover Track', coverArtId: 'mf-abc123' })
     useDownloads.setState({ jobs: { j2: job } })
@@ -206,10 +199,9 @@ describe('Home feed', () => {
   })
 
   it('shows skeleton tiles while data is loading', async () => {
-    const { useAlbums, usePlaylists } = await import('../lib/libraryApi')
+    const { useAlbums } = await import('../lib/libraryApi')
 
     vi.mocked(useAlbums).mockReturnValue({ data: undefined, isLoading: true, error: null } as unknown as UseQueryResult<Album[], Error>)
-    vi.mocked(usePlaylists).mockReturnValue({ data: undefined, isLoading: true, error: null } as unknown as UseQueryResult<Playlist[], Error>)
 
     render(wrap(<Home />))
 
@@ -219,10 +211,9 @@ describe('Home feed', () => {
   })
 
   it('hides "Just added to your library" hero when newest albums list is empty', async () => {
-    const { useAlbums, usePlaylists } = await import('../lib/libraryApi')
+    const { useAlbums } = await import('../lib/libraryApi')
 
     vi.mocked(useAlbums).mockReturnValue({ data: [], isLoading: false, error: null } as unknown as UseQueryResult<Album[], Error>)
-    vi.mocked(usePlaylists).mockReturnValue({ data: [], isLoading: false, error: null } as unknown as UseQueryResult<Playlist[], Error>)
 
     render(wrap(<Home />))
 
@@ -231,11 +222,10 @@ describe('Home feed', () => {
   })
 
   it('clicking the hero album cover navigates to the album detail page', async () => {
-    const { useAlbums, usePlaylists } = await import('../lib/libraryApi')
+    const { useAlbums } = await import('../lib/libraryApi')
 
     const album = makeAlbum({ id: 'al99', name: 'Heros Cover Album', artist: 'Test Artist' })
     vi.mocked(useAlbums).mockReturnValue({ data: [album], isLoading: false, error: null } as unknown as UseQueryResult<Album[], Error>)
-    vi.mocked(usePlaylists).mockReturnValue({ data: [], isLoading: false, error: null } as unknown as UseQueryResult<Playlist[], Error>)
 
     render(wrap(<Home />))
 
@@ -245,11 +235,10 @@ describe('Home feed', () => {
   })
 
   it('clicking the hero album title navigates to the album detail page', async () => {
-    const { useAlbums, usePlaylists } = await import('../lib/libraryApi')
+    const { useAlbums } = await import('../lib/libraryApi')
 
     const album = makeAlbum({ id: 'al99', name: 'Heros Cover Album', artist: 'Test Artist' })
     vi.mocked(useAlbums).mockReturnValue({ data: [album], isLoading: false, error: null } as unknown as UseQueryResult<Album[], Error>)
-    vi.mocked(usePlaylists).mockReturnValue({ data: [], isLoading: false, error: null } as unknown as UseQueryResult<Playlist[], Error>)
 
     render(wrap(<Home />))
 
@@ -259,12 +248,11 @@ describe('Home feed', () => {
   })
 
   it('hero section has min-w-0 and overflow-hidden, and h1 has truncate, with a very long album title', async () => {
-    const { useAlbums, usePlaylists } = await import('../lib/libraryApi')
+    const { useAlbums } = await import('../lib/libraryApi')
 
     const longTitle = 'A'.repeat(200)
     const album = makeAlbum({ id: 'al-long', name: longTitle, artist: 'Test Artist' })
     vi.mocked(useAlbums).mockReturnValue({ data: [album], isLoading: false, error: null } as unknown as UseQueryResult<Album[], Error>)
-    vi.mocked(usePlaylists).mockReturnValue({ data: [], isLoading: false, error: null } as unknown as UseQueryResult<Playlist[], Error>)
 
     render(wrap(<Home />))
 
@@ -278,11 +266,10 @@ describe('Home feed', () => {
   })
 
   it('clicking the hero Play button does NOT navigate — calls play instead', async () => {
-    const { useAlbums, usePlaylists } = await import('../lib/libraryApi')
+    const { useAlbums } = await import('../lib/libraryApi')
 
     const album = makeAlbum({ id: 'al99', name: 'Heros Cover Album', artist: 'Test Artist' })
     vi.mocked(useAlbums).mockReturnValue({ data: [album], isLoading: false, error: null } as unknown as UseQueryResult<Album[], Error>)
-    vi.mocked(usePlaylists).mockReturnValue({ data: [], isLoading: false, error: null } as unknown as UseQueryResult<Playlist[], Error>)
 
     render(wrap(<Home />))
 
@@ -297,12 +284,11 @@ describe('Home feed', () => {
   })
 
   it('synced playlists appear in the shortcut grid and link to /synced-playlist/:id', async () => {
-    const { useAlbums, usePlaylists } = await import('../lib/libraryApi')
+    const { useAlbums } = await import('../lib/libraryApi')
     const { useSyncedPlaylists } = await import('../lib/syncedPlaylistApi')
 
     const album = makeAlbum({ id: 'al1', name: 'Some Album', artist: 'Some Artist' })
     vi.mocked(useAlbums).mockReturnValue({ data: [album], isLoading: false, error: null } as unknown as UseQueryResult<Album[], Error>)
-    vi.mocked(usePlaylists).mockReturnValue({ data: [], isLoading: false, error: null } as unknown as UseQueryResult<Playlist[], Error>)
 
     const syncedPlaylist: SyncedPlaylist = {
       id: 'sp1',

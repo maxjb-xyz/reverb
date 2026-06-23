@@ -47,3 +47,17 @@ export function removeSyncedTrack(id: string, source: string, externalId: string
   const url = `/synced-playlists/${encodeURIComponent(id)}/tracks?source=${encodeURIComponent(source)}&externalId=${encodeURIComponent(externalId)}`
   return api.del<SyncedPlaylistDetail>(url)
 }
+
+export interface SyncedTrackEntry {
+  source: string
+  externalId: string
+  title: string
+  artist?: string
+  album?: string
+  isrc?: string
+  durationMs?: number
+}
+
+export function addSyncedTrack(playlistId: string, entry: SyncedTrackEntry): Promise<SyncedPlaylistDetail> {
+  return api.post<SyncedPlaylistDetail>(`/synced-playlists/${encodeURIComponent(playlistId)}/tracks`, entry)
+}

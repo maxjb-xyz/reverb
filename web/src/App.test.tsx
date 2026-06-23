@@ -12,7 +12,7 @@ vi.mock('./lib/realtimeWiring', () => ({ useRealtime: () => {} }))
 // Stub heavy route components so App routing tests don't need API mocks.
 vi.mock('./routes/Album', () => ({ default: () => <div>Album page</div> }))
 vi.mock('./routes/Artist', () => ({ default: () => <div>Artist page</div> }))
-vi.mock('./routes/Playlist', () => ({ default: () => <div>Playlist page</div> }))
+vi.mock('./routes/SyncedPlaylist', () => ({ default: () => <div>SyncedPlaylist page</div> }))
 
 function mockStatus(s: SessionStatus) {
   vi.mocked(session.useSessionStatus).mockReturnValue(s)
@@ -79,4 +79,14 @@ test('/artist/:id redirects to /artist/library/:id and renders Artist page', () 
     </MemoryRouter>,
   )
   expect(screen.getByText('Artist page')).toBeInTheDocument()
+})
+
+test('/playlist/:id redirects to /synced-playlist/:id and renders SyncedPlaylist page', () => {
+  mockStatus({ loading: false, setupRequired: false, authenticated: true, error: false })
+  render(
+    <MemoryRouter initialEntries={['/playlist/p42']}>
+      <App />
+    </MemoryRouter>,
+  )
+  expect(screen.getByText('SyncedPlaylist page')).toBeInTheDocument()
 })

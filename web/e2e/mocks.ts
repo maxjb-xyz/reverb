@@ -372,21 +372,40 @@ export async function installCompletenessMocks(page: Page): Promise<Completeness
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(state.downloads) })
   })
 
-  // Library playlist.
-  await page.route('**/api/v1/library/playlist/pl-1', (route: Route) =>
-    route.fulfill({
+  // Managed playlist "pl-1" (previously a Navidrome playlist; now a synced-playlist).
+  // The /playlist/pl-1 route redirects to /synced-playlist/pl-1, so serve the detail
+  // from the synced-playlists endpoint.
+  await page.route('**/api/v1/synced-playlists/pl-1', (route: Route) => {
+    const owned = ownedLibraryTrack()
+    const track = {
+      state: 'full' as const,
+      libraryTrack: owned,
+      title: owned.title,
+      artist: owned.artist,
+      album: owned.album,
+      trackNumber: owned.trackNumber,
+      durationMs: owned.durationMs,
+    }
+    return route.fulfill({
       status: 200,
       contentType: 'application/json',
       body: JSON.stringify({
         id: 'pl-1',
         name: 'Chill Mix',
-        coverArtId: '',
-        songCount: 1,
-        durationMs: 200_000,
-        tracks: [ownedLibraryTrack()],
+        source: 'library',
+        externalId: 'pl-1',
+        coverUrl: '',
+        syncEnabled: false,
+        syncIntervalSec: 0,
+        autoDownload: false,
+        lastSyncedAt: 0,
+        trackCount: 1,
+        ownedCount: 1,
+        totalCount: 1,
+        tracks: [track],
       }),
-    }),
-  )
+    })
+  })
 
   // Expose the completion state to the WS trigger via a shared closure module-level
   // ref so installCompletenessWsMock can flip `state.downloads`.

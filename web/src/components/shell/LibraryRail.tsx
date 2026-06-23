@@ -2,11 +2,11 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { IconButton, Chip, Cover, Skeleton, EmptyState, Equalizer, Icon } from '../ui'
-import { usePlaylists, useArtists, useAlbums, coverUrl, createPlaylist } from '../../lib/libraryApi'
+import { useArtists, useAlbums, coverUrl, createPlaylist } from '../../lib/libraryApi'
 import { useSyncedPlaylists } from '../../lib/syncedPlaylistApi'
 import { usePlayer } from '../../lib/playerStore'
 import { ImportPlaylistDialog } from '../ImportPlaylistDialog'
-import type { Playlist, Album, Artist, SyncedPlaylist } from '../../lib/types'
+import type { Album, Artist, SyncedPlaylist } from '../../lib/types'
 
 type Filter = 'playlists' | 'albums' | 'artists'
 
@@ -18,28 +18,27 @@ export function LibraryRail() {
   const [importOpen, setImportOpen] = useState(false)
   const current = usePlayer((s) => s.current)
 
-  const playlists = usePlaylists()
   const albums = useAlbums()
   const artists = useArtists()
   const syncedPlaylists = useSyncedPlaylists()
 
   // Derive which query is active
   const activeQuery =
-    filter === 'playlists' ? playlists :
+    filter === 'playlists' ? syncedPlaylists :
     filter === 'albums' ? albums :
     artists
 
   const isLoading = activeQuery.isLoading
 
-  // Create a playlist in the library, then refresh + switch to the Playlists tab.
-  // Requires a connected library provider (no-op if it isn't configured).
+  // Create a managed playlist, then navigate to it.
   async function handleCreatePlaylist() {
     if (creating) return
     setCreating(true)
     try {
-      await createPlaylist('New Playlist')
-      await qc.invalidateQueries({ queryKey: ['library', 'playlists'] })
+      const pl = await createPlaylist('New Playlist')
+      await qc.invalidateQueries({ queryKey: ['synced-playlists'] })
       setFilter('playlists')
+      navigate(`/synced-playlist/${pl.id}`)
     } catch {
       // Needs a connected library provider; nothing to do otherwise.
     } finally {
@@ -97,7 +96,7 @@ export function LibraryRail() {
         {isLoading ? (
           <SkeletonRows />
         ) : filter === 'playlists' ? (
-          <PlaylistList items={playlists.data ?? []} syncedItems={syncedPlaylists.data ?? []} />
+          <PlaylistList items={syncedPlaylists.data ?? []} />
         ) : filter === 'albums' ? (
           <AlbumList items={albums.data ?? []} current={current} />
         ) : (
@@ -127,10 +126,10 @@ function SkeletonRows() {
   )
 }
 
-// ---- Playlist list ----
-function PlaylistList({ items, syncedItems }: { items: Playlist[]; syncedItems: SyncedPlaylist[] }) {
+// ---- Managed playlist list ----
+function PlaylistList({ items }: { items: SyncedPlaylist[] }) {
   const navigate = useNavigate()
-  if (items.length === 0 && syncedItems.length === 0) {
+  if (items.length === 0) {
     return <EmptyState icon="queue" title="No playlists yet" hint="Create your first playlist to get started." />
   }
 
@@ -139,23 +138,11 @@ function PlaylistList({ items, syncedItems }: { items: Playlist[]; syncedItems: 
       {items.map((p) => (
         <LibItem
           key={p.id}
-          coverSrc={coverUrl(p.coverArtId)}
-          name={p.name}
-          meta={`Playlist · ${p.songCount} songs`}
-          rounded="md"
-          isPlaying={false} // no playlist-context signal on Track yet
-          onClick={() => navigate(`/playlist/${p.id}`)}
-        />
-      ))}
-      {syncedItems.map((p) => (
-        <LibItem
-          key={`synced-${p.id}`}
           coverSrc={p.coverUrl ?? ''}
           name={p.name}
-          meta={`Synced · ${p.trackCount} tracks`}
+          meta={`Playlist · ${p.trackCount} tracks`}
           rounded="md"
           isPlaying={false}
-          syncedBadgeId={p.id}
           onClick={() => navigate(`/synced-playlist/${p.id}`)}
         />
       ))}
@@ -224,12 +211,10 @@ interface LibItemProps {
   meta: string
   rounded: 'md' | 'full'
   isPlaying: boolean
-  /** When set, renders a small synced icon with this testid. */
-  syncedBadgeId?: string
   onClick?: () => void
 }
 
-function LibItem({ coverSrc, name, meta, rounded, isPlaying, syncedBadgeId, onClick }: LibItemProps) {
+function LibItem({ coverSrc, name, meta, rounded, isPlaying, onClick }: LibItemProps) {
   const inner = (
     <>
       <Cover src={coverSrc} alt={name} size={48} rounded={rounded} />
@@ -243,15 +228,6 @@ function LibItem({ coverSrc, name, meta, rounded, isPlaying, syncedBadgeId, onCl
           >
             {name}
           </div>
-          {syncedBadgeId && (
-            <span
-              data-testid={`synced-badge-${syncedBadgeId}`}
-              className="flex-none text-accent"
-              aria-hidden="true"
-            >
-              <Icon name="retry" className="w-3 h-3" />
-            </span>
-          )}
         </div>
         <div className="flex items-center gap-1.5 mt-0.5">
           {isPlaying && <Equalizer />}

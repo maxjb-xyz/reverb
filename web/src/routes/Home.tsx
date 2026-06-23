@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
-import { useAlbums, usePlaylists, coverUrl } from '../lib/libraryApi'
+import { useAlbums, coverUrl } from '../lib/libraryApi'
 import { useSyncedPlaylists } from '../lib/syncedPlaylistApi'
 import { useDownloads } from '../lib/downloadStore'
 import { usePlayer } from '../lib/playerStore'
@@ -136,7 +136,6 @@ export default function Home() {
   // Data hooks
   const newestQuery = useAlbums('newest')
   const recentQuery = useAlbums('recent')
-  const playlistsQuery = usePlaylists()
   const syncedPlaylistsQuery = useSyncedPlaylists()
 
   // Completed downloads — newest first
@@ -154,13 +153,11 @@ export default function Home() {
   // ------------------------------------------------------------------
   const isLoading = newestQuery.isLoading || recentQuery.isLoading
 
-  // Shortcut grid: up to 8 items from recent albums + playlists combined
+  // Shortcut grid: up to 8 items from recent albums + managed playlists combined
   const recentAlbums: Album[] = recentQuery.data ?? []
-  const playlists = playlistsQuery.data ?? []
   const syncedPlaylists = syncedPlaylistsQuery.data ?? []
-  const shortcutItems: Array<{ id: string; name: string; coverId?: string; coverSrc?: string; type: 'album' | 'playlist' | 'synced-playlist' }> = [
+  const shortcutItems: Array<{ id: string; name: string; coverId?: string; coverSrc?: string; type: 'album' | 'synced-playlist' }> = [
     ...recentAlbums.map((a) => ({ id: a.id, name: a.name, coverId: a.coverArtId, type: 'album' as const })),
-    ...playlists.map((p) => ({ id: p.id, name: p.name, coverId: p.coverArtId, type: 'playlist' as const })),
     ...syncedPlaylists.map((sp) => ({ id: sp.id, name: sp.name, coverSrc: sp.coverUrl, type: 'synced-playlist' as const })),
   ].slice(0, 8)
 
@@ -185,10 +182,9 @@ export default function Home() {
   // ------------------------------------------------------------------
   // Handlers
   // ------------------------------------------------------------------
-  function handleShortcutClick(item: { id: string; type: 'album' | 'playlist' | 'synced-playlist' }) {
+  function handleShortcutClick(item: { id: string; type: 'album' | 'synced-playlist' }) {
     if (item.type === 'album') navigate(`/album/library/${item.id}`)
-    else if (item.type === 'synced-playlist') navigate(`/synced-playlist/${item.id}`)
-    else navigate(`/playlist/${item.id}`)
+    else navigate(`/synced-playlist/${item.id}`)
   }
 
   async function handleHeroPlay() {

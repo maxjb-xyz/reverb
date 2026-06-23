@@ -56,8 +56,8 @@ export function usePlaylists() {
   })
 }
 
-export function createPlaylist(name: string): Promise<Playlist> {
-  return api.post<Playlist>('/library/playlists', { name })
+export function createPlaylist(name: string): Promise<SyncedPlaylistDetail> {
+  return api.post<SyncedPlaylistDetail>('/library/playlists', { name })
 }
 
 export function addTracksToPlaylist(id: string, trackIds: string[]): Promise<{ ok: boolean }> {

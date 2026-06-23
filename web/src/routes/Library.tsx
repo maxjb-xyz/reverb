@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useAlbums, useArtists, usePlaylists } from '../lib/libraryApi'
+import { useAlbums, useArtists } from '../lib/libraryApi'
 import { useSyncedPlaylists } from '../lib/syncedPlaylistApi'
-import { Chip, MediaCard, Skeleton, EmptyState, Button, Badge } from '../components/ui'
+import { Chip, MediaCard, Skeleton, EmptyState, Button } from '../components/ui'
 import { ImportPlaylistDialog } from '../components/ImportPlaylistDialog'
 
 type Filter = 'albums' | 'artists' | 'playlists'
@@ -40,7 +40,6 @@ export default function Library() {
 
   const albums = useAlbums('newest')
   const artists = useArtists()
-  const playlists = usePlaylists()
   const syncedPlaylists = useSyncedPlaylists()
 
   return (
@@ -126,12 +125,12 @@ export default function Library() {
         </>
       )}
 
-      {/* Playlists grid */}
+      {/* Playlists grid — all managed playlists */}
       {filter === 'playlists' && (
         <>
-          {playlists.isLoading ? (
+          {syncedPlaylists.isLoading ? (
             <SkeletonGrid rounded="md" />
-          ) : (playlists.data ?? []).length === 0 && (syncedPlaylists.data ?? []).length === 0 ? (
+          ) : (syncedPlaylists.data ?? []).length === 0 ? (
             <EmptyState
               icon="browse"
               title="Nothing here yet"
@@ -139,31 +138,13 @@ export default function Library() {
             />
           ) : (
             <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-              {(playlists.data ?? []).map((pl) => (
-                <MediaCard
-                  key={pl.id}
-                  title={pl.name}
-                  subtitle={`${pl.songCount} track${pl.songCount !== 1 ? 's' : ''}`}
-                  coverId={pl.coverArtId || undefined}
-                  rounded="md"
-                  onClick={() => navigate(`/playlist/${pl.id}`)}
-                />
-              ))}
               {(syncedPlaylists.data ?? []).map((pl) => (
                 <MediaCard
-                  key={`synced-${pl.id}`}
+                  key={pl.id}
                   title={pl.name}
                   subtitle={`${pl.trackCount} track${pl.trackCount !== 1 ? 's' : ''}`}
                   coverSrc={pl.coverUrl}
                   rounded="md"
-                  badge={
-                    <span
-                      data-testid={`synced-badge-${pl.id}`}
-                      className="inline-flex items-center"
-                    >
-                      <Badge kind="in-library">Synced</Badge>
-                    </span>
-                  }
                   onClick={() => navigate(`/synced-playlist/${pl.id}`)}
                 />
               ))}
