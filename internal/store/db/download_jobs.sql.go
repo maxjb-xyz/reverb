@@ -368,6 +368,20 @@ func (q *Queries) UpdateDownloadJobProgress(ctx context.Context, arg UpdateDownl
 	return err
 }
 
+const updateDownloadJobRequestJson = `-- name: UpdateDownloadJobRequestJson :exec
+UPDATE download_jobs SET request_json = ? WHERE id = ?
+`
+
+type UpdateDownloadJobRequestJsonParams struct {
+	RequestJson string `json:"request_json"`
+	ID          string `json:"id"`
+}
+
+func (q *Queries) UpdateDownloadJobRequestJson(ctx context.Context, arg UpdateDownloadJobRequestJsonParams) error {
+	_, err := q.db.ExecContext(ctx, updateDownloadJobRequestJson, arg.RequestJson, arg.ID)
+	return err
+}
+
 const updateDownloadJobStatus = `-- name: UpdateDownloadJobStatus :exec
 UPDATE download_jobs
 SET status     = ?1,

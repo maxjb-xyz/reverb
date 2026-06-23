@@ -145,14 +145,18 @@ func (f *fakeVersion) get() int64 { f.mu.Lock(); defer f.mu.Unlock(); return f.v
 type memStore struct {
 	mu   sync.Mutex
 	jobs map[string]core.DownloadJob
+	reqs map[string]core.DownloadRequest // mirrors request_json for FIX 2 tests
 }
 
-func newMemStore() *memStore { return &memStore{jobs: map[string]core.DownloadJob{}} }
+func newMemStore() *memStore {
+	return &memStore{jobs: map[string]core.DownloadJob{}, reqs: map[string]core.DownloadRequest{}}
+}
 
-func (s *memStore) Insert(_ context.Context, j core.DownloadJob, _ core.DownloadRequest) error {
+func (s *memStore) Insert(_ context.Context, j core.DownloadJob, req core.DownloadRequest) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.jobs[j.ID] = j
+	s.reqs[j.ID] = req
 	return nil
 }
 func (s *memStore) Get(_ context.Context, id string) (core.DownloadJob, bool, error) {
@@ -185,6 +189,20 @@ func (s *memStore) Update(_ context.Context, j core.DownloadJob) error {
 	defer s.mu.Unlock()
 	s.jobs[j.ID] = j
 	return nil
+}
+
+func (s *memStore) UpdateRequest(_ context.Context, id string, req core.DownloadRequest) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.reqs[id] = req
+	return nil
+}
+
+func (s *memStore) getReq(id string) (core.DownloadRequest, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	r, ok := s.reqs[id]
+	return r, ok
 }
 
 // helper: drain bus events of a topic into a slice (test-only).
@@ -845,6 +863,79 @@ func TestManualURLClearedAfterFailure(t *testing.T) {
 	m.mu.Unlock()
 	if exists {
 		t.Fatal("m.reqs entry should be deleted after second DownloadFailed")
+	}
+}
+
+// TestRetryNonSpotifyJobKeepsManualURL asserts FIX 1: a non-Spotify job
+// (Source:"youtube", ExternalID:"") retried with a manualURL keeps it on the
+// re-dispatched request. The old guard `|| req.ExternalID == ""` would overwrite
+// the valid in-memory request with a struct literal missing ManualURL.
+func TestRetryNonSpotifyJobKeepsManualURL(t *testing.T) {
+	store := newMemStore()
+	failed := core.DownloadJob{
+		ID: "yt1", DedupKey: "dkyt1", Status: core.DownloadFailed,
+		DownloaderName: "dl", Attempts: 1,
+		Source: "youtube", ExternalID: "", // non-Spotify: ExternalID is empty
+		Artist: "Daft Punk", Title: "One More Time",
+	}
+	_ = store.Insert(context.Background(), failed, core.DownloadRequest{
+		Source: "youtube", ExternalID: "", Artist: "Daft Punk", Title: "One More Time",
+	})
+	dl := &fakeDL{name: "dl", canDownload: true}
+	m, _ := testManager(t, []Downloader{dl}, store, nil, nil, nil)
+	m.SeedRequest("yt1", core.DownloadRequest{
+		Source: "youtube", ExternalID: "", Artist: "Daft Punk", Title: "One More Time",
+	})
+
+	const url = "https://www.youtube.com/watch?v=YT_MANUAL"
+	_, err := m.Retry(context.Background(), "yt1", url)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// The in-memory request must carry ManualURL (FIX 1).
+	m.mu.Lock()
+	req := m.reqs["yt1"]
+	m.mu.Unlock()
+	if req.ManualURL != url {
+		t.Fatalf("FIX 1: ManualURL on non-Spotify re-dispatched request: got %q, want %q", req.ManualURL, url)
+	}
+}
+
+// TestRetryWithManualURLPersistsToStore asserts FIX 2: when Retry is called with
+// a manualURL, the updated DownloadRequest (including ManualURL) is persisted to
+// the store (request_json) so it survives a server restart between Retry and the
+// worker picking up the job.
+func TestRetryWithManualURLPersistsToStore(t *testing.T) {
+	store := newMemStore()
+	failed := core.DownloadJob{
+		ID: "sp-persist", DedupKey: "dk-persist", Status: core.DownloadFailed,
+		DownloaderName: "dl", Attempts: 1,
+		Source: "spotify", ExternalID: "sp-abc",
+		Artist: "Einaudi", Title: "Una mattina",
+	}
+	_ = store.Insert(context.Background(), failed, core.DownloadRequest{
+		Source: "spotify", ExternalID: "sp-abc", Artist: "Einaudi", Title: "Una mattina",
+	})
+	dl := &fakeDL{name: "dl", canDownload: true}
+	m, _ := testManager(t, []Downloader{dl}, store, nil, nil, nil)
+	m.SeedRequest("sp-persist", core.DownloadRequest{
+		Source: "spotify", ExternalID: "sp-abc", Artist: "Einaudi", Title: "Una mattina",
+	})
+
+	const url = "https://www.youtube.com/watch?v=PERSIST_TEST"
+	_, err := m.Retry(context.Background(), "sp-persist", url)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// The store's request_json (via memStore.reqs) must carry ManualURL (FIX 2).
+	persisted, ok := store.getReq("sp-persist")
+	if !ok {
+		t.Fatal("FIX 2: store has no request entry for job after Retry with manualURL")
+	}
+	if persisted.ManualURL != url {
+		t.Fatalf("FIX 2: persisted ManualURL: got %q, want %q", persisted.ManualURL, url)
 	}
 }
 

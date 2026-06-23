@@ -57,5 +57,8 @@ UPDATE download_jobs SET library_track_id = ? WHERE id = ?;
 -- name: UpdateDownloadJobCoverArtID :exec
 UPDATE download_jobs SET cover_art_id = ? WHERE id = ?;
 
+-- name: UpdateDownloadJobRequestJson :exec
+UPDATE download_jobs SET request_json = ? WHERE id = ?;
+
 -- name: IncrementDownloadJobAttempts :exec
 UPDATE download_jobs SET attempts = attempts + 1 WHERE id = ?;

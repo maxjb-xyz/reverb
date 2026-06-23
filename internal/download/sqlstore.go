@@ -225,6 +225,16 @@ func (s *sqlStore) Update(ctx context.Context, j core.DownloadJob) error {
 	})
 }
 
+// UpdateRequest re-persists the originating DownloadRequest for the given job
+// into request_json. Called by Retry when a ManualURL is provided so the field
+// survives a server restart between the Retry call and the worker picking up the job.
+func (s *sqlStore) UpdateRequest(ctx context.Context, id string, req core.DownloadRequest) error {
+	return s.q.UpdateDownloadJobRequestJson(ctx, db.UpdateDownloadJobRequestJsonParams{
+		RequestJson: requestJSON(req),
+		ID:          id,
+	})
+}
+
 func nullString(s string) sql.NullString {
 	if s == "" {
 		return sql.NullString{}

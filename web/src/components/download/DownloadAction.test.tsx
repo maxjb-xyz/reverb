@@ -298,6 +298,21 @@ describe('DownloadAction', () => {
     expect(screen.queryByText(/download from a link/i)).not.toBeInTheDocument()
   })
 
+  // ── 15. failed trigger: a11y attributes ──────────────────────────────────
+  it('failed job trigger has aria-haspopup="menu" and reflects aria-expanded', () => {
+    useDownloads.getState().upsert(makeJob({ status: 'failed', progress: 0 }))
+    render(<DownloadAction result={makeResult()} onPlay={onPlay} />)
+
+    const trigger = screen.getByRole('button', { name: /retry download/i })
+    // Before opening: aria-haspopup="menu", aria-expanded="false"
+    expect(trigger).toHaveAttribute('aria-haspopup', 'menu')
+    expect(trigger).toHaveAttribute('aria-expanded', 'false')
+
+    fireEvent.click(trigger)
+    // After opening: aria-expanded="true"
+    expect(trigger).toHaveAttribute('aria-expanded', 'true')
+  })
+
   it('in-library state → no "Download from a link" affordance', () => {
     const result = makeResult({
       match: { status: 'in_library', libraryTrackId: 'lib-t3', method: 'isrc', confidence: 1 },

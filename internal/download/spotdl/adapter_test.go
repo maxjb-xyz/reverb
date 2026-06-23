@@ -416,6 +416,30 @@ func TestStartWithoutManualURLBehaviourUnchanged(t *testing.T) {
 	}
 }
 
+func TestStartManualURLWithPipeCharIsStripped(t *testing.T) {
+	// FIX 3: a "|" inside the user-supplied ManualURL must be stripped before the
+	// pipe query is built; otherwise spotDL sees extra pipe tokens and misparses the
+	// metadata|audio split. The resulting query must contain exactly ONE "|".
+	r := &fakeRunner{lines: []string{`Downloaded: ok`}}
+	a := newAdapter(t, r)
+	_, _ = a.Start(context.Background(), core.DownloadRequest{
+		Source:    "spotify",
+		ExternalID: "abc",
+		Artist:    "A",
+		Title:     "T",
+		ManualURL: "https://youtube.com/watch?v=X|Y|Z", // two extra pipes
+	}, func(int) {})
+	n := len(r.gotArgs)
+	if n == 0 {
+		t.Fatal("no args captured")
+	}
+	query := r.gotArgs[n-1]
+	pipes := strings.Count(query, "|")
+	if pipes != 1 {
+		t.Fatalf("FIX 3: pipe query must have exactly 1 '|' separator, got %d in %q", pipes, query)
+	}
+}
+
 func TestSpotdlConformance(t *testing.T) {
 	// Conformance Start must report progress + return an output path: feed a
 	// runner that yields a progress line and a completion line.

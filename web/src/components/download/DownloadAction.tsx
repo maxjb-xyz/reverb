@@ -142,6 +142,8 @@ export function DownloadAction({ result, onPlay }: Props) {
           ref={failedTriggerRef}
           type="button"
           aria-label="Retry download"
+          aria-haspopup="menu"
+          aria-expanded={failedMenuOpen}
           onClick={(e) => {
             e.stopPropagation()
             setFailedMenuOpen((o) => !o)

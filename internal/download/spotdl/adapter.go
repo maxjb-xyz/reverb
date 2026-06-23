@@ -146,13 +146,18 @@ func (a *Adapter) Start(ctx context.Context, req core.DownloadRequest, onProgres
 	//
 	// 3. Default: Spotify URL when available (most reliable for metadata + matching),
 	//    else "<artist> - <title>" text search for non-Spotify sources.
+	// Sanitize ManualURL: strip any "|" characters before building the pipe query.
+	// spotDL uses "|" as its metadata|audio separator; a "|" inside the user-supplied
+	// URL would create extra pipe tokens and break the metadata/audio split.
+	manualURL := strings.ReplaceAll(strings.TrimSpace(req.ManualURL), "|", "")
+
 	var query string
-	if req.ManualURL != "" && req.Source == "spotify" && req.ExternalID != "" {
+	if manualURL != "" && req.Source == "spotify" && req.ExternalID != "" {
 		// Pipe: Spotify metadata + manual audio source.
-		query = "https://open.spotify.com/track/" + req.ExternalID + "|" + req.ManualURL
-	} else if req.ManualURL != "" {
+		query = "https://open.spotify.com/track/" + req.ExternalID + "|" + manualURL
+	} else if manualURL != "" {
 		// Direct manual URL (non-Spotify or missing ID).
-		query = req.ManualURL
+		query = manualURL
 	} else if req.Source == "spotify" && req.ExternalID != "" {
 		query = "https://open.spotify.com/track/" + req.ExternalID
 	} else {

@@ -34,6 +34,10 @@ type JobStore interface {
 	ActiveByDedup(ctx context.Context, dedupKey string) (core.DownloadJob, bool, error)
 	List(ctx context.Context) ([]core.DownloadJob, error)
 	Update(ctx context.Context, j core.DownloadJob) error
+	// UpdateRequest re-persists the originating DownloadRequest for job id into
+	// request_json so that ManualURL (and any other late-added field) survives a
+	// server restart between a Retry call and the worker picking up the job.
+	UpdateRequest(ctx context.Context, id string, req core.DownloadRequest) error
 }
 
 // ScanController is the library slice the Manager needs (StartScan + ScanStatus).
@@ -375,7 +379,9 @@ func (m *Manager) process(id string) {
 	m.mu.Unlock()
 	// Fall back to the request rehydrated onto the job from request_json (durable
 	// across restart) when the in-memory map has nothing (e.g. a retried/loaded job).
-	if !haveReq || req.ExternalID == "" {
+	// Use !haveReq as the sole sentinel: a map hit is always valid even when
+	// ExternalID=="" (non-Spotify jobs have a real request with an empty ExternalID).
+	if !haveReq {
 		req = core.DownloadRequest{
 			Source: job.Source, ExternalID: job.ExternalID, Artist: job.Artist,
 			Title: job.Title, Album: job.Album, ISRC: job.ISRC,
@@ -710,15 +716,15 @@ func (m *Manager) Retry(ctx context.Context, jobID string, manualURL string) (co
 	if err := m.store.Update(ctx, job); err != nil {
 		return core.DownloadJob{}, err
 	}
-	// When a manual URL is provided, seed (or update) the in-memory request so the
-	// worker picks up the ManualURL on its next run even if request_json pre-dates
-	// this field.
+	// When a manual URL is provided, seed (or update) the in-memory request AND
+	// persist it to request_json so the ManualURL survives a server restart between
+	// Retry and the worker picking up the job.
 	if manualURL != "" {
 		m.mu.Lock()
-		req := m.reqs[job.ID]
-		// If there is no in-memory request yet, rehydrate from the job fields so we
-		// have a complete base before setting ManualURL.
-		if req.ExternalID == "" {
+		req, haveReq := m.reqs[job.ID]
+		// Use !haveReq as the sole sentinel — a map hit is always valid even when
+		// ExternalID=="" (non-Spotify jobs have an empty ExternalID but a real request).
+		if !haveReq {
 			req = core.DownloadRequest{
 				Source: job.Source, ExternalID: job.ExternalID, Artist: job.Artist,
 				Title: job.Title, Album: job.Album, ISRC: job.ISRC,
@@ -728,6 +734,11 @@ func (m *Manager) Retry(ctx context.Context, jobID string, manualURL string) (co
 		req.ManualURL = manualURL
 		m.reqs[job.ID] = req
 		m.mu.Unlock()
+		// Persist to the store so request_json carries ManualURL after a restart.
+		if err := m.store.UpdateRequest(ctx, job.ID, req); err != nil {
+			log.Printf("download: Retry %s: failed to persist ManualURL to store: %v", shortID(job.ID), err)
+			// Non-fatal: the in-memory path still works for the no-restart fast path.
+		}
 	}
 	m.publishEvent(TopicQueued, job, "")
 	select {
