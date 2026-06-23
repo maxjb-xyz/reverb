@@ -346,6 +346,76 @@ func TestRedactArgsMasksSecret(t *testing.T) {
 	}
 }
 
+func TestStartManualURLWithSpotifyUsesPipeSyntax(t *testing.T) {
+	// Case 1: Source=="spotify" + ExternalID + ManualURL → pipe syntax so Spotify
+	// metadata is preserved while audio comes from the user-supplied URL.
+	r := &fakeRunner{lines: []string{`Downloaded: ok`}}
+	a := newAdapter(t, r)
+	_, _ = a.Start(context.Background(), core.DownloadRequest{
+		Source:     "spotify",
+		ExternalID: "abc",
+		Artist:     "Ludovico Einaudi",
+		Title:      "Una mattina",
+		ManualURL:  "https://youtube.com/watch?v=XYZ",
+	}, func(int) {})
+	n := len(r.gotArgs)
+	if n == 0 {
+		t.Fatal("no args captured")
+	}
+	want := "https://open.spotify.com/track/abc|https://youtube.com/watch?v=XYZ"
+	if r.gotArgs[n-1] != want {
+		t.Fatalf("trailing query arg: got %q, want %q (pipe syntax)", r.gotArgs[n-1], want)
+	}
+}
+
+func TestStartManualURLNonSpotifyIsDirectURL(t *testing.T) {
+	// Case 2: ManualURL set but Source is not "spotify" → download directly from the
+	// manual URL (no pipe, no Spotify lookup).
+	r := &fakeRunner{lines: []string{`Downloaded: ok`}}
+	a := newAdapter(t, r)
+	manualURL := "https://youtube.com/watch?v=DIRECT"
+	_, _ = a.Start(context.Background(), core.DownloadRequest{
+		Source:    "youtube",
+		Artist:    "Daft Punk",
+		Title:     "One More Time",
+		ManualURL: manualURL,
+	}, func(int) {})
+	n := len(r.gotArgs)
+	if n == 0 {
+		t.Fatal("no args captured")
+	}
+	if r.gotArgs[n-1] != manualURL {
+		t.Fatalf("trailing query arg: got %q, want %q (direct manual URL)", r.gotArgs[n-1], manualURL)
+	}
+}
+
+func TestStartWithoutManualURLBehaviourUnchanged(t *testing.T) {
+	// Case 3: no ManualURL → existing behaviour: Spotify URL when available, else
+	// "<artist> - <title>" text search.
+	r := &fakeRunner{lines: []string{`Downloaded: ok`}}
+	a := newAdapter(t, r)
+	// Spotify path.
+	_, _ = a.Start(context.Background(), core.DownloadRequest{
+		Source: "spotify", ExternalID: "abc123", Artist: "Einaudi", Title: "Una mattina",
+	}, func(int) {})
+	n := len(r.gotArgs)
+	wantSpotify := "https://open.spotify.com/track/abc123"
+	if r.gotArgs[n-1] != wantSpotify {
+		t.Fatalf("no-ManualURL Spotify path: got %q, want %q", r.gotArgs[n-1], wantSpotify)
+	}
+	// Non-Spotify path.
+	r2 := &fakeRunner{lines: []string{`Downloaded: ok`}}
+	a2 := newAdapter(t, r2)
+	_, _ = a2.Start(context.Background(), core.DownloadRequest{
+		Source: "youtube", Artist: "Daft Punk", Title: "One More Time",
+	}, func(int) {})
+	n2 := len(r2.gotArgs)
+	wantText := "Daft Punk - One More Time"
+	if r2.gotArgs[n2-1] != wantText {
+		t.Fatalf("no-ManualURL text path: got %q, want %q", r2.gotArgs[n2-1], wantText)
+	}
+}
+
 func TestSpotdlConformance(t *testing.T) {
 	// Conformance Start must report progress + return an output path: feed a
 	// runner that yields a progress line and a completion line.

@@ -1,6 +1,8 @@
 package api
 
 import (
+	"encoding/json"
+	"io"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -84,6 +86,12 @@ func (s *Server) handleCancelDownload(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
+// retryBody is the OPTIONAL JSON body for POST /downloads/{id}/retry.
+// An absent or empty body is tolerated (plain retry, no manual URL).
+type retryBody struct {
+	ManualURL string `json:"manualUrl"`
+}
+
 func (s *Server) handleRetryDownload(w http.ResponseWriter, r *http.Request) {
 	dl := s.downloads()
 	if dl == nil {
@@ -91,7 +99,22 @@ func (s *Server) handleRetryDownload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := chi.URLParam(r, "id")
-	job, err := dl.Retry(r.Context(), id)
+
+	// Decode an optional JSON body. Tolerate: no body, empty body, EOF — all
+	// resolve to manualURL="" (plain retry). Only a well-formed JSON object with
+	// "manualUrl" is acted on.
+	var manualURL string
+	if r.Body != nil {
+		raw, rerr := io.ReadAll(r.Body)
+		if rerr == nil && len(raw) > 0 {
+			var rb retryBody
+			if jerr := json.Unmarshal(raw, &rb); jerr == nil {
+				manualURL = rb.ManualURL
+			}
+		}
+	}
+
+	job, err := dl.Retry(r.Context(), id, manualURL)
 	if err != nil {
 		writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": err.Error()})
 		return

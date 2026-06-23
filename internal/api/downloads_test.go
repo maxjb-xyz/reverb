@@ -17,10 +17,11 @@ import (
 
 // fakeManager is an in-memory DownloadManager.
 type fakeManager struct {
-	jobs     map[string]core.DownloadJob
-	lastReq  core.DownloadRequest
-	canceled []string
-	retried  []string
+	jobs           map[string]core.DownloadJob
+	lastReq        core.DownloadRequest
+	canceled       []string
+	retried        []string
+	lastRetryURL   string // manualURL from the most recent Retry call
 }
 
 func newFakeManager() *fakeManager { return &fakeManager{jobs: map[string]core.DownloadJob{}} }
@@ -42,8 +43,9 @@ func (m *fakeManager) Cancel(_ context.Context, id string) error {
 	m.canceled = append(m.canceled, id)
 	return nil
 }
-func (m *fakeManager) Retry(_ context.Context, id string) (core.DownloadJob, error) {
+func (m *fakeManager) Retry(_ context.Context, id string, manualURL string) (core.DownloadJob, error) {
 	m.retried = append(m.retried, id)
+	m.lastRetryURL = manualURL
 	return core.DownloadJob{ID: id, Status: core.DownloadQueued, Attempts: 1}, nil
 }
 func (m *fakeManager) Stop() {}
@@ -142,6 +144,45 @@ func TestRetryDownload(t *testing.T) {
 	}
 	if len(mgr.retried) != 1 || mgr.retried[0] != "j5" {
 		t.Fatalf("retried = %v", mgr.retried)
+	}
+	// plain retry (no body) → manualURL must be empty
+	if mgr.lastRetryURL != "" {
+		t.Fatalf("plain retry should pass manualURL=\"\", got %q", mgr.lastRetryURL)
+	}
+}
+
+func TestRetryDownloadWithManualURL(t *testing.T) {
+	mgr := newFakeManager()
+	srv, cookie := downloadTestServer(t, mgr)
+	body := `{"manualUrl":"https://www.youtube.com/watch?v=XYZ"}`
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/downloads/j7/retry", bytes.NewBufferString(body))
+	req.AddCookie(cookie)
+	srv.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d: %s", rec.Code, rec.Body.String())
+	}
+	if len(mgr.retried) != 1 || mgr.retried[0] != "j7" {
+		t.Fatalf("retried = %v", mgr.retried)
+	}
+	if mgr.lastRetryURL != "https://www.youtube.com/watch?v=XYZ" {
+		t.Fatalf("manualURL not passed through: got %q", mgr.lastRetryURL)
+	}
+}
+
+func TestRetryDownloadNoBodyIsPlainRetry(t *testing.T) {
+	// Regression: an absent body (nil) must not cause a decode error; manualURL="".
+	mgr := newFakeManager()
+	srv, cookie := downloadTestServer(t, mgr)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/downloads/j8/retry", nil)
+	req.AddCookie(cookie)
+	srv.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d: %s", rec.Code, rec.Body.String())
+	}
+	if mgr.lastRetryURL != "" {
+		t.Fatalf("nil-body retry should pass manualURL=\"\", got %q", mgr.lastRetryURL)
 	}
 }
 

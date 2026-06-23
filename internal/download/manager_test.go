@@ -677,7 +677,7 @@ func TestRetryResetsFailedJob(t *testing.T) {
 	// Rehydrate the request map so the worker can run the retried job.
 	m.SeedRequest("j1", core.DownloadRequest{Source: "s", ExternalID: "e1", Artist: "A", Title: "T", Album: "Al"})
 
-	j, err := m.Retry(context.Background(), "j1")
+	j, err := m.Retry(context.Background(), "j1", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -686,6 +686,75 @@ func TestRetryResetsFailedJob(t *testing.T) {
 	}
 	if j.Attempts != 2 {
 		t.Fatalf("retry should bump attempts to 2, got %d", j.Attempts)
+	}
+}
+
+func TestRetryWithManualURLSetsRequestField(t *testing.T) {
+	// When Retry is called with a non-empty manualURL it must be visible on the
+	// in-memory DownloadRequest that the worker reads so the spotDL adapter can
+	// construct the correct query (pipe or direct URL).
+	store := newMemStore()
+	failed := core.DownloadJob{
+		ID: "j2", DedupKey: "dk2", Status: core.DownloadFailed,
+		DownloaderName: "dl", Attempts: 1,
+		Source: "spotify", ExternalID: "sp1",
+		Artist: "Einaudi", Title: "Una mattina",
+	}
+	_ = store.Insert(context.Background(), failed, core.DownloadRequest{
+		Source: "spotify", ExternalID: "sp1", Artist: "Einaudi", Title: "Una mattina",
+	})
+	dl := &fakeDL{name: "dl", canDownload: true}
+	m, _ := testManager(t, []Downloader{dl}, store, nil, nil, nil)
+	m.SeedRequest("j2", core.DownloadRequest{
+		Source: "spotify", ExternalID: "sp1", Artist: "Einaudi", Title: "Una mattina",
+	})
+
+	const url = "https://www.youtube.com/watch?v=MANUAL"
+	j, err := m.Retry(context.Background(), "j2", url)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if j.Status != core.DownloadQueued {
+		t.Fatalf("retry should set queued, got %q", j.Status)
+	}
+
+	// Inspect the in-memory request: ManualURL must be set.
+	m.mu.Lock()
+	req := m.reqs["j2"]
+	m.mu.Unlock()
+	if req.ManualURL != url {
+		t.Fatalf("ManualURL on re-dispatched request: got %q, want %q", req.ManualURL, url)
+	}
+}
+
+func TestRetryWithEmptyManualURLLeavesRequestUnchanged(t *testing.T) {
+	// A plain retry (manualURL=="") must not modify the ManualURL field on any
+	// previously seeded request (it stays empty, preserving original behaviour).
+	store := newMemStore()
+	failed := core.DownloadJob{
+		ID: "j3", DedupKey: "dk3", Status: core.DownloadFailed,
+		DownloaderName: "dl", Attempts: 1,
+		Source: "spotify", ExternalID: "sp2",
+		Artist: "Bach", Title: "Goldberg",
+	}
+	_ = store.Insert(context.Background(), failed, core.DownloadRequest{
+		Source: "spotify", ExternalID: "sp2", Artist: "Bach", Title: "Goldberg",
+	})
+	dl := &fakeDL{name: "dl", canDownload: true}
+	m, _ := testManager(t, []Downloader{dl}, store, nil, nil, nil)
+	m.SeedRequest("j3", core.DownloadRequest{
+		Source: "spotify", ExternalID: "sp2", Artist: "Bach", Title: "Goldberg",
+	})
+
+	_, err := m.Retry(context.Background(), "j3", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.mu.Lock()
+	req := m.reqs["j3"]
+	m.mu.Unlock()
+	if req.ManualURL != "" {
+		t.Fatalf("plain retry must leave ManualURL empty, got %q", req.ManualURL)
 	}
 }
 

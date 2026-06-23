@@ -34,7 +34,7 @@ type DownloadManager interface {
 	Enqueue(ctx context.Context, req core.DownloadRequest) (core.DownloadJob, error)
 	List(ctx context.Context) ([]core.DownloadJob, error)
 	Cancel(ctx context.Context, jobID string) error
-	Retry(ctx context.Context, jobID string) (core.DownloadJob, error)
+	Retry(ctx context.Context, jobID string, manualURL string) (core.DownloadJob, error)
 	Stop()
 }
 

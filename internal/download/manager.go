@@ -668,7 +668,10 @@ func (m *Manager) Cancel(ctx context.Context, jobID string) error {
 }
 
 // Retry resets a failed/canceled job to queued (attempts++) and re-enqueues it.
-func (m *Manager) Retry(ctx context.Context, jobID string) (core.DownloadJob, error) {
+// When manualURL is non-empty it is stored on the job's DownloadRequest so the
+// spotDL adapter can use the pipe syntax (or direct URL) on the next attempt.
+// A plain retry (manualURL=="") behaves exactly as before.
+func (m *Manager) Retry(ctx context.Context, jobID string, manualURL string) (core.DownloadJob, error) {
 	job, ok, err := m.store.Get(ctx, jobID)
 	if err != nil {
 		return core.DownloadJob{}, err
@@ -686,6 +689,25 @@ func (m *Manager) Retry(ctx context.Context, jobID string) (core.DownloadJob, er
 	job.FinishedAt = 0
 	if err := m.store.Update(ctx, job); err != nil {
 		return core.DownloadJob{}, err
+	}
+	// When a manual URL is provided, seed (or update) the in-memory request so the
+	// worker picks up the ManualURL on its next run even if request_json pre-dates
+	// this field.
+	if manualURL != "" {
+		m.mu.Lock()
+		req := m.reqs[job.ID]
+		// If there is no in-memory request yet, rehydrate from the job fields so we
+		// have a complete base before setting ManualURL.
+		if req.ExternalID == "" {
+			req = core.DownloadRequest{
+				Source: job.Source, ExternalID: job.ExternalID, Artist: job.Artist,
+				Title: job.Title, Album: job.Album, ISRC: job.ISRC,
+				Downloader: job.DownloaderName, PlayWhenReady: job.PlayWhenReady,
+			}
+		}
+		req.ManualURL = manualURL
+		m.reqs[job.ID] = req
+		m.mu.Unlock()
 	}
 	m.publishEvent(TopicQueued, job, "")
 	select {

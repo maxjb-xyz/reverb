@@ -25,6 +25,12 @@ type DownloadRequest struct {
 	DurationMs    int    `json:"durationMs,omitempty"`
 	Downloader    string `json:"downloader,omitempty"`
 	PlayWhenReady bool   `json:"playWhenReady"`
+	// ManualURL is an optional user-supplied source URL (e.g. a YouTube link) that
+	// overrides the default query construction. When set alongside a Spotify source +
+	// ExternalID, the spotDL adapter uses the pipe syntax
+	// "https://open.spotify.com/track/<id>|<manualURL>" so Spotify metadata is
+	// preserved while the audio is fetched from the manual URL.
+	ManualURL     string `json:"manualUrl,omitempty"`
 }
 
 // DownloadJob is the persisted state of one download. Progress is 0-100, or -1

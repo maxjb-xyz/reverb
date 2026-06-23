@@ -131,14 +131,29 @@ func redactArgs(args []string) string {
 // the output directory as the path hint (spotDL writes the file under output_dir;
 // the scan picks it up — the exact filename is spotDL's concern).
 func (a *Adapter) Start(ctx context.Context, req core.DownloadRequest, onProgress func(int)) (string, error) {
-	// Prefer a Spotify track URL when available: spotDL fetches exact metadata via
-	// the configured client creds and matches YouTube far more reliably than a
-	// free-form text query — essential for obscure/long classical titles that
-	// YouTube Music text search fails to find (e.g. LookupError on Einaudi,
-	// Purcell "Dido and Aeneas" arrangements, etc.).
-	// Fallback: "<artist> - <title>" text search for non-Spotify sources or missing IDs.
+	// Query construction — three cases in priority order:
+	//
+	// 1. Spotify + ExternalID + ManualURL: pipe syntax preserves Spotify metadata
+	//    (title/artist/album/ISRC from the configured client creds) while sourcing
+	//    the audio from the user-supplied URL (e.g. a specific YouTube video that
+	//    spotDL's own YouTube-Music search missed). spotDL's pipe form is:
+	//      "<spotify-track-url>|<source-url>"
+	//    which instructs it to fetch metadata from the first half and audio from the
+	//    second, giving the best of both paths for hard-to-find tracks.
+	//
+	// 2. ManualURL only (non-Spotify or no ExternalID): download directly from the
+	//    user-supplied URL without any Spotify metadata lookup.
+	//
+	// 3. Default: Spotify URL when available (most reliable for metadata + matching),
+	//    else "<artist> - <title>" text search for non-Spotify sources.
 	var query string
-	if req.Source == "spotify" && req.ExternalID != "" {
+	if req.ManualURL != "" && req.Source == "spotify" && req.ExternalID != "" {
+		// Pipe: Spotify metadata + manual audio source.
+		query = "https://open.spotify.com/track/" + req.ExternalID + "|" + req.ManualURL
+	} else if req.ManualURL != "" {
+		// Direct manual URL (non-Spotify or missing ID).
+		query = req.ManualURL
+	} else if req.Source == "spotify" && req.ExternalID != "" {
 		query = "https://open.spotify.com/track/" + req.ExternalID
 	} else {
 		query = strings.TrimSpace(req.Artist + " - " + req.Title)
