@@ -12,6 +12,8 @@ import (
 	"fmt"
 	"log"
 	"net/url"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -127,6 +129,20 @@ func redactArgs(args []string) string {
 	return strings.Join(out, " ")
 }
 
+// ensureSpotdlTempDir creates spotDL's shared temp directory if it doesn't yet
+// exist, so concurrent spotDL processes don't race on creating it. spotDL derives
+// it as <user-config-dir>/spotdl/temp (e.g. ~/.config/spotdl/temp on Linux), which
+// is exactly what os.UserConfigDir resolves (it honors XDG_CONFIG_HOME). MkdirAll
+// is concurrency-safe and a no-op when the dir already exists; any error is ignored
+// (spotDL will surface its own if the path is genuinely unwritable).
+func ensureSpotdlTempDir() {
+	cfg, err := os.UserConfigDir()
+	if err != nil || cfg == "" {
+		return
+	}
+	_ = os.MkdirAll(filepath.Join(cfg, "spotdl", "temp"), 0o755)
+}
+
 // normalizeManualURL strips YouTube playlist/radio parameters so yt-dlp fetches only
 // the single video. Without this, a URL like ?v=abc&list=RDabc&start_radio=1 causes
 // yt-dlp to download the entire radio playlist — hanging the job for minutes.
@@ -221,6 +237,14 @@ func (a *Adapter) Start(ctx context.Context, req core.DownloadRequest, onProgres
 	// from YT-Music's catalog (common for obscure/regional/classical releases).
 	args = append(args, "--audio", "youtube-music", "youtube")
 	args = append(args, "--simple-tui", "--output", outputTemplate, "download", query)
+
+	// Pre-create spotDL's shared temp dir to defeat a concurrency race: spotDL does
+	// `if not temp.exists(): os.mkdir(temp)` with no lock, so when two downloads run
+	// in parallel (we run multiple workers) both see "not exists" and the loser dies
+	// with `FileExistsError: ... /.config/spotdl/temp`. MkdirAll is safe under
+	// concurrency (it swallows EEXIST) and idempotent, so ensuring the dir up front
+	// means spotDL's check always passes and never races on the create.
+	ensureSpotdlTempDir()
 
 	log.Printf("spotdl: exec %s %s", a.binary, redactArgs(args))
 

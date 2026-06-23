@@ -2,6 +2,8 @@ package spotdl
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -510,4 +512,16 @@ func TestNormalizeAppliedInStart(t *testing.T) {
 	if r.gotArgs[n-1] != want {
 		t.Fatalf("trailing query arg: got %q, want %q", r.gotArgs[n-1], want)
 	}
+}
+
+func TestEnsureSpotdlTempDirCreatesDir(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", tmp)
+	ensureSpotdlTempDir()
+	want := filepath.Join(tmp, "spotdl", "temp")
+	if fi, err := os.Stat(want); err != nil || !fi.IsDir() {
+		t.Fatalf("expected %s to exist as a dir; err=%v", want, err)
+	}
+	// Idempotent + concurrency-safe: a second call must not error or panic.
+	ensureSpotdlTempDir()
 }
