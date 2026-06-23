@@ -127,10 +127,12 @@ export function DownloadAction({ result, onPlay }: Props) {
       e.preventDefault()
       const url = urlValue.trim()
       if (!url || !url.startsWith('http')) return
-      void retryDownload(failedJob.id, url).then((j) => {
-        useDownloads.getState().upsert(j)
-        closeFailedMenu()
-      })
+      void retryDownload(failedJob.id, url)
+        .then((j) => {
+          useDownloads.getState().upsert(j)
+          closeFailedMenu()
+        })
+        .catch((err) => console.error('[DownloadAction] manual URL retry failed:', err))
     }
 
     return (

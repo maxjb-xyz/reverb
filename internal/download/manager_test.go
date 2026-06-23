@@ -758,6 +758,96 @@ func TestRetryWithEmptyManualURLLeavesRequestUnchanged(t *testing.T) {
 	}
 }
 
+// TestManualURLClearedAfterFailure asserts that when a Retry(id, url) call results
+// in DownloadFailed, the ManualURL is not silently reused on the next plain Retry.
+// Before the fix, m.reqs[id] was only deleted on success, so a subsequent plain
+// retry (manualURL=="") would pick up the stale ManualURL from the map.
+func TestManualURLClearedAfterFailure(t *testing.T) {
+	dlErr := errors.New("bad url")
+	dl := &fakeDL{name: "dl", canDownload: true, errOnStart: dlErr}
+	store := newMemStore()
+
+	// Seed a failed job that can be retried.
+	failed := core.DownloadJob{
+		ID: "jurl", DedupKey: "dkurl", Status: core.DownloadFailed,
+		DownloaderName: "dl", Attempts: 1,
+		Source: "spotify", ExternalID: "sp-url",
+		Artist: "Artist", Title: "Track",
+	}
+	_ = store.Insert(context.Background(), failed, core.DownloadRequest{
+		Source: "spotify", ExternalID: "sp-url", Artist: "Artist", Title: "Track",
+	})
+
+	m, _ := testManager(t, []Downloader{dl}, store, nil, nil, nil)
+	m.SeedRequest("jurl", core.DownloadRequest{
+		Source: "spotify", ExternalID: "sp-url", Artist: "Artist", Title: "Track",
+	})
+
+	// First retry: supply a manual URL. The download fails (errOnStart).
+	const manURL = "https://www.youtube.com/watch?v=MANUAL"
+	_, err := m.Retry(context.Background(), "jurl", manURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Wait for the job to reach DownloadFailed again.
+	deadline := time.After(3 * time.Second)
+	for {
+		cur, _, _ := store.Get(context.Background(), "jurl")
+		if cur.Status == core.DownloadFailed {
+			break
+		}
+		select {
+		case <-deadline:
+			t.Fatal("timed out waiting for job to fail after manual-URL retry")
+		default:
+			time.Sleep(time.Millisecond)
+		}
+	}
+
+	// After failure the in-memory request entry must be gone.
+	m.mu.Lock()
+	_, exists := m.reqs["jurl"]
+	m.mu.Unlock()
+	if exists {
+		t.Fatal("m.reqs entry should have been deleted on DownloadFailed; stale ManualURL would leak into next retry")
+	}
+
+	// Re-seed so the second retry can run (simulates a plain retry from the UI).
+	m.SeedRequest("jurl", core.DownloadRequest{
+		Source: "spotify", ExternalID: "sp-url", Artist: "Artist", Title: "Track",
+	})
+
+	// Second retry: plain (no manual URL). The worker should NOT see the old manURL.
+	_, err = m.Retry(context.Background(), "jurl", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Wait for the second failure.
+	deadline2 := time.After(3 * time.Second)
+	for {
+		cur, _, _ := store.Get(context.Background(), "jurl")
+		if cur.Status == core.DownloadFailed && cur.Attempts >= 3 {
+			break
+		}
+		select {
+		case <-deadline2:
+			t.Fatal("timed out waiting for second failure")
+		default:
+			time.Sleep(time.Millisecond)
+		}
+	}
+
+	// After the second failure the entry must again be gone (no stale URL).
+	m.mu.Lock()
+	_, exists = m.reqs["jurl"]
+	m.mu.Unlock()
+	if exists {
+		t.Fatal("m.reqs entry should be deleted after second DownloadFailed")
+	}
+}
+
 // TestBackfillUnlinkedReLinksCompletedJobs asserts that on startup, the manager
 // re-matches completed jobs that have no LibraryTrackID (e.g. finished under an
 // older matcher) and sets LibraryTrackID + CoverArtID and publishes a complete event.

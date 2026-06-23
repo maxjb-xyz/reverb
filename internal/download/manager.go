@@ -407,6 +407,9 @@ func (m *Manager) process(id string) {
 		_ = m.store.Update(ctx, cur)
 		m.publishEvent(TopicFailed, cur, cur.Error)
 		log.Printf("download failed: %q — downloader %q not registered", job.Title, job.DownloaderName)
+		m.mu.Lock()
+		delete(m.reqs, id)
+		m.mu.Unlock()
 		return
 	}
 
@@ -459,12 +462,18 @@ func (m *Manager) process(id string) {
 			_ = m.store.Update(ctx, cur)
 			m.publishEvent(TopicFailed, cur, cur.Error)
 			log.Printf("download timed out: %q (job %s) after %s", cur.Title, shortID(id), m.cfg.JobTimeout)
+			m.mu.Lock()
+			delete(m.reqs, id)
+			m.mu.Unlock()
 			return
 		case jctx.Err() == context.Canceled:
 			cur.Status = core.DownloadCanceled
 			cur.FinishedAt = m.clock.Now().Unix()
 			_ = m.store.Update(ctx, cur)
 			m.publishEvent(TopicFailed, cur, "canceled")
+			m.mu.Lock()
+			delete(m.reqs, id)
+			m.mu.Unlock()
 			return
 		default:
 			cur.Status = core.DownloadFailed
@@ -473,6 +482,9 @@ func (m *Manager) process(id string) {
 			_ = m.store.Update(ctx, cur)
 			m.publishEvent(TopicFailed, cur, serr.Error())
 			log.Printf("download failed: %q (job %s) — %v", cur.Title, shortID(id), serr)
+			m.mu.Lock()
+			delete(m.reqs, id)
+			m.mu.Unlock()
 			return
 		}
 	}
