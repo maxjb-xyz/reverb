@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/maxjb-xyz/reverb/internal/api"
@@ -115,6 +116,7 @@ func main() {
 		Reload:      &serviceReloader{builder: builder},
 		Dev:         cfg.Dev,
 		Version:     version,
+		DataDir:     filepath.Dir(cfg.DBPath),
 	}
 	// Guard against the "non-nil interface wrapping a nil pointer" trap: only set
 	// the interface fields when the concrete service is actually present.

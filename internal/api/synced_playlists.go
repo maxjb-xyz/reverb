@@ -3,7 +3,13 @@ package api
 import (
 	"context"
 	"errors"
+	"fmt"
+	"io"
 	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/maxjb-xyz/reverb/internal/core"
@@ -26,6 +32,8 @@ type SyncService interface {
 	Delete(ctx context.Context, id string) error
 	AddTrack(ctx context.Context, id string, entry core.ExternalResult) (core.SyncedPlaylistDetail, error)
 	RemoveTrack(ctx context.Context, id, source, externalID string) (core.SyncedPlaylistDetail, error)
+	SetCover(ctx context.Context, id, coverURL string) (core.SyncedPlaylistDetail, error)
+	ReorderTracks(ctx context.Context, id string, order []core.TrackKey) (core.SyncedPlaylistDetail, error)
 }
 
 // sync returns the currently active synced-playlist service under the read lock.
@@ -268,6 +276,164 @@ func (s *Server) handleRemoveSyncedTrack(w http.ResponseWriter, r *http.Request)
 	if err != nil {
 		status := http.StatusUnprocessableEntity
 		writeJSON(w, status, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, det)
+}
+
+// coverExtFromContentType maps an accepted image content-type to a file extension.
+func coverExtFromContentType(ct string) (string, bool) {
+	ct = strings.ToLower(strings.TrimSpace(ct))
+	// Strip parameters (e.g. "image/jpeg; charset=utf-8").
+	if i := strings.IndexByte(ct, ';'); i >= 0 {
+		ct = strings.TrimSpace(ct[:i])
+	}
+	switch ct {
+	case "image/jpeg":
+		return "jpg", true
+	case "image/png":
+		return "png", true
+	case "image/webp":
+		return "webp", true
+	}
+	return "", false
+}
+
+const maxCoverBytes = 5 * 1024 * 1024 // 5 MB
+
+// handleUploadPlaylistCover handles POST /api/v1/synced-playlists/{id}/cover.
+// Accepts a multipart form with an "image" field; saves to dataDir/playlist-covers/{id}.<ext>.
+func (s *Server) handleUploadPlaylistCover(w http.ResponseWriter, r *http.Request) {
+	svc := s.sync()
+	if svc == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "playlist sync unavailable"})
+		return
+	}
+	id := chi.URLParam(r, "id")
+
+	if err := r.ParseMultipartForm(maxCoverBytes + 1*1024*1024); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid multipart form"})
+		return
+	}
+	file, header, err := r.FormFile("image")
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "image field is required"})
+		return
+	}
+	defer file.Close()
+
+	// Determine extension from content-type header of the part.
+	ct := header.Header.Get("Content-Type")
+	if ct == "" {
+		// Fall back to the request Content-Type when the part has none.
+		ct = r.Header.Get("Content-Type")
+	}
+	ext, ok := coverExtFromContentType(ct)
+	if !ok {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "unsupported image type; use jpeg, png, or webp"})
+		return
+	}
+
+	// Read up to maxCoverBytes+1 to detect oversized files without reading everything.
+	limited := io.LimitReader(file, maxCoverBytes+1)
+	data, err := io.ReadAll(limited)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not read image"})
+		return
+	}
+	if int64(len(data)) > maxCoverBytes {
+		writeJSON(w, http.StatusRequestEntityTooLarge, map[string]string{"error": "image exceeds 5 MB limit"})
+		return
+	}
+
+	// Save to disk, overwriting any existing cover for this playlist.
+	coversDir := filepath.Join(s.deps.DataDir, "playlist-covers")
+	dst := filepath.Join(coversDir, fmt.Sprintf("%s.%s", id, ext))
+
+	// Remove any existing cover files for this playlist (different extensions).
+	for _, knownExt := range []string{"jpg", "png", "webp"} {
+		if knownExt != ext {
+			_ = os.Remove(filepath.Join(coversDir, fmt.Sprintf("%s.%s", id, knownExt)))
+		}
+	}
+
+	if err := os.WriteFile(dst, data, 0o644); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not save image"})
+		return
+	}
+
+	coverURL := fmt.Sprintf("/api/v1/synced-playlists/%s/cover?v=%d", id, time.Now().Unix())
+	det, err := svc.SetCover(r.Context(), id, coverURL)
+	if err != nil {
+		if errors.Is(err, playlistsync.ErrNotEditable) {
+			writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, det)
+}
+
+// handleServePlaylistCover handles GET /api/v1/synced-playlists/{id}/cover.
+// Serves the uploaded cover image with a long cache TTL.
+func (s *Server) handleServePlaylistCover(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	coversDir := filepath.Join(s.deps.DataDir, "playlist-covers")
+
+	var found string
+	var foundExt string
+	for _, ext := range []string{"jpg", "png", "webp"} {
+		p := filepath.Join(coversDir, fmt.Sprintf("%s.%s", id, ext))
+		if _, err := os.Stat(p); err == nil {
+			found = p
+			foundExt = ext
+			break
+		}
+	}
+	if found == "" {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "cover not found"})
+		return
+	}
+
+	var ct string
+	switch foundExt {
+	case "jpg":
+		ct = "image/jpeg"
+	case "png":
+		ct = "image/png"
+	case "webp":
+		ct = "image/webp"
+	}
+	w.Header().Set("Content-Type", ct)
+	w.Header().Set("Cache-Control", "public, max-age=31536000")
+	http.ServeFile(w, r, found)
+}
+
+// reorderBody is the PUT /synced-playlists/{id}/tracks/order request DTO.
+type reorderBody struct {
+	Order []core.TrackKey `json:"order"`
+}
+
+// handleReorderSyncedTracks handles PUT /api/v1/synced-playlists/{id}/tracks/order.
+func (s *Server) handleReorderSyncedTracks(w http.ResponseWriter, r *http.Request) {
+	svc := s.sync()
+	if svc == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "playlist sync unavailable"})
+		return
+	}
+	var body reorderBody
+	if err := decode(r, &body); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "bad request"})
+		return
+	}
+	det, err := svc.ReorderTracks(r.Context(), chi.URLParam(r, "id"), body.Order)
+	if err != nil {
+		if errors.Is(err, playlistsync.ErrNotEditable) {
+			writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": err.Error()})
 		return
 	}
 	writeJSON(w, http.StatusOK, det)

@@ -487,6 +487,68 @@ func (s *Service) RemoveTrack(ctx context.Context, id, source, externalID string
 	return s.Detail(ctx, id)
 }
 
+// SetCover updates the cover_url for a mode='once' playlist.
+// Returns ErrNotEditable when the playlist is mode='synced'.
+func (s *Service) SetCover(ctx context.Context, id, coverURL string) (core.SyncedPlaylistDetail, error) {
+	row, err := s.store.Get(ctx, id)
+	if err != nil {
+		return core.SyncedPlaylistDetail{}, err
+	}
+	if row.Mode != "once" {
+		return core.SyncedPlaylistDetail{}, ErrNotEditable
+	}
+	if err := s.store.UpdateTracks(ctx, id, row.Name, coverURL, row.TracksJSON, s.now()); err != nil {
+		return core.SyncedPlaylistDetail{}, err
+	}
+	return s.Detail(ctx, id)
+}
+
+// ReorderTracks reorders a mode='once' playlist's tracklist to match order.
+// Entries in order that don't exist in the tracklist are ignored.
+// Entries in the tracklist not found in order are appended at the end in their original relative order.
+// Returns ErrNotEditable when the playlist is mode='synced'.
+func (s *Service) ReorderTracks(ctx context.Context, id string, order []core.TrackKey) (core.SyncedPlaylistDetail, error) {
+	row, err := s.store.Get(ctx, id)
+	if err != nil {
+		return core.SyncedPlaylistDetail{}, err
+	}
+	if row.Mode != "once" {
+		return core.SyncedPlaylistDetail{}, ErrNotEditable
+	}
+	var tracks []core.ExternalResult
+	_ = json.Unmarshal([]byte(row.TracksJSON), &tracks)
+
+	// Build a lookup: (source, externalID) → track entry.
+	type key struct{ source, externalID string }
+	byKey := make(map[key]core.ExternalResult, len(tracks))
+	for _, t := range tracks {
+		byKey[key{t.Source, t.ExternalID}] = t
+	}
+
+	// Build the reordered list: first tracks that appear in order (in that order),
+	// then remaining tracks in their original relative order.
+	inOrder := make(map[key]bool, len(order))
+	reordered := make([]core.ExternalResult, 0, len(tracks))
+	for _, k := range order {
+		tk := key{k.Source, k.ExternalID}
+		if t, ok := byKey[tk]; ok {
+			reordered = append(reordered, t)
+			inOrder[tk] = true
+		}
+	}
+	for _, t := range tracks {
+		if !inOrder[key{t.Source, t.ExternalID}] {
+			reordered = append(reordered, t)
+		}
+	}
+
+	tj, _ := json.Marshal(reordered)
+	if err := s.store.UpdateTracks(ctx, id, row.Name, row.CoverURL, string(tj), s.now()); err != nil {
+		return core.SyncedPlaylistDetail{}, err
+	}
+	return s.Detail(ctx, id)
+}
+
 func rowToSummary(r SyncedRow, trackCount int) core.SyncedPlaylist {
 	return core.SyncedPlaylist{
 		ID: r.ID, Source: r.Source, ExternalID: r.ExternalID, Name: r.Name, CoverURL: r.CoverURL,

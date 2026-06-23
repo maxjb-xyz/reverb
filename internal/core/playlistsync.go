@@ -1,5 +1,12 @@
 package core
 
+// TrackKey uniquely identifies a track entry in a SyncedPlaylist's tracklist by
+// its (Source, ExternalID) pair. Used for reorder operations.
+type TrackKey struct {
+	Source     string `json:"source"`
+	ExternalID string `json:"externalId"`
+}
+
 // ExternalPlaylist is a playlist fetched from a SearchSource (e.g. Spotify).
 type ExternalPlaylist struct {
 	Source     string           `json:"source"`

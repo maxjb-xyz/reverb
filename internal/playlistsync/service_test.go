@@ -1143,6 +1143,139 @@ func TestMigrateLibraryPlaylistsPerPlaylistError(t *testing.T) {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// SetCover tests
+// ---------------------------------------------------------------------------
+
+func TestSetCoverUpdatesCoverURL(t *testing.T) {
+	store := newMemStore()
+	svc := NewService(
+		&fakeSource{playlists: map[string]core.ExternalPlaylist{}},
+		fakeMatcher{}, &fakeDownloader{}, store, nil,
+		func() int64 { return 100 }, seqID(),
+	)
+	det, err := svc.CreateManaged(context.Background(), "My Playlist")
+	if err != nil {
+		t.Fatalf("CreateManaged: %v", err)
+	}
+
+	const newURL = "/api/v1/synced-playlists/pl-1/cover?v=1234"
+	det2, err := svc.SetCover(context.Background(), det.ID, newURL)
+	if err != nil {
+		t.Fatalf("SetCover: %v", err)
+	}
+	if det2.CoverURL != newURL {
+		t.Fatalf("CoverURL = %q, want %q", det2.CoverURL, newURL)
+	}
+
+	// Verify persisted.
+	row, err := store.Get(context.Background(), det.ID)
+	if err != nil {
+		t.Fatalf("store.Get: %v", err)
+	}
+	if row.CoverURL != newURL {
+		t.Fatalf("stored CoverURL = %q, want %q", row.CoverURL, newURL)
+	}
+}
+
+func TestSetCoverNotEditableOnSyncedPlaylist(t *testing.T) {
+	src := &fakeSource{playlists: map[string]core.ExternalPlaylist{
+		"PL": {Source: "spotify", ExternalID: "PL", Name: "Synced", Tracks: []core.ExternalResult{track("t1")}},
+	}}
+	store := newMemStore()
+	svc := NewService(src, fakeMatcher{}, &fakeDownloader{}, store, nil, func() int64 { return 100 }, seqID())
+	det, _ := svc.Import(context.Background(), "spotify:playlist:PL", false)
+
+	_, err := svc.SetCover(context.Background(), det.ID, "/some/url")
+	if !errors.Is(err, ErrNotEditable) {
+		t.Fatalf("expected ErrNotEditable, got %v", err)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// ReorderTracks tests
+// ---------------------------------------------------------------------------
+
+func TestReorderTracksReordersCorrectly(t *testing.T) {
+	src := &fakeSource{playlists: map[string]core.ExternalPlaylist{
+		"PL": {Source: "spotify", ExternalID: "PL", Name: "Once",
+			Tracks: []core.ExternalResult{track("t1"), track("t2"), track("t3")}},
+	}}
+	store := newMemStore()
+	svc := NewService(src, fakeMatcher{}, &fakeDownloader{}, store, nil, func() int64 { return 100 }, seqID())
+	det, _ := svc.ImportOnce(context.Background(), "spotify:playlist:PL")
+
+	// Reorder: t3 first, then t1 (t2 not in order → appended at end)
+	order := []core.TrackKey{
+		{Source: "spotify", ExternalID: "t3"},
+		{Source: "spotify", ExternalID: "t1"},
+	}
+	det2, err := svc.ReorderTracks(context.Background(), det.ID, order)
+	if err != nil {
+		t.Fatalf("ReorderTracks: %v", err)
+	}
+	if det2.TotalCount != 3 {
+		t.Fatalf("TotalCount = %d, want 3", det2.TotalCount)
+	}
+	// Check stored order: t3, t1, t2
+	row, _ := store.Get(context.Background(), det.ID)
+	var stored []core.ExternalResult
+	_ = json.Unmarshal([]byte(row.TracksJSON), &stored)
+	want := []string{"t3", "t1", "t2"}
+	for i, w := range want {
+		if stored[i].ExternalID != w {
+			t.Errorf("stored[%d].ExternalID = %q, want %q", i, stored[i].ExternalID, w)
+		}
+	}
+}
+
+func TestReorderTracksIgnoresUnknownKeys(t *testing.T) {
+	src := &fakeSource{playlists: map[string]core.ExternalPlaylist{
+		"PL": {Source: "spotify", ExternalID: "PL", Name: "Once",
+			Tracks: []core.ExternalResult{track("t1"), track("t2")}},
+	}}
+	store := newMemStore()
+	svc := NewService(src, fakeMatcher{}, &fakeDownloader{}, store, nil, func() int64 { return 100 }, seqID())
+	det, _ := svc.ImportOnce(context.Background(), "spotify:playlist:PL")
+
+	order := []core.TrackKey{
+		{Source: "spotify", ExternalID: "no-such"},
+		{Source: "spotify", ExternalID: "t2"},
+	}
+	det2, err := svc.ReorderTracks(context.Background(), det.ID, order)
+	if err != nil {
+		t.Fatalf("ReorderTracks: %v", err)
+	}
+	if det2.TotalCount != 2 {
+		t.Fatalf("TotalCount = %d, want 2", det2.TotalCount)
+	}
+	// Expected order: t2 first (it was in order), then t1 (remaining)
+	row, _ := store.Get(context.Background(), det.ID)
+	var stored []core.ExternalResult
+	_ = json.Unmarshal([]byte(row.TracksJSON), &stored)
+	if stored[0].ExternalID != "t2" || stored[1].ExternalID != "t1" {
+		t.Errorf("stored order = [%s, %s], want [t2, t1]", stored[0].ExternalID, stored[1].ExternalID)
+	}
+}
+
+func TestReorderTracksNotEditableOnSyncedPlaylist(t *testing.T) {
+	src := &fakeSource{playlists: map[string]core.ExternalPlaylist{
+		"PL": {Source: "spotify", ExternalID: "PL", Name: "Synced", Tracks: []core.ExternalResult{track("t1")}},
+	}}
+	store := newMemStore()
+	svc := NewService(src, fakeMatcher{}, &fakeDownloader{}, store, nil, func() int64 { return 100 }, seqID())
+	det, _ := svc.Import(context.Background(), "spotify:playlist:PL", false)
+
+	_, err := svc.ReorderTracks(context.Background(), det.ID, []core.TrackKey{{Source: "spotify", ExternalID: "t1"}})
+	if !errors.Is(err, ErrNotEditable) {
+		t.Fatalf("expected ErrNotEditable, got %v", err)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// TestDetailLibrarySourceTrackCoverArtID (existing, moved down)
+// ---------------------------------------------------------------------------
+
 // TestDetailLibrarySourceTrackCoverArtID asserts that Detail carries CoverArtID
 // from a stored library-source entry onto the synthesized LibraryTrack.
 func TestDetailLibrarySourceTrackCoverArtID(t *testing.T) {

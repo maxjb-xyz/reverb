@@ -3,6 +3,8 @@ package api
 import (
 	"context"
 	"net/http"
+	"os"
+	"path/filepath"
 	"sync"
 
 	"github.com/go-chi/chi/v5"
@@ -82,6 +84,10 @@ type Deps struct {
 	Reload           ServiceReloader
 	Dev              bool
 	Version          string
+	// DataDir is the directory where Reverb persists app data (same dir as the
+	// SQLite DB). Used by the playlist-cover upload handler. When empty, cover
+	// uploads are unavailable.
+	DataDir string
 }
 
 type Server struct {
@@ -111,6 +117,10 @@ func NewServer(deps Deps) *Server {
 	s.live.coverage = deps.Coverage
 	s.live.downloads = deps.Downloads
 	s.live.sync = deps.Sync
+	// Ensure the playlist-covers directory exists when a data dir is configured.
+	if deps.DataDir != "" {
+		_ = os.MkdirAll(filepath.Join(deps.DataDir, "playlist-covers"), 0o755)
+	}
 	s.routes()
 	return s
 }
@@ -214,6 +224,9 @@ func (s *Server) routes() {
 			pr.Delete("/synced-playlists/{id}", s.handleDeleteSyncedPlaylist)
 			pr.Post("/synced-playlists/{id}/tracks", s.handleAddSyncedTrack)
 			pr.Delete("/synced-playlists/{id}/tracks", s.handleRemoveSyncedTrack)
+			pr.Post("/synced-playlists/{id}/cover", s.handleUploadPlaylistCover)
+			pr.Get("/synced-playlists/{id}/cover", s.handleServePlaylistCover)
+			pr.Put("/synced-playlists/{id}/tracks/order", s.handleReorderSyncedTracks)
 			pr.Post("/downloads/batch", s.handleBatchDownload)
 			pr.Post("/downloads", s.handleCreateDownload)
 			pr.Get("/downloads", s.handleListDownloads)
