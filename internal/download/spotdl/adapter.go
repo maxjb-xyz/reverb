@@ -220,6 +220,15 @@ func (a *Adapter) Start(ctx context.Context, req core.DownloadRequest, onProgres
 	// Prefer YouTube Music but fall back to plain YouTube when a track is absent
 	// from YT-Music's catalog (common for obscure/regional/classical releases).
 	args = append(args, "--audio", "youtube-music", "youtube")
+	// A manual-URL download means the user is actively troubleshooting a track the
+	// auto-path couldn't get. Run spotDL at DEBUG so the UNDERLYING yt-dlp error
+	// (restricted/unavailable/age-gated video, bot-detection, etc.) surfaces in our
+	// logs — spotDL otherwise collapses it to a terse, reason-less
+	// "AudioProviderError: YT-DLP download error". Kept off the bulk/auto path to
+	// avoid flooding logs on normal downloads.
+	if req.ManualURL != "" {
+		args = append(args, "--log-level", "DEBUG")
+	}
 	args = append(args, "--simple-tui", "--output", outputTemplate, "download", query)
 
 	log.Printf("spotdl: exec %s %s", a.binary, redactArgs(args))
