@@ -108,7 +108,6 @@ describe('DownloadAction', () => {
   beforeEach(() => {
     useDownloads.setState({ jobs: {} })
     vi.clearAllMocks()
-    retryDownloadMock.mockClear()
     // default: 1 enabled downloader
     useAdaptersMock = vi.fn(() => ({
       data: [{ id: 'a1', type: 'downloader', name: 'spotDL', enabled: true, priority: 1, config: {} }],
@@ -288,6 +287,7 @@ describe('DownloadAction', () => {
   // ── 14. non-failed states: no retry/link affordance ──────────────────────
   it.each([
     ['missing', undefined],
+    ['queued', makeJob({ status: 'queued', progress: 0 })],
     ['running', makeJob({ status: 'running', progress: 50 })],
     ['completed', makeJob({ status: 'completed', progress: 100, libraryTrackId: undefined })],
   ])('%s state → no "Download from a link" affordance', (_label, jobOrUndefined) => {
