@@ -20,6 +20,11 @@ vi.mock('../../lib/libraryApi', () => ({
 }))
 import { useArtist } from '../../lib/libraryApi'
 
+vi.mock('../../lib/coverageApi', () => ({
+  useArtistProfile: vi.fn(() => ({ data: undefined })),
+}))
+import { useArtistProfile } from '../../lib/coverageApi'
+
 function track(id: string, extra: Partial<Track> = {}): Track {
   return {
     id,
@@ -61,6 +66,7 @@ describe('NowPlayingPanel', () => {
   beforeEach(() => {
     mockNavigate.mockClear()
     vi.mocked(useArtist).mockReturnValue({ data: artist } as ReturnType<typeof useArtist>)
+    vi.mocked(useArtistProfile).mockReturnValue({ data: undefined } as ReturnType<typeof useArtistProfile>)
     act(() => {
       usePlayer.getState().playTrackList([track('1'), track('2'), track('3')], 0)
       useUI.getState().openPanel('nowplaying')
@@ -145,5 +151,80 @@ describe('NowPlayingPanel', () => {
       (img as HTMLImageElement).src?.includes('artist-cover'),
     )
     expect(artistImg).toBeDefined()
+  })
+
+  // ── Spotify artist path ───────────────────────────────────────────────────
+
+  it('Test A — renders Spotify artist name and photo when artistExternalId present', () => {
+    vi.mocked(useArtistProfile).mockReturnValue({
+      data: {
+        name: 'Frédéric Chopin',
+        coverUrl: 'https://cdn.spotify.com/chopin.jpg',
+        coverArtId: undefined,
+        source: 'spotify',
+        externalId: 'sp-artist-1',
+      },
+    } as ReturnType<typeof useArtistProfile>)
+
+    act(() => {
+      usePlayer.getState().playTrackList(
+        [track('1', { artistExternalId: 'sp-artist-1' }), track('2'), track('3')],
+        0,
+      )
+    })
+
+    renderPanel()
+
+    expect(screen.getByText('Frédéric Chopin')).toBeInTheDocument()
+    const imgs = screen.queryAllByRole('img')
+    const chopinImg = imgs.find((img) =>
+      (img as HTMLImageElement).src?.includes('https://cdn.spotify.com/chopin.jpg'),
+    )
+    expect(chopinImg).toBeDefined()
+    expect(vi.mocked(useArtistProfile)).toHaveBeenCalledWith('spotify', 'sp-artist-1')
+  })
+
+  it('Test B — main artist line links to /artist/spotify/:id when artistExternalId present', () => {
+    vi.mocked(useArtistProfile).mockReturnValue({
+      data: {
+        name: 'Frédéric Chopin',
+        coverUrl: 'https://cdn.spotify.com/chopin.jpg',
+        coverArtId: undefined,
+        source: 'spotify',
+        externalId: 'sp-artist-1',
+      },
+    } as ReturnType<typeof useArtistProfile>)
+
+    act(() => {
+      usePlayer.getState().playTrackList(
+        [track('1', { artistExternalId: 'sp-artist-1' }), track('2'), track('3')],
+        0,
+      )
+    })
+
+    renderPanel()
+
+    // The artist button still shows current.artist ("Test Artist")
+    const artistBtn = screen.getByRole('button', { name: 'Test Artist' })
+    fireEvent.click(artistBtn)
+    expect(mockNavigate).toHaveBeenCalledWith('/artist/spotify/sp-artist-1')
+  })
+
+  it('Test C — library fallback when no artistExternalId: shows "In your library · 3 albums"', () => {
+    // Default beforeEach has no artistExternalId — useArtist('ar1') is called
+    renderPanel()
+    expect(screen.getByText(/In your library · 3 albums/i)).toBeInTheDocument()
+    // useArtistProfile is called with ('spotify', '') which is disabled (!!id is false)
+    // We just verify the library card is shown
+    expect(vi.mocked(useArtist)).toHaveBeenCalledWith('ar1')
+  })
+
+  it('Test D — main artist line links to /artist/library/:id when no artistExternalId', () => {
+    // This is already covered by "clicking the artist name navigates to the source-qualified artist route"
+    // but we verify it explicitly here too
+    renderPanel()
+    const artistBtn = screen.getByRole('button', { name: 'Test Artist' })
+    fireEvent.click(artistBtn)
+    expect(mockNavigate).toHaveBeenCalledWith('/artist/library/ar1')
   })
 })

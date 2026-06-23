@@ -13,6 +13,7 @@ export interface Track {
   suffix: string
   contentType: string
   isrc?: string
+  artistExternalId?: string
 }
 
 export interface Album {

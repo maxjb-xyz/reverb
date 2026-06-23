@@ -2,6 +2,22 @@ import { useQuery } from '@tanstack/react-query'
 import { api } from './api'
 import type { AlbumDetail, ArtistDetail, Playlist } from './types'
 
+export interface ArtistProfile {
+  name: string
+  coverUrl?: string
+  coverArtId?: string
+  source: string
+  externalId: string
+}
+
+export function useArtistProfile(source: string, id: string) {
+  return useQuery({
+    queryKey: ['artist-profile', source, id],
+    queryFn: () => api.get<ArtistProfile>(`/artist/${encodeURIComponent(source)}/${encodeURIComponent(id)}/profile`),
+    enabled: !!source && !!id,
+  })
+}
+
 export function useArtistDetail(source: string, id: string) {
   return useQuery({
     queryKey: ['artist-detail', source, id],

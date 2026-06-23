@@ -50,6 +50,7 @@ function asTrack(t: AlbumDetailTrack): Track {
     bitRate: 0,
     suffix: '',
     contentType: '',
+    artistExternalId: t.artistExternalId ?? '',
   }
 }
 

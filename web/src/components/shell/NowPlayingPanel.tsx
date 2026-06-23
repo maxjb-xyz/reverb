@@ -14,6 +14,7 @@ import { useNavigate } from 'react-router-dom'
 import { usePlayer } from '../../lib/playerStore'
 import { useUI } from '../../lib/uiStore'
 import { coverUrl, useArtist } from '../../lib/libraryApi'
+import { useArtistProfile } from '../../lib/coverageApi'
 import { Cover } from '../ui/Cover'
 import { IconButton } from '../ui/IconButton'
 import { AddToPlaylistMenu } from '../AddToPlaylistMenu'
@@ -21,26 +22,50 @@ import { AddToPlaylistMenu } from '../AddToPlaylistMenu'
 // ---------------------------------------------------------------------------
 // Artist card
 // ---------------------------------------------------------------------------
-function ArtistCard({ artistId }: { artistId: string }) {
-  const { data: artist } = useArtist(artistId)
-  if (!artist) return null
+function ArtistCard({ artistId, artistExternalId }: { artistId?: string; artistExternalId?: string }) {
+  const { data: spotifyProfile } = useArtistProfile('spotify', artistExternalId ?? '')
+  const { data: libraryArtist } = useArtist(artistExternalId ? '' : (artistId ?? ''))
 
-  const artistCoverSrc = artist.coverArtId ? coverUrl(artist.coverArtId, 300) : undefined
+  if (artistExternalId) {
+    // Spotify path — wait until profile loads
+    if (!spotifyProfile) return null
+    return (
+      <div className="mt-3.5 overflow-hidden rounded-lg bg-raised">
+        <div className="relative h-36">
+          <Cover src={spotifyProfile.coverUrl} alt={spotifyProfile.name} size="full" rounded="md" />
+          <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
+          <span className="absolute bottom-3 left-4 text-lg font-bold text-text-primary">
+            {spotifyProfile.name}
+          </span>
+        </div>
+        <div className="p-3.5">
+          <div className="text-sm font-semibold text-text-secondary">
+            About the artist
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // Library path
+  if (!libraryArtist) return null
+
+  const artistCoverSrc = libraryArtist.coverArtId ? coverUrl(libraryArtist.coverArtId, 300) : undefined
 
   return (
     <div className="mt-3.5 overflow-hidden rounded-lg bg-raised">
       {/* Artist image header */}
       <div className="relative h-36">
-        <Cover src={artistCoverSrc} alt={artist.name} size="full" rounded="md" />
+        <Cover src={artistCoverSrc} alt={libraryArtist.name} size="full" rounded="md" />
         <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
         <span className="absolute bottom-3 left-4 text-lg font-bold text-text-primary">
-          {artist.name}
+          {libraryArtist.name}
         </span>
       </div>
       {/* Body */}
       <div className="p-3.5">
         <div className="text-sm font-semibold text-text-secondary">
-          In your library · {artist.albumCount} album{artist.albumCount !== 1 ? 's' : ''}
+          In your library · {libraryArtist.albumCount} album{libraryArtist.albumCount !== 1 ? 's' : ''}
         </div>
       </div>
     </div>
@@ -70,6 +95,12 @@ export function NowPlayingPanel() {
     .slice(0, 5) // show at most 5 upcoming tracks
 
   const coverSrc = current?.coverArtId ? coverUrl(current.coverArtId, 300) : undefined
+
+  const artistRoute = current?.artistExternalId
+    ? `/artist/spotify/${current.artistExternalId}`
+    : current?.artistId
+      ? `/artist/library/${current.artistId}`
+      : null
 
   return (
     <aside
@@ -121,10 +152,10 @@ export function NowPlayingPanel() {
             <div className="truncate text-xl font-extrabold leading-tight tracking-tight text-text-primary">
               {current?.title ?? 'Nothing playing'}
             </div>
-            {current?.artist && current.artistId ? (
+            {current?.artist && artistRoute ? (
               <button
                 type="button"
-                onClick={() => navigate(`/artist/library/${current.artistId}`)}
+                onClick={() => navigate(artistRoute)}
                 className="mt-1 block max-w-full truncate text-left text-sm text-text-secondary hover:text-text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
               >
                 {current.artist}
@@ -193,7 +224,12 @@ export function NowPlayingPanel() {
         </div>
 
         {/* About the artist */}
-        {current?.artistId && <ArtistCard artistId={current.artistId} />}
+        {(current?.artistExternalId || current?.artistId) && (
+          <ArtistCard
+            artistId={current.artistId}
+            artistExternalId={current.artistExternalId}
+          />
+        )}
       </div>
     </aside>
   )
