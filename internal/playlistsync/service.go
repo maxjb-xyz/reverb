@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 
 	"github.com/maxjb-xyz/reverb/internal/core"
 )
@@ -22,6 +23,14 @@ type Matcher interface {
 }
 type Downloader interface {
 	Enqueue(ctx context.Context, req core.DownloadRequest) (core.DownloadJob, error)
+}
+
+// LibraryWriter is the library slice the Service needs for one-time imports:
+// creating a new editable playlist and bulk-adding tracks.
+// *subsonic.LibraryAdapter satisfies this interface.
+type LibraryWriter interface {
+	CreatePlaylist(ctx context.Context, name string) (core.Playlist, error)
+	AddTracksToPlaylist(ctx context.Context, playlistID string, trackIDs []string) error
 }
 type Store interface {
 	Upsert(ctx context.Context, p core.SyncedPlaylist, tracksJSON string, createdAt int64) (string, error) // returns id
@@ -49,12 +58,13 @@ type Service struct {
 	match Matcher
 	dl    Downloader
 	store Store
+	lib   LibraryWriter // optional; nil when no library is configured
 	now   func() int64
 	newID func() string
 }
 
-func NewService(src PlaylistSource, m Matcher, dl Downloader, store Store, now func() int64, newID func() string) *Service {
-	return &Service{src: src, match: m, dl: dl, store: store, now: now, newID: newID}
+func NewService(src PlaylistSource, m Matcher, dl Downloader, store Store, lib LibraryWriter, now func() int64, newID func() string) *Service {
+	return &Service{src: src, match: m, dl: dl, store: store, lib: lib, now: now, newID: newID}
 }
 
 func (s *Service) Import(ctx context.Context, rawURL string, downloadMissing bool) (core.SyncedPlaylistDetail, error) {
@@ -155,6 +165,55 @@ func (s *Service) enqueueMissing(ctx context.Context, det core.SyncedPlaylistDet
 			})
 		}
 	}
+}
+
+// ImportOnce imports a Spotify playlist as a one-time snapshot into a normal,
+// editable library playlist (not a read-only synced mirror). Tracks already in the
+// library are added to the playlist immediately; missing tracks are enqueued for
+// download and added to the playlist by the download manager as each finishes.
+//
+// Returns ErrNotPlaylistURL when url is not a recognizable Spotify playlist URL.
+// Returns an error when the library writer is nil (no library configured).
+func (s *Service) ImportOnce(ctx context.Context, url string) (core.Playlist, error) {
+	extID, ok := s.src.ParsePlaylistID(url)
+	if !ok {
+		return core.Playlist{}, ErrNotPlaylistURL
+	}
+	if s.lib == nil {
+		return core.Playlist{}, fmt.Errorf("library not configured")
+	}
+	pl, err := s.src.GetPlaylist(ctx, extID)
+	if err != nil {
+		return core.Playlist{}, err
+	}
+	newPl, err := s.lib.CreatePlaylist(ctx, pl.Name)
+	if err != nil {
+		return core.Playlist{}, fmt.Errorf("create playlist %q: %w", pl.Name, err)
+	}
+	var owned []string
+	for _, tr := range pl.Tracks {
+		res, _ := s.match.Match(ctx, tr)
+		if res.Status == core.MatchInLibrary && res.LibraryTrackID != "" {
+			owned = append(owned, res.LibraryTrackID)
+		} else {
+			_, _ = s.dl.Enqueue(ctx, core.DownloadRequest{
+				Source:          tr.Source,
+				ExternalID:      tr.ExternalID,
+				Artist:          tr.Artist,
+				Title:           tr.Title,
+				Album:           tr.Album,
+				ISRC:            tr.ISRC,
+				DurationMs:      tr.DurationMs,
+				AddToPlaylistID: newPl.ID,
+			})
+		}
+	}
+	if len(owned) > 0 {
+		if aErr := s.lib.AddTracksToPlaylist(ctx, newPl.ID, owned); aErr != nil {
+			log.Printf("playlistsync ImportOnce: add owned tracks to playlist %s: %v", newPl.ID, aErr)
+		}
+	}
+	return newPl, nil
 }
 
 func (s *Service) List(ctx context.Context) ([]core.SyncedPlaylist, error) {

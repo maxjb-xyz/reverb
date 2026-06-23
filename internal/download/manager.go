@@ -62,6 +62,13 @@ type VersionBumper interface {
 	SetLibraryVersion(ctx context.Context, v int64) error
 }
 
+// PlaylistAdder adds tracks to a library playlist. *subsonic.LibraryAdapter satisfies it.
+// Used by the one-time import path: after a download is matched, the track is appended
+// to the target playlist. May be nil when no library is configured.
+type PlaylistAdder interface {
+	AddTracksToPlaylist(ctx context.Context, playlistID string, trackIDs []string) error
+}
+
 // Config tunes the Manager. Zero values are replaced with safe defaults.
 type Config struct {
 	Workers        int
@@ -115,6 +122,7 @@ type Manager struct {
 	rematcher   Rematcher
 	version     VersionBumper
 	clock       Clock
+	playlists   PlaylistAdder // optional; non-nil only when a library is configured
 
 	queue chan string // job IDs to process
 
@@ -130,8 +138,11 @@ type Manager struct {
 }
 
 // NewManager constructs the Manager. Call Start() to launch workers.
+// playlists may be nil; when non-nil, completed downloads whose request carries
+// AddToPlaylistID will have the matched library track appended to that playlist.
 func NewManager(cfg Config, downloaders []Downloader, store JobStore, bus Publisher,
-	scanner ScanController, rematcher Rematcher, version VersionBumper, clock Clock) *Manager {
+	scanner ScanController, rematcher Rematcher, version VersionBumper, clock Clock,
+	playlists PlaylistAdder) *Manager {
 	if clock == nil {
 		clock = RealClock{}
 	}
@@ -145,6 +156,7 @@ func NewManager(cfg Config, downloaders []Downloader, store JobStore, bus Publis
 		rematcher:   rematcher,
 		version:     version,
 		clock:       clock,
+		playlists:   playlists,
 		queue:       make(chan string, 256),
 		cancels:     map[string]context.CancelFunc{},
 		reqs:        map[string]core.DownloadRequest{},
@@ -287,12 +299,13 @@ func (m *Manager) Enqueue(ctx context.Context, req core.DownloadRequest) (core.D
 		ExternalID:     req.ExternalID,
 		// Carry the request fields so any JobStore (incl. in-memory) and the worker
 		// fallback have enough to run; the sqlStore ALSO persists request_json.
-		Artist:        req.Artist,
-		Title:         req.Title,
-		Album:         req.Album,
-		ISRC:          req.ISRC,
-		PlayWhenReady: req.PlayWhenReady,
-		CreatedAt:     m.clock.Now().Unix(),
+		Artist:          req.Artist,
+		Title:           req.Title,
+		Album:           req.Album,
+		ISRC:            req.ISRC,
+		PlayWhenReady:   req.PlayWhenReady,
+		AddToPlaylistID: req.AddToPlaylistID,
+		CreatedAt:       m.clock.Now().Unix(),
 	}
 	if err := m.store.Insert(ctx, job, req); err != nil {
 		m.mu.Unlock()
@@ -386,6 +399,7 @@ func (m *Manager) process(id string) {
 			Source: job.Source, ExternalID: job.ExternalID, Artist: job.Artist,
 			Title: job.Title, Album: job.Album, ISRC: job.ISRC,
 			Downloader: job.DownloaderName, PlayWhenReady: job.PlayWhenReady,
+			AddToPlaylistID: job.AddToPlaylistID,
 		}
 	}
 	m.mu.Lock()
@@ -591,6 +605,16 @@ func (m *Manager) runScan() {
 		j.CoverArtID = res.CoverArtID
 		_ = m.store.Update(ctx, j)
 		m.publishComplete(j, res.LibraryTrackID)
+
+		// One-time import hook: if the originating request named a target playlist,
+		// append the newly-matched library track to it. Non-fatal on error.
+		// AddToPlaylistID is carried on the job (mirrored from request_json by
+		// toCoreFlatRow / Enqueue) so no extra store read is needed.
+		if m.playlists != nil && j.AddToPlaylistID != "" {
+			if paErr := m.playlists.AddTracksToPlaylist(ctx, j.AddToPlaylistID, []string{res.LibraryTrackID}); paErr != nil {
+				log.Printf("download: add track %s to playlist %s failed: %v", res.LibraryTrackID, j.AddToPlaylistID, paErr)
+			}
+		}
 	}
 	// Per-album/artist IDs on LibraryUpdatedEvent are deferred to a later milestone;
 	// the frontend does broad library invalidation on this event.

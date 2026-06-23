@@ -19,28 +19,35 @@ import (
 
 // fakeSync is a controllable SyncService for handler tests.
 type fakeSync struct {
-	detail    core.SyncedPlaylistDetail
-	list      []core.SyncedPlaylist
-	jobs      []core.DownloadJob
-	importErr error
-	listErr   error
-	detailErr error
-	syncErr   error
-	dlErr     error
+	detail        core.SyncedPlaylistDetail
+	list          []core.SyncedPlaylist
+	jobs          []core.DownloadJob
+	importErr     error
+	importOnceErr error
+	importOncePl  core.Playlist
+	listErr       error
+	detailErr     error
+	syncErr       error
+	dlErr         error
 
-	lastURL     string
-	lastDL      bool
-	lastID      string
-	settings    syncedSettingsBody
-	settingsID  string
-	deletedID   string
-	settingsErr error
-	deleteErr   error
+	lastURL        string
+	lastDL         bool
+	lastID         string
+	lastImportOnce string
+	settings       syncedSettingsBody
+	settingsID     string
+	deletedID      string
+	settingsErr    error
+	deleteErr      error
 }
 
 func (f *fakeSync) Import(_ context.Context, url string, downloadMissing bool) (core.SyncedPlaylistDetail, error) {
 	f.lastURL, f.lastDL = url, downloadMissing
 	return f.detail, f.importErr
+}
+func (f *fakeSync) ImportOnce(_ context.Context, url string) (core.Playlist, error) {
+	f.lastImportOnce = url
+	return f.importOncePl, f.importOnceErr
 }
 func (f *fakeSync) List(_ context.Context) ([]core.SyncedPlaylist, error) {
 	return f.list, f.listErr
@@ -239,6 +246,73 @@ func TestSyncedNilServiceReturns503(t *testing.T) {
 	srv, cookie := syncTestServer(t, nil)
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/synced-playlists", nil)
+	req.AddCookie(cookie)
+	srv.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want 503", rec.Code)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// POST /playlists/import (one-time import) tests
+// ---------------------------------------------------------------------------
+
+func TestImportPlaylistOnceHappyPath(t *testing.T) {
+	svc := &fakeSync{importOncePl: core.Playlist{ID: "new-pl-1", Name: "Imported Mix"}}
+	srv, cookie := syncTestServer(t, svc)
+
+	rec := httptest.NewRecorder()
+	body := `{"url":"https://open.spotify.com/playlist/ABCDEF"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/playlists/import", strings.NewReader(body))
+	req.AddCookie(cookie)
+	srv.Handler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200: %s", rec.Code, rec.Body.String())
+	}
+	var pl core.Playlist
+	if err := json.Unmarshal(rec.Body.Bytes(), &pl); err != nil {
+		t.Fatal(err)
+	}
+	if pl.ID != "new-pl-1" || pl.Name != "Imported Mix" {
+		t.Fatalf("playlist = %+v", pl)
+	}
+	if svc.lastImportOnce != "https://open.spotify.com/playlist/ABCDEF" {
+		t.Fatalf("ImportOnce url = %q", svc.lastImportOnce)
+	}
+}
+
+func TestImportPlaylistOnceBadURLReturns400(t *testing.T) {
+	svc := &fakeSync{importOnceErr: playlistsync.ErrNotPlaylistURL}
+	srv, cookie := syncTestServer(t, svc)
+
+	rec := httptest.NewRecorder()
+	body := `{"url":"https://example.com/not-a-playlist"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/playlists/import", strings.NewReader(body))
+	req.AddCookie(cookie)
+	srv.Handler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestImportPlaylistOnceMissingURLReturns400(t *testing.T) {
+	srv, cookie := syncTestServer(t, &fakeSync{})
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/playlists/import", strings.NewReader(`{}`))
+	req.AddCookie(cookie)
+	srv.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", rec.Code)
+	}
+}
+
+func TestImportPlaylistOnceNilServiceReturns503(t *testing.T) {
+	srv, cookie := syncTestServer(t, nil)
+	rec := httptest.NewRecorder()
+	body := `{"url":"https://open.spotify.com/playlist/ABC"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/playlists/import", strings.NewReader(body))
 	req.AddCookie(cookie)
 	srv.Handler().ServeHTTP(rec, req)
 	if rec.Code != http.StatusServiceUnavailable {

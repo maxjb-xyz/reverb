@@ -236,7 +236,7 @@ func testManager(t *testing.T, downloaders []Downloader, store JobStore, rematch
 		clk = RealClock{}
 	}
 	m := NewManager(Config{Workers: 2, DebounceWindow: 5 * time.Second, ScanPollEvery: time.Millisecond, ScanPollMax: time.Second, ScanSettleMax: 10 * time.Millisecond},
-		downloaders, store, bus, scanner, rematch, ver, clk)
+		downloaders, store, bus, scanner, rematch, ver, clk, nil)
 	t.Cleanup(m.Stop)
 	m.Start()
 	return m, bus
@@ -409,7 +409,7 @@ func TestCompletionDebouncesIntoOneScan(t *testing.T) {
 	ver := &fakeVersion{v: 1}
 	bus := events.New()
 	m := NewManager(Config{Workers: 3, DebounceWindow: 5 * time.Second, ScanPollEvery: time.Millisecond, ScanPollMax: time.Second, ScanSettleMax: 10 * time.Millisecond},
-		[]Downloader{dl}, store, bus, scanner, &fakeRematcher{trackID: "t1"}, ver, clk)
+		[]Downloader{dl}, store, bus, scanner, &fakeRematcher{trackID: "t1"}, ver, clk, nil)
 	t.Cleanup(m.Stop)
 	m.Start()
 
@@ -465,7 +465,7 @@ func TestCompletionSetsLibraryTrackIDAndPublishesComplete(t *testing.T) {
 	bus := events.New()
 	rematcher := &fakeRematcher{trackID: "lib-track-9", coverArtID: "mf-lib-track-9_abc123"}
 	m := NewManager(Config{Workers: 1, DebounceWindow: 5 * time.Second, ScanPollEvery: time.Millisecond, ScanPollMax: time.Second, ScanSettleMax: 10 * time.Millisecond},
-		[]Downloader{dl}, store, bus, &fakeScanner{}, rematcher, &fakeVersion{v: 1}, clk)
+		[]Downloader{dl}, store, bus, &fakeScanner{}, rematcher, &fakeVersion{v: 1}, clk, nil)
 	t.Cleanup(m.Stop)
 	m.Start()
 
@@ -602,7 +602,7 @@ func TestRunScanWaitsForScanToCompleteBeforeRematch(t *testing.T) {
 	scanner := &fakeScanner{statusSeq: []bool{false, true, true, false}}
 	rematcher := &fakeRematcher{trackID: "lib-track-classical"}
 	m := NewManager(Config{Workers: 1, DebounceWindow: 5 * time.Second, ScanPollEvery: time.Millisecond, ScanPollMax: time.Second, ScanSettleMax: time.Second},
-		[]Downloader{dl}, store, bus, scanner, rematcher, &fakeVersion{v: 1}, clk)
+		[]Downloader{dl}, store, bus, scanner, rematcher, &fakeVersion{v: 1}, clk, nil)
 	t.Cleanup(m.Stop)
 	m.Start()
 
@@ -961,7 +961,7 @@ func TestBackfillUnlinkedReLinksCompletedJobs(t *testing.T) {
 	bus := events.New()
 	dl := &fakeDL{name: "dl", canDownload: true}
 	m := NewManager(Config{Workers: 1, DebounceWindow: 5 * time.Second, ScanPollEvery: time.Millisecond, ScanPollMax: time.Second, ScanSettleMax: 10 * time.Millisecond},
-		[]Downloader{dl}, store, bus, &fakeScanner{}, rematcher, &fakeVersion{v: 1}, RealClock{})
+		[]Downloader{dl}, store, bus, &fakeScanner{}, rematcher, &fakeVersion{v: 1}, RealClock{}, nil)
 	t.Cleanup(m.Stop)
 
 	// Subscribe to complete events BEFORE starting so we don't miss the backfill publish.
@@ -1027,6 +1027,138 @@ func TestBackfillUnlinkedReLinksCompletedJobs(t *testing.T) {
 	}
 }
 
+// fakePlaylistAdder records AddTracksToPlaylist calls for assertions.
+type fakePlaylistAdder struct {
+	mu    sync.Mutex
+	calls []struct {
+		playlistID string
+		trackIDs   []string
+	}
+}
+
+func (f *fakePlaylistAdder) AddTracksToPlaylist(_ context.Context, playlistID string, trackIDs []string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.calls = append(f.calls, struct {
+		playlistID string
+		trackIDs   []string
+	}{playlistID, trackIDs})
+	return nil
+}
+
+func (f *fakePlaylistAdder) callCount() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return len(f.calls)
+}
+
+func (f *fakePlaylistAdder) getCall(i int) (string, []string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	c := f.calls[i]
+	return c.playlistID, c.trackIDs
+}
+
+// TestPlaylistAdderCalledOnCompletionWithAddToPlaylistID asserts that when a
+// completed job's request carries AddToPlaylistID, the manager calls
+// PlaylistAdder.AddTracksToPlaylist with the playlist ID and matched library track ID.
+func TestPlaylistAdderCalledOnCompletionWithAddToPlaylistID(t *testing.T) {
+	clk := newFakeClock()
+	dl := &fakeDL{name: "dl", canDownload: true}
+	store := newMemStore()
+	bus := events.New()
+	const libTrackID = "lib-playlist-track-1"
+	rematcher := &fakeRematcher{trackID: libTrackID}
+	adder := &fakePlaylistAdder{}
+
+	m := NewManager(Config{Workers: 1, DebounceWindow: 5 * time.Second, ScanPollEvery: time.Millisecond, ScanPollMax: time.Second, ScanSettleMax: 10 * time.Millisecond},
+		[]Downloader{dl}, store, bus, &fakeScanner{}, rematcher, &fakeVersion{v: 1}, clk, adder)
+	t.Cleanup(m.Stop)
+	m.Start()
+
+	const playlistID = "pl-abc-123"
+	job, err := m.Enqueue(context.Background(), core.DownloadRequest{
+		Source: "spotify", ExternalID: "e-pl-1", Artist: "Artist", Title: "Track",
+		Album: "Album", AddToPlaylistID: playlistID,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Wait for the job to complete.
+	deadline := time.After(2 * time.Second)
+	for {
+		cur, _, _ := store.Get(context.Background(), job.ID)
+		if cur.Status == core.DownloadCompleted {
+			break
+		}
+		select {
+		case <-deadline:
+			t.Fatal("job never completed")
+		default:
+			time.Sleep(time.Millisecond)
+		}
+	}
+
+	// Fire the debounced scan; this triggers runScan → re-match → playlist add.
+	clk.Advance(5 * time.Second)
+
+	if adder.callCount() != 1 {
+		t.Fatalf("expected 1 AddTracksToPlaylist call, got %d", adder.callCount())
+	}
+	gotPlaylistID, gotTrackIDs := adder.getCall(0)
+	if gotPlaylistID != playlistID {
+		t.Fatalf("AddTracksToPlaylist playlistID: got %q, want %q", gotPlaylistID, playlistID)
+	}
+	if len(gotTrackIDs) != 1 || gotTrackIDs[0] != libTrackID {
+		t.Fatalf("AddTracksToPlaylist trackIDs: got %v, want [%q]", gotTrackIDs, libTrackID)
+	}
+}
+
+// TestPlaylistAdderNotCalledWhenNoAddToPlaylistID asserts that jobs without
+// AddToPlaylistID do not trigger any playlist add call.
+func TestPlaylistAdderNotCalledWhenNoAddToPlaylistID(t *testing.T) {
+	clk := newFakeClock()
+	dl := &fakeDL{name: "dl", canDownload: true}
+	store := newMemStore()
+	bus := events.New()
+	rematcher := &fakeRematcher{trackID: "lib-track-no-pl"}
+	adder := &fakePlaylistAdder{}
+
+	m := NewManager(Config{Workers: 1, DebounceWindow: 5 * time.Second, ScanPollEvery: time.Millisecond, ScanPollMax: time.Second, ScanSettleMax: 10 * time.Millisecond},
+		[]Downloader{dl}, store, bus, &fakeScanner{}, rematcher, &fakeVersion{v: 1}, clk, adder)
+	t.Cleanup(m.Stop)
+	m.Start()
+
+	job, err := m.Enqueue(context.Background(), core.DownloadRequest{
+		Source: "spotify", ExternalID: "e-no-pl", Artist: "Artist", Title: "Track", Album: "Album",
+		// AddToPlaylistID intentionally empty
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	deadline := time.After(2 * time.Second)
+	for {
+		cur, _, _ := store.Get(context.Background(), job.ID)
+		if cur.Status == core.DownloadCompleted {
+			break
+		}
+		select {
+		case <-deadline:
+			t.Fatal("job never completed")
+		default:
+			time.Sleep(time.Millisecond)
+		}
+	}
+
+	clk.Advance(5 * time.Second)
+
+	if adder.callCount() != 0 {
+		t.Fatalf("expected 0 AddTracksToPlaylist calls for job without AddToPlaylistID, got %d", adder.callCount())
+	}
+}
+
 // TestBackfillSkipsAlreadyLinkedAndNonCompleted ensures the backfill only touches
 // completed jobs with empty LibraryTrackID.
 func TestBackfillSkipsAlreadyLinkedAndNonCompleted(t *testing.T) {
@@ -1051,7 +1183,7 @@ func TestBackfillSkipsAlreadyLinkedAndNonCompleted(t *testing.T) {
 	rematcher := &fakeRematcher{trackID: "should-not-be-set"}
 	dl := &fakeDL{name: "dl", canDownload: true}
 	m := NewManager(Config{Workers: 1, DebounceWindow: 5 * time.Second, ScanPollEvery: time.Millisecond, ScanPollMax: time.Second, ScanSettleMax: 10 * time.Millisecond},
-		[]Downloader{dl}, store, nil, &fakeScanner{}, rematcher, &fakeVersion{v: 1}, RealClock{})
+		[]Downloader{dl}, store, nil, &fakeScanner{}, rematcher, &fakeVersion{v: 1}, RealClock{}, nil)
 	t.Cleanup(m.Stop)
 	m.Start()
 

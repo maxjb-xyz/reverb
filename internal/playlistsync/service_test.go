@@ -3,6 +3,7 @@ package playlistsync
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"sync/atomic"
@@ -109,6 +110,42 @@ type fakeDownloader struct {
 func (d *fakeDownloader) Enqueue(_ context.Context, req core.DownloadRequest) (core.DownloadJob, error) {
 	d.calls = append(d.calls, req)
 	return core.DownloadJob{ID: "dl-" + req.ExternalID, Source: req.Source, ExternalID: req.ExternalID}, nil
+}
+
+// ---------------------------------------------------------------------------
+// fakeLibraryWriter
+// ---------------------------------------------------------------------------
+
+type fakeLibraryWriter struct {
+	playlists []core.Playlist
+	addCalls  []struct {
+		playlistID string
+		trackIDs   []string
+	}
+	createErr error
+	addErr    error
+	nextID    int
+}
+
+func (f *fakeLibraryWriter) CreatePlaylist(_ context.Context, name string) (core.Playlist, error) {
+	if f.createErr != nil {
+		return core.Playlist{}, f.createErr
+	}
+	f.nextID++
+	pl := core.Playlist{ID: fmt.Sprintf("pl-%d", f.nextID), Name: name}
+	f.playlists = append(f.playlists, pl)
+	return pl, nil
+}
+
+func (f *fakeLibraryWriter) AddTracksToPlaylist(_ context.Context, playlistID string, trackIDs []string) error {
+	if f.addErr != nil {
+		return f.addErr
+	}
+	f.addCalls = append(f.addCalls, struct {
+		playlistID string
+		trackIDs   []string
+	}{playlistID, trackIDs})
+	return nil
 }
 
 // ---------------------------------------------------------------------------
@@ -248,7 +285,7 @@ func TestImportThenDetailComputesOwnership(t *testing.T) {
 		owned: map[string]string{"t1": "L1"}, // t2 missing
 		meta:  map[string]core.Track{"t1": {ArtistID: "ar1", AlbumID: "al1", CoverArtID: "cv1"}},
 	}
-	svc := NewService(src, m, &fakeDownloader{}, newMemStore(), func() int64 { return 100 }, seqID())
+	svc := NewService(src, m, &fakeDownloader{}, newMemStore(), nil, func() int64 { return 100 }, seqID())
 	det, err := svc.Import(context.Background(), "https://open.spotify.com/playlist/PL", false)
 	if err != nil {
 		t.Fatal(err)
@@ -276,7 +313,7 @@ func TestImportStampsLastSyncedAt(t *testing.T) {
 	}}
 	store := newMemStore()
 	const importTime int64 = 1717_000_000
-	svc := NewService(src, fakeMatcher{}, &fakeDownloader{}, store, func() int64 { return importTime }, seqID())
+	svc := NewService(src, fakeMatcher{}, &fakeDownloader{}, store, nil, func() int64 { return importTime }, seqID())
 	det, err := svc.Import(context.Background(), "spotify:playlist:PL", false)
 	if err != nil {
 		t.Fatal(err)
@@ -298,7 +335,7 @@ func TestSyncReplacesTracklist(t *testing.T) {
 		"PL": {Source: "spotify", ExternalID: "PL", Name: "Chill", Tracks: []core.ExternalResult{track("t1")}},
 	}}
 	store := newMemStore()
-	svc := NewService(src, fakeMatcher{}, &fakeDownloader{}, store, func() int64 { return 100 }, seqID())
+	svc := NewService(src, fakeMatcher{}, &fakeDownloader{}, store, nil, func() int64 { return 100 }, seqID())
 	det, _ := svc.Import(context.Background(), "spotify:playlist:PL", false)
 	// Spotify playlist gains a track; sync must reflect it.
 	src.playlists["PL"] = core.ExternalPlaylist{Source: "spotify", ExternalID: "PL", Name: "Chill", Tracks: []core.ExternalResult{track("t1"), track("t3")}}
@@ -313,7 +350,7 @@ func TestImportSamePlaylistTwiceReturnsSameID(t *testing.T) {
 		"PL": {Source: "spotify", ExternalID: "PL", Name: "Chill", Tracks: []core.ExternalResult{track("t1")}},
 	}}
 	store := newMemStore()
-	svc := NewService(src, fakeMatcher{}, &fakeDownloader{}, store, func() int64 { return 100 }, seqID())
+	svc := NewService(src, fakeMatcher{}, &fakeDownloader{}, store, nil, func() int64 { return 100 }, seqID())
 	det1, err1 := svc.Import(context.Background(), "spotify:playlist:PL", false)
 	det2, err2 := svc.Import(context.Background(), "spotify:playlist:PL", false)
 	if err1 != nil || err2 != nil {
@@ -329,7 +366,7 @@ func TestImportWithDownloadMissingEnqueues(t *testing.T) {
 		"PL": {Source: "spotify", ExternalID: "PL", Name: "Mix", Tracks: []core.ExternalResult{track("t1"), track("t2")}},
 	}}
 	dl := &fakeDownloader{}
-	svc := NewService(src, fakeMatcher{}, dl, newMemStore(), func() int64 { return 100 }, seqID())
+	svc := NewService(src, fakeMatcher{}, dl, newMemStore(), nil, func() int64 { return 100 }, seqID())
 	_, err := svc.Import(context.Background(), "https://open.spotify.com/playlist/PL", true)
 	if err != nil {
 		t.Fatal(err)
@@ -365,7 +402,7 @@ func TestListReturnsAllImported(t *testing.T) {
 		"PL1": {Source: "spotify", ExternalID: "PL1", Name: "A", Tracks: []core.ExternalResult{track("t1")}},
 		"PL2": {Source: "spotify", ExternalID: "PL2", Name: "B", Tracks: []core.ExternalResult{track("t2")}},
 	}}
-	svc := NewService(src, fakeMatcher{}, &fakeDownloader{}, newMemStore(), func() int64 { return 100 }, seqID())
+	svc := NewService(src, fakeMatcher{}, &fakeDownloader{}, newMemStore(), nil, func() int64 { return 100 }, seqID())
 	svc.Import(context.Background(), "spotify:playlist:PL1", false) //nolint
 	svc.Import(context.Background(), "spotify:playlist:PL2", false) //nolint
 	list, err := svc.List(context.Background())
@@ -382,7 +419,7 @@ func TestDeleteRemovesPlaylist(t *testing.T) {
 		"PL": {Source: "spotify", ExternalID: "PL", Name: "X", Tracks: []core.ExternalResult{track("t1")}},
 	}}
 	store := newMemStore()
-	svc := NewService(src, fakeMatcher{}, &fakeDownloader{}, store, func() int64 { return 100 }, seqID())
+	svc := NewService(src, fakeMatcher{}, &fakeDownloader{}, store, nil, func() int64 { return 100 }, seqID())
 	det, _ := svc.Import(context.Background(), "spotify:playlist:PL", false)
 	if err := svc.Delete(context.Background(), det.ID); err != nil {
 		t.Fatal(err)
@@ -398,7 +435,7 @@ func TestSyncErrorPreservesTracklist(t *testing.T) {
 		"PL": {Source: "spotify", ExternalID: "PL", Name: "Keep", Tracks: []core.ExternalResult{track("t1"), track("t2")}},
 	}}
 	store := newMemStore()
-	svc := NewService(src, fakeMatcher{}, &fakeDownloader{}, store, func() int64 { return 100 }, seqID())
+	svc := NewService(src, fakeMatcher{}, &fakeDownloader{}, store, nil, func() int64 { return 100 }, seqID())
 	det, err := svc.Import(context.Background(), "spotify:playlist:PL", false)
 	if err != nil {
 		t.Fatalf("import error: %v", err)
@@ -439,7 +476,7 @@ func TestDetailCoverURLFromExternalTrack(t *testing.T) {
 		"PL": {Source: "spotify", ExternalID: "PL", Name: "Cover Test", Tracks: []core.ExternalResult{extTrack}},
 	}}
 	// No tracks owned — the track should appear as CoverageNone with CoverURL from ext.
-	svc := NewService(src, fakeMatcher{}, &fakeDownloader{}, newMemStore(), func() int64 { return 100 }, seqID())
+	svc := NewService(src, fakeMatcher{}, &fakeDownloader{}, newMemStore(), nil, func() int64 { return 100 }, seqID())
 	det, err := svc.Import(context.Background(), "spotify:playlist:PL", false)
 	if err != nil {
 		t.Fatal(err)
@@ -470,7 +507,7 @@ func TestDetailCoverURLOwnedTrackFallsBackToExternal(t *testing.T) {
 		"PL": {Source: "spotify", ExternalID: "PL", Name: "Owned Cover Test", Tracks: []core.ExternalResult{extTrack}},
 	}}
 	m := fakeMatcher{owned: map[string]string{"t-owned": "lib-1"}}
-	svc := NewService(src, m, &fakeDownloader{}, newMemStore(), func() int64 { return 100 }, seqID())
+	svc := NewService(src, m, &fakeDownloader{}, newMemStore(), nil, func() int64 { return 100 }, seqID())
 	det, err := svc.Import(context.Background(), "spotify:playlist:PL", false)
 	if err != nil {
 		t.Fatal(err)
@@ -495,7 +532,7 @@ func TestListTrackCountViaSQLCount(t *testing.T) {
 		"PL1": {Source: "spotify", ExternalID: "PL1", Name: "Three", Tracks: []core.ExternalResult{track("a"), track("b"), track("c")}},
 		"PL2": {Source: "spotify", ExternalID: "PL2", Name: "One", Tracks: []core.ExternalResult{track("x")}},
 	}}
-	svc := NewService(src, fakeMatcher{}, &fakeDownloader{}, newMemStore(), func() int64 { return 100 }, seqID())
+	svc := NewService(src, fakeMatcher{}, &fakeDownloader{}, newMemStore(), nil, func() int64 { return 100 }, seqID())
 	svc.Import(context.Background(), "spotify:playlist:PL1", false) //nolint
 	svc.Import(context.Background(), "spotify:playlist:PL2", false) //nolint
 
@@ -532,7 +569,7 @@ func TestDetailCarriesArtistAlbumExternalIDs(t *testing.T) {
 		"PL": {Source: "spotify", ExternalID: "PL", Name: "Ext ID Test", Tracks: []core.ExternalResult{ownedTrack, missingTrack}},
 	}}
 	m := fakeMatcher{owned: map[string]string{"t-owned": "lib-owned-1"}}
-	svc := NewService(src, m, &fakeDownloader{}, newMemStore(), func() int64 { return 100 }, seqID())
+	svc := NewService(src, m, &fakeDownloader{}, newMemStore(), nil, func() int64 { return 100 }, seqID())
 	det, err := svc.Import(context.Background(), "spotify:playlist:PL", false)
 	if err != nil {
 		t.Fatal(err)
@@ -563,5 +600,87 @@ func TestDetailCarriesArtistAlbumExternalIDs(t *testing.T) {
 	}
 	if missing.AlbumExternalID != "sp-album-2" {
 		t.Fatalf("missing track AlbumExternalID = %q, want %q", missing.AlbumExternalID, "sp-album-2")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// ImportOnce tests
+// ---------------------------------------------------------------------------
+
+// TestImportOnce_OwnedAndMissing asserts that ImportOnce creates a new library
+// playlist, adds owned tracks immediately, and enqueues missing tracks with
+// AddToPlaylistID set to the new playlist's ID.
+func TestImportOnce_OwnedAndMissing(t *testing.T) {
+	ownedTrack := core.ExternalResult{
+		Source: "spotify", ExternalID: "t-owned", Title: "Owned Track",
+		Artist: "Artist", Album: "Album", ISRC: "ISRC1", DurationMs: 210000,
+		Type: core.EntityTrack,
+	}
+	missingTrack := core.ExternalResult{
+		Source: "spotify", ExternalID: "t-missing", Title: "Missing Track",
+		Artist: "Artist2", Album: "Album2", ISRC: "ISRC2", DurationMs: 180000,
+		Type: core.EntityTrack,
+	}
+	src := &fakeSource{playlists: map[string]core.ExternalPlaylist{
+		"PL": {Source: "spotify", ExternalID: "PL", Name: "My Import", Tracks: []core.ExternalResult{ownedTrack, missingTrack}},
+	}}
+	matcher := fakeMatcher{owned: map[string]string{"t-owned": "lib-owned-1"}}
+	dl := &fakeDownloader{}
+	lib := &fakeLibraryWriter{}
+	svc := NewService(src, matcher, dl, newMemStore(), lib, func() int64 { return 100 }, seqID())
+
+	pl, err := svc.ImportOnce(context.Background(), "spotify:playlist:PL")
+	if err != nil {
+		t.Fatalf("ImportOnce: %v", err)
+	}
+	if pl.ID == "" {
+		t.Fatal("ImportOnce: returned playlist has no ID")
+	}
+	if pl.Name != "My Import" {
+		t.Fatalf("playlist name: got %q, want %q", pl.Name, "My Import")
+	}
+
+	// CreatePlaylist must have been called once.
+	if len(lib.playlists) != 1 {
+		t.Fatalf("expected 1 created playlist, got %d", len(lib.playlists))
+	}
+
+	// AddTracksToPlaylist must have been called with the owned track.
+	if len(lib.addCalls) != 1 {
+		t.Fatalf("expected 1 AddTracksToPlaylist call (owned tracks), got %d", len(lib.addCalls))
+	}
+	if lib.addCalls[0].playlistID != pl.ID {
+		t.Fatalf("AddTracksToPlaylist playlist ID: got %q, want %q", lib.addCalls[0].playlistID, pl.ID)
+	}
+	if len(lib.addCalls[0].trackIDs) != 1 || lib.addCalls[0].trackIDs[0] != "lib-owned-1" {
+		t.Fatalf("AddTracksToPlaylist track IDs: got %v, want [lib-owned-1]", lib.addCalls[0].trackIDs)
+	}
+
+	// Missing track must have been enqueued with AddToPlaylistID set.
+	if len(dl.calls) != 1 {
+		t.Fatalf("expected 1 Enqueue call (missing track), got %d", len(dl.calls))
+	}
+	enq := dl.calls[0]
+	if enq.ExternalID != "t-missing" {
+		t.Fatalf("enqueued track ExternalID: got %q, want %q", enq.ExternalID, "t-missing")
+	}
+	if enq.AddToPlaylistID != pl.ID {
+		t.Fatalf("enqueued track AddToPlaylistID: got %q, want %q", enq.AddToPlaylistID, pl.ID)
+	}
+}
+
+// TestImportOnce_BadURL asserts that ImportOnce returns ErrNotPlaylistURL for
+// a non-playlist URL.
+func TestImportOnce_BadURL(t *testing.T) {
+	src := &fakeSource{}
+	lib := &fakeLibraryWriter{}
+	svc := NewService(src, fakeMatcher{}, &fakeDownloader{}, newMemStore(), lib, func() int64 { return 100 }, seqID())
+
+	_, err := svc.ImportOnce(context.Background(), "https://example.com/not-a-playlist")
+	if err == nil {
+		t.Fatal("expected ErrNotPlaylistURL, got nil")
+	}
+	if !errors.Is(err, ErrNotPlaylistURL) {
+		t.Fatalf("expected ErrNotPlaylistURL, got %v", err)
 	}
 }

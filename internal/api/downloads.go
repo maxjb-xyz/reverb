@@ -11,15 +11,16 @@ import (
 
 // createDownloadBody is the POST /downloads request DTO.
 type createDownloadBody struct {
-	Source        string `json:"source"`
-	ExternalID    string `json:"externalId"`
-	Artist        string `json:"artist"`
-	Title         string `json:"title"`
-	Album         string `json:"album"`
-	ISRC          string `json:"isrc"`
-	DurationMs    int    `json:"durationMs"`
-	Downloader    string `json:"downloader"`
-	PlayWhenReady bool   `json:"playWhenReady"`
+	Source          string `json:"source"`
+	ExternalID      string `json:"externalId"`
+	Artist          string `json:"artist"`
+	Title           string `json:"title"`
+	Album           string `json:"album"`
+	ISRC            string `json:"isrc"`
+	DurationMs      int    `json:"durationMs"`
+	Downloader      string `json:"downloader"`
+	PlayWhenReady   bool   `json:"playWhenReady"`
+	AddToPlaylistID string `json:"addToPlaylistId,omitempty"`
 }
 
 func (s *Server) handleCreateDownload(w http.ResponseWriter, r *http.Request) {
@@ -38,15 +39,16 @@ func (s *Server) handleCreateDownload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	job, err := dl.Enqueue(r.Context(), core.DownloadRequest{
-		Source:        body.Source,
-		ExternalID:    body.ExternalID,
-		Artist:        body.Artist,
-		Title:         body.Title,
-		Album:         body.Album,
-		ISRC:          body.ISRC,
-		DurationMs:    body.DurationMs,
-		Downloader:    body.Downloader,
-		PlayWhenReady: body.PlayWhenReady,
+		Source:          body.Source,
+		ExternalID:      body.ExternalID,
+		Artist:          body.Artist,
+		Title:           body.Title,
+		Album:           body.Album,
+		ISRC:            body.ISRC,
+		DurationMs:      body.DurationMs,
+		Downloader:      body.Downloader,
+		PlayWhenReady:   body.PlayWhenReady,
+		AddToPlaylistID: body.AddToPlaylistID,
 	})
 	if err != nil {
 		writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": err.Error()})

@@ -15,6 +15,7 @@ import (
 // adapter implements search.PlaylistProvider, in which case the handlers 503.
 type SyncService interface {
 	Import(ctx context.Context, url string, downloadMissing bool) (core.SyncedPlaylistDetail, error)
+	ImportOnce(ctx context.Context, url string) (core.Playlist, error)
 	List(ctx context.Context) ([]core.SyncedPlaylist, error)
 	Detail(ctx context.Context, id string) (core.SyncedPlaylistDetail, error)
 	Sync(ctx context.Context, id string) (core.SyncedPlaylistDetail, error)
@@ -35,6 +36,37 @@ func (s *Server) sync() SyncService {
 type importSyncedBody struct {
 	URL             string `json:"url"`
 	DownloadMissing bool   `json:"downloadMissing"`
+}
+
+// importOnceBody is the POST /playlists/import request DTO.
+type importOnceBody struct {
+	URL string `json:"url"`
+}
+
+// handleImportPlaylistOnce imports a Spotify playlist as a one-time snapshot into
+// a normal, editable library playlist (not a read-only synced mirror).
+// POST /api/v1/playlists/import  body {"url":"..."} → 200 core.Playlist
+func (s *Server) handleImportPlaylistOnce(w http.ResponseWriter, r *http.Request) {
+	svc := s.sync()
+	if svc == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "playlist sync unavailable"})
+		return
+	}
+	var body importOnceBody
+	if err := decode(r, &body); err != nil || body.URL == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "url is required"})
+		return
+	}
+	pl, err := svc.ImportOnce(r.Context(), body.URL)
+	if err != nil {
+		status := http.StatusUnprocessableEntity
+		if errors.Is(err, playlistsync.ErrNotPlaylistURL) {
+			status = http.StatusBadRequest
+		}
+		writeJSON(w, status, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, pl)
 }
 
 func (s *Server) handleImportSyncedPlaylist(w http.ResponseWriter, r *http.Request) {

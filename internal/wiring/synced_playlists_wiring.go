@@ -189,5 +189,5 @@ func (b *Builder) BuildSyncService(
 	matcher := matching.NewService(lib, b.queries, b.version.LibraryVersion)
 	store := NewSyncStore(b.queries)
 	nowUnix := func() int64 { return time.Now().Unix() }
-	return playlistsync.NewService(src, matcher, mgr, store, nowUnix, uuid.NewString)
+	return playlistsync.NewService(src, matcher, mgr, store, lib, nowUnix, uuid.NewString)
 }

@@ -31,6 +31,11 @@ type DownloadRequest struct {
 	// "https://open.spotify.com/track/<id>|<manualURL>" so Spotify metadata is
 	// preserved while the audio is fetched from the manual URL.
 	ManualURL     string `json:"manualUrl,omitempty"`
+	// AddToPlaylistID, when non-empty, causes the download manager to add the
+	// resulting library track to this playlist ID once the download completes and
+	// the track is matched in the library. Used by the one-time import path so
+	// missing tracks are appended to the target playlist as each finishes.
+	AddToPlaylistID string `json:"addToPlaylistId,omitempty"`
 }
 
 // DownloadJob is the persisted state of one download. Progress is 0-100, or -1
@@ -50,15 +55,18 @@ type DownloadJob struct {
 	Source         string         `json:"source"`
 	ExternalID     string         `json:"externalId"`
 	// Request fields carried so a job rehydrated from request_json can run.
-	Artist         string         `json:"artist,omitempty"`
-	Title          string         `json:"title,omitempty"`
-	Album          string         `json:"album,omitempty"`
-	ISRC           string         `json:"isrc,omitempty"`
-	DurationMs     int            `json:"durationMs,omitempty"`
-	PlayWhenReady  bool           `json:"playWhenReady"`
-	CreatedAt      int64          `json:"createdAt"`
-	StartedAt      int64          `json:"startedAt"`
-	FinishedAt     int64          `json:"finishedAt"`
+	Artist          string         `json:"artist,omitempty"`
+	Title           string         `json:"title,omitempty"`
+	Album           string         `json:"album,omitempty"`
+	ISRC            string         `json:"isrc,omitempty"`
+	DurationMs      int            `json:"durationMs,omitempty"`
+	PlayWhenReady   bool           `json:"playWhenReady"`
+	// AddToPlaylistID mirrors DownloadRequest.AddToPlaylistID so the post-download
+	// playlist-add hook in runScan can read it from the rehydrated job.
+	AddToPlaylistID string         `json:"addToPlaylistId,omitempty"`
+	CreatedAt       int64          `json:"createdAt"`
+	StartedAt       int64          `json:"startedAt"`
+	FinishedAt      int64          `json:"finishedAt"`
 }
 
 // DownloadEvent is published on the EventBus (topics download.queued|progress|

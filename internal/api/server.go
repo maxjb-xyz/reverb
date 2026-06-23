@@ -205,6 +205,7 @@ func (s *Server) routes() {
 			pr.Put("/library/playlist/{id}", s.handleRenamePlaylist)
 			pr.Delete("/library/playlist/{id}", s.handleDeletePlaylist)
 			pr.Post("/library/playlist/{id}/remove", s.handleRemovePlaylistTracks)
+			pr.Post("/playlists/import", s.handleImportPlaylistOnce)
 			pr.Post("/synced-playlists", s.handleImportSyncedPlaylist)
 			pr.Get("/synced-playlists", s.handleListSyncedPlaylists)
 			pr.Get("/synced-playlists/{id}", s.handleSyncedPlaylistDetail)

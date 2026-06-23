@@ -343,6 +343,7 @@ func (b *Builder) Build(ctx context.Context) (ServiceBundle, error) {
 			rematcher,  // Rematcher
 			b.version,  // VersionBumper (LibraryVersion/SetLibraryVersion)
 			b.clock,    // production clock (nil → RealClock default)
+			libAdapter, // PlaylistAdder (AddTracksToPlaylist) — subsonic adapter satisfies it
 		)
 		log.Printf("download manager active: %d downloader(s)", len(downloaders))
 	} else if len(downloaders) > 0 {
