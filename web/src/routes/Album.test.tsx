@@ -392,6 +392,36 @@ describe('Album page', () => {
     })
   })
 
+  it('playTrackList receives track with artistExternalId when source row has it', async () => {
+    const { useAlbumDetail } = await import('../lib/coverageApi')
+    const albumWithExternalId: AlbumDetail = {
+      ...partialAlbum,
+      tracks: [
+        {
+          state: 'full',
+          libraryTrack: ownedTrack1,
+          title: 'Everything in Its Right Place',
+          artist: 'Radiohead',
+          trackNumber: 1,
+          durationMs: 1000,
+          artistExternalId: 'sp-artist-77',
+        },
+        ...partialAlbum.tracks.slice(1),
+      ],
+    }
+    vi.mocked(useAlbumDetail).mockReturnValue({
+      data: albumWithExternalId,
+      isLoading: false,
+      isError: false,
+    } as ReturnType<typeof useAlbumDetail>)
+    wrapper(<Album />)
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Kid A' })).toBeInTheDocument())
+    fireEvent.click(screen.getAllByRole('button', { name: /play kid a/i })[0])
+    expect(mockPlayTrackList).toHaveBeenCalledOnce()
+    const [tracks] = mockPlayTrackList.mock.calls[0] as [import('../lib/types').Track[], number]
+    expect(tracks[0]).toMatchObject({ artistExternalId: 'sp-artist-77' })
+  })
+
   describe('library-source album (all tracks owned — unchanged behavior)', () => {
     it('no "Download missing" button when ownedCount === totalCount', async () => {
       const { useAlbumDetail } = await import('../lib/coverageApi')

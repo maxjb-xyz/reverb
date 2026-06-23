@@ -52,6 +52,27 @@ describe('PlayerBar (shell)', () => {
     expect(mockNavigate).toHaveBeenCalledWith('/artist/library/ar')
   })
 
+  it('artist button navigates to /artist/spotify/:id when artistExternalId is set', () => {
+    const trackWithExtId: Track = { ...track('1'), artistExternalId: 'ext-99' }
+    act(() => {
+      usePlayer.getState().playTrackList([trackWithExtId], 0)
+    })
+    mockNavigate.mockClear()
+    render(<PlayerBar />)
+    fireEvent.click(screen.getByRole('button', { name: 'Artist' }))
+    expect(mockNavigate).toHaveBeenCalledWith('/artist/spotify/ext-99')
+  })
+
+  it('artist button navigates to /artist/library/:id when no artistExternalId', () => {
+    act(() => {
+      usePlayer.getState().playTrackList([track('1')], 0)
+    })
+    mockNavigate.mockClear()
+    render(<PlayerBar />)
+    fireEvent.click(screen.getByRole('button', { name: 'Artist' }))
+    expect(mockNavigate).toHaveBeenCalledWith('/artist/library/ar')
+  })
+
   // --- transport button actions ---
 
   it('play/pause button click calls toggle on the engine', () => {

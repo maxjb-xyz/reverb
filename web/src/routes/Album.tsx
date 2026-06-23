@@ -99,7 +99,7 @@ export default function Album() {
   // Owned tracks in order — used for Play/Shuffle and ownedIndexOf
   const ownedTracks: Track[] = album.tracks
     .filter((t) => t.state === 'full' && t.libraryTrack)
-    .map((t) => t.libraryTrack!)
+    .map((t) => ({ ...t.libraryTrack!, ...(t.artistExternalId ? { artistExternalId: t.artistExternalId } : {}) }))
 
   // Missing externalRefs for batch download
   const missingRefs: ExternalTrackRef[] = album.tracks

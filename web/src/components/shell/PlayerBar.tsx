@@ -164,10 +164,14 @@ export function PlayerBar() {
           <div className={['truncate text-sm font-semibold', palette ? '' : 'text-text-primary'].filter(Boolean).join(' ')}>
             {current ? current.title : 'Nothing playing'}
           </div>
-          {current?.artist && current.artistId ? (
+          {current?.artist && (current.artistExternalId || current.artistId) ? (
             <button
               type="button"
-              onClick={() => navigate(`/artist/library/${current.artistId}`)}
+              onClick={() =>
+                current.artistExternalId
+                  ? navigate(`/artist/spotify/${current.artistExternalId}`)
+                  : navigate(`/artist/library/${current.artistId}`)
+              }
               className={['block max-w-full truncate text-left text-xs hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent', palette ? 'opacity-70 hover:opacity-100' : 'text-text-secondary hover:text-text-primary'].filter(Boolean).join(' ')}
             >
               {current.artist}

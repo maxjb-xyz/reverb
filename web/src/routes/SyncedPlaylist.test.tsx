@@ -4,7 +4,7 @@ import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import SyncedPlaylist from './SyncedPlaylist'
 import { makeTrack } from '../test/factories'
-import type { SyncedPlaylistDetail, AlbumDetailTrack } from '../lib/types'
+import type { SyncedPlaylistDetail, AlbumDetailTrack, Track } from '../lib/types'
 import { useAlbumPalette } from '../lib/useAlbumPalette'
 
 // ── useAlbumPalette mock ───────────────────────────────────────────────────────
@@ -506,5 +506,21 @@ describe('SyncedPlaylist page', () => {
       const artistLink = screen.getByRole('link', { name: 'Artist A' })
       expect(artistLink).toHaveAttribute('href', '/artist/library/ar1')
     })
+  })
+
+  it('playTrackList receives track with artistExternalId when source row has it', async () => {
+    mockUseSyncedPlaylist.mockReturnValue({
+      data: { ...mockDetail, tracks: [ownedRowWithExternalIds] },
+      isLoading: false,
+      isError: false,
+    })
+    wrapper(<SyncedPlaylist />)
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { name: 'Test Synced Playlist' })).toBeInTheDocument(),
+    )
+    fireEvent.click(screen.getByRole('button', { name: /play test synced playlist/i }))
+    expect(mockPlayTrackList).toHaveBeenCalledOnce()
+    const [tracks] = mockPlayTrackList.mock.calls[0] as [Track[], number]
+    expect(tracks[0]).toMatchObject({ artistExternalId: 'sp-artist-99' })
   })
 })
