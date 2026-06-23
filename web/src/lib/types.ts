@@ -108,6 +108,7 @@ export interface AlbumDetailTrack {
   state: CoverageState
   libraryTrack?: Track
   externalRef?: ExternalTrackRef
+  key?: { source: string; externalId: string }
   title: string
   artist: string
   album?: string

@@ -74,7 +74,7 @@ const track2 = makeTrack({ id: 't2', title: 'Owned Two', artist: 'Artist B', alb
 const ownedRow1: AlbumDetailTrack = {
   state: 'full',
   libraryTrack: track1,
-  externalRef: { source: 'spotify', externalId: 'e1', title: 'Owned One', artist: 'Artist A', durationMs: 180000 },
+  key: { source: 'spotify', externalId: 'e1' },
   title: 'Owned One',
   artist: 'Artist A',
   trackNumber: 1,
@@ -83,7 +83,7 @@ const ownedRow1: AlbumDetailTrack = {
 const ownedRow2: AlbumDetailTrack = {
   state: 'full',
   libraryTrack: track2,
-  externalRef: { source: 'spotify', externalId: 'e2', title: 'Owned Two', artist: 'Artist B', durationMs: 200000 },
+  key: { source: 'spotify', externalId: 'e2' },
   title: 'Owned Two',
   artist: 'Artist B',
   trackNumber: 2,
@@ -93,6 +93,7 @@ const missingRow: AlbumDetailTrack = {
   state: 'none',
   libraryTrack: undefined,
   externalRef: { source: 'spotify', externalId: 'e3', title: 'Missing Track', artist: 'Artist C', durationMs: 210000 },
+  key: { source: 'spotify', externalId: 'e3' },
   title: 'Missing Track',
   artist: 'Artist C',
   trackNumber: 3,

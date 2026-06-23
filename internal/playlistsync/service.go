@@ -171,6 +171,7 @@ func (s *Service) Detail(ctx context.Context, id string) (core.SyncedPlaylistDet
 				DurationMs: tr.DurationMs,
 				CoverArtID: tr.CoverArtID,
 			}
+			dt.Key = &core.TrackKey{Source: tr.Source, ExternalID: tr.ExternalID}
 		} else {
 			res, mErr := s.match.Match(ctx, tr)
 			if mErr != nil {
@@ -180,10 +181,12 @@ func (s *Service) Detail(ctx context.Context, id string) (core.SyncedPlaylistDet
 				det.OwnedCount++
 				dt.State = core.CoverageFull
 				dt.LibraryTrack = &core.Track{ID: res.LibraryTrackID, Title: tr.Title, Artist: tr.Artist, Album: tr.Album, DurationMs: tr.DurationMs, ArtistID: res.ArtistID, AlbumID: res.AlbumID, CoverArtID: res.CoverArtID}
+				dt.Key = &core.TrackKey{Source: tr.Source, ExternalID: tr.ExternalID}
 			} else {
 				dt.State = core.CoverageNone
 				ref := core.ExternalTrackRef{Source: tr.Source, ExternalID: tr.ExternalID, Title: tr.Title, Artist: tr.Artist, Album: tr.Album, ISRC: tr.ISRC, DurationMs: tr.DurationMs}
 				dt.ExternalRef = &ref
+				dt.Key = &core.TrackKey{Source: tr.Source, ExternalID: tr.ExternalID}
 			}
 		}
 		det.Tracks = append(det.Tracks, dt)

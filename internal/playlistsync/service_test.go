@@ -1276,6 +1276,86 @@ func TestReorderTracksNotEditableOnSyncedPlaylist(t *testing.T) {
 // TestDetailLibrarySourceTrackCoverArtID (existing, moved down)
 // ---------------------------------------------------------------------------
 
+// TestDetailSetsKeyOnAllRows asserts that Detail sets Key on ALL track rows:
+// library-source, matched-spotify, and missing (CoverageNone).
+// Only the missing track should have ExternalRef set.
+func TestDetailSetsKeyOnAllRows(t *testing.T) {
+	libraryTrack := core.ExternalResult{
+		Source: "library", ExternalID: "lib-t1", Title: "Library Track",
+		Artist: "Artist A", Album: "Album A", DurationMs: 180000,
+		Type: core.EntityTrack,
+	}
+	matchedTrack := core.ExternalResult{
+		Source: "spotify", ExternalID: "sp-t2", Title: "Matched Track",
+		Artist: "Artist B", Album: "Album B", DurationMs: 200000,
+		Type: core.EntityTrack,
+	}
+	missingTrack := core.ExternalResult{
+		Source: "spotify", ExternalID: "sp-t3", Title: "Missing Track",
+		Artist: "Artist C", Album: "Album C", DurationMs: 210000,
+		Type: core.EntityTrack,
+	}
+	src := &fakeSource{playlists: map[string]core.ExternalPlaylist{
+		"PL": {Source: "spotify", ExternalID: "PL", Name: "Key Test",
+			Tracks: []core.ExternalResult{libraryTrack, matchedTrack, missingTrack}},
+	}}
+	m := fakeMatcher{owned: map[string]string{"sp-t2": "lib-match-1"}}
+	store := newMemStore()
+	svc := NewService(src, m, &fakeDownloader{}, store, nil, func() int64 { return 100 }, seqID())
+	det, err := svc.Import(context.Background(), "spotify:playlist:PL", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(det.Tracks) != 3 {
+		t.Fatalf("expected 3 tracks, got %d", len(det.Tracks))
+	}
+
+	// Library-source track.
+	libRow := det.Tracks[0]
+	if libRow.State != core.CoverageFull {
+		t.Fatalf("Tracks[0] expected CoverageFull, got %v", libRow.State)
+	}
+	if libRow.Key == nil {
+		t.Fatal("Tracks[0] (library-source): Key must be non-nil")
+	}
+	if libRow.Key.Source != "library" || libRow.Key.ExternalID != "lib-t1" {
+		t.Fatalf("Tracks[0].Key = %+v, want {library, lib-t1}", libRow.Key)
+	}
+	if libRow.ExternalRef != nil {
+		t.Fatal("Tracks[0] (library-source): ExternalRef must be nil (only set on missing rows)")
+	}
+
+	// Matched-spotify track.
+	matchedRow := det.Tracks[1]
+	if matchedRow.State != core.CoverageFull {
+		t.Fatalf("Tracks[1] expected CoverageFull, got %v", matchedRow.State)
+	}
+	if matchedRow.Key == nil {
+		t.Fatal("Tracks[1] (matched-spotify): Key must be non-nil")
+	}
+	if matchedRow.Key.Source != "spotify" || matchedRow.Key.ExternalID != "sp-t2" {
+		t.Fatalf("Tracks[1].Key = %+v, want {spotify, sp-t2}", matchedRow.Key)
+	}
+	if matchedRow.ExternalRef != nil {
+		t.Fatal("Tracks[1] (matched-spotify): ExternalRef must be nil (only set on missing rows)")
+	}
+
+	// Missing track.
+	missingRow := det.Tracks[2]
+	if missingRow.State != core.CoverageNone {
+		t.Fatalf("Tracks[2] expected CoverageNone, got %v", missingRow.State)
+	}
+	if missingRow.Key == nil {
+		t.Fatal("Tracks[2] (missing): Key must be non-nil")
+	}
+	if missingRow.Key.Source != "spotify" || missingRow.Key.ExternalID != "sp-t3" {
+		t.Fatalf("Tracks[2].Key = %+v, want {spotify, sp-t3}", missingRow.Key)
+	}
+	if missingRow.ExternalRef == nil {
+		t.Fatal("Tracks[2] (missing): ExternalRef must be non-nil")
+	}
+}
+
 // TestDetailLibrarySourceTrackCoverArtID asserts that Detail carries CoverArtID
 // from a stored library-source entry onto the synthesized LibraryTrack.
 func TestDetailLibrarySourceTrackCoverArtID(t *testing.T) {

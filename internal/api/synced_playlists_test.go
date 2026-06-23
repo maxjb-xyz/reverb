@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -539,6 +538,10 @@ func buildCoverMultipart(t *testing.T, contentType string, data []byte) (*bytes.
 func TestUploadPlaylistCoverHappyPath(t *testing.T) {
 	dataDir := t.TempDir()
 	svc := &fakeSync{
+		// detail is returned by Detail() — pre-check needs Mode="once".
+		detail: core.SyncedPlaylistDetail{
+			SyncedPlaylist: core.SyncedPlaylist{ID: "pl-1", Mode: "once"},
+		},
 		setCoverDet: core.SyncedPlaylistDetail{
 			SyncedPlaylist: core.SyncedPlaylist{ID: "pl-1", Mode: "once"},
 		},
@@ -631,10 +634,19 @@ func TestUploadPlaylistCoverWrongTypeReturns400(t *testing.T) {
 
 func TestUploadPlaylistCoverSyncedPlaylistReturns409(t *testing.T) {
 	dataDir := t.TempDir()
-	svc := &fakeSync{setCoverErr: playlistsync.ErrNotEditable}
+	// detail.Mode = "synced" → pre-check fires before file write and returns 409.
+	svc := &fakeSync{
+		detail: core.SyncedPlaylistDetail{
+			SyncedPlaylist: core.SyncedPlaylist{ID: "pl-synced", Mode: "synced"},
+		},
+	}
 	srv, cookie := syncTestServerWithDataDir(t, svc, dataDir)
 
-	pngData := []byte{0x89, 0x50, 0x4e, 0x47} // minimal, content-type check passes
+	// Full PNG signature so content sniff passes; pre-check should fire before write.
+	pngData := []byte{
+		0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+		0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52,
+	}
 	body, ct := buildCoverMultipart(t, "image/png", pngData)
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/synced-playlists/pl-synced/cover", body)
@@ -744,19 +756,159 @@ func TestReorderSyncedTracksNotEditableReturns409(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Service-level ReorderTracks tests (in the api package using the memStore)
+// validPlaylistID tests
 // ---------------------------------------------------------------------------
 
-// These tests exercise the service directly (without HTTP) using a real memStore.
-// They live here because it's convenient to share the memStore helper; they don't
-// exercise the handler but do test the reorder algorithm.
+func TestValidPlaylistID(t *testing.T) {
+	valid := []string{
+		"pl-1",
+		"abc",
+		"ABC123",
+		"my_playlist",
+		"a1b2-c3d4",
+		"ABCDEF-1234_xyz",
+	}
+	for _, id := range valid {
+		if !validPlaylistID(id) {
+			t.Errorf("validPlaylistID(%q) = false, want true", id)
+		}
+	}
+	invalid := []string{
+		"",
+		"../etc/passwd",
+		"pl/1",
+		"pl 1",
+		"pl%20one",
+		"pl\x00null",
+		"pl;drop",
+		"pl.dot",
+	}
+	for _, id := range invalid {
+		if validPlaylistID(id) {
+			t.Errorf("validPlaylistID(%q) = true, want false", id)
+		}
+	}
+}
 
-func TestReorderTracksAlgorithm(t *testing.T) {
-	// Use the playlistsync package's internal test helpers by constructing the
-	// service directly here. We only need the reorder logic so we use a minimal setup.
-	// Since this is the api package, we use the service via the SyncService interface.
-	// For a deeper unit test, see internal/playlistsync/service_test.go.
-	_ = fmt.Sprintf // keep fmt import used
+// ---------------------------------------------------------------------------
+// Cover upload hardening tests (FIX 2 + FIX 3)
+// ---------------------------------------------------------------------------
+
+// TestUploadPlaylistCoverNonImageLabeledAsPng asserts that bytes that are not
+// a PNG but are declared as image/png are rejected (content sniff wins).
+func TestUploadPlaylistCoverNonImageLabeledAsPng(t *testing.T) {
+	dataDir := t.TempDir()
+	svc := &fakeSync{
+		detail: core.SyncedPlaylistDetail{
+			SyncedPlaylist: core.SyncedPlaylist{ID: "pl-1", Mode: "once"},
+		},
+	}
+	srv, cookie := syncTestServerWithDataDir(t, svc, dataDir)
+
+	// Bytes that are clearly not an image.
+	notAnImage := []byte("not an image at all")
+	body, ct := buildCoverMultipart(t, "image/png", notAnImage)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/synced-playlists/pl-1/cover", body)
+	req.Header.Set("Content-Type", ct)
+	req.AddCookie(cookie)
+	srv.Handler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400: %s", rec.Code, rec.Body.String())
+	}
+	// Verify no file was written.
+	coversDir := filepath.Join(dataDir, "playlist-covers")
+	entries, _ := os.ReadDir(coversDir)
+	if len(entries) != 0 {
+		t.Fatalf("expected no files written, found %d", len(entries))
+	}
+}
+
+// TestUploadPlaylistCoverSniffedExtStored asserts that when bytes are a real PNG
+// but Content-Type says image/jpeg, the stored file has .png extension (sniffed wins).
+func TestUploadPlaylistCoverSniffedExtStored(t *testing.T) {
+	dataDir := t.TempDir()
+	svc := &fakeSync{
+		detail: core.SyncedPlaylistDetail{
+			SyncedPlaylist: core.SyncedPlaylist{ID: "pl-sniff", Mode: "once"},
+		},
+		setCoverDet: core.SyncedPlaylistDetail{
+			SyncedPlaylist: core.SyncedPlaylist{ID: "pl-sniff", Mode: "once"},
+		},
+	}
+	srv, cookie := syncTestServerWithDataDir(t, svc, dataDir)
+
+	// Real minimal PNG bytes.
+	pngData := []byte{
+		0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+		0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52,
+		0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
+		0x08, 0x02, 0x00, 0x00, 0x00, 0x90, 0x77, 0x53,
+		0xde, 0x00, 0x00, 0x00, 0x0c, 0x49, 0x44, 0x41,
+		0x54, 0x08, 0xd7, 0x63, 0xf8, 0xcf, 0xc0, 0x00,
+		0x00, 0x00, 0x02, 0x00, 0x01, 0xe2, 0x21, 0xbc,
+		0x33, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4e,
+		0x44, 0xae, 0x42, 0x60, 0x82,
+	}
+	// Lie: declare as image/jpeg but send PNG bytes.
+	body, ct := buildCoverMultipart(t, "image/jpeg", pngData)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/synced-playlists/pl-sniff/cover", body)
+	req.Header.Set("Content-Type", ct)
+	req.AddCookie(cookie)
+	srv.Handler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200: %s", rec.Code, rec.Body.String())
+	}
+	// Sniffed type is PNG → file must have .png extension, NOT .jpg.
+	pngPath := filepath.Join(dataDir, "playlist-covers", "pl-sniff.png")
+	if _, err := os.Stat(pngPath); err != nil {
+		t.Fatalf("expected pl-sniff.png to exist, got: %v", err)
+	}
+	jpgPath := filepath.Join(dataDir, "playlist-covers", "pl-sniff.jpg")
+	if _, err := os.Stat(jpgPath); err == nil {
+		t.Fatal("pl-sniff.jpg should NOT exist (sniffed ext wins)")
+	}
+}
+
+// TestUploadPlaylistCoverNotEditableNoFileWritten asserts that when the playlist
+// is mode='synced' (not editable), the handler returns 409 and does NOT write any
+// file to disk. This verifies the pre-check happens before the write.
+func TestUploadPlaylistCoverNotEditableNoFileWritten(t *testing.T) {
+	dataDir := t.TempDir()
+	svc := &fakeSync{
+		// Detail returns mode='synced' → not editable.
+		detail: core.SyncedPlaylistDetail{
+			SyncedPlaylist: core.SyncedPlaylist{ID: "pl-synced", Mode: "synced"},
+		},
+	}
+	srv, cookie := syncTestServerWithDataDir(t, svc, dataDir)
+
+	pngData := []byte{
+		0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+		0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52,
+		0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
+		0x08, 0x02, 0x00, 0x00, 0x00, 0x90, 0x77, 0x53,
+		0xde,
+	}
+	body, ct := buildCoverMultipart(t, "image/png", pngData)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/synced-playlists/pl-synced/cover", body)
+	req.Header.Set("Content-Type", ct)
+	req.AddCookie(cookie)
+	srv.Handler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("status = %d, want 409: %s", rec.Code, rec.Body.String())
+	}
+	// No file should have been written.
+	coversDir := filepath.Join(dataDir, "playlist-covers")
+	entries, _ := os.ReadDir(coversDir)
+	if len(entries) != 0 {
+		t.Fatalf("expected no files written to disk, found %d", len(entries))
+	}
 }
 
 // TestCoverExtFromContentType tests the helper directly.

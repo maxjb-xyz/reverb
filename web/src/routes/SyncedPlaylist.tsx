@@ -245,8 +245,8 @@ export default function SyncedPlaylist() {
   // Build the track order payload from current (possibly reordered) tracks
   function buildTrackOrderPayload(orderedTracks: AlbumDetailTrack[]): TrackOrderEntry[] {
     return orderedTracks
-      .filter((t) => t.externalRef)
-      .map((t) => ({ source: t.externalRef!.source, externalId: t.externalRef!.externalId }))
+      .filter((t) => t.key)
+      .map((t) => ({ source: t.key!.source, externalId: t.key!.externalId }))
   }
 
   function handleDragStart(idx: number) {
@@ -511,12 +511,12 @@ export default function SyncedPlaylist() {
                     albumTo={t.albumExternalId ? `/album/spotify/${t.albumExternalId}` : undefined}
                     right={
                       <div className="flex items-center gap-1 group">
-                        {detail.mode === 'once' && t.externalRef && (
+                        {detail.mode === 'once' && t.key && (
                           <button
                             type="button"
                             aria-label={`Remove ${t.title} from playlist`}
                             className="opacity-0 group-hover:opacity-100 transition-opacity rounded p-1 text-text-muted hover:text-text-primary focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-                            onClick={(e) => { e.stopPropagation(); void handleRemoveTrack(t.externalRef!.source, t.externalRef!.externalId) }}
+                            onClick={(e) => { e.stopPropagation(); void handleRemoveTrack(t.key!.source, t.key!.externalId) }}
                           >
                             <Icon name="x" className="text-xs" />
                           </button>
@@ -570,15 +570,15 @@ export default function SyncedPlaylist() {
               />
             )
             : undefined
-          const right = t.externalRef
+          const right = (t.key || downloadAction)
             ? (
               <div className="flex items-center gap-1 group">
-                {detail.mode === 'once' && (
+                {detail.mode === 'once' && t.key && (
                   <button
                     type="button"
                     aria-label={`Remove ${t.title} from playlist`}
                     className="opacity-0 group-hover:opacity-100 transition-opacity rounded p-1 text-text-muted hover:text-text-primary focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-                    onClick={(e) => { e.stopPropagation(); void handleRemoveTrack(t.externalRef!.source, t.externalRef!.externalId) }}
+                    onClick={(e) => { e.stopPropagation(); void handleRemoveTrack(t.key!.source, t.key!.externalId) }}
                   >
                     <Icon name="x" className="text-xs" />
                   </button>
@@ -588,7 +588,7 @@ export default function SyncedPlaylist() {
             )
             : undefined
           return (
-            <div key={t.libraryTrack?.id ?? t.externalRef?.externalId ?? origIdx} className="flex items-center group" {...dragProps}>
+            <div key={t.libraryTrack?.id ?? t.key?.externalId ?? origIdx} className="flex items-center group" {...dragProps}>
               {dragHandle}
               <div className="flex-1 min-w-0">
                 <TrackRow

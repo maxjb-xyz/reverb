@@ -68,6 +68,7 @@ type AlbumDetailTrack struct {
 	State       CoverageState     `json:"state"` // full = owned, none = missing
 	LibraryTrack *Track            `json:"libraryTrack,omitempty"`
 	ExternalRef  *ExternalTrackRef `json:"externalRef,omitempty"`
+	Key          *TrackKey         `json:"key,omitempty"`
 	Title       string            `json:"title"`
 	Artist      string            `json:"artist"`
 	Album       string            `json:"album,omitempty"`

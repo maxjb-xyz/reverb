@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -15,6 +16,12 @@ import (
 	"github.com/maxjb-xyz/reverb/internal/core"
 	"github.com/maxjb-xyz/reverb/internal/playlistsync"
 )
+
+var validIDRe = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
+
+func validPlaylistID(id string) bool {
+	return id != "" && validIDRe.MatchString(id)
+}
 
 // SyncService is the slice of *playlistsync.Service the API needs.
 // *playlistsync.Service satisfies it. It may be nil when no library adapter is
@@ -207,9 +214,17 @@ func (s *Server) handleDeleteSyncedPlaylist(w http.ResponseWriter, r *http.Reque
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "playlist sync unavailable"})
 		return
 	}
-	if err := svc.Delete(r.Context(), chi.URLParam(r, "id")); err != nil {
+	id := chi.URLParam(r, "id")
+	if err := svc.Delete(r.Context(), id); err != nil {
 		writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": err.Error()})
 		return
+	}
+	// FIX 4b: Best-effort remove any cover file for this playlist (ignore errors).
+	if s.deps.DataDir != "" {
+		coversDir := filepath.Join(s.deps.DataDir, "playlist-covers")
+		for _, ext := range []string{"jpg", "png", "webp"} {
+			_ = os.Remove(filepath.Join(coversDir, fmt.Sprintf("%s.%s", id, ext)))
+		}
 	}
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
@@ -311,6 +326,15 @@ func (s *Server) handleUploadPlaylistCover(w http.ResponseWriter, r *http.Reques
 	}
 	id := chi.URLParam(r, "id")
 
+	// Validate id format: must be alphanumeric + hyphens/underscores only.
+	if !validPlaylistID(id) {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid playlist id"})
+		return
+	}
+
+	// FIX 4a: limit total request body before parsing multipart.
+	r.Body = http.MaxBytesReader(w, r.Body, maxCoverBytes+1<<20)
+
 	if err := r.ParseMultipartForm(maxCoverBytes + 1*1024*1024); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid multipart form"})
 		return
@@ -322,14 +346,12 @@ func (s *Server) handleUploadPlaylistCover(w http.ResponseWriter, r *http.Reques
 	}
 	defer file.Close()
 
-	// Determine extension from content-type header of the part.
+	// Quick pre-filter: check the declared Content-Type before reading all bytes.
 	ct := header.Header.Get("Content-Type")
 	if ct == "" {
-		// Fall back to the request Content-Type when the part has none.
 		ct = r.Header.Get("Content-Type")
 	}
-	ext, ok := coverExtFromContentType(ct)
-	if !ok {
+	if _, ok := coverExtFromContentType(ct); !ok {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "unsupported image type; use jpeg, png, or webp"})
 		return
 	}
@@ -343,6 +365,28 @@ func (s *Server) handleUploadPlaylistCover(w http.ResponseWriter, r *http.Reques
 	}
 	if int64(len(data)) > maxCoverBytes {
 		writeJSON(w, http.StatusRequestEntityTooLarge, map[string]string{"error": "image exceeds 5 MB limit"})
+		return
+	}
+
+	// FIX 3: sniff actual content type from bytes; ignore client-declared type for the extension.
+	sniffed := http.DetectContentType(data)
+	if i := strings.IndexByte(sniffed, ';'); i >= 0 {
+		sniffed = strings.TrimSpace(sniffed[:i])
+	}
+	ext, ok := coverExtFromContentType(sniffed)
+	if !ok {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "unsupported image type; use jpeg, png, or webp"})
+		return
+	}
+
+	// FIX 2: check playlist exists and is editable BEFORE writing to disk.
+	det0, err := svc.Detail(r.Context(), id)
+	if err != nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "playlist not found"})
+		return
+	}
+	if det0.Mode != "once" {
+		writeJSON(w, http.StatusConflict, map[string]string{"error": playlistsync.ErrNotEditable.Error()})
 		return
 	}
 
@@ -379,6 +423,13 @@ func (s *Server) handleUploadPlaylistCover(w http.ResponseWriter, r *http.Reques
 // Serves the uploaded cover image with a long cache TTL.
 func (s *Server) handleServePlaylistCover(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
+
+	// Validate id format: must be alphanumeric + hyphens/underscores only.
+	if !validPlaylistID(id) {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid playlist id"})
+		return
+	}
+
 	coversDir := filepath.Join(s.deps.DataDir, "playlist-covers")
 
 	var found string
