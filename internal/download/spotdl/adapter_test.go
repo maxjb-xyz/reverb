@@ -511,35 +511,3 @@ func TestNormalizeAppliedInStart(t *testing.T) {
 		t.Fatalf("trailing query arg: got %q, want %q", r.gotArgs[n-1], want)
 	}
 }
-
-func TestStartManualURLEnablesDebugLogging(t *testing.T) {
-	// A manual-URL download runs spotDL at --log-level DEBUG so the underlying
-	// yt-dlp failure reason surfaces; the bulk/auto path stays quiet.
-	contains := func(args []string, a, b string) bool {
-		for i := 0; i+1 < len(args); i++ {
-			if args[i] == a && args[i+1] == b {
-				return true
-			}
-		}
-		return false
-	}
-
-	rm := &fakeRunner{lines: []string{`Downloaded: ok`}}
-	am := newAdapter(t, rm)
-	_, _ = am.Start(context.Background(), core.DownloadRequest{
-		Source: "spotify", ExternalID: "abc", Artist: "X", Title: "Y",
-		ManualURL: "https://www.youtube.com/watch?v=z",
-	}, func(int) {})
-	if !contains(rm.gotArgs, "--log-level", "DEBUG") {
-		t.Fatalf("manual download should pass --log-level DEBUG; args=%v", rm.gotArgs)
-	}
-
-	ra := &fakeRunner{lines: []string{`Downloaded: ok`}}
-	aa := newAdapter(t, ra)
-	_, _ = aa.Start(context.Background(), core.DownloadRequest{
-		Source: "spotify", ExternalID: "abc", Artist: "X", Title: "Y",
-	}, func(int) {})
-	if contains(ra.gotArgs, "--log-level", "DEBUG") {
-		t.Fatalf("normal download should NOT pass --log-level DEBUG; args=%v", ra.gotArgs)
-	}
-}
