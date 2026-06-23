@@ -232,7 +232,7 @@ export function DownloadAction({ result, onPlay }: Props) {
                     className="w-full rounded-lg border border-border-subtle bg-surface px-2.5 py-1.5 text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-accent"
                   />
                   {urlError && (
-                    <p role="alert" className="mt-1 text-xs text-text-muted">
+                    <p role="alert" className="mt-1 text-xs text-error">
                       {urlError}
                     </p>
                   )}
