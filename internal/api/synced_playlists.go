@@ -15,13 +15,15 @@ import (
 // adapter implements search.PlaylistProvider, in which case the handlers 503.
 type SyncService interface {
 	Import(ctx context.Context, url string, downloadMissing bool) (core.SyncedPlaylistDetail, error)
-	ImportOnce(ctx context.Context, url string) (core.Playlist, error)
+	ImportOnce(ctx context.Context, url string) (core.SyncedPlaylistDetail, error)
 	List(ctx context.Context) ([]core.SyncedPlaylist, error)
 	Detail(ctx context.Context, id string) (core.SyncedPlaylistDetail, error)
 	Sync(ctx context.Context, id string) (core.SyncedPlaylistDetail, error)
 	DownloadMissing(ctx context.Context, id string) ([]core.DownloadJob, error)
 	UpdateSettings(ctx context.Context, id string, enabled bool, intervalSec int, autoDownload bool) error
 	Delete(ctx context.Context, id string) error
+	AddTrack(ctx context.Context, id string, entry core.ExternalResult) (core.SyncedPlaylistDetail, error)
+	RemoveTrack(ctx context.Context, id, source, externalID string) (core.SyncedPlaylistDetail, error)
 }
 
 // sync returns the currently active synced-playlist service under the read lock.
@@ -43,9 +45,8 @@ type importOnceBody struct {
 	URL string `json:"url"`
 }
 
-// handleImportPlaylistOnce imports a Spotify playlist as a one-time snapshot into
-// a normal, editable library playlist (not a read-only synced mirror).
-// POST /api/v1/playlists/import  body {"url":"..."} → 200 core.Playlist
+// handleImportPlaylistOnce imports a Spotify playlist as a one-time editable managed snapshot.
+// POST /api/v1/playlists/import  body {"url":"..."} → 200 core.SyncedPlaylistDetail
 func (s *Server) handleImportPlaylistOnce(w http.ResponseWriter, r *http.Request) {
 	svc := s.sync()
 	if svc == nil {
@@ -57,7 +58,7 @@ func (s *Server) handleImportPlaylistOnce(w http.ResponseWriter, r *http.Request
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "url is required"})
 		return
 	}
-	pl, err := svc.ImportOnce(r.Context(), body.URL)
+	det, err := svc.ImportOnce(r.Context(), body.URL)
 	if err != nil {
 		status := http.StatusUnprocessableEntity
 		if errors.Is(err, playlistsync.ErrNotPlaylistURL) {
@@ -66,7 +67,7 @@ func (s *Server) handleImportPlaylistOnce(w http.ResponseWriter, r *http.Request
 		writeJSON(w, status, map[string]string{"error": err.Error()})
 		return
 	}
-	writeJSON(w, http.StatusOK, pl)
+	writeJSON(w, http.StatusOK, det)
 }
 
 func (s *Server) handleImportSyncedPlaylist(w http.ResponseWriter, r *http.Request) {
@@ -191,4 +192,74 @@ func (s *Server) handleDeleteSyncedPlaylist(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+// addSyncedTrackBody is the POST /synced-playlists/{id}/tracks request DTO.
+type addSyncedTrackBody struct {
+	Source     string `json:"source"`
+	ExternalID string `json:"externalId"`
+	Title      string `json:"title"`
+	Artist     string `json:"artist"`
+	Album      string `json:"album"`
+	ISRC       string `json:"isrc"`
+	DurationMs int    `json:"durationMs"`
+}
+
+// removeSyncedTrackBody is the DELETE /synced-playlists/{id}/tracks request DTO.
+type removeSyncedTrackBody struct {
+	Source     string `json:"source"`
+	ExternalID string `json:"externalId"`
+}
+
+func (s *Server) handleAddSyncedTrack(w http.ResponseWriter, r *http.Request) {
+	svc := s.sync()
+	if svc == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "playlist sync unavailable"})
+		return
+	}
+	var body addSyncedTrackBody
+	if err := decode(r, &body); err != nil || body.Source == "" || body.ExternalID == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "source and externalId are required"})
+		return
+	}
+	entry := core.ExternalResult{
+		Source:     body.Source,
+		ExternalID: body.ExternalID,
+		Title:      body.Title,
+		Artist:     body.Artist,
+		Album:      body.Album,
+		ISRC:       body.ISRC,
+		DurationMs: body.DurationMs,
+		Type:       core.EntityTrack,
+	}
+	det, err := svc.AddTrack(r.Context(), chi.URLParam(r, "id"), entry)
+	if err != nil {
+		status := http.StatusUnprocessableEntity
+		if errors.Is(err, playlistsync.ErrNotEditable) {
+			status = http.StatusUnprocessableEntity
+		}
+		writeJSON(w, status, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, det)
+}
+
+func (s *Server) handleRemoveSyncedTrack(w http.ResponseWriter, r *http.Request) {
+	svc := s.sync()
+	if svc == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "playlist sync unavailable"})
+		return
+	}
+	var body removeSyncedTrackBody
+	if err := decode(r, &body); err != nil || body.Source == "" || body.ExternalID == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "source and externalId are required"})
+		return
+	}
+	det, err := svc.RemoveTrack(r.Context(), chi.URLParam(r, "id"), body.Source, body.ExternalID)
+	if err != nil {
+		status := http.StatusUnprocessableEntity
+		writeJSON(w, status, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, det)
 }

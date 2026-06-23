@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 
 	"github.com/maxjb-xyz/reverb/internal/core"
 )
@@ -13,6 +12,10 @@ import (
 // ErrNotPlaylistURL is returned by Import when the supplied URL is not a
 // recognizable Spotify playlist URL (a client error, not a fetch failure).
 var ErrNotPlaylistURL = errors.New("not a spotify playlist url")
+
+// ErrNotEditable is returned by AddTrack/RemoveTrack when the playlist is mode='synced'
+// (auto-mirrored) and therefore not editable.
+var ErrNotEditable = errors.New("playlist is not editable")
 
 type PlaylistSource interface {
 	ParsePlaylistID(url string) (string, bool)
@@ -47,10 +50,11 @@ type Store interface {
 // never needs to unmarshal TracksJSON just to count tracks for the list view.
 type SyncedRow struct {
 	ID, Source, ExternalID, Name, CoverURL, TracksJSON string
-	SyncEnabled, AutoDownload                          bool
-	SyncIntervalSec                                    int
-	LastSyncedAt, CreatedAt                            int64
-	TrackCount                                         int // set by List; zero means "not pre-counted, fall back to TracksJSON"
+	Mode                                                string
+	SyncEnabled, AutoDownload                           bool
+	SyncIntervalSec                                     int
+	LastSyncedAt, CreatedAt                             int64
+	TrackCount                                          int // set by List; zero means "not pre-counted, fall back to TracksJSON"
 }
 
 type Service struct {
@@ -112,20 +116,27 @@ func (s *Service) Detail(ctx context.Context, id string) (core.SyncedPlaylistDet
 	det := core.SyncedPlaylistDetail{SyncedPlaylist: rowToSummary(row, len(tracks))}
 	det.TotalCount = len(tracks)
 	for i, tr := range tracks {
-		res, mErr := s.match.Match(ctx, tr)
-		if mErr != nil {
-			return core.SyncedPlaylistDetail{}, mErr
-		}
 		dt := core.AlbumDetailTrack{Title: tr.Title, Artist: tr.Artist, Album: tr.Album, TrackNumber: i + 1, DurationMs: tr.DurationMs, CoverURL: tr.CoverURL,
 			ArtistExternalID: tr.ArtistExternalID, AlbumExternalID: tr.AlbumExternalID}
-		if res.Status == core.MatchInLibrary && res.LibraryTrackID != "" {
+		if tr.Source == "library" {
+			// Directly-added library track: no matching needed — treat as owned.
 			det.OwnedCount++
 			dt.State = core.CoverageFull
-			dt.LibraryTrack = &core.Track{ID: res.LibraryTrackID, Title: tr.Title, Artist: tr.Artist, Album: tr.Album, DurationMs: tr.DurationMs, ArtistID: res.ArtistID, AlbumID: res.AlbumID, CoverArtID: res.CoverArtID}
+			dt.LibraryTrack = &core.Track{ID: tr.ExternalID, Title: tr.Title, Artist: tr.Artist, Album: tr.Album, DurationMs: tr.DurationMs}
 		} else {
-			dt.State = core.CoverageNone
-			ref := core.ExternalTrackRef{Source: tr.Source, ExternalID: tr.ExternalID, Title: tr.Title, Artist: tr.Artist, Album: tr.Album, ISRC: tr.ISRC, DurationMs: tr.DurationMs}
-			dt.ExternalRef = &ref
+			res, mErr := s.match.Match(ctx, tr)
+			if mErr != nil {
+				return core.SyncedPlaylistDetail{}, mErr
+			}
+			if res.Status == core.MatchInLibrary && res.LibraryTrackID != "" {
+				det.OwnedCount++
+				dt.State = core.CoverageFull
+				dt.LibraryTrack = &core.Track{ID: res.LibraryTrackID, Title: tr.Title, Artist: tr.Artist, Album: tr.Album, DurationMs: tr.DurationMs, ArtistID: res.ArtistID, AlbumID: res.AlbumID, CoverArtID: res.CoverArtID}
+			} else {
+				dt.State = core.CoverageNone
+				ref := core.ExternalTrackRef{Source: tr.Source, ExternalID: tr.ExternalID, Title: tr.Title, Artist: tr.Artist, Album: tr.Album, ISRC: tr.ISRC, DurationMs: tr.DurationMs}
+				dt.ExternalRef = &ref
+			}
 		}
 		det.Tracks = append(det.Tracks, dt)
 	}
@@ -167,53 +178,51 @@ func (s *Service) enqueueMissing(ctx context.Context, det core.SyncedPlaylistDet
 	}
 }
 
-// ImportOnce imports a Spotify playlist as a one-time snapshot into a normal,
-// editable library playlist (not a read-only synced mirror). Tracks already in the
-// library are added to the playlist immediately; missing tracks are enqueued for
-// download and added to the playlist by the download manager as each finishes.
+// ImportOnce imports a Spotify playlist as a one-time editable managed snapshot.
+// Unlike Import (which creates a synced mirror), this creates a mode='once' row:
+// not auto-synced, but editable (tracks can be added/removed via AddTrack/RemoveTrack).
+// All missing tracks are enqueued for download immediately.
 //
 // Returns ErrNotPlaylistURL when url is not a recognizable Spotify playlist URL.
-// Returns an error when the library writer is nil (no library configured).
-func (s *Service) ImportOnce(ctx context.Context, url string) (core.Playlist, error) {
+func (s *Service) ImportOnce(ctx context.Context, url string) (core.SyncedPlaylistDetail, error) {
 	extID, ok := s.src.ParsePlaylistID(url)
 	if !ok {
-		return core.Playlist{}, ErrNotPlaylistURL
-	}
-	if s.lib == nil {
-		return core.Playlist{}, fmt.Errorf("library not configured")
+		return core.SyncedPlaylistDetail{}, ErrNotPlaylistURL
 	}
 	pl, err := s.src.GetPlaylist(ctx, extID)
 	if err != nil {
-		return core.Playlist{}, err
+		return core.SyncedPlaylistDetail{}, err
 	}
-	newPl, err := s.lib.CreatePlaylist(ctx, pl.Name)
+	tj, _ := json.Marshal(pl.Tracks)
+	now := s.now()
+	newID := s.newID()
+	id, err := s.store.Upsert(ctx, core.SyncedPlaylist{
+		ID: newID, Source: pl.Source, ExternalID: pl.ExternalID, Name: pl.Name, CoverURL: pl.CoverURL,
+		Mode: "once",
+	}, string(tj), now)
 	if err != nil {
-		return core.Playlist{}, fmt.Errorf("create playlist %q: %w", pl.Name, err)
+		return core.SyncedPlaylistDetail{}, err
 	}
-	var owned []string
+	// Stamp last_synced_at = now (import IS a sync).
+	if uErr := s.store.UpdateTracks(ctx, id, pl.Name, pl.CoverURL, string(tj), now); uErr != nil {
+		return core.SyncedPlaylistDetail{}, uErr
+	}
+	// Enqueue all missing tracks for download.
 	for _, tr := range pl.Tracks {
 		res, _ := s.match.Match(ctx, tr)
-		if res.Status == core.MatchInLibrary && res.LibraryTrackID != "" {
-			owned = append(owned, res.LibraryTrackID)
-		} else {
+		if res.Status != core.MatchInLibrary {
 			_, _ = s.dl.Enqueue(ctx, core.DownloadRequest{
-				Source:          tr.Source,
-				ExternalID:      tr.ExternalID,
-				Artist:          tr.Artist,
-				Title:           tr.Title,
-				Album:           tr.Album,
-				ISRC:            tr.ISRC,
-				DurationMs:      tr.DurationMs,
-				AddToPlaylistID: newPl.ID,
+				Source:     tr.Source,
+				ExternalID: tr.ExternalID,
+				Artist:     tr.Artist,
+				Title:      tr.Title,
+				Album:      tr.Album,
+				ISRC:       tr.ISRC,
+				DurationMs: tr.DurationMs,
 			})
 		}
 	}
-	if len(owned) > 0 {
-		if aErr := s.lib.AddTracksToPlaylist(ctx, newPl.ID, owned); aErr != nil {
-			log.Printf("playlistsync ImportOnce: add owned tracks to playlist %s: %v", newPl.ID, aErr)
-		}
-	}
-	return newPl, nil
+	return s.Detail(ctx, id)
 }
 
 func (s *Service) List(ctx context.Context) ([]core.SyncedPlaylist, error) {
@@ -263,9 +272,78 @@ func (s *Service) DownloadMissing(ctx context.Context, id string) ([]core.Downlo
 	return jobs, nil
 }
 
+// AddTrack appends an entry to a mode='once' managed playlist's tracklist.
+// Returns ErrNotEditable if the playlist is mode='synced'.
+// Deduplicates by source+externalId (no-op if already present).
+// Enqueues a download if the entry is not already a library track or matched.
+func (s *Service) AddTrack(ctx context.Context, id string, entry core.ExternalResult) (core.SyncedPlaylistDetail, error) {
+	row, err := s.store.Get(ctx, id)
+	if err != nil {
+		return core.SyncedPlaylistDetail{}, err
+	}
+	if row.Mode != "once" {
+		return core.SyncedPlaylistDetail{}, ErrNotEditable
+	}
+	var tracks []core.ExternalResult
+	_ = json.Unmarshal([]byte(row.TracksJSON), &tracks)
+	// Dedupe by source+externalId.
+	for _, t := range tracks {
+		if t.Source == entry.Source && t.ExternalID == entry.ExternalID {
+			return s.Detail(ctx, id)
+		}
+	}
+	tracks = append(tracks, entry)
+	tj, _ := json.Marshal(tracks)
+	if err := s.store.UpdateTracks(ctx, id, row.Name, row.CoverURL, string(tj), s.now()); err != nil {
+		return core.SyncedPlaylistDetail{}, err
+	}
+	// Enqueue download if missing (not a library entry and not matched).
+	if entry.Source != "library" {
+		res, _ := s.match.Match(ctx, entry)
+		if res.Status != core.MatchInLibrary {
+			_, _ = s.dl.Enqueue(ctx, core.DownloadRequest{
+				Source:     entry.Source,
+				ExternalID: entry.ExternalID,
+				Artist:     entry.Artist,
+				Title:      entry.Title,
+				Album:      entry.Album,
+				ISRC:       entry.ISRC,
+				DurationMs: entry.DurationMs,
+			})
+		}
+	}
+	return s.Detail(ctx, id)
+}
+
+// RemoveTrack removes an entry from a mode='once' managed playlist's tracklist.
+// Returns ErrNotEditable if the playlist is mode='synced'.
+func (s *Service) RemoveTrack(ctx context.Context, id, source, externalID string) (core.SyncedPlaylistDetail, error) {
+	row, err := s.store.Get(ctx, id)
+	if err != nil {
+		return core.SyncedPlaylistDetail{}, err
+	}
+	if row.Mode != "once" {
+		return core.SyncedPlaylistDetail{}, ErrNotEditable
+	}
+	var tracks []core.ExternalResult
+	_ = json.Unmarshal([]byte(row.TracksJSON), &tracks)
+	filtered := tracks[:0]
+	for _, t := range tracks {
+		if !(t.Source == source && t.ExternalID == externalID) {
+			filtered = append(filtered, t)
+		}
+	}
+	tj, _ := json.Marshal(filtered)
+	if err := s.store.UpdateTracks(ctx, id, row.Name, row.CoverURL, string(tj), s.now()); err != nil {
+		return core.SyncedPlaylistDetail{}, err
+	}
+	return s.Detail(ctx, id)
+}
+
 func rowToSummary(r SyncedRow, trackCount int) core.SyncedPlaylist {
 	return core.SyncedPlaylist{
 		ID: r.ID, Source: r.Source, ExternalID: r.ExternalID, Name: r.Name, CoverURL: r.CoverURL,
+		Mode: r.Mode,
 		SyncEnabled: r.SyncEnabled, SyncIntervalSec: r.SyncIntervalSec, AutoDownload: r.AutoDownload,
 		LastSyncedAt: r.LastSyncedAt, TrackCount: trackCount,
 	}

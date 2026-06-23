@@ -19,7 +19,7 @@ func (q *Queries) DeleteSyncedPlaylist(ctx context.Context, id string) error {
 }
 
 const getSyncedPlaylist = `-- name: GetSyncedPlaylist :one
-SELECT id, source, external_id, name, cover_url, tracks_json, sync_enabled, sync_interval_sec, auto_download, last_synced_at, created_at FROM synced_playlists WHERE id = ?
+SELECT id, source, external_id, name, cover_url, tracks_json, sync_enabled, sync_interval_sec, auto_download, last_synced_at, created_at, mode FROM synced_playlists WHERE id = ?
 `
 
 func (q *Queries) GetSyncedPlaylist(ctx context.Context, id string) (SyncedPlaylist, error) {
@@ -37,12 +37,13 @@ func (q *Queries) GetSyncedPlaylist(ctx context.Context, id string) (SyncedPlayl
 		&i.AutoDownload,
 		&i.LastSyncedAt,
 		&i.CreatedAt,
+		&i.Mode,
 	)
 	return i, err
 }
 
 const getSyncedPlaylistBySource = `-- name: GetSyncedPlaylistBySource :one
-SELECT id, source, external_id, name, cover_url, tracks_json, sync_enabled, sync_interval_sec, auto_download, last_synced_at, created_at FROM synced_playlists WHERE source = ? AND external_id = ?
+SELECT id, source, external_id, name, cover_url, tracks_json, sync_enabled, sync_interval_sec, auto_download, last_synced_at, created_at, mode FROM synced_playlists WHERE source = ? AND external_id = ?
 `
 
 type GetSyncedPlaylistBySourceParams struct {
@@ -65,12 +66,13 @@ func (q *Queries) GetSyncedPlaylistBySource(ctx context.Context, arg GetSyncedPl
 		&i.AutoDownload,
 		&i.LastSyncedAt,
 		&i.CreatedAt,
+		&i.Mode,
 	)
 	return i, err
 }
 
 const listDueSyncedPlaylists = `-- name: ListDueSyncedPlaylists :many
-SELECT id, source, external_id, name, cover_url, tracks_json, sync_enabled, sync_interval_sec, auto_download, last_synced_at, created_at FROM synced_playlists
+SELECT id, source, external_id, name, cover_url, tracks_json, sync_enabled, sync_interval_sec, auto_download, last_synced_at, created_at, mode FROM synced_playlists
 WHERE sync_enabled = 1 AND sync_interval_sec > 0 AND (last_synced_at + sync_interval_sec) <= ?
 `
 
@@ -95,6 +97,7 @@ func (q *Queries) ListDueSyncedPlaylists(ctx context.Context, lastSyncedAt int64
 			&i.AutoDownload,
 			&i.LastSyncedAt,
 			&i.CreatedAt,
+			&i.Mode,
 		); err != nil {
 			return nil, err
 		}
@@ -110,7 +113,7 @@ func (q *Queries) ListDueSyncedPlaylists(ctx context.Context, lastSyncedAt int64
 }
 
 const listSyncedPlaylists = `-- name: ListSyncedPlaylists :many
-SELECT id, source, external_id, name, cover_url, tracks_json, sync_enabled, sync_interval_sec, auto_download, last_synced_at, created_at FROM synced_playlists ORDER BY created_at DESC
+SELECT id, source, external_id, name, cover_url, tracks_json, sync_enabled, sync_interval_sec, auto_download, last_synced_at, created_at, mode FROM synced_playlists ORDER BY created_at DESC
 `
 
 func (q *Queries) ListSyncedPlaylists(ctx context.Context) ([]SyncedPlaylist, error) {
@@ -134,6 +137,7 @@ func (q *Queries) ListSyncedPlaylists(ctx context.Context) ([]SyncedPlaylist, er
 			&i.AutoDownload,
 			&i.LastSyncedAt,
 			&i.CreatedAt,
+			&i.Mode,
 		); err != nil {
 			return nil, err
 		}
@@ -149,7 +153,7 @@ func (q *Queries) ListSyncedPlaylists(ctx context.Context) ([]SyncedPlaylist, er
 }
 
 const listSyncedPlaylistsCount = `-- name: ListSyncedPlaylistsCount :many
-SELECT id, source, external_id, name, cover_url,
+SELECT id, source, external_id, name, cover_url, mode,
        sync_enabled, sync_interval_sec, auto_download,
        last_synced_at, created_at,
        CAST(json_array_length(tracks_json) AS INTEGER) AS track_count
@@ -162,6 +166,7 @@ type ListSyncedPlaylistsCountRow struct {
 	ExternalID      string `json:"external_id"`
 	Name            string `json:"name"`
 	CoverUrl        string `json:"cover_url"`
+	Mode            string `json:"mode"`
 	SyncEnabled     int64  `json:"sync_enabled"`
 	SyncIntervalSec int64  `json:"sync_interval_sec"`
 	AutoDownload    int64  `json:"auto_download"`
@@ -187,6 +192,7 @@ func (q *Queries) ListSyncedPlaylistsCount(ctx context.Context) ([]ListSyncedPla
 			&i.ExternalID,
 			&i.Name,
 			&i.CoverUrl,
+			&i.Mode,
 			&i.SyncEnabled,
 			&i.SyncIntervalSec,
 			&i.AutoDownload,
@@ -252,11 +258,11 @@ func (q *Queries) UpdateSyncedPlaylistTracks(ctx context.Context, arg UpdateSync
 }
 
 const upsertSyncedPlaylist = `-- name: UpsertSyncedPlaylist :one
-INSERT INTO synced_playlists (id, source, external_id, name, cover_url, tracks_json, created_at)
-VALUES (?, ?, ?, ?, ?, ?, ?)
+INSERT INTO synced_playlists (id, source, external_id, name, cover_url, tracks_json, mode, created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(source, external_id) DO UPDATE SET
   name = excluded.name, cover_url = excluded.cover_url, tracks_json = excluded.tracks_json
-RETURNING id, source, external_id, name, cover_url, tracks_json, sync_enabled, sync_interval_sec, auto_download, last_synced_at, created_at
+RETURNING id, source, external_id, name, cover_url, tracks_json, sync_enabled, sync_interval_sec, auto_download, last_synced_at, created_at, mode
 `
 
 type UpsertSyncedPlaylistParams struct {
@@ -266,6 +272,7 @@ type UpsertSyncedPlaylistParams struct {
 	Name       string `json:"name"`
 	CoverUrl   string `json:"cover_url"`
 	TracksJson string `json:"tracks_json"`
+	Mode       string `json:"mode"`
 	CreatedAt  int64  `json:"created_at"`
 }
 
@@ -277,6 +284,7 @@ func (q *Queries) UpsertSyncedPlaylist(ctx context.Context, arg UpsertSyncedPlay
 		arg.Name,
 		arg.CoverUrl,
 		arg.TracksJson,
+		arg.Mode,
 		arg.CreatedAt,
 	)
 	var i SyncedPlaylist
@@ -292,6 +300,7 @@ func (q *Queries) UpsertSyncedPlaylist(ctx context.Context, arg UpsertSyncedPlay
 		&i.AutoDownload,
 		&i.LastSyncedAt,
 		&i.CreatedAt,
+		&i.Mode,
 	)
 	return i, err
 }

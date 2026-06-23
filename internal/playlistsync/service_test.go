@@ -182,6 +182,10 @@ func (ms *memStore) Upsert(_ context.Context, p core.SyncedPlaylist, tracksJSON 
 	if id == "" {
 		id = fmt.Sprintf("auto-%d", len(ms.rows)+1)
 	}
+	mode := p.Mode
+	if mode == "" {
+		mode = "synced"
+	}
 	ms.rows[id] = &memRow{SyncedRow{
 		ID:         id,
 		Source:     p.Source,
@@ -190,6 +194,7 @@ func (ms *memStore) Upsert(_ context.Context, p core.SyncedPlaylist, tracksJSON 
 		CoverURL:   p.CoverURL,
 		TracksJSON: tracksJSON,
 		CreatedAt:  createdAt,
+		Mode:       mode,
 	}}
 	ms.index[key] = id
 	return id, nil
@@ -607,10 +612,10 @@ func TestDetailCarriesArtistAlbumExternalIDs(t *testing.T) {
 // ImportOnce tests
 // ---------------------------------------------------------------------------
 
-// TestImportOnce_OwnedAndMissing asserts that ImportOnce creates a new library
-// playlist, adds owned tracks immediately, and enqueues missing tracks with
-// AddToPlaylistID set to the new playlist's ID.
-func TestImportOnce_OwnedAndMissing(t *testing.T) {
+// TestImportOnceCreatesManagedPlaylist asserts that ImportOnce creates a mode='once'
+// managed playlist (not a Navidrome library playlist), sets cover_url, stores all
+// tracks, enqueues missing tracks, and returns a SyncedPlaylistDetail.
+func TestImportOnceCreatesManagedPlaylist(t *testing.T) {
 	ownedTrack := core.ExternalResult{
 		Source: "spotify", ExternalID: "t-owned", Title: "Owned Track",
 		Artist: "Artist", Album: "Album", ISRC: "ISRC1", DurationMs: 210000,
@@ -621,66 +626,173 @@ func TestImportOnce_OwnedAndMissing(t *testing.T) {
 		Artist: "Artist2", Album: "Album2", ISRC: "ISRC2", DurationMs: 180000,
 		Type: core.EntityTrack,
 	}
+	const coverURL = "https://i.scdn.co/image/playlist-cover"
 	src := &fakeSource{playlists: map[string]core.ExternalPlaylist{
-		"PL": {Source: "spotify", ExternalID: "PL", Name: "My Import", Tracks: []core.ExternalResult{ownedTrack, missingTrack}},
+		"PL": {Source: "spotify", ExternalID: "PL", Name: "My Import", CoverURL: coverURL,
+			Tracks: []core.ExternalResult{ownedTrack, missingTrack}},
 	}}
 	matcher := fakeMatcher{owned: map[string]string{"t-owned": "lib-owned-1"}}
 	dl := &fakeDownloader{}
-	lib := &fakeLibraryWriter{}
-	svc := NewService(src, matcher, dl, newMemStore(), lib, func() int64 { return 100 }, seqID())
+	store := newMemStore()
+	svc := NewService(src, matcher, dl, store, nil, func() int64 { return 100 }, seqID())
 
-	pl, err := svc.ImportOnce(context.Background(), "spotify:playlist:PL")
+	det, err := svc.ImportOnce(context.Background(), "spotify:playlist:PL")
 	if err != nil {
 		t.Fatalf("ImportOnce: %v", err)
 	}
-	if pl.ID == "" {
-		t.Fatal("ImportOnce: returned playlist has no ID")
+	// Should be a managed detail (not a Playlist).
+	if det.ID == "" {
+		t.Fatal("detail has no ID")
 	}
-	if pl.Name != "My Import" {
-		t.Fatalf("playlist name: got %q, want %q", pl.Name, "My Import")
+	if det.Name != "My Import" {
+		t.Fatalf("name = %q, want %q", det.Name, "My Import")
 	}
-
-	// CreatePlaylist must have been called once.
-	if len(lib.playlists) != 1 {
-		t.Fatalf("expected 1 created playlist, got %d", len(lib.playlists))
+	if det.CoverURL != coverURL {
+		t.Fatalf("CoverURL = %q, want %q", det.CoverURL, coverURL)
 	}
-
-	// AddTracksToPlaylist must have been called with the owned track.
-	if len(lib.addCalls) != 1 {
-		t.Fatalf("expected 1 AddTracksToPlaylist call (owned tracks), got %d", len(lib.addCalls))
+	if det.Mode != "once" {
+		t.Fatalf("Mode = %q, want 'once'", det.Mode)
 	}
-	if lib.addCalls[0].playlistID != pl.ID {
-		t.Fatalf("AddTracksToPlaylist playlist ID: got %q, want %q", lib.addCalls[0].playlistID, pl.ID)
+	if det.TotalCount != 2 {
+		t.Fatalf("TotalCount = %d, want 2", det.TotalCount)
 	}
-	if len(lib.addCalls[0].trackIDs) != 1 || lib.addCalls[0].trackIDs[0] != "lib-owned-1" {
-		t.Fatalf("AddTracksToPlaylist track IDs: got %v, want [lib-owned-1]", lib.addCalls[0].trackIDs)
-	}
-
-	// Missing track must have been enqueued with AddToPlaylistID set.
+	// Missing track (t-missing) should be enqueued; owned track should NOT be.
 	if len(dl.calls) != 1 {
-		t.Fatalf("expected 1 Enqueue call (missing track), got %d", len(dl.calls))
+		t.Fatalf("expected 1 enqueue call (missing track only), got %d", len(dl.calls))
 	}
-	enq := dl.calls[0]
-	if enq.ExternalID != "t-missing" {
-		t.Fatalf("enqueued track ExternalID: got %q, want %q", enq.ExternalID, "t-missing")
+	if dl.calls[0].ExternalID != "t-missing" {
+		t.Fatalf("enqueued track = %q, want 't-missing'", dl.calls[0].ExternalID)
 	}
-	if enq.AddToPlaylistID != pl.ID {
-		t.Fatalf("enqueued track AddToPlaylistID: got %q, want %q", enq.AddToPlaylistID, pl.ID)
+	// No AddToPlaylistID (managed playlists compute ownership live).
+	if dl.calls[0].AddToPlaylistID != "" {
+		t.Fatalf("AddToPlaylistID should be empty for managed playlists, got %q", dl.calls[0].AddToPlaylistID)
+	}
+	// The row should exist in store with mode='once'.
+	row, err := store.Get(context.Background(), det.ID)
+	if err != nil {
+		t.Fatalf("store.Get: %v", err)
+	}
+	if row.Mode != "once" {
+		t.Fatalf("row.Mode = %q, want 'once'", row.Mode)
+	}
+	if row.CoverURL != coverURL {
+		t.Fatalf("row.CoverURL = %q, want %q", row.CoverURL, coverURL)
 	}
 }
 
-// TestImportOnce_BadURL asserts that ImportOnce returns ErrNotPlaylistURL for
-// a non-playlist URL.
+// TestImportOnce_BadURL asserts that ImportOnce returns ErrNotPlaylistURL.
 func TestImportOnce_BadURL(t *testing.T) {
 	src := &fakeSource{}
-	lib := &fakeLibraryWriter{}
-	svc := NewService(src, fakeMatcher{}, &fakeDownloader{}, newMemStore(), lib, func() int64 { return 100 }, seqID())
-
+	svc := NewService(src, fakeMatcher{}, &fakeDownloader{}, newMemStore(), nil, func() int64 { return 100 }, seqID())
 	_, err := svc.ImportOnce(context.Background(), "https://example.com/not-a-playlist")
 	if err == nil {
 		t.Fatal("expected ErrNotPlaylistURL, got nil")
 	}
 	if !errors.Is(err, ErrNotPlaylistURL) {
 		t.Fatalf("expected ErrNotPlaylistURL, got %v", err)
+	}
+}
+
+// TestDetailLibrarySourceTrack asserts that Detail treats a stored entry with
+// Source=="library" as already-owned (no matching call needed).
+func TestDetailLibrarySourceTrack(t *testing.T) {
+	libraryEntry := core.ExternalResult{
+		Source: "library", ExternalID: "lib-track-99", Title: "Local Track",
+		Artist: "Local Artist", Album: "Local Album", DurationMs: 200000,
+	}
+	src := &fakeSource{playlists: map[string]core.ExternalPlaylist{
+		"PL": {Source: "spotify", ExternalID: "PL", Name: "Mixed", Tracks: []core.ExternalResult{libraryEntry}},
+	}}
+	// Matcher that would fail if called (should not be called for library entries).
+	m := fakeMatcher{}
+	store := newMemStore()
+	svc := NewService(src, m, &fakeDownloader{}, store, nil, func() int64 { return 100 }, seqID())
+	det, err := svc.Import(context.Background(), "spotify:playlist:PL", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(det.Tracks) != 1 {
+		t.Fatalf("expected 1 track, got %d", len(det.Tracks))
+	}
+	tr := det.Tracks[0]
+	if tr.State != core.CoverageFull {
+		t.Fatalf("library-source track State = %v, want CoverageFull", tr.State)
+	}
+	if tr.LibraryTrack == nil || tr.LibraryTrack.ID != "lib-track-99" {
+		t.Fatalf("library-source track LibraryTrack = %+v", tr.LibraryTrack)
+	}
+}
+
+// TestAddTrackAppendsAndDedupes asserts AddTrack adds to a mode='once' playlist,
+// deduplicates, and enqueues missing spotify tracks.
+func TestAddTrackAppendsAndDedupes(t *testing.T) {
+	src := &fakeSource{playlists: map[string]core.ExternalPlaylist{
+		"PL": {Source: "spotify", ExternalID: "PL", Name: "Once", Tracks: []core.ExternalResult{track("t1")}},
+	}}
+	dl := &fakeDownloader{}
+	store := newMemStore()
+	svc := NewService(src, fakeMatcher{}, dl, store, nil, func() int64 { return 100 }, seqID())
+	det, _ := svc.ImportOnce(context.Background(), "spotify:playlist:PL")
+	initialEnqueues := len(dl.calls) // t1 was enqueued on import
+
+	// Add a new track.
+	newTrack := core.ExternalResult{Source: "spotify", ExternalID: "t-new", Title: "New", Type: core.EntityTrack}
+	det2, err := svc.AddTrack(context.Background(), det.ID, newTrack)
+	if err != nil {
+		t.Fatalf("AddTrack: %v", err)
+	}
+	if det2.TotalCount != 2 {
+		t.Fatalf("TotalCount = %d, want 2 after add", det2.TotalCount)
+	}
+	if len(dl.calls) != initialEnqueues+1 {
+		t.Fatalf("expected 1 new enqueue after AddTrack, got %d new", len(dl.calls)-initialEnqueues)
+	}
+
+	// Adding the same track again should be a no-op (dedupe).
+	det3, err := svc.AddTrack(context.Background(), det.ID, newTrack)
+	if err != nil {
+		t.Fatalf("AddTrack dedupe: %v", err)
+	}
+	if det3.TotalCount != 2 {
+		t.Fatalf("TotalCount = %d after dedupe, want 2", det3.TotalCount)
+	}
+	if len(dl.calls) != initialEnqueues+1 {
+		t.Fatalf("dedupe should not enqueue again, got %d total calls", len(dl.calls))
+	}
+}
+
+// TestAddTrackNotEditableOnSyncedPlaylist asserts that AddTrack on a mode='synced'
+// playlist returns ErrNotEditable.
+func TestAddTrackNotEditableOnSyncedPlaylist(t *testing.T) {
+	src := &fakeSource{playlists: map[string]core.ExternalPlaylist{
+		"PL": {Source: "spotify", ExternalID: "PL", Name: "Synced", Tracks: []core.ExternalResult{track("t1")}},
+	}}
+	store := newMemStore()
+	svc := NewService(src, fakeMatcher{}, &fakeDownloader{}, store, nil, func() int64 { return 100 }, seqID())
+	det, _ := svc.Import(context.Background(), "spotify:playlist:PL", false)
+
+	newTrack := core.ExternalResult{Source: "spotify", ExternalID: "t-new", Title: "New", Type: core.EntityTrack}
+	_, err := svc.AddTrack(context.Background(), det.ID, newTrack)
+	if !errors.Is(err, ErrNotEditable) {
+		t.Fatalf("expected ErrNotEditable, got %v", err)
+	}
+}
+
+// TestRemoveTrackRemovesEntry asserts RemoveTrack removes from a mode='once' playlist.
+func TestRemoveTrackRemovesEntry(t *testing.T) {
+	src := &fakeSource{playlists: map[string]core.ExternalPlaylist{
+		"PL": {Source: "spotify", ExternalID: "PL", Name: "Once",
+			Tracks: []core.ExternalResult{track("t1"), track("t2")}},
+	}}
+	store := newMemStore()
+	svc := NewService(src, fakeMatcher{}, &fakeDownloader{}, store, nil, func() int64 { return 100 }, seqID())
+	det, _ := svc.ImportOnce(context.Background(), "spotify:playlist:PL")
+
+	det2, err := svc.RemoveTrack(context.Background(), det.ID, "spotify", "t1")
+	if err != nil {
+		t.Fatalf("RemoveTrack: %v", err)
+	}
+	if det2.TotalCount != 1 {
+		t.Fatalf("TotalCount = %d after remove, want 1", det2.TotalCount)
 	}
 }

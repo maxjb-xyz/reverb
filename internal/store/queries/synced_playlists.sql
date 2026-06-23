@@ -1,6 +1,6 @@
 -- name: UpsertSyncedPlaylist :one
-INSERT INTO synced_playlists (id, source, external_id, name, cover_url, tracks_json, created_at)
-VALUES (?, ?, ?, ?, ?, ?, ?)
+INSERT INTO synced_playlists (id, source, external_id, name, cover_url, tracks_json, mode, created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(source, external_id) DO UPDATE SET
   name = excluded.name, cover_url = excluded.cover_url, tracks_json = excluded.tracks_json
 RETURNING *;
@@ -17,7 +17,7 @@ SELECT * FROM synced_playlists ORDER BY created_at DESC;
 -- name: ListSyncedPlaylistsCount :many
 -- Returns all playlists for the list view with track_count derived via
 -- json_array_length so the Go service never unmarshals the full tracks_json blob.
-SELECT id, source, external_id, name, cover_url,
+SELECT id, source, external_id, name, cover_url, mode,
        sync_enabled, sync_interval_sec, auto_download,
        last_synced_at, created_at,
        CAST(json_array_length(tracks_json) AS INTEGER) AS track_count

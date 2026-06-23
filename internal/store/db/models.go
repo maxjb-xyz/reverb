@@ -111,4 +111,5 @@ type SyncedPlaylist struct {
 	AutoDownload    int64  `json:"auto_download"`
 	LastSyncedAt    int64  `json:"last_synced_at"`
 	CreatedAt       int64  `json:"created_at"`
+	Mode            string `json:"mode"`
 }

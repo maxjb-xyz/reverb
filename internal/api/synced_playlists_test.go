@@ -24,7 +24,7 @@ type fakeSync struct {
 	jobs          []core.DownloadJob
 	importErr     error
 	importOnceErr error
-	importOncePl  core.Playlist
+	importOnceDet core.SyncedPlaylistDetail
 	listErr       error
 	detailErr     error
 	syncErr       error
@@ -39,15 +39,31 @@ type fakeSync struct {
 	deletedID      string
 	settingsErr    error
 	deleteErr      error
+
+	addTrackEntry core.ExternalResult
+	addTrackID    string
+	addTrackErr   error
+	removeTrackID string
+	removeSource  string
+	removeExtID   string
+	removeErr     error
 }
 
 func (f *fakeSync) Import(_ context.Context, url string, downloadMissing bool) (core.SyncedPlaylistDetail, error) {
 	f.lastURL, f.lastDL = url, downloadMissing
 	return f.detail, f.importErr
 }
-func (f *fakeSync) ImportOnce(_ context.Context, url string) (core.Playlist, error) {
+func (f *fakeSync) ImportOnce(_ context.Context, url string) (core.SyncedPlaylistDetail, error) {
 	f.lastImportOnce = url
-	return f.importOncePl, f.importOnceErr
+	return f.importOnceDet, f.importOnceErr
+}
+func (f *fakeSync) AddTrack(_ context.Context, id string, entry core.ExternalResult) (core.SyncedPlaylistDetail, error) {
+	f.addTrackID, f.addTrackEntry = id, entry
+	return f.detail, f.addTrackErr
+}
+func (f *fakeSync) RemoveTrack(_ context.Context, id, source, externalID string) (core.SyncedPlaylistDetail, error) {
+	f.removeTrackID, f.removeSource, f.removeExtID = id, source, externalID
+	return f.detail, f.removeErr
 }
 func (f *fakeSync) List(_ context.Context) ([]core.SyncedPlaylist, error) {
 	return f.list, f.listErr
@@ -258,7 +274,11 @@ func TestSyncedNilServiceReturns503(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestImportPlaylistOnceHappyPath(t *testing.T) {
-	svc := &fakeSync{importOncePl: core.Playlist{ID: "new-pl-1", Name: "Imported Mix"}}
+	svc := &fakeSync{importOnceDet: core.SyncedPlaylistDetail{
+		SyncedPlaylist: core.SyncedPlaylist{ID: "new-pl-1", Name: "Imported Mix", Mode: "once", CoverURL: "https://cover.example.com/img.jpg"},
+		TotalCount:     2, OwnedCount: 0,
+		Tracks: []core.AlbumDetailTrack{{Title: "Track 1"}, {Title: "Track 2"}},
+	}}
 	srv, cookie := syncTestServer(t, svc)
 
 	rec := httptest.NewRecorder()
@@ -270,12 +290,12 @@ func TestImportPlaylistOnceHappyPath(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200: %s", rec.Code, rec.Body.String())
 	}
-	var pl core.Playlist
-	if err := json.Unmarshal(rec.Body.Bytes(), &pl); err != nil {
+	var det core.SyncedPlaylistDetail
+	if err := json.Unmarshal(rec.Body.Bytes(), &det); err != nil {
 		t.Fatal(err)
 	}
-	if pl.ID != "new-pl-1" || pl.Name != "Imported Mix" {
-		t.Fatalf("playlist = %+v", pl)
+	if det.ID != "new-pl-1" || det.Name != "Imported Mix" || det.Mode != "once" {
+		t.Fatalf("detail = %+v", det)
 	}
 	if svc.lastImportOnce != "https://open.spotify.com/playlist/ABCDEF" {
 		t.Fatalf("ImportOnce url = %q", svc.lastImportOnce)
@@ -317,5 +337,61 @@ func TestImportPlaylistOnceNilServiceReturns503(t *testing.T) {
 	srv.Handler().ServeHTTP(rec, req)
 	if rec.Code != http.StatusServiceUnavailable {
 		t.Fatalf("status = %d, want 503", rec.Code)
+	}
+}
+
+func TestAddSyncedTrackHappyPath(t *testing.T) {
+	svc := &fakeSync{detail: core.SyncedPlaylistDetail{
+		SyncedPlaylist: core.SyncedPlaylist{ID: "pl-1", Mode: "once"},
+		TotalCount:     1,
+	}}
+	srv, cookie := syncTestServer(t, svc)
+
+	rec := httptest.NewRecorder()
+	body := `{"source":"spotify","externalId":"t-new","title":"New Track","artist":"Artist","album":"Album","durationMs":210000}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/synced-playlists/pl-1/tracks", strings.NewReader(body))
+	req.AddCookie(cookie)
+	srv.Handler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d: %s", rec.Code, rec.Body.String())
+	}
+	if svc.addTrackID != "pl-1" || svc.addTrackEntry.ExternalID != "t-new" {
+		t.Fatalf("AddTrack args: id=%q entry=%+v", svc.addTrackID, svc.addTrackEntry)
+	}
+}
+
+func TestAddSyncedTrackNotEditableReturns422(t *testing.T) {
+	svc := &fakeSync{addTrackErr: playlistsync.ErrNotEditable}
+	srv, cookie := syncTestServer(t, svc)
+
+	rec := httptest.NewRecorder()
+	body := `{"source":"spotify","externalId":"t-new","title":"T","artist":"A","album":"B","durationMs":200000}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/synced-playlists/pl-synced/tracks", strings.NewReader(body))
+	req.AddCookie(cookie)
+	srv.Handler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("status = %d, want 422: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestRemoveSyncedTrackHappyPath(t *testing.T) {
+	svc := &fakeSync{detail: core.SyncedPlaylistDetail{
+		SyncedPlaylist: core.SyncedPlaylist{ID: "pl-1", Mode: "once"},
+	}}
+	srv, cookie := syncTestServer(t, svc)
+
+	rec := httptest.NewRecorder()
+	body := `{"source":"spotify","externalId":"t-old"}`
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/synced-playlists/pl-1/tracks", strings.NewReader(body))
+	req.AddCookie(cookie)
+	srv.Handler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d: %s", rec.Code, rec.Body.String())
+	}
+	if svc.removeTrackID != "pl-1" || svc.removeSource != "spotify" || svc.removeExtID != "t-old" {
+		t.Fatalf("RemoveTrack args: id=%q src=%q extID=%q", svc.removeTrackID, svc.removeSource, svc.removeExtID)
 	}
 }

@@ -16,6 +16,7 @@ type SyncedPlaylist struct {
 	ExternalID      string `json:"externalId"`
 	Name            string `json:"name"`
 	CoverURL        string `json:"coverUrl,omitempty"`
+	Mode            string `json:"mode"`
 	SyncEnabled     bool   `json:"syncEnabled"`
 	SyncIntervalSec int    `json:"syncIntervalSec"`
 	AutoDownload    bool   `json:"autoDownload"`

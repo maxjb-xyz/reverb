@@ -213,6 +213,8 @@ func (s *Server) routes() {
 			pr.Post("/synced-playlists/{id}/download-missing", s.handleSyncedDownloadMissing)
 			pr.Put("/synced-playlists/{id}/settings", s.handleSyncedSettings)
 			pr.Delete("/synced-playlists/{id}", s.handleDeleteSyncedPlaylist)
+			pr.Post("/synced-playlists/{id}/tracks", s.handleAddSyncedTrack)
+			pr.Delete("/synced-playlists/{id}/tracks", s.handleRemoveSyncedTrack)
 			pr.Post("/downloads/batch", s.handleBatchDownload)
 			pr.Post("/downloads", s.handleCreateDownload)
 			pr.Get("/downloads", s.handleListDownloads)

@@ -45,6 +45,7 @@ func rowToSync(r db.SyncedPlaylist) playlistsync.SyncedRow {
 		SyncIntervalSec: int(r.SyncIntervalSec),
 		LastSyncedAt:    r.LastSyncedAt,
 		CreatedAt:       r.CreatedAt,
+		Mode:            r.Mode,
 	}
 }
 
@@ -64,6 +65,10 @@ func (s *syncStore) Upsert(ctx context.Context, p core.SyncedPlaylist, tracksJSO
 	} else if err != sql.ErrNoRows {
 		return "", err
 	}
+	mode := p.Mode
+	if mode == "" {
+		mode = "synced"
+	}
 	row, err := s.q.UpsertSyncedPlaylist(ctx, db.UpsertSyncedPlaylistParams{
 		ID:         id,
 		Source:     p.Source,
@@ -71,6 +76,7 @@ func (s *syncStore) Upsert(ctx context.Context, p core.SyncedPlaylist, tracksJSO
 		Name:       p.Name,
 		CoverUrl:   p.CoverURL,
 		TracksJson: tracksJSON,
+		Mode:       mode,
 		CreatedAt:  createdAt,
 	})
 	if err != nil {
@@ -106,6 +112,7 @@ func (s *syncStore) List(ctx context.Context) ([]playlistsync.SyncedRow, error) 
 			LastSyncedAt:    r.LastSyncedAt,
 			CreatedAt:       r.CreatedAt,
 			TrackCount:      int(r.TrackCount),
+			Mode:            r.Mode,
 			// TracksJSON intentionally omitted: List only needs the count, which
 			// sql computed via json_array_length — no full blob unmarshal needed.
 		})
