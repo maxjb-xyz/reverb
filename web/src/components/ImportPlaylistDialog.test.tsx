@@ -17,9 +17,15 @@ vi.mock('../lib/syncedPlaylistApi', () => ({
   importPlaylist: vi.fn(),
 }))
 
+vi.mock('../lib/libraryApi', () => ({
+  importPlaylistOnce: vi.fn(),
+}))
+
 import { importPlaylist } from '../lib/syncedPlaylistApi'
+import { importPlaylistOnce } from '../lib/libraryApi'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
 
 function makeDetail(overrides: Partial<SyncedPlaylistDetail> = {}): SyncedPlaylistDetail {
   return {
@@ -58,6 +64,7 @@ function wrap(ui: React.ReactNode) {
 describe('ImportPlaylistDialog', () => {
   beforeEach(() => {
     vi.mocked(importPlaylist).mockReset()
+    vi.mocked(importPlaylistOnce).mockReset()
     mockNavigate.mockReset()
   })
   afterEach(() => vi.clearAllMocks())
@@ -225,5 +232,52 @@ describe('ImportPlaylistDialog', () => {
     render(wrap(<ImportPlaylistDialog open onClose={onClose} />))
     fireEvent.click(screen.getByTestId('import-playlist-backdrop'))
     expect(onClose).toHaveBeenCalled()
+  })
+
+  it('renders both Sync and One-time tabs (default Sync)', () => {
+    render(wrap(<ImportPlaylistDialog open onClose={vi.fn()} />))
+    const syncTab = screen.getByRole('tab', { name: /sync/i })
+    const oneTimeTab = screen.getByRole('tab', { name: /one-time/i })
+    expect(syncTab).toBeInTheDocument()
+    expect(oneTimeTab).toBeInTheDocument()
+    expect(syncTab).toHaveAttribute('aria-selected', 'true')
+    expect(oneTimeTab).toHaveAttribute('aria-selected', 'false')
+  })
+
+  it('selecting One-time + submitting calls importPlaylistOnce and navigates to /playlist/:id', async () => {
+    vi.mocked(importPlaylistOnce).mockResolvedValue({
+      id: 'pl-snap',
+      name: 'Snapshot',
+      coverArtId: '',
+      songCount: 0,
+      durationMs: 0,
+    })
+    const onClose = vi.fn()
+
+    render(wrap(<ImportPlaylistDialog open onClose={onClose} />))
+
+    fireEvent.click(screen.getByRole('tab', { name: /one-time/i }))
+
+    fireEvent.change(screen.getByLabelText(/playlist url/i), {
+      target: { value: 'https://open.spotify.com/playlist/THEID' },
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: /^import$/i }))
+
+    await waitFor(() => {
+      expect(importPlaylistOnce).toHaveBeenCalledWith('https://open.spotify.com/playlist/THEID')
+    })
+
+    await waitFor(() => {
+      expect(mockNavigate).toHaveBeenCalledWith('/playlist/pl-snap')
+    })
+
+    expect(onClose).toHaveBeenCalled()
+  })
+
+  it('One-time mode hides the Download missing toggle', () => {
+    render(wrap(<ImportPlaylistDialog open onClose={vi.fn()} />))
+    fireEvent.click(screen.getByRole('tab', { name: /one-time/i }))
+    expect(screen.queryByRole('switch', { name: /download missing now/i })).not.toBeInTheDocument()
   })
 })

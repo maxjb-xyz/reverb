@@ -2,7 +2,9 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Button } from './ui/Button'
 import { Toggle } from './ui/Toggle'
+import { Segmented } from './ui/Segmented'
 import { importPlaylist } from '../lib/syncedPlaylistApi'
+import { importPlaylistOnce } from '../lib/libraryApi'
 
 interface ImportPlaylistDialogProps {
   open: boolean
@@ -15,6 +17,7 @@ export function ImportPlaylistDialog({ open, onClose }: ImportPlaylistDialogProp
   const navigate = useNavigate()
   const panelRef = useRef<HTMLDivElement>(null)
 
+  const [mode, setMode] = useState<'sync' | 'one-time'>('sync')
   const [url, setUrl] = useState('')
   const [downloadMissing, setDownloadMissing] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -24,6 +27,7 @@ export function ImportPlaylistDialog({ open, onClose }: ImportPlaylistDialogProp
   useEffect(() => {
     if (open) {
       /* eslint-disable react-hooks/set-state-in-effect -- intentional: reset form fields when dialog reopens */
+      setMode('sync')
       setUrl('')
       setDownloadMissing(false)
       setBusy(false)
@@ -82,14 +86,25 @@ export function ImportPlaylistDialog({ open, onClose }: ImportPlaylistDialogProp
     setBusy(true)
     setError(null)
     try {
-      const detail = await importPlaylist(trimmed, downloadMissing)
-      onClose()
-      navigate(`/synced-playlist/${detail.id}`)
+      if (mode === 'one-time') {
+        const playlist = await importPlaylistOnce(trimmed)
+        onClose()
+        navigate(`/playlist/${playlist.id}`)
+      } else {
+        const detail = await importPlaylist(trimmed, downloadMissing)
+        onClose()
+        navigate(`/synced-playlist/${detail.id}`)
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Couldn't import — is the playlist public?")
       setBusy(false)
     }
   }
+
+  const modeDescription =
+    mode === 'sync'
+      ? 'Live mirror — auto-updates from Spotify (read-only)'
+      : 'Snapshot copied into your library — fully editable'
 
   return (
     <>
@@ -117,6 +132,19 @@ export function ImportPlaylistDialog({ open, onClose }: ImportPlaylistDialogProp
               Import from Spotify
             </h2>
 
+            {/* Mode toggle */}
+            <div className="space-y-1.5">
+              <Segmented
+                options={[
+                  { value: 'sync', label: 'Sync' },
+                  { value: 'one-time', label: 'One-time' },
+                ]}
+                value={mode}
+                onChange={setMode}
+              />
+              <p className="text-sm text-text-muted">{modeDescription}</p>
+            </div>
+
             {/* URL input */}
             <div className="space-y-1.5">
               <label htmlFor="spotify-url" className="block text-sm font-semibold text-text-primary">
@@ -139,15 +167,17 @@ export function ImportPlaylistDialog({ open, onClose }: ImportPlaylistDialogProp
               />
             </div>
 
-            {/* Download missing toggle */}
-            <div className="flex items-center gap-3">
-              <Toggle
-                checked={downloadMissing}
-                onChange={setDownloadMissing}
-                label="Download missing now"
-              />
-              <span className="text-sm text-text-secondary">Download missing now</span>
-            </div>
+            {/* Download missing toggle — sync mode only */}
+            {mode === 'sync' && (
+              <div className="flex items-center gap-3">
+                <Toggle
+                  checked={downloadMissing}
+                  onChange={setDownloadMissing}
+                  label="Download missing now"
+                />
+                <span className="text-sm text-text-secondary">Download missing now</span>
+              </div>
+            )}
 
             {/* Inline error */}
             {error && (

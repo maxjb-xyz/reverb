@@ -75,3 +75,7 @@ export function deletePlaylist(id: string): Promise<{ ok: boolean }> {
 export function removePlaylistTrack(id: string, index: number): Promise<{ ok: boolean }> {
   return api.post(`/library/playlist/${encodeURIComponent(id)}/remove`, { indices: [index] })
 }
+
+export function importPlaylistOnce(url: string): Promise<Playlist> {
+  return api.post<Playlist>('/playlists/import', { url })
+}
