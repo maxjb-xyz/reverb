@@ -19,10 +19,10 @@ export function Equalizer({ className, playing }: EqualizerProps) {
           key={i}
           data-testid="eq-bar"
           className={[
-            'w-px bg-accent rounded-sm',
-            playing !== false ? 'animate-eq' : '[animation-play-state:paused]',
+            'w-px h-1 bg-accent rounded-sm animate-eq',
+            playing === false ? '[animation-play-state:paused]' : '',
             delay,
-          ].join(' ')}
+          ].filter(Boolean).join(' ')}
           style={{ animationDelay: ['0s', '.3s', '.15s', '.45s'][i] }}
         />
       ))}

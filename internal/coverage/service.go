@@ -84,7 +84,9 @@ func (s *Service) ArtistDetail(ctx context.Context, source, id string) (core.Art
 	det.ExternalArtistID = extID
 	// Fetch the artist's real profile (name + image) from the external source.
 	if prof, pErr := s.src.GetArtist(ctx, extID); pErr == nil {
-		det.Name = prof.Name
+		if det.Name == "" {
+			det.Name = prof.Name
+		}
 		det.CoverURL = prof.CoverURL
 	}
 	albums, err := s.discography(ctx, extID)

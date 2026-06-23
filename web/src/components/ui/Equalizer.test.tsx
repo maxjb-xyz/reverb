@@ -25,12 +25,13 @@ describe('Equalizer', () => {
     })
   })
 
-  it('bars have paused state and no animate-eq when playing=false', () => {
+  it('bars keep animate-eq and add paused state when playing=false', () => {
     const { container } = render(<Equalizer playing={false} />)
     const bars = container.querySelectorAll('[data-testid="eq-bar"]')
     bars.forEach((bar) => {
+      expect(bar.className).toMatch(/animate-eq/)
       expect(bar.className).toMatch(/animation-play-state:paused/)
-      expect(bar.className).not.toMatch(/animate-eq/)
+      expect(bar.className).toMatch(/h-1/)
     })
   })
 

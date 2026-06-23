@@ -191,13 +191,14 @@ describe('TrackRow', () => {
     })
   })
 
-  it('active+playing=false → eq bars have paused state and no animate-eq', () => {
+  it('active+playing=false → eq bars keep animate-eq and add paused state', () => {
     const { container } = renderRow({ active: true, playing: false, onPlay: vi.fn() })
     const bars = container.querySelectorAll('[data-testid="eq-bar"]')
     expect(bars.length).toBeGreaterThan(0)
     bars.forEach((bar) => {
+      expect(bar.className).toMatch(/animate-eq/)
       expect(bar.className).toMatch(/animation-play-state:paused/)
-      expect(bar.className).not.toMatch(/animate-eq/)
+      expect(bar.className).toMatch(/h-1/)
     })
   })
 
