@@ -100,6 +100,7 @@ export interface ArtistDetail {
   externalArtistId?: string
   resolved: boolean
   albums: DiscographyAlbum[]
+  libraryAlbums?: DiscographyAlbum[]
 }
 
 export interface AlbumDetailTrack {

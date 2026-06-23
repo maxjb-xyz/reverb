@@ -259,6 +259,27 @@ export default function Artist() {
         </Chip>
       </div>
 
+      {/* In your library */}
+      {detail.libraryAlbums && detail.libraryAlbums.length > 0 && (
+        <section data-testid="library-albums-section">
+          <h2 className="text-base font-bold text-text-primary mb-4">In your library</h2>
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+            {detail.libraryAlbums.map((al) => (
+              <MediaCard
+                key={al.libraryAlbumId ?? al.externalId}
+                title={al.name}
+                subtitle={String(al.year)}
+                coverSrc={al.coverUrl}
+                rounded="md"
+                onClick={() =>
+                  navigate(`/album/library/${al.libraryAlbumId ?? al.externalId}`)
+                }
+              />
+            ))}
+          </div>
+        </section>
+      )}
+
       {/* Discography grid */}
       <section>
         {visibleAlbums.length > 0 ? (

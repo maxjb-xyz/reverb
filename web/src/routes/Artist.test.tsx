@@ -359,4 +359,108 @@ describe('Artist page', () => {
     // The plain download button should be gone.
     expect(screen.queryByRole('button', { name: /download kid a/i })).not.toBeInTheDocument()
   })
+
+  // ---------------------------------------------------------------------------
+  // "In your library" section
+  // ---------------------------------------------------------------------------
+
+  it('"In your library" section renders when libraryAlbums is non-empty', () => {
+    vi.mocked(useArtistDetail).mockReturnValue({
+      data: {
+        ...STUB_DETAIL,
+        libraryAlbums: [
+          {
+            source: 'spotify',
+            externalId: 'ext-ok-computer',
+            name: 'OK Computer',
+            year: 1997,
+            kind: 'album' as const,
+            totalTracks: 12,
+            coverUrl: 'https://cdn.example.com/okcomputer.jpg',
+            libraryAlbumId: 'lib-ok-computer',
+          },
+        ],
+      },
+      isLoading: false,
+      isError: false,
+    } as ReturnType<typeof useArtistDetail>)
+    wrapper(<Artist />)
+    expect(screen.getByTestId('library-albums-section')).toBeInTheDocument()
+    expect(screen.getByText('In your library')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'OK Computer' })).toBeInTheDocument()
+  })
+
+  it('"In your library" card links to /album/library/:libraryAlbumId', () => {
+    const mockNavigate = vi.fn()
+    vi.mocked(useNavigate).mockReturnValue(mockNavigate)
+    vi.mocked(useArtistDetail).mockReturnValue({
+      data: {
+        ...STUB_DETAIL,
+        libraryAlbums: [
+          {
+            source: 'spotify',
+            externalId: 'ext-ok-computer',
+            name: 'OK Computer',
+            year: 1997,
+            kind: 'album' as const,
+            totalTracks: 12,
+            libraryAlbumId: 'lib-ok-computer',
+          },
+        ],
+      },
+      isLoading: false,
+      isError: false,
+    } as ReturnType<typeof useArtistDetail>)
+    wrapper(<Artist />)
+    fireEvent.click(screen.getByRole('button', { name: 'OK Computer' }))
+    expect(mockNavigate).toHaveBeenCalledWith('/album/library/lib-ok-computer')
+  })
+
+  it('"In your library" card falls back to externalId in path when libraryAlbumId is absent', () => {
+    const mockNavigate = vi.fn()
+    vi.mocked(useNavigate).mockReturnValue(mockNavigate)
+    vi.mocked(useArtistDetail).mockReturnValue({
+      data: {
+        ...STUB_DETAIL,
+        libraryAlbums: [
+          {
+            source: 'spotify',
+            externalId: 'ext-ok-computer',
+            name: 'OK Computer',
+            year: 1997,
+            kind: 'album' as const,
+            totalTracks: 12,
+            // no libraryAlbumId
+          },
+        ],
+      },
+      isLoading: false,
+      isError: false,
+    } as ReturnType<typeof useArtistDetail>)
+    wrapper(<Artist />)
+    fireEvent.click(screen.getByRole('button', { name: 'OK Computer' }))
+    expect(mockNavigate).toHaveBeenCalledWith('/album/library/ext-ok-computer')
+  })
+
+  it('"In your library" section is absent when libraryAlbums is empty', () => {
+    vi.mocked(useArtistDetail).mockReturnValue({
+      data: { ...STUB_DETAIL, libraryAlbums: [] as import('../lib/types').DiscographyAlbum[] },
+      isLoading: false,
+      isError: false,
+    } as ReturnType<typeof useArtistDetail>)
+    wrapper(<Artist />)
+    expect(screen.queryByTestId('library-albums-section')).not.toBeInTheDocument()
+    expect(screen.queryByText('In your library')).not.toBeInTheDocument()
+  })
+
+  it('"In your library" section is absent when libraryAlbums is undefined', () => {
+    vi.mocked(useArtistDetail).mockReturnValue({
+      data: { ...STUB_DETAIL, libraryAlbums: undefined },
+      isLoading: false,
+      isError: false,
+    } as ReturnType<typeof useArtistDetail>)
+    wrapper(<Artist />)
+    expect(screen.queryByTestId('library-albums-section')).not.toBeInTheDocument()
+    expect(screen.queryByText('In your library')).not.toBeInTheDocument()
+  })
 })
