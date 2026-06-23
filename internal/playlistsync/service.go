@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 
 	"github.com/maxjb-xyz/reverb/internal/core"
 )
@@ -35,6 +36,21 @@ type LibraryWriter interface {
 	CreatePlaylist(ctx context.Context, name string) (core.Playlist, error)
 	AddTracksToPlaylist(ctx context.Context, playlistID string, trackIDs []string) error
 }
+
+// LibraryReader is the library slice needed for migrating existing Navidrome
+// playlists into managed playlists. *subsonic.LibraryAdapter satisfies this.
+type LibraryReader interface {
+	GetPlaylists(ctx context.Context) ([]core.Playlist, error)
+	GetPlaylist(ctx context.Context, id string) (core.Playlist, error)
+}
+
+// SettingsStore is the key/value settings persistence used for migration guards.
+// *db.Queries satisfies this via GetSetting/UpsertSetting.
+type SettingsStore interface {
+	GetSetting(ctx context.Context, key string) (string, error)
+	UpsertSetting(ctx context.Context, key, value string) error
+}
+
 type Store interface {
 	Upsert(ctx context.Context, p core.SyncedPlaylist, tracksJSON string, createdAt int64) (string, error) // returns id
 	Get(ctx context.Context, id string) (row SyncedRow, err error)
@@ -58,17 +74,33 @@ type SyncedRow struct {
 }
 
 type Service struct {
-	src   PlaylistSource
-	match Matcher
-	dl    Downloader
-	store Store
-	lib   LibraryWriter // optional; nil when no library is configured
-	now   func() int64
-	newID func() string
+	src      PlaylistSource
+	match    Matcher
+	dl       Downloader
+	store    Store
+	lib      LibraryWriter // optional; nil when no library is configured
+	libRead  LibraryReader // optional; for migration
+	settings SettingsStore // optional; for migration flag guard
+	now      func() int64
+	newID    func() string
 }
 
 func NewService(src PlaylistSource, m Matcher, dl Downloader, store Store, lib LibraryWriter, now func() int64, newID func() string) *Service {
 	return &Service{src: src, match: m, dl: dl, store: store, lib: lib, now: now, newID: newID}
+}
+
+// WithLibraryReader attaches a LibraryReader so MigrateLibraryPlaylists can read
+// existing Navidrome playlists. Returns the receiver for chaining.
+func (s *Service) WithLibraryReader(r LibraryReader) *Service {
+	s.libRead = r
+	return s
+}
+
+// WithSettingsStore attaches a SettingsStore so MigrateLibraryPlaylists can
+// read/write the migration flag. Returns the receiver for chaining.
+func (s *Service) WithSettingsStore(ss SettingsStore) *Service {
+	s.settings = ss
+	return s
 }
 
 func (s *Service) Import(ctx context.Context, rawURL string, downloadMissing bool) (core.SyncedPlaylistDetail, error) {
@@ -120,9 +152,17 @@ func (s *Service) Detail(ctx context.Context, id string) (core.SyncedPlaylistDet
 			ArtistExternalID: tr.ArtistExternalID, AlbumExternalID: tr.AlbumExternalID}
 		if tr.Source == "library" {
 			// Directly-added library track: no matching needed — treat as owned.
+			// CoverArtID is carried from the stored entry so migrated tracks show covers.
 			det.OwnedCount++
 			dt.State = core.CoverageFull
-			dt.LibraryTrack = &core.Track{ID: tr.ExternalID, Title: tr.Title, Artist: tr.Artist, Album: tr.Album, DurationMs: tr.DurationMs}
+			dt.LibraryTrack = &core.Track{
+				ID:         tr.ExternalID,
+				Title:      tr.Title,
+				Artist:     tr.Artist,
+				Album:      tr.Album,
+				DurationMs: tr.DurationMs,
+				CoverArtID: tr.CoverArtID,
+			}
 		} else {
 			res, mErr := s.match.Match(ctx, tr)
 			if mErr != nil {
@@ -223,6 +263,99 @@ func (s *Service) ImportOnce(ctx context.Context, url string) (core.SyncedPlayli
 		}
 	}
 	return s.Detail(ctx, id)
+}
+
+// CreateManaged creates a blank, locally-managed playlist (source="local",
+// mode="once", empty tracks). It does NOT touch Navidrome/Subsonic.
+func (s *Service) CreateManaged(ctx context.Context, name string) (core.SyncedPlaylistDetail, error) {
+	id := s.newID()
+	now := s.now()
+	storedID, err := s.store.Upsert(ctx, core.SyncedPlaylist{
+		ID:         id,
+		Source:     "local",
+		ExternalID: id, // UNIQUE(source,external_id) — reuse the generated id
+		Name:       name,
+		CoverURL:   "",
+		Mode:       "once",
+	}, "[]", now)
+	if err != nil {
+		return core.SyncedPlaylistDetail{}, err
+	}
+	// Stamp last_synced_at so the UI doesn't show "Never synced" on a brand-new playlist.
+	if uErr := s.store.UpdateTracks(ctx, storedID, name, "", "[]", now); uErr != nil {
+		return core.SyncedPlaylistDetail{}, uErr
+	}
+	return s.Detail(ctx, storedID)
+}
+
+const migrationKey = "navidrome_playlists_migrated"
+
+// MigrateLibraryPlaylists copies every Navidrome/Subsonic playlist into the
+// synced_playlists table as source="local", mode="once" managed playlists.
+// Guarded by a settings flag so it runs ONCE; subsequent calls are no-ops.
+// Requires WithLibraryReader and WithSettingsStore to have been called;
+// silently returns (no-op) when either is nil.
+func (s *Service) MigrateLibraryPlaylists(ctx context.Context) error {
+	if s.libRead == nil || s.settings == nil {
+		return nil
+	}
+	// Check flag.
+	val, _ := s.settings.GetSetting(ctx, migrationKey)
+	if val == "true" {
+		return nil
+	}
+	playlists, err := s.libRead.GetPlaylists(ctx)
+	if err != nil {
+		return fmt.Errorf("migrate library playlists: list: %w", err)
+	}
+	migrated := 0
+	for _, pl := range playlists {
+		full, err := s.libRead.GetPlaylist(ctx, pl.ID)
+		if err != nil {
+			log.Printf("migrate library playlists: GetPlaylist(%q): %v — skipping", pl.ID, err)
+			continue
+		}
+		tracks := make([]core.ExternalResult, 0, len(full.Tracks))
+		for _, tr := range full.Tracks {
+			tracks = append(tracks, core.ExternalResult{
+				Source:     "library",
+				ExternalID: tr.ID,
+				Title:      tr.Title,
+				Artist:     tr.Artist,
+				Album:      tr.Album,
+				ISRC:       tr.ISRC,
+				DurationMs: tr.DurationMs,
+				CoverArtID: tr.CoverArtID,
+				Type:       core.EntityTrack,
+			})
+		}
+		tj, _ := json.Marshal(tracks)
+		newID := s.newID()
+		now := s.now()
+		storedID, err := s.store.Upsert(ctx, core.SyncedPlaylist{
+			ID:         newID,
+			Source:     "local",
+			ExternalID: newID,
+			Name:       full.Name,
+			CoverURL:   "",
+			Mode:       "once",
+		}, string(tj), now)
+		if err != nil {
+			log.Printf("migrate library playlists: upsert %q: %v — skipping", full.Name, err)
+			continue
+		}
+		if uErr := s.store.UpdateTracks(ctx, storedID, full.Name, "", string(tj), now); uErr != nil {
+			log.Printf("migrate library playlists: UpdateTracks %q: %v — skipping", full.Name, uErr)
+			continue
+		}
+		migrated++
+	}
+	// Set flag regardless of partial errors so a subsequent restart doesn't re-run.
+	if sErr := s.settings.UpsertSetting(ctx, migrationKey, "true"); sErr != nil {
+		log.Printf("migrate library playlists: set flag: %v", sErr)
+	}
+	log.Printf("migrate library playlists: migrated %d library playlist(s)", migrated)
+	return nil
 }
 
 func (s *Service) List(ctx context.Context) ([]core.SyncedPlaylist, error) {

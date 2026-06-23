@@ -200,31 +200,71 @@ func doAuthedBody(t *testing.T, srv *Server, method, target, body string, cookie
 }
 
 func TestCreatePlaylistHandler(t *testing.T) {
-	lib := &fakeLibrary{}
-	srv, cookie := libTestServer(t, lib)
+	// handleCreatePlaylist now calls svc.CreateManaged — wire a fakeSync that
+	// returns a SyncedPlaylistDetail.
+	createDet := core.SyncedPlaylistDetail{
+		SyncedPlaylist: core.SyncedPlaylist{
+			ID:     "managed-1",
+			Name:   "Road Trip",
+			Source: "local",
+			Mode:   "once",
+		},
+	}
+	svc := &fakeSync{createDet: createDet}
+	srv, cookie := syncTestServer(t, svc)
 	rec := doAuthedBody(t, srv, http.MethodPost, "/api/v1/library/playlists", `{"name":"Road Trip"}`, cookie)
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("status = %d, want 201: %s", rec.Code, rec.Body.String())
 	}
-	var pl core.Playlist
-	if err := json.Unmarshal(rec.Body.Bytes(), &pl); err != nil {
+	var det core.SyncedPlaylistDetail
+	if err := json.Unmarshal(rec.Body.Bytes(), &det); err != nil {
 		t.Fatal(err)
 	}
-	if pl.Name != "Road Trip" || pl.ID == "" {
-		t.Fatalf("playlist: %+v", pl)
+	if det.Name != "Road Trip" || det.ID == "" {
+		t.Fatalf("detail: %+v", det)
 	}
-	if lib.createdName != "Road Trip" {
-		t.Fatalf("CreatePlaylist not called with name: %q", lib.createdName)
+	if svc.lastCreateName != "Road Trip" {
+		t.Fatalf("CreateManaged not called with name: %q", svc.lastCreateName)
 	}
 }
 
 func TestCreatePlaylistHandlerRejectsEmptyName(t *testing.T) {
-	srv, cookie := libTestServer(t, &fakeLibrary{})
+	// Sync service must be non-nil to avoid 503; empty name rejected at handler level.
+	svc := &fakeSync{}
+	srv, cookie := syncTestServer(t, svc)
 	for _, body := range []string{`{"name":""}`, `{"name":"   "}`, `{}`} {
 		rec := doAuthedBody(t, srv, http.MethodPost, "/api/v1/library/playlists", body, cookie)
 		if rec.Code != http.StatusBadRequest {
 			t.Fatalf("body %s: status = %d, want 400", body, rec.Code)
 		}
+	}
+}
+
+func TestCreatePlaylistHandlerNoSyncService(t *testing.T) {
+	// When no sync service is configured (nil), handler returns 503.
+	st, err := store.Open(t.TempDir() + "/noop.db")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { st.Close() })
+	if err := st.Migrate(); err != nil {
+		t.Fatal(err)
+	}
+	authSvc := auth.NewService(st.Q(), time.Now)
+	if err := authSvc.SetAdminPassword(context.Background(), "pw"); err != nil {
+		t.Fatal(err)
+	}
+	tok, _ := authSvc.CreateSession(context.Background())
+	srv := NewServer(Deps{
+		Auth:       authSvc,
+		Search:     registry.NewRegistry("search"),
+		Downloader: registry.NewRegistry("downloader"),
+		// Sync intentionally not set
+	})
+	cookie := &http.Cookie{Name: sessionCookie, Value: tok}
+	rec := doAuthedBody(t, srv, http.MethodPost, "/api/v1/library/playlists", `{"name":"Test"}`, cookie)
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want 503", rec.Code)
 	}
 }
 

@@ -94,6 +94,13 @@ func main() {
 	// every 15 minutes, syncing due playlists, and stops when ctx is cancelled.
 	if bundle.Sync != nil {
 		go playlistsync.NewScheduler(bundle.Sync, 15*time.Minute).Run(ctx)
+		// One-time migration: copy existing Navidrome playlists into managed playlists.
+		// Runs in the background so startup is not blocked; guarded by a settings flag.
+		go func() {
+			if err := bundle.Sync.MigrateLibraryPlaylists(ctx); err != nil {
+				log.Printf("WARNING: library playlist migration: %v", err)
+			}
+		}()
 	}
 
 	deps := api.Deps{

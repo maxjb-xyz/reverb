@@ -23,11 +23,12 @@ type removeTracksBody struct {
 	Indices []int `json:"indices"`
 }
 
-// handleCreatePlaylist creates a new (empty) library playlist.
-// POST /api/v1/library/playlists  body {"name":"..."} → 201 core.Playlist
+// handleCreatePlaylist creates a new blank managed playlist (source="local", mode="once").
+// POST /api/v1/library/playlists  body {"name":"..."} → 201 core.SyncedPlaylistDetail
 func (s *Server) handleCreatePlaylist(w http.ResponseWriter, r *http.Request) {
-	lib, ok := s.libraryReady(w)
-	if !ok {
+	svc := s.sync()
+	if svc == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "playlist service unavailable"})
 		return
 	}
 	var body createPlaylistBody
@@ -35,12 +36,12 @@ func (s *Server) handleCreatePlaylist(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "name is required"})
 		return
 	}
-	pl, err := lib.CreatePlaylist(r.Context(), strings.TrimSpace(body.Name))
+	det, err := svc.CreateManaged(r.Context(), strings.TrimSpace(body.Name))
 	if err != nil {
-		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
-	writeJSON(w, http.StatusCreated, pl)
+	writeJSON(w, http.StatusCreated, det)
 }
 
 // handleAddTracksToPlaylist appends tracks to an existing library playlist.

@@ -25,6 +25,8 @@ type fakeSync struct {
 	importErr     error
 	importOnceErr error
 	importOnceDet core.SyncedPlaylistDetail
+	createDet     core.SyncedPlaylistDetail
+	createErr     error
 	listErr       error
 	detailErr     error
 	syncErr       error
@@ -34,6 +36,7 @@ type fakeSync struct {
 	lastDL         bool
 	lastID         string
 	lastImportOnce string
+	lastCreateName string
 	settings       syncedSettingsBody
 	settingsID     string
 	deletedID      string
@@ -56,6 +59,10 @@ func (f *fakeSync) Import(_ context.Context, url string, downloadMissing bool) (
 func (f *fakeSync) ImportOnce(_ context.Context, url string) (core.SyncedPlaylistDetail, error) {
 	f.lastImportOnce = url
 	return f.importOnceDet, f.importOnceErr
+}
+func (f *fakeSync) CreateManaged(_ context.Context, name string) (core.SyncedPlaylistDetail, error) {
+	f.lastCreateName = name
+	return f.createDet, f.createErr
 }
 func (f *fakeSync) AddTrack(_ context.Context, id string, entry core.ExternalResult) (core.SyncedPlaylistDetail, error) {
 	f.addTrackID, f.addTrackEntry = id, entry

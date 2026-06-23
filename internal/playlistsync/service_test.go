@@ -279,6 +279,56 @@ func (ms *memStore) setLastSynced(id string, ts int64) {
 }
 
 // ---------------------------------------------------------------------------
+// fakeLibraryReader
+// ---------------------------------------------------------------------------
+
+type fakeLibraryReader struct {
+	playlists []core.Playlist
+	// perID maps playlist id to a full Playlist with tracks
+	perID map[string]core.Playlist
+	// errPerID maps playlist id to an error for GetPlaylist
+	errPerID map[string]error
+}
+
+func (f *fakeLibraryReader) GetPlaylists(_ context.Context) ([]core.Playlist, error) {
+	return f.playlists, nil
+}
+func (f *fakeLibraryReader) GetPlaylist(_ context.Context, id string) (core.Playlist, error) {
+	if err, ok := f.errPerID[id]; ok {
+		return core.Playlist{}, err
+	}
+	if pl, ok := f.perID[id]; ok {
+		return pl, nil
+	}
+	return core.Playlist{}, fmt.Errorf("playlist %q not found", id)
+}
+
+// ---------------------------------------------------------------------------
+// fakeSettingsStore
+// ---------------------------------------------------------------------------
+
+type fakeSettingsStore struct {
+	settings map[string]string
+}
+
+func newFakeSettings() *fakeSettingsStore {
+	return &fakeSettingsStore{settings: make(map[string]string)}
+}
+
+func (f *fakeSettingsStore) GetSetting(_ context.Context, key string) (string, error) {
+	v, ok := f.settings[key]
+	if !ok {
+		return "", fmt.Errorf("no setting %q", key)
+	}
+	return v, nil
+}
+
+func (f *fakeSettingsStore) UpsertSetting(_ context.Context, key, value string) error {
+	f.settings[key] = value
+	return nil
+}
+
+// ---------------------------------------------------------------------------
 // tests
 // ---------------------------------------------------------------------------
 
@@ -794,5 +844,251 @@ func TestRemoveTrackRemovesEntry(t *testing.T) {
 	}
 	if det2.TotalCount != 1 {
 		t.Fatalf("TotalCount = %d after remove, want 1", det2.TotalCount)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// CreateManaged tests
+// ---------------------------------------------------------------------------
+
+// TestCreateManagedCreatesLocalModeOncePlaylist verifies that CreateManaged
+// creates a source="local", mode="once" empty managed playlist.
+func TestCreateManagedCreatesLocalModeOncePlaylist(t *testing.T) {
+	svc := NewService(
+		&fakeSource{playlists: map[string]core.ExternalPlaylist{}},
+		fakeMatcher{},
+		&fakeDownloader{},
+		newMemStore(),
+		nil,
+		func() int64 { return 500 },
+		seqID(),
+	)
+	det, err := svc.CreateManaged(context.Background(), "My New Playlist")
+	if err != nil {
+		t.Fatalf("CreateManaged: %v", err)
+	}
+	if det.ID == "" {
+		t.Fatal("detail has no ID")
+	}
+	if det.Name != "My New Playlist" {
+		t.Fatalf("Name = %q, want %q", det.Name, "My New Playlist")
+	}
+	if det.Source != "local" {
+		t.Fatalf("Source = %q, want 'local'", det.Source)
+	}
+	if det.Mode != "once" {
+		t.Fatalf("Mode = %q, want 'once'", det.Mode)
+	}
+	if det.TotalCount != 0 {
+		t.Fatalf("TotalCount = %d, want 0 (empty)", det.TotalCount)
+	}
+	if det.OwnedCount != 0 {
+		t.Fatalf("OwnedCount = %d, want 0", det.OwnedCount)
+	}
+	// ExternalID should equal ID for local playlists.
+	if det.ExternalID != det.ID {
+		t.Fatalf("ExternalID = %q, want == ID %q", det.ExternalID, det.ID)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// MigrateLibraryPlaylists tests
+// ---------------------------------------------------------------------------
+
+// TestMigrateLibraryPlaylistsMigratesAll verifies that 2 library playlists are
+// migrated as source="local" managed playlists with library-source tracks carrying
+// title/artist/album/coverArtId. It also checks the flag is set and a second
+// call is a no-op.
+func TestMigrateLibraryPlaylistsMigratesAll(t *testing.T) {
+	pl1 := core.Playlist{
+		ID:   "lib-pl-1",
+		Name: "Favorites",
+		Tracks: []core.Track{
+			{ID: "t1", Title: "Song A", Artist: "Artist A", Album: "Album A", DurationMs: 200000, CoverArtID: "cov-1", ISRC: "US12300000001"},
+			{ID: "t2", Title: "Song B", Artist: "Artist B", Album: "Album B", DurationMs: 180000, CoverArtID: "cov-2"},
+		},
+	}
+	pl2 := core.Playlist{
+		ID:   "lib-pl-2",
+		Name: "Workout",
+		Tracks: []core.Track{
+			{ID: "t3", Title: "Track C", Artist: "Artist C", Album: "Album C", DurationMs: 240000, CoverArtID: "cov-3"},
+		},
+	}
+	libReader := &fakeLibraryReader{
+		playlists: []core.Playlist{
+			{ID: pl1.ID, Name: pl1.Name},
+			{ID: pl2.ID, Name: pl2.Name},
+		},
+		perID: map[string]core.Playlist{
+			pl1.ID: pl1,
+			pl2.ID: pl2,
+		},
+	}
+	ss := newFakeSettings()
+	store := newMemStore()
+	svc := NewService(
+		&fakeSource{playlists: map[string]core.ExternalPlaylist{}},
+		fakeMatcher{},
+		&fakeDownloader{},
+		store,
+		nil,
+		func() int64 { return 1000 },
+		seqID(),
+	)
+	svc.WithLibraryReader(libReader)
+	svc.WithSettingsStore(ss)
+
+	if err := svc.MigrateLibraryPlaylists(context.Background()); err != nil {
+		t.Fatalf("MigrateLibraryPlaylists: %v", err)
+	}
+
+	// Flag should now be "true".
+	got, _ := ss.GetSetting(context.Background(), migrationKey)
+	if got != "true" {
+		t.Fatalf("migrationKey setting = %q, want 'true'", got)
+	}
+
+	// Should have 2 managed playlists.
+	list, err := svc.List(context.Background())
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if len(list) != 2 {
+		t.Fatalf("expected 2 managed playlists, got %d", len(list))
+	}
+	// Check that all playlists are source="local" mode="once".
+	for _, pl := range list {
+		if pl.Source != "local" {
+			t.Errorf("playlist %q: Source = %q, want 'local'", pl.Name, pl.Source)
+		}
+		if pl.Mode != "once" {
+			t.Errorf("playlist %q: Mode = %q, want 'once'", pl.Name, pl.Mode)
+		}
+	}
+
+	// Check that "Favorites" has correct tracks with library-source entries including CoverArtID.
+	var favID string
+	for _, pl := range list {
+		if pl.Name == "Favorites" {
+			favID = pl.ID
+			break
+		}
+	}
+	if favID == "" {
+		t.Fatal("did not find 'Favorites' playlist after migration")
+	}
+	det, err := svc.Detail(context.Background(), favID)
+	if err != nil {
+		t.Fatalf("Detail: %v", err)
+	}
+	if det.TotalCount != 2 {
+		t.Fatalf("Favorites TotalCount = %d, want 2", det.TotalCount)
+	}
+	if det.OwnedCount != 2 {
+		t.Fatalf("Favorites OwnedCount = %d, want 2 (all owned library tracks)", det.OwnedCount)
+	}
+	// Check first track carries CoverArtID.
+	tr0 := det.Tracks[0]
+	if tr0.LibraryTrack == nil {
+		t.Fatal("Tracks[0].LibraryTrack is nil")
+	}
+	if tr0.LibraryTrack.CoverArtID != "cov-1" {
+		t.Fatalf("Tracks[0].LibraryTrack.CoverArtID = %q, want 'cov-1'", tr0.LibraryTrack.CoverArtID)
+	}
+	if tr0.LibraryTrack.Title != "Song A" {
+		t.Fatalf("Tracks[0].LibraryTrack.Title = %q, want 'Song A'", tr0.LibraryTrack.Title)
+	}
+
+	// Second call must be a no-op (flag already set).
+	if err := svc.MigrateLibraryPlaylists(context.Background()); err != nil {
+		t.Fatalf("second call: %v", err)
+	}
+	list2, _ := svc.List(context.Background())
+	if len(list2) != 2 {
+		t.Fatalf("second call should not add more playlists; got %d", len(list2))
+	}
+}
+
+// TestMigrateLibraryPlaylistsPerPlaylistError verifies that an error for one
+// playlist does not stop the migration of others, and the flag is still set.
+func TestMigrateLibraryPlaylistsPerPlaylistError(t *testing.T) {
+	libReader := &fakeLibraryReader{
+		playlists: []core.Playlist{
+			{ID: "lib-ok", Name: "Good"},
+			{ID: "lib-err", Name: "Bad"},
+		},
+		perID: map[string]core.Playlist{
+			"lib-ok": {ID: "lib-ok", Name: "Good", Tracks: []core.Track{{ID: "t1", Title: "Track 1"}}},
+		},
+		errPerID: map[string]error{
+			"lib-err": fmt.Errorf("subsonic: timeout"),
+		},
+	}
+	ss := newFakeSettings()
+	store := newMemStore()
+	svc := NewService(
+		&fakeSource{playlists: map[string]core.ExternalPlaylist{}},
+		fakeMatcher{},
+		&fakeDownloader{},
+		store,
+		nil,
+		func() int64 { return 2000 },
+		seqID(),
+	)
+	svc.WithLibraryReader(libReader)
+	svc.WithSettingsStore(ss)
+
+	if err := svc.MigrateLibraryPlaylists(context.Background()); err != nil {
+		t.Fatalf("MigrateLibraryPlaylists: %v", err)
+	}
+	// Flag must be set.
+	got, _ := ss.GetSetting(context.Background(), migrationKey)
+	if got != "true" {
+		t.Fatalf("migrationKey = %q, want 'true'", got)
+	}
+	// Only the good playlist should be migrated.
+	list, _ := svc.List(context.Background())
+	if len(list) != 1 {
+		t.Fatalf("expected 1 migrated playlist (bad one skipped), got %d", len(list))
+	}
+	if list[0].Name != "Good" {
+		t.Fatalf("expected 'Good', got %q", list[0].Name)
+	}
+}
+
+// TestDetailLibrarySourceTrackCoverArtID asserts that Detail carries CoverArtID
+// from a stored library-source entry onto the synthesized LibraryTrack.
+func TestDetailLibrarySourceTrackCoverArtID(t *testing.T) {
+	libraryEntry := core.ExternalResult{
+		Source:     "library",
+		ExternalID: "lib-track-55",
+		Title:      "Local Track With Cover",
+		Artist:     "Artist",
+		Album:      "Album",
+		DurationMs: 200000,
+		CoverArtID: "cover-art-xyz",
+	}
+	src := &fakeSource{playlists: map[string]core.ExternalPlaylist{
+		"PL": {Source: "spotify", ExternalID: "PL", Name: "Cover Test", Tracks: []core.ExternalResult{libraryEntry}},
+	}}
+	store := newMemStore()
+	svc := NewService(src, fakeMatcher{}, &fakeDownloader{}, store, nil, func() int64 { return 100 }, seqID())
+	det, err := svc.Import(context.Background(), "spotify:playlist:PL", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(det.Tracks) != 1 {
+		t.Fatalf("expected 1 track, got %d", len(det.Tracks))
+	}
+	tr := det.Tracks[0]
+	if tr.State != core.CoverageFull {
+		t.Fatalf("State = %v, want CoverageFull", tr.State)
+	}
+	if tr.LibraryTrack == nil {
+		t.Fatal("LibraryTrack is nil")
+	}
+	if tr.LibraryTrack.CoverArtID != "cover-art-xyz" {
+		t.Fatalf("LibraryTrack.CoverArtID = %q, want 'cover-art-xyz'", tr.LibraryTrack.CoverArtID)
 	}
 }

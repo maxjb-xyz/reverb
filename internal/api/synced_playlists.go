@@ -16,6 +16,7 @@ import (
 type SyncService interface {
 	Import(ctx context.Context, url string, downloadMissing bool) (core.SyncedPlaylistDetail, error)
 	ImportOnce(ctx context.Context, url string) (core.SyncedPlaylistDetail, error)
+	CreateManaged(ctx context.Context, name string) (core.SyncedPlaylistDetail, error)
 	List(ctx context.Context) ([]core.SyncedPlaylist, error)
 	Detail(ctx context.Context, id string) (core.SyncedPlaylistDetail, error)
 	Sync(ctx context.Context, id string) (core.SyncedPlaylistDetail, error)

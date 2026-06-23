@@ -167,6 +167,18 @@ func (s spotifyPlaylistSource) GetPlaylist(ctx context.Context, externalID strin
 	return s.p.GetPlaylist(ctx, externalID)
 }
 
+// dbSettingsStore adapts *db.Queries to playlistsync.SettingsStore.
+type dbSettingsStore struct{ q *db.Queries }
+
+var _ playlistsync.SettingsStore = (*dbSettingsStore)(nil)
+
+func (s *dbSettingsStore) GetSetting(ctx context.Context, key string) (string, error) {
+	return s.q.GetSetting(ctx, key)
+}
+func (s *dbSettingsStore) UpsertSetting(ctx context.Context, key, value string) error {
+	return s.q.UpsertSetting(ctx, db.UpsertSettingParams{Key: key, Value: value})
+}
+
 // BuildSyncService constructs a *playlistsync.Service from the built services:
 // the first enabled search source implementing search.PlaylistProvider (spotify
 // does), a matching.Service over the library, the download Manager, and the
@@ -195,6 +207,10 @@ func (b *Builder) BuildSyncService(
 	src := spotifyPlaylistSource{p: provider}
 	matcher := matching.NewService(lib, b.queries, b.version.LibraryVersion)
 	store := NewSyncStore(b.queries)
+	settings := &dbSettingsStore{q: b.queries}
 	nowUnix := func() int64 { return time.Now().Unix() }
-	return playlistsync.NewService(src, matcher, mgr, store, lib, nowUnix, uuid.NewString)
+	svc := playlistsync.NewService(src, matcher, mgr, store, lib, nowUnix, uuid.NewString)
+	svc.WithLibraryReader(lib)
+	svc.WithSettingsStore(settings)
+	return svc
 }
