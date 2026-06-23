@@ -42,3 +42,8 @@ export function updateSyncSettings(id: string, settings: UpdateSyncSettingsReq):
 export function deleteSyncedPlaylist(id: string): Promise<unknown> {
   return api.del(`/synced-playlists/${encodeURIComponent(id)}`)
 }
+
+export function removeSyncedTrack(id: string, source: string, externalId: string): Promise<SyncedPlaylistDetail> {
+  const url = `/synced-playlists/${encodeURIComponent(id)}/tracks?source=${encodeURIComponent(source)}&externalId=${encodeURIComponent(externalId)}`
+  return api.del<SyncedPlaylistDetail>(url)
+}

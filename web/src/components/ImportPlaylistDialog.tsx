@@ -87,9 +87,9 @@ export function ImportPlaylistDialog({ open, onClose }: ImportPlaylistDialogProp
     setError(null)
     try {
       if (mode === 'one-time') {
-        const playlist = await importPlaylistOnce(trimmed)
+        const detail = await importPlaylistOnce(trimmed)
         onClose()
-        navigate(`/playlist/${playlist.id}`)
+        navigate(`/synced-playlist/${detail.id}`)
       } else {
         const detail = await importPlaylist(trimmed, downloadMissing)
         onClose()

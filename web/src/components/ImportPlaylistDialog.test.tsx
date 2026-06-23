@@ -244,14 +244,8 @@ describe('ImportPlaylistDialog', () => {
     expect(oneTimeTab).toHaveAttribute('aria-selected', 'false')
   })
 
-  it('selecting One-time + submitting calls importPlaylistOnce and navigates to /playlist/:id', async () => {
-    vi.mocked(importPlaylistOnce).mockResolvedValue({
-      id: 'pl-snap',
-      name: 'Snapshot',
-      coverArtId: '',
-      songCount: 0,
-      durationMs: 0,
-    })
+  it('selecting One-time + submitting calls importPlaylistOnce and navigates to /synced-playlist/:id', async () => {
+    vi.mocked(importPlaylistOnce).mockResolvedValue(makeDetail({ id: 'pl-snap', mode: 'once' }))
     const onClose = vi.fn()
 
     render(wrap(<ImportPlaylistDialog open onClose={onClose} />))
@@ -269,7 +263,7 @@ describe('ImportPlaylistDialog', () => {
     })
 
     await waitFor(() => {
-      expect(mockNavigate).toHaveBeenCalledWith('/playlist/pl-snap')
+      expect(mockNavigate).toHaveBeenCalledWith('/synced-playlist/pl-snap')
     })
 
     expect(onClose).toHaveBeenCalled()

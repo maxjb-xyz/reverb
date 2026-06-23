@@ -31,6 +31,7 @@ const mockSyncNow = vi.fn().mockResolvedValue({})
 const mockDownloadMissingForPlaylist = vi.fn().mockResolvedValue([])
 const mockUpdateSyncSettings = vi.fn().mockResolvedValue({})
 const mockDeleteSyncedPlaylist = vi.fn().mockResolvedValue({})
+const mockRemoveSyncedTrack = vi.fn().mockResolvedValue({})
 
 vi.mock('../lib/syncedPlaylistApi', () => ({
   useSyncedPlaylist: (...args: unknown[]) => mockUseSyncedPlaylist(...args),
@@ -38,6 +39,7 @@ vi.mock('../lib/syncedPlaylistApi', () => ({
   downloadMissingForPlaylist: (...args: unknown[]) => mockDownloadMissingForPlaylist(...args),
   updateSyncSettings: (...args: unknown[]) => mockUpdateSyncSettings(...args),
   deleteSyncedPlaylist: (...args: unknown[]) => mockDeleteSyncedPlaylist(...args),
+  removeSyncedTrack: (...args: unknown[]) => mockRemoveSyncedTrack(...args),
 }))
 
 // ── DownloadAction mock (avoids adapter fetch noise) ──────────────────────────
@@ -151,6 +153,8 @@ describe('SyncedPlaylist page', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockSyncedPlayerState.current = null
+    mockRemoveSyncedTrack.mockReset()
+    mockRemoveSyncedTrack.mockResolvedValue({})
   })
   afterEach(() => {
     vi.restoreAllMocks()
@@ -522,5 +526,58 @@ describe('SyncedPlaylist page', () => {
     expect(mockPlayTrackList).toHaveBeenCalledOnce()
     const [tracks] = mockPlayTrackList.mock.calls[0] as [Track[], number]
     expect(tracks[0]).toMatchObject({ artistExternalId: 'sp-artist-99' })
+  })
+
+  describe('mode-aware rendering', () => {
+    it('mode=once: "Sync now" button is absent', async () => {
+      mockUseSyncedPlaylist.mockReturnValue({
+        data: { ...mockDetail, mode: 'once' },
+        isLoading: false,
+        isError: false,
+      })
+      wrapper(<SyncedPlaylist />)
+      await waitFor(() => expect(screen.getByRole('heading', { name: 'Test Synced Playlist' })).toBeInTheDocument())
+      expect(screen.queryByRole('button', { name: /sync now/i })).not.toBeInTheDocument()
+    })
+
+    it('mode=once: schedule settings absent from "…" menu', async () => {
+      mockUseSyncedPlaylist.mockReturnValue({
+        data: { ...mockDetail, mode: 'once' },
+        isLoading: false,
+        isError: false,
+      })
+      wrapper(<SyncedPlaylist />)
+      await waitFor(() => expect(screen.getByRole('heading', { name: 'Test Synced Playlist' })).toBeInTheDocument())
+      fireEvent.click(screen.getByRole('button', { name: /more options/i }))
+      expect(screen.queryByRole('switch', { name: 'Auto-sync' })).not.toBeInTheDocument()
+      expect(screen.queryByRole('combobox', { name: /sync interval/i })).not.toBeInTheDocument()
+    })
+
+    it('mode=once: remove control present and calls removeSyncedTrack on owned row', async () => {
+      mockUseSyncedPlaylist.mockReturnValue({
+        data: { ...mockDetail, mode: 'once' },
+        isLoading: false,
+        isError: false,
+      })
+      wrapper(<SyncedPlaylist />)
+      await waitFor(() => expect(screen.getByRole('heading', { name: 'Test Synced Playlist' })).toBeInTheDocument())
+
+      // Remove button for "Owned One" (externalRef source='spotify', externalId='e1')
+      const removeBtn = screen.getByRole('button', { name: /remove owned one from playlist/i })
+      expect(removeBtn).toBeInTheDocument()
+      await act(async () => { fireEvent.click(removeBtn) })
+      expect(mockRemoveSyncedTrack).toHaveBeenCalledWith('sp1', 'spotify', 'e1')
+    })
+
+    it('mode=synced: remove control is absent on owned rows', async () => {
+      mockUseSyncedPlaylist.mockReturnValue({
+        data: { ...mockDetail, mode: 'synced' },
+        isLoading: false,
+        isError: false,
+      })
+      wrapper(<SyncedPlaylist />)
+      await waitFor(() => expect(screen.getByRole('heading', { name: 'Test Synced Playlist' })).toBeInTheDocument())
+      expect(screen.queryByRole('button', { name: /remove owned one from playlist/i })).not.toBeInTheDocument()
+    })
   })
 })

@@ -236,6 +236,7 @@ export interface SyncedPlaylist {
   autoDownload: boolean
   lastSyncedAt: number
   trackCount: number
+  mode?: 'synced' | 'once'
 }
 
 export interface SyncedPlaylistDetail extends SyncedPlaylist {

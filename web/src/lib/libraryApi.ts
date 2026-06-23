@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { api } from './api'
-import type { Album, Artist, Playlist, SearchResults } from './types'
+import type { Album, Artist, Playlist, SearchResults, SyncedPlaylistDetail } from './types'
 
 export function streamUrl(id: string): string {
   return `/api/v1/stream/${encodeURIComponent(id)}`
@@ -76,6 +76,6 @@ export function removePlaylistTrack(id: string, index: number): Promise<{ ok: bo
   return api.post(`/library/playlist/${encodeURIComponent(id)}/remove`, { indices: [index] })
 }
 
-export function importPlaylistOnce(url: string): Promise<Playlist> {
-  return api.post<Playlist>('/playlists/import', { url })
+export function importPlaylistOnce(url: string): Promise<SyncedPlaylistDetail> {
+  return api.post<SyncedPlaylistDetail>('/playlists/import', { url })
 }

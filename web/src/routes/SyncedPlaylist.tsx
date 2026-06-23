@@ -7,6 +7,7 @@ import {
   downloadMissingForPlaylist,
   updateSyncSettings,
   deleteSyncedPlaylist,
+  removeSyncedTrack,
 } from '../lib/syncedPlaylistApi'
 import { TrackRow } from '../components/ui/TrackRow'
 import { DownloadAction } from '../components/download/DownloadAction'
@@ -202,6 +203,15 @@ export default function SyncedPlaylist() {
     }
   }
 
+  async function handleRemoveTrack(source: string, externalId: string) {
+    try {
+      await removeSyncedTrack(id, source, externalId)
+      qc.invalidateQueries({ queryKey: ['synced-playlist', id] })
+    } catch (err) {
+      console.error('Failed to remove track:', err)
+    }
+  }
+
   // ── Render ──────────────────────────────────────────────────────────────────
 
   return (
@@ -222,7 +232,7 @@ export default function SyncedPlaylist() {
           <div className="min-w-0 pb-1">
             <div className="flex items-center gap-2 mb-1">
               <span className="text-xs font-semibold uppercase tracking-widest text-text-muted">
-                Synced playlist
+                {detail.mode === 'once' ? 'Imported' : 'Synced playlist'}
               </span>
               <Badge kind="status" tone="success">
                 {detail.source}
@@ -239,9 +249,11 @@ export default function SyncedPlaylist() {
                 <span className="text-accent">· {missingCount} missing</span>
               )}
             </div>
-            <div className="mt-1 text-xs text-text-muted">
-              Synced {relativeTime(detail.lastSyncedAt)}
-            </div>
+            {detail.mode !== 'once' && (
+              <div className="mt-1 text-xs text-text-muted">
+                Synced {relativeTime(detail.lastSyncedAt)}
+              </div>
+            )}
             <div className="mt-4 flex items-center gap-3 flex-wrap">
               <Button
                 variant="primary"
@@ -262,14 +274,16 @@ export default function SyncedPlaylist() {
                   Download all missing · {missingCount}
                 </Button>
               )}
-              <Button
-                variant="secondary"
-                size="md"
-                onClick={() => void handleSyncNow()}
-                aria-label="Sync now"
-              >
-                Sync now
-              </Button>
+              {detail.mode !== 'once' && (
+                <Button
+                  variant="secondary"
+                  size="md"
+                  onClick={() => void handleSyncNow()}
+                  aria-label="Sync now"
+                >
+                  Sync now
+                </Button>
+              )}
               {/* "…" overflow menu — rendered via portal to escape scroll-container clip */}
               <div ref={menuTriggerRef} className="inline-flex">
                 <IconButton
@@ -286,47 +300,49 @@ export default function SyncedPlaylist() {
                   label="Synced playlist options"
                   widthClass="w-72"
                 >
-                  {/* Schedule settings panel */}
-                  <div className="px-4 py-3 space-y-3 border-b border-border-subtle">
-                    <p className="text-xs font-semibold uppercase tracking-widest text-text-muted">
-                      Schedule
-                    </p>
-                    <div className="flex items-center justify-between gap-3">
-                      <span className="text-sm text-text-primary">Auto-sync</span>
-                      <Toggle
-                        checked={effectiveSyncEnabled}
-                        label="Auto-sync"
-                        onChange={(v) => {
-                          setSyncEnabled(v)
-                          void handleUpdateSettings({ syncEnabled: v })
-                        }}
-                      />
+                  {/* Schedule settings panel — hidden for one-time imports */}
+                  {detail.mode !== 'once' && (
+                    <div className="px-4 py-3 space-y-3 border-b border-border-subtle">
+                      <p className="text-xs font-semibold uppercase tracking-widest text-text-muted">
+                        Schedule
+                      </p>
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-sm text-text-primary">Auto-sync</span>
+                        <Toggle
+                          checked={effectiveSyncEnabled}
+                          label="Auto-sync"
+                          onChange={(v) => {
+                            setSyncEnabled(v)
+                            void handleUpdateSettings({ syncEnabled: v })
+                          }}
+                        />
+                      </div>
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-sm text-text-primary">Interval</span>
+                        <Select
+                          value={String(effectiveIntervalSec)}
+                          options={INTERVAL_OPTIONS}
+                          label="Sync interval"
+                          onChange={(v) => {
+                            const sec = Number(v)
+                            setIntervalSec(sec)
+                            void handleUpdateSettings({ intervalSec: sec })
+                          }}
+                        />
+                      </div>
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-sm text-text-primary">Auto-download missing</span>
+                        <Toggle
+                          checked={effectiveAutoDownload}
+                          label="Auto-download missing"
+                          onChange={(v) => {
+                            setAutoDownload(v)
+                            void handleUpdateSettings({ autoDownload: v })
+                          }}
+                        />
+                      </div>
                     </div>
-                    <div className="flex items-center justify-between gap-3">
-                      <span className="text-sm text-text-primary">Interval</span>
-                      <Select
-                        value={String(effectiveIntervalSec)}
-                        options={INTERVAL_OPTIONS}
-                        label="Sync interval"
-                        onChange={(v) => {
-                          const sec = Number(v)
-                          setIntervalSec(sec)
-                          void handleUpdateSettings({ intervalSec: sec })
-                        }}
-                      />
-                    </div>
-                    <div className="flex items-center justify-between gap-3">
-                      <span className="text-sm text-text-primary">Auto-download missing</span>
-                      <Toggle
-                        checked={effectiveAutoDownload}
-                        label="Auto-download missing"
-                        onChange={(v) => {
-                          setAutoDownload(v)
-                          void handleUpdateSettings({ autoDownload: v })
-                        }}
-                      />
-                    </div>
-                  </div>
+                  )}
                   <button
                     type="button"
                     role="menuitem"
@@ -360,12 +376,24 @@ export default function SyncedPlaylist() {
                 artistTo={t.artistExternalId ? `/artist/spotify/${t.artistExternalId}` : undefined}
                 albumTo={t.albumExternalId ? `/album/spotify/${t.albumExternalId}` : undefined}
                 right={
-                  <Badge kind="in-library">
-                    <Icon name="check" className="text-xs" />
-                    In Library
-                  </Badge>
+                  <div className="flex items-center gap-1 group">
+                    {detail.mode === 'once' && t.externalRef && (
+                      <button
+                        type="button"
+                        aria-label={`Remove ${t.title} from playlist`}
+                        className="opacity-0 group-hover:opacity-100 transition-opacity rounded p-1 text-text-muted hover:text-text-primary focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                        onClick={(e) => { e.stopPropagation(); void handleRemoveTrack(t.externalRef!.source, t.externalRef!.externalId) }}
+                      >
+                        <Icon name="x" className="text-xs" />
+                      </button>
+                    )}
+                    <Badge kind="in-library">
+                      <Icon name="check" className="text-xs" />
+                      In Library
+                    </Badge>
+                  </div>
                 }
-                rightWidth="120px"
+                rightWidth={detail.mode === 'once' ? '156px' : '120px'}
               />
             )
           }
@@ -398,12 +426,29 @@ export default function SyncedPlaylist() {
               </Link>
             )
             : undefined
-          const right = t.externalRef
+          const downloadAction = t.externalRef
             ? (
               <DownloadAction
                 result={refToExternalResult(t.externalRef, detail.name)}
                 onPlay={(libraryTrackId) => playTrackList([{ ...asTrack(t), id: libraryTrackId }], 0)}
               />
+            )
+            : undefined
+          const right = t.externalRef
+            ? (
+              <div className="flex items-center gap-1 group">
+                {detail.mode === 'once' && (
+                  <button
+                    type="button"
+                    aria-label={`Remove ${t.title} from playlist`}
+                    className="opacity-0 group-hover:opacity-100 transition-opacity rounded p-1 text-text-muted hover:text-text-primary focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                    onClick={(e) => { e.stopPropagation(); void handleRemoveTrack(t.externalRef!.source, t.externalRef!.externalId) }}
+                  >
+                    <Icon name="x" className="text-xs" />
+                  </button>
+                )}
+                {downloadAction}
+              </div>
             )
             : undefined
           return (
@@ -416,7 +461,7 @@ export default function SyncedPlaylist() {
               artistNode={missingArtistNode}
               albumNode={missingAlbumNode}
               right={right}
-              rightWidth={right ? '120px' : undefined}
+              rightWidth={right ? (detail.mode === 'once' ? '156px' : '120px') : undefined}
             />
           )
         })}
