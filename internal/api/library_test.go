@@ -21,11 +21,9 @@ type fakeLibrary struct {
 	lastRange string
 
 	// playlist-mutation recorders
-	createdName     string
-	addedPlaylistID string
-	addedTrackIDs   []string
+	createdName string
 
-	// new mutation recorders
+	// mutation recorders
 	renamedPlaylistID   string
 	renamedName         string
 	removedPlaylistID   string
@@ -58,8 +56,6 @@ func (f *fakeLibrary) CreatePlaylist(ctx context.Context, name string) (core.Pla
 	return core.Playlist{ID: "p-new", Name: name}, nil
 }
 func (f *fakeLibrary) AddTracksToPlaylist(ctx context.Context, playlistID string, trackIDs []string) error {
-	f.addedPlaylistID = playlistID
-	f.addedTrackIDs = trackIDs
 	return nil
 }
 func (f *fakeLibrary) RenamePlaylist(ctx context.Context, id, name string) error {
@@ -177,7 +173,6 @@ func TestLibraryArtistAlbumPlaylistsHandlers(t *testing.T) {
 		{"/api/v1/library/album/al1", "Album"},
 		{"/api/v1/library/artists", "Artist"},
 		{"/api/v1/library/albums?type=newest", "Album"},
-		{"/api/v1/library/playlists", "Mix"},
 	} {
 		rec := doAuthed(t, srv, http.MethodGet, tc.path, cookie)
 		if rec.Code != http.StatusOK {
@@ -268,34 +263,6 @@ func TestCreatePlaylistHandlerNoSyncService(t *testing.T) {
 	}
 }
 
-func TestAddTracksToPlaylistHandler(t *testing.T) {
-	lib := &fakeLibrary{}
-	srv, cookie := libTestServer(t, lib)
-	rec := doAuthedBody(t, srv, http.MethodPost, "/api/v1/library/playlists/p1/tracks", `{"trackIds":["t1","t2"]}`, cookie)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200: %s", rec.Code, rec.Body.String())
-	}
-	if !strings.Contains(rec.Body.String(), `"ok":true`) {
-		t.Fatalf("body missing ok: %s", rec.Body.String())
-	}
-	if lib.addedPlaylistID != "p1" {
-		t.Fatalf("playlistID = %q, want p1", lib.addedPlaylistID)
-	}
-	if len(lib.addedTrackIDs) != 2 || lib.addedTrackIDs[0] != "t1" || lib.addedTrackIDs[1] != "t2" {
-		t.Fatalf("trackIds = %v", lib.addedTrackIDs)
-	}
-}
-
-func TestAddTracksToPlaylistHandlerRejectsEmpty(t *testing.T) {
-	srv, cookie := libTestServer(t, &fakeLibrary{})
-	for _, body := range []string{`{"trackIds":[]}`, `{}`} {
-		rec := doAuthedBody(t, srv, http.MethodPost, "/api/v1/library/playlists/p1/tracks", body, cookie)
-		if rec.Code != http.StatusBadRequest {
-			t.Fatalf("body %s: status = %d, want 400", body, rec.Code)
-		}
-	}
-}
-
 func TestRenamePlaylistHandler(t *testing.T) {
 	lib := &fakeLibrary{}
 	srv, cookie := libTestServer(t, lib)
@@ -374,6 +341,7 @@ func TestPlaylistMutationsReturn503WhenNoLibrary(t *testing.T) {
 	authSvc := auth.NewService(st.Q(), time.Now)
 	_ = authSvc.SetAdminPassword(context.Background(), "pw")
 	tok, _ := authSvc.CreateSession(context.Background())
+	// No sync service — POST /library/playlists returns 503 (sync unavailable).
 	srv := NewServer(Deps{Auth: authSvc, Library: nil,
 		Search: registry.NewRegistry("search"), Downloader: registry.NewRegistry("downloader")})
 	cookie := &http.Cookie{Name: sessionCookie, Value: tok}
@@ -381,10 +349,6 @@ func TestPlaylistMutationsReturn503WhenNoLibrary(t *testing.T) {
 	rec := doAuthedBody(t, srv, http.MethodPost, "/api/v1/library/playlists", `{"name":"x"}`, cookie)
 	if rec.Code != http.StatusServiceUnavailable {
 		t.Fatalf("create status = %d, want 503", rec.Code)
-	}
-	rec = doAuthedBody(t, srv, http.MethodPost, "/api/v1/library/playlists/p1/tracks", `{"trackIds":["t1"]}`, cookie)
-	if rec.Code != http.StatusServiceUnavailable {
-		t.Fatalf("add status = %d, want 503", rec.Code)
 	}
 }
 

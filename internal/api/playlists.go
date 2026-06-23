@@ -11,10 +11,6 @@ type createPlaylistBody struct {
 	Name string `json:"name"`
 }
 
-type addTracksBody struct {
-	TrackIDs []string `json:"trackIds"`
-}
-
 type renamePlaylistBody struct {
 	Name string `json:"name"`
 }
@@ -42,25 +38,6 @@ func (s *Server) handleCreatePlaylist(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusCreated, det)
-}
-
-// handleAddTracksToPlaylist appends tracks to an existing library playlist.
-// POST /api/v1/library/playlists/{id}/tracks  body {"trackIds":["..."]} → {"ok":true}
-func (s *Server) handleAddTracksToPlaylist(w http.ResponseWriter, r *http.Request) {
-	lib, ok := s.libraryReady(w)
-	if !ok {
-		return
-	}
-	var body addTracksBody
-	if err := decode(r, &body); err != nil || len(body.TrackIDs) == 0 {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "trackIds is required"})
-		return
-	}
-	if err := lib.AddTracksToPlaylist(r.Context(), chi.URLParam(r, "id"), body.TrackIDs); err != nil {
-		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
 // handleRenamePlaylist renames an existing library playlist.

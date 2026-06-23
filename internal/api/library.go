@@ -81,19 +81,6 @@ func (s *Server) handleLibraryAlbum(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, al)
 }
 
-func (s *Server) handleLibraryPlaylists(w http.ResponseWriter, r *http.Request) {
-	lib, ok := s.libraryReady(w)
-	if !ok {
-		return
-	}
-	pls, err := lib.GetPlaylists(r.Context())
-	if err != nil {
-		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
-		return
-	}
-	writeJSON(w, http.StatusOK, pls)
-}
-
 func (s *Server) handleLibraryArtists(w http.ResponseWriter, r *http.Request) {
 	lib, ready := s.libraryReady(w)
 	if !ready {

@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { api } from './api'
-import type { Album, Artist, Playlist, SearchResults, SyncedPlaylistDetail } from './types'
+import type { Album, Artist, SearchResults, SyncedPlaylistDetail } from './types'
 
 export function streamUrl(id: string): string {
   return `/api/v1/stream/${encodeURIComponent(id)}`
@@ -49,19 +49,8 @@ export function useAlbums(type = 'newest') {
   })
 }
 
-export function usePlaylists() {
-  return useQuery({
-    queryKey: ['library', 'playlists'],
-    queryFn: () => api.get<Playlist[]>('/library/playlists'),
-  })
-}
-
 export function createPlaylist(name: string): Promise<SyncedPlaylistDetail> {
   return api.post<SyncedPlaylistDetail>('/library/playlists', { name })
-}
-
-export function addTracksToPlaylist(id: string, trackIds: string[]): Promise<{ ok: boolean }> {
-  return api.post(`/library/playlists/${encodeURIComponent(id)}/tracks`, { trackIds })
 }
 
 export function renamePlaylist(id: string, name: string): Promise<{ ok: boolean }> {
