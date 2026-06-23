@@ -107,6 +107,7 @@ describe('AddToPlaylistMenu', () => {
         album: TEST_TRACK.album,
         isrc: TEST_TRACK.isrc,
         durationMs: TEST_TRACK.durationMs,
+        coverArtId: TEST_TRACK.coverArtId,
       })
     })
     await waitFor(() => expect(onClose).toHaveBeenCalled())
@@ -129,6 +130,7 @@ describe('AddToPlaylistMenu', () => {
         album: TEST_TRACK.album,
         isrc: TEST_TRACK.isrc,
         durationMs: TEST_TRACK.durationMs,
+        coverArtId: TEST_TRACK.coverArtId,
       })
     })
   })

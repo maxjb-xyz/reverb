@@ -56,6 +56,7 @@ export interface SyncedTrackEntry {
   album?: string
   isrc?: string
   durationMs?: number
+  coverArtId?: string
 }
 
 export function addSyncedTrack(playlistId: string, entry: SyncedTrackEntry): Promise<SyncedPlaylistDetail> {

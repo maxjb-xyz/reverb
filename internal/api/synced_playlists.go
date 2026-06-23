@@ -215,6 +215,7 @@ type addSyncedTrackBody struct {
 	Album      string `json:"album"`
 	ISRC       string `json:"isrc"`
 	DurationMs int    `json:"durationMs"`
+	CoverArtID string `json:"coverArtId"`
 }
 
 func (s *Server) handleAddSyncedTrack(w http.ResponseWriter, r *http.Request) {
@@ -236,6 +237,7 @@ func (s *Server) handleAddSyncedTrack(w http.ResponseWriter, r *http.Request) {
 		Album:      body.Album,
 		ISRC:       body.ISRC,
 		DurationMs: body.DurationMs,
+		CoverArtID: body.CoverArtID,
 		Type:       core.EntityTrack,
 	}
 	det, err := svc.AddTrack(r.Context(), chi.URLParam(r, "id"), entry)

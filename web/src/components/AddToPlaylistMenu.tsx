@@ -79,6 +79,7 @@ export function AddToPlaylistMenu({ track, onClose }: AddToPlaylistMenuProps) {
       album: track.album,
       isrc: track.isrc,
       durationMs: track.durationMs,
+      coverArtId: track.coverArtId || undefined,
     }
   }
 

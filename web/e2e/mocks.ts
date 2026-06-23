@@ -392,7 +392,7 @@ export async function installCompletenessMocks(page: Page): Promise<Completeness
       body: JSON.stringify({
         id: 'pl-1',
         name: 'Chill Mix',
-        source: 'library',
+        source: 'local',
         externalId: 'pl-1',
         coverUrl: '',
         syncEnabled: false,
