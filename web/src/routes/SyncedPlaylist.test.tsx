@@ -32,6 +32,8 @@ const mockDownloadMissingForPlaylist = vi.fn().mockResolvedValue([])
 const mockUpdateSyncSettings = vi.fn().mockResolvedValue({})
 const mockDeleteSyncedPlaylist = vi.fn().mockResolvedValue({})
 const mockRemoveSyncedTrack = vi.fn().mockResolvedValue({})
+const mockUploadPlaylistCover = vi.fn().mockResolvedValue({})
+const mockReorderSyncedTracks = vi.fn().mockResolvedValue({})
 
 vi.mock('../lib/syncedPlaylistApi', () => ({
   useSyncedPlaylist: (...args: unknown[]) => mockUseSyncedPlaylist(...args),
@@ -40,6 +42,8 @@ vi.mock('../lib/syncedPlaylistApi', () => ({
   updateSyncSettings: (...args: unknown[]) => mockUpdateSyncSettings(...args),
   deleteSyncedPlaylist: (...args: unknown[]) => mockDeleteSyncedPlaylist(...args),
   removeSyncedTrack: (...args: unknown[]) => mockRemoveSyncedTrack(...args),
+  uploadPlaylistCover: (...args: unknown[]) => mockUploadPlaylistCover(...args),
+  reorderSyncedTracks: (...args: unknown[]) => mockReorderSyncedTracks(...args),
 }))
 
 // ── DownloadAction mock (avoids adapter fetch noise) ──────────────────────────
@@ -155,6 +159,10 @@ describe('SyncedPlaylist page', () => {
     mockSyncedPlayerState.current = null
     mockRemoveSyncedTrack.mockReset()
     mockRemoveSyncedTrack.mockResolvedValue({})
+    mockUploadPlaylistCover.mockReset()
+    mockUploadPlaylistCover.mockResolvedValue({})
+    mockReorderSyncedTracks.mockReset()
+    mockReorderSyncedTracks.mockResolvedValue({})
   })
   afterEach(() => {
     vi.restoreAllMocks()
@@ -578,6 +586,142 @@ describe('SyncedPlaylist page', () => {
       wrapper(<SyncedPlaylist />)
       await waitFor(() => expect(screen.getByRole('heading', { name: 'Test Synced Playlist' })).toBeInTheDocument())
       expect(screen.queryByRole('button', { name: /remove owned one from playlist/i })).not.toBeInTheDocument()
+    })
+  })
+
+  // ── Change cover ──────────────────────────────────────────────────────────────
+
+  describe('change cover', () => {
+    async function renderOnce() {
+      mockUseSyncedPlaylist.mockReturnValue({
+        data: { ...mockDetail, mode: 'once' },
+        isLoading: false,
+        isError: false,
+      })
+      wrapper(<SyncedPlaylist />)
+      await waitFor(() => expect(screen.getByRole('heading', { name: 'Test Synced Playlist' })).toBeInTheDocument())
+    }
+
+    it('mode=once: "Change cover" button is present', async () => {
+      await renderOnce()
+      expect(screen.getByRole('button', { name: /change cover/i })).toBeInTheDocument()
+    })
+
+    it('mode=synced: "Change cover" button is absent', async () => {
+      mockUseSyncedPlaylist.mockReturnValue({
+        data: { ...mockDetail, mode: 'synced' },
+        isLoading: false,
+        isError: false,
+      })
+      wrapper(<SyncedPlaylist />)
+      await waitFor(() => expect(screen.getByRole('heading', { name: 'Test Synced Playlist' })).toBeInTheDocument())
+      expect(screen.queryByRole('button', { name: /change cover/i })).not.toBeInTheDocument()
+    })
+
+    it('mode=once: selecting a file calls uploadPlaylistCover with id and file', async () => {
+      await renderOnce()
+      const input = screen.getByTestId('cover-file-input') as HTMLInputElement
+      const file = new File(['(data)'], 'cover.jpg', { type: 'image/jpeg' })
+      await act(async () => {
+        fireEvent.change(input, { target: { files: [file] } })
+      })
+      expect(mockUploadPlaylistCover).toHaveBeenCalledWith('sp1', file)
+    })
+
+    it('mode=once: shows error message when upload fails', async () => {
+      mockUploadPlaylistCover.mockRejectedValue(new Error('Network error'))
+      await renderOnce()
+      const input = screen.getByTestId('cover-file-input') as HTMLInputElement
+      const file = new File(['(data)'], 'cover.jpg', { type: 'image/jpeg' })
+      await act(async () => {
+        fireEvent.change(input, { target: { files: [file] } })
+      })
+      await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument())
+      expect(screen.getByRole('alert')).toHaveTextContent(/couldn't upload/i)
+    })
+  })
+
+  // ── Drag reorder ──────────────────────────────────────────────────────────────
+
+  describe('drag reorder', () => {
+    async function renderOnce() {
+      mockUseSyncedPlaylist.mockReturnValue({
+        data: { ...mockDetail, mode: 'once' },
+        isLoading: false,
+        isError: false,
+      })
+      wrapper(<SyncedPlaylist />)
+      await waitFor(() => expect(screen.getByRole('heading', { name: 'Test Synced Playlist' })).toBeInTheDocument())
+    }
+
+    it('mode=once: drag handles are present (one per track)', async () => {
+      await renderOnce()
+      // 3 tracks → 3 drag handles
+      const handles = screen.getAllByLabelText(/drag to reorder/i)
+      expect(handles.length).toBe(3)
+    })
+
+    it('mode=synced: drag handles are absent', async () => {
+      mockUseSyncedPlaylist.mockReturnValue({
+        data: { ...mockDetail, mode: 'synced' },
+        isLoading: false,
+        isError: false,
+      })
+      wrapper(<SyncedPlaylist />)
+      await waitFor(() => expect(screen.getByRole('heading', { name: 'Test Synced Playlist' })).toBeInTheDocument())
+      expect(screen.queryByLabelText(/drag to reorder/i)).not.toBeInTheDocument()
+    })
+
+    it('mode=once: track wrapper rows are draggable', async () => {
+      await renderOnce()
+      // The outer wrapper divs around each track row should have draggable=true
+      const draggables = document.querySelectorAll('[draggable="true"]')
+      expect(draggables.length).toBe(3)
+    })
+
+    it('mode=synced: track wrapper rows are NOT draggable', async () => {
+      mockUseSyncedPlaylist.mockReturnValue({
+        data: { ...mockDetail, mode: 'synced' },
+        isLoading: false,
+        isError: false,
+      })
+      wrapper(<SyncedPlaylist />)
+      await waitFor(() => expect(screen.getByRole('heading', { name: 'Test Synced Playlist' })).toBeInTheDocument())
+      const draggables = document.querySelectorAll('[draggable="true"]')
+      expect(draggables.length).toBe(0)
+    })
+
+    it('mode=once: drop calls reorderSyncedTracks with correctly-ordered {source,externalId} list', async () => {
+      await renderOnce()
+      const rows = document.querySelectorAll('[draggable="true"]')
+      expect(rows.length).toBe(3)
+      // Simulate drag of row 0 (Owned One, e1) to position 1 (after Owned Two)
+      // dragstart on row 0
+      act(() => { fireEvent.dragStart(rows[0]) })
+      // dragOver row 1 (moves idx 0 to 1 in state)
+      act(() => { fireEvent.dragOver(rows[1], { preventDefault: () => {} }) })
+      // drop
+      await act(async () => { fireEvent.drop(rows[1]) })
+
+      // After dragging index 0 to position 1: order should be [1, 0, 2]
+      // Row 0 = ownedRow1 (e1), Row 1 = ownedRow2 (e2), Row 2 = missingRow (e3)
+      // Reordered: [ownedRow2, ownedRow1, missingRow] → [{spotify,e2},{spotify,e1},{spotify,e3}]
+      expect(mockReorderSyncedTracks).toHaveBeenCalledWith('sp1', [
+        { source: 'spotify', externalId: 'e2' },
+        { source: 'spotify', externalId: 'e1' },
+        { source: 'spotify', externalId: 'e3' },
+      ])
+    })
+
+    it('mode=once: failed reorder refetches server state', async () => {
+      mockReorderSyncedTracks.mockRejectedValue(new Error('Server error'))
+      await renderOnce()
+      const rows = document.querySelectorAll('[draggable="true"]')
+      act(() => { fireEvent.dragStart(rows[0]) })
+      act(() => { fireEvent.dragOver(rows[1], { preventDefault: () => {} }) })
+      await act(async () => { fireEvent.drop(rows[1]) })
+      // Should still have tried to call reorderSyncedTracks
+      expect(mockReorderSyncedTracks).toHaveBeenCalled()
     })
   })
 })

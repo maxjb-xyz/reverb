@@ -9,6 +9,8 @@ import {
   downloadMissingForPlaylist,
   updateSyncSettings,
   deleteSyncedPlaylist,
+  uploadPlaylistCover,
+  reorderSyncedTracks,
 } from './syncedPlaylistApi'
 import type { SyncedPlaylist, SyncedPlaylistDetail, DownloadJob } from './types'
 
@@ -233,5 +235,84 @@ describe('deleteSyncedPlaylist', () => {
       expect.stringContaining('/synced-playlists/sp-1'),
       expect.objectContaining({ method: 'DELETE' }),
     )
+  })
+})
+
+// ── uploadPlaylistCover ───────────────────────────────────────────────────────
+
+describe('uploadPlaylistCover', () => {
+  beforeEach(() => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        new Response(JSON.stringify(mockDetail), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      ),
+    )
+  })
+  afterEach(() => vi.unstubAllGlobals())
+
+  it('POSTs to /synced-playlists/{id}/cover with multipart form data containing the image field', async () => {
+    const file = new File(['(image-data)'], 'cover.jpg', { type: 'image/jpeg' })
+    const result = await uploadPlaylistCover('sp-1', file)
+    expect(result.name).toBe('My Synced Playlist')
+    const fetchMock = vi.mocked(fetch)
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('/synced-playlists/sp-1/cover'),
+      expect.objectContaining({ method: 'POST', credentials: 'include' }),
+    )
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    // Body must be FormData (not JSON) — no Content-Type header set manually
+    expect(init.body).toBeInstanceOf(FormData)
+    const form = init.body as FormData
+    expect(form.get('image')).toBe(file)
+    // Must NOT set Content-Type: application/json
+    expect((init.headers as Record<string, string> | undefined)?.['Content-Type']).toBeUndefined()
+  })
+
+  it('throws ApiError when server returns non-ok status', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response('too large', { status: 413 })),
+    )
+    const file = new File(['(big)'], 'big.jpg', { type: 'image/jpeg' })
+    await expect(uploadPlaylistCover('sp-1', file)).rejects.toThrow()
+  })
+})
+
+// ── reorderSyncedTracks ───────────────────────────────────────────────────────
+
+describe('reorderSyncedTracks', () => {
+  beforeEach(() => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        new Response(JSON.stringify(mockDetail), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      ),
+    )
+  })
+  afterEach(() => vi.unstubAllGlobals())
+
+  it('PUTs to /synced-playlists/{id}/tracks/order with {order:[...]} body', async () => {
+    const order = [
+      { source: 'spotify', externalId: 'e2' },
+      { source: 'spotify', externalId: 'e1' },
+      { source: 'spotify', externalId: 'e3' },
+    ]
+    const result = await reorderSyncedTracks('sp-1', order)
+    expect(result.name).toBe('My Synced Playlist')
+    const fetchMock = vi.mocked(fetch)
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('/synced-playlists/sp-1/tracks/order'),
+      expect.objectContaining({ method: 'PUT' }),
+    )
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    const body = JSON.parse(init.body as string)
+    expect(body.order).toEqual(order)
   })
 })

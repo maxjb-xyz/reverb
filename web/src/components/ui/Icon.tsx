@@ -32,6 +32,8 @@ export type IconName =
   | 'down'
   | 'chevron-down'
   | 'music'
+  | 'camera'
+  | 'grip'
 
 /**
  * Per-icon descriptor.
@@ -275,6 +277,28 @@ const icons: Record<IconName, IconDef> = {
         <path d="M9 18V5l12-2v13" />
         <circle cx="6" cy="18" r="3" />
         <circle cx="18" cy="16" r="3" />
+      </>
+    ),
+  },
+  // camera: lens + body — used for cover-art upload overlay
+  camera: {
+    content: (
+      <>
+        <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+        <circle cx="12" cy="13" r="4" />
+      </>
+    ),
+  },
+  // grip: six-dot drag handle
+  grip: {
+    content: (
+      <>
+        <circle cx="9" cy="5" r="1" fill="currentColor" stroke="none" />
+        <circle cx="9" cy="12" r="1" fill="currentColor" stroke="none" />
+        <circle cx="9" cy="19" r="1" fill="currentColor" stroke="none" />
+        <circle cx="15" cy="5" r="1" fill="currentColor" stroke="none" />
+        <circle cx="15" cy="12" r="1" fill="currentColor" stroke="none" />
+        <circle cx="15" cy="19" r="1" fill="currentColor" stroke="none" />
       </>
     ),
   },

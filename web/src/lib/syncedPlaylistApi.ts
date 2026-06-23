@@ -1,6 +1,8 @@
 import { useQuery } from '@tanstack/react-query'
-import { api } from './api'
+import { api, ApiError } from './api'
 import type { SyncedPlaylist, SyncedPlaylistDetail, DownloadJob } from './types'
+
+const BASE = '/api/v1'
 
 export function useSyncedPlaylists() {
   return useQuery({
@@ -61,4 +63,32 @@ export interface SyncedTrackEntry {
 
 export function addSyncedTrack(playlistId: string, entry: SyncedTrackEntry): Promise<SyncedPlaylistDetail> {
   return api.post<SyncedPlaylistDetail>(`/synced-playlists/${encodeURIComponent(playlistId)}/tracks`, entry)
+}
+
+/**
+ * Upload a new cover image for a managed (mode='once') playlist.
+ * Uses raw fetch with multipart/form-data since api.post forces JSON.
+ */
+export async function uploadPlaylistCover(id: string, file: File): Promise<SyncedPlaylistDetail> {
+  const form = new FormData()
+  form.append('image', file)
+  const res = await fetch(`${BASE}/synced-playlists/${encodeURIComponent(id)}/cover`, {
+    method: 'POST',
+    credentials: 'include',
+    body: form,
+  })
+  if (!res.ok) throw new ApiError('POST', `/synced-playlists/${id}/cover`, res.status)
+  return res.json() as Promise<SyncedPlaylistDetail>
+}
+
+export interface TrackOrderEntry {
+  source: string
+  externalId: string
+}
+
+/**
+ * Reorder tracks in a managed (mode='once') playlist.
+ */
+export function reorderSyncedTracks(id: string, order: TrackOrderEntry[]): Promise<SyncedPlaylistDetail> {
+  return api.put<SyncedPlaylistDetail>(`/synced-playlists/${encodeURIComponent(id)}/tracks/order`, { order })
 }

@@ -8,7 +8,10 @@ import {
   updateSyncSettings,
   deleteSyncedPlaylist,
   removeSyncedTrack,
+  uploadPlaylistCover,
+  reorderSyncedTracks,
 } from '../lib/syncedPlaylistApi'
+import type { TrackOrderEntry } from '../lib/syncedPlaylistApi'
 import { TrackRow } from '../components/ui/TrackRow'
 import { DownloadAction } from '../components/download/DownloadAction'
 import { Button, IconButton, Cover, Skeleton, EmptyState, Badge, Toggle, Select, Icon } from '../components/ui'
@@ -95,6 +98,15 @@ export default function SyncedPlaylist() {
   const [intervalSec, setIntervalSec] = useState<number | null>(null)
   const [autoDownload, setAutoDownload] = useState<boolean | null>(null)
 
+  // Cover upload state
+  const coverInputRef = useRef<HTMLInputElement>(null)
+  const [coverUploading, setCoverUploading] = useState(false)
+  const [coverError, setCoverError] = useState<string | null>(null)
+
+  // Drag-reorder state: optimistic local ordering of track indices
+  const [trackOrder, setTrackOrder] = useState<number[] | null>(null)
+  const dragSourceIdx = useRef<number | null>(null)
+
   // Seed local state from detail once it loads / changes
   useEffect(() => {
     if (!detail) return
@@ -102,6 +114,7 @@ export default function SyncedPlaylist() {
     setSyncEnabled(detail.syncEnabled)
     setIntervalSec(detail.syncIntervalSec)
     setAutoDownload(detail.autoDownload)
+    setTrackOrder(null) // reset optimistic order when playlist changes
     /* eslint-enable react-hooks/set-state-in-effect */
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: re-seed only when the playlist id changes, not on every detail refresh
   }, [detail?.id])
@@ -212,6 +225,68 @@ export default function SyncedPlaylist() {
     }
   }
 
+  async function handleCoverFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setCoverError(null)
+    setCoverUploading(true)
+    try {
+      await uploadPlaylistCover(id, file)
+      qc.invalidateQueries({ queryKey: ['synced-playlist', id] })
+    } catch {
+      setCoverError("Couldn't upload — try a smaller image")
+    } finally {
+      setCoverUploading(false)
+      // Reset so the same file can be re-selected
+      if (coverInputRef.current) coverInputRef.current.value = ''
+    }
+  }
+
+  // Build the track order payload from current (possibly reordered) tracks
+  function buildTrackOrderPayload(orderedTracks: AlbumDetailTrack[]): TrackOrderEntry[] {
+    return orderedTracks
+      .filter((t) => t.externalRef)
+      .map((t) => ({ source: t.externalRef!.source, externalId: t.externalRef!.externalId }))
+  }
+
+  function handleDragStart(idx: number) {
+    dragSourceIdx.current = idx
+  }
+
+  function handleDragOver(e: React.DragEvent<HTMLDivElement>, idx: number) {
+    e.preventDefault()
+    const from = dragSourceIdx.current
+    if (from === null || from === idx || !detail) return
+    const base = detail.tracks
+    const currentOrder = trackOrder ?? base.map((_, i) => i)
+    const next = [...currentOrder]
+    const [moved] = next.splice(from, 1)
+    next.splice(idx, 0, moved)
+    dragSourceIdx.current = idx
+    setTrackOrder(next)
+  }
+
+  async function handleDrop(e: React.DragEvent<HTMLDivElement>) {
+    e.preventDefault()
+    dragSourceIdx.current = null
+    if (!trackOrder || !detail) return
+    const orderedTracks = trackOrder.map((i) => detail.tracks[i])
+    const order = buildTrackOrderPayload(orderedTracks)
+    try {
+      await reorderSyncedTracks(id, order)
+      qc.invalidateQueries({ queryKey: ['synced-playlist', id] })
+    } catch (err) {
+      console.error('Failed to reorder tracks:', err)
+      // Restore server order on failure
+      setTrackOrder(null)
+      qc.invalidateQueries({ queryKey: ['synced-playlist', id] })
+    }
+  }
+
+  function handleDragEnd() {
+    dragSourceIdx.current = null
+  }
+
   // ── Render ──────────────────────────────────────────────────────────────────
 
   return (
@@ -222,13 +297,46 @@ export default function SyncedPlaylist() {
         style={palette ? { background: `linear-gradient(to bottom, ${rgbToCss(palette.rgb, 0.55)} 0%, transparent 100%)` } : undefined}
       >
         <header className="relative z-10 flex items-end gap-6 pt-2">
-          <Cover
-            src={detail.coverUrl}
-            alt={detail.name}
-            size={208}
-            rounded="md"
-            className="shadow-cover flex-none"
-          />
+          {/* Cover — interactive (change-cover) for mode='once' */}
+          <div className="relative flex-none group/cover">
+            <Cover
+              src={detail.coverUrl}
+              alt={detail.name}
+              size={208}
+              rounded="md"
+              className="shadow-cover"
+            />
+            {detail.mode === 'once' && (
+              <>
+                <button
+                  type="button"
+                  aria-label="Change cover"
+                  disabled={coverUploading}
+                  onClick={() => coverInputRef.current?.click()}
+                  className="absolute inset-0 flex flex-col items-center justify-center gap-1 rounded-md bg-black/0 group-hover/cover:bg-black/50 transition-colors opacity-0 group-hover/cover:opacity-100 focus-visible:opacity-100 focus-visible:bg-black/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent text-white cursor-pointer disabled:cursor-wait"
+                >
+                  <Icon name="camera" className="text-2xl" />
+                  <span className="text-xs font-semibold">
+                    {coverUploading ? 'Uploading…' : 'Change cover'}
+                  </span>
+                </button>
+                <input
+                  ref={coverInputRef}
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  className="sr-only"
+                  aria-label="Upload cover image"
+                  onChange={(e) => void handleCoverFileChange(e)}
+                  data-testid="cover-file-input"
+                />
+              </>
+            )}
+          </div>
+          {coverError && (
+            <p role="alert" className="absolute bottom-2 left-0 right-0 text-center text-xs text-red-400">
+              {coverError}
+            </p>
+          )}
           <div className="min-w-0 pb-1">
             <div className="flex items-center gap-2 mb-1">
               <span className="text-xs font-semibold uppercase tracking-widest text-text-muted">
@@ -360,41 +468,69 @@ export default function SyncedPlaylist() {
 
       {/* Track list */}
       <div className="space-y-0.5">
-        {detail.tracks.map((t, i) => {
+        {(trackOrder ?? detail.tracks.map((_, i) => i)).map((origIdx, displayIdx) => {
+          const t = detail.tracks[origIdx]
+          const isDraggable = detail.mode === 'once'
+
+          const dragHandle = isDraggable
+            ? (
+              <div
+                aria-label="Drag to reorder"
+                className="opacity-0 group-hover:opacity-100 flex items-center px-1 text-text-muted cursor-grab active:cursor-grabbing focus-visible:opacity-100 transition-opacity"
+              >
+                <Icon name="grip" className="text-base" />
+              </div>
+            )
+            : undefined
+
+          const dragProps = isDraggable
+            ? {
+              draggable: true,
+              onDragStart: () => handleDragStart(displayIdx),
+              onDragOver: (e: React.DragEvent<HTMLDivElement>) => handleDragOver(e, displayIdx),
+              onDrop: (e: React.DragEvent<HTMLDivElement>) => void handleDrop(e),
+              onDragEnd: handleDragEnd,
+            }
+            : {}
+
           if (t.state === 'full' && t.libraryTrack) {
             const ownedIdx = ownedIndexMap.get(t.libraryTrack.id) ?? 0
             const isActive = currentTrack?.id === t.libraryTrack.id
             return (
-              <TrackRow
-                key={t.libraryTrack.id}
-                track={t.libraryTrack}
-                index={i}
-                active={isActive}
-                playing={isActive ? isPlaying : undefined}
-                onPlay={() => playTrackList(ownedTracks, ownedIdx)}
-                coverSrc={t.libraryTrack?.coverArtId ? undefined : t.coverUrl}
-                artistTo={t.artistExternalId ? `/artist/spotify/${t.artistExternalId}` : undefined}
-                albumTo={t.albumExternalId ? `/album/spotify/${t.albumExternalId}` : undefined}
-                right={
-                  <div className="flex items-center gap-1 group">
-                    {detail.mode === 'once' && t.externalRef && (
-                      <button
-                        type="button"
-                        aria-label={`Remove ${t.title} from playlist`}
-                        className="opacity-0 group-hover:opacity-100 transition-opacity rounded p-1 text-text-muted hover:text-text-primary focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-                        onClick={(e) => { e.stopPropagation(); void handleRemoveTrack(t.externalRef!.source, t.externalRef!.externalId) }}
-                      >
-                        <Icon name="x" className="text-xs" />
-                      </button>
-                    )}
-                    <Badge kind="in-library">
-                      <Icon name="check" className="text-xs" />
-                      In Library
-                    </Badge>
-                  </div>
-                }
-                rightWidth={detail.mode === 'once' ? '156px' : '120px'}
-              />
+              <div key={t.libraryTrack.id} className="flex items-center group" {...dragProps}>
+                {dragHandle}
+                <div className="flex-1 min-w-0">
+                  <TrackRow
+                    track={t.libraryTrack}
+                    index={origIdx}
+                    active={isActive}
+                    playing={isActive ? isPlaying : undefined}
+                    onPlay={() => playTrackList(ownedTracks, ownedIdx)}
+                    coverSrc={t.libraryTrack?.coverArtId ? undefined : t.coverUrl}
+                    artistTo={t.artistExternalId ? `/artist/spotify/${t.artistExternalId}` : undefined}
+                    albumTo={t.albumExternalId ? `/album/spotify/${t.albumExternalId}` : undefined}
+                    right={
+                      <div className="flex items-center gap-1 group">
+                        {detail.mode === 'once' && t.externalRef && (
+                          <button
+                            type="button"
+                            aria-label={`Remove ${t.title} from playlist`}
+                            className="opacity-0 group-hover:opacity-100 transition-opacity rounded p-1 text-text-muted hover:text-text-primary focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                            onClick={(e) => { e.stopPropagation(); void handleRemoveTrack(t.externalRef!.source, t.externalRef!.externalId) }}
+                          >
+                            <Icon name="x" className="text-xs" />
+                          </button>
+                        )}
+                        <Badge kind="in-library">
+                          <Icon name="check" className="text-xs" />
+                          In Library
+                        </Badge>
+                      </div>
+                    }
+                    rightWidth={detail.mode === 'once' ? '156px' : '120px'}
+                  />
+                </div>
+              </div>
             )
           }
 
@@ -452,17 +588,21 @@ export default function SyncedPlaylist() {
             )
             : undefined
           return (
-            <TrackRow
-              key={t.libraryTrack?.id ?? t.externalRef?.externalId ?? i}
-              track={displayTrack}
-              index={i}
-              onPlay={() => {}}
-              coverSrc={t.coverUrl ?? detail.coverUrl}
-              artistNode={missingArtistNode}
-              albumNode={missingAlbumNode}
-              right={right}
-              rightWidth={right ? (detail.mode === 'once' ? '156px' : '120px') : undefined}
-            />
+            <div key={t.libraryTrack?.id ?? t.externalRef?.externalId ?? origIdx} className="flex items-center group" {...dragProps}>
+              {dragHandle}
+              <div className="flex-1 min-w-0">
+                <TrackRow
+                  track={displayTrack}
+                  index={origIdx}
+                  onPlay={() => {}}
+                  coverSrc={t.coverUrl ?? detail.coverUrl}
+                  artistNode={missingArtistNode}
+                  albumNode={missingAlbumNode}
+                  right={right}
+                  rightWidth={right ? (detail.mode === 'once' ? '156px' : '120px') : undefined}
+                />
+              </div>
+            </div>
           )
         })}
         {detail.tracks.length === 0 && (
