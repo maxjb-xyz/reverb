@@ -11,8 +11,9 @@ import (
 )
 
 // SyncService is the slice of *playlistsync.Service the API needs.
-// *playlistsync.Service satisfies it. It may be nil when no enabled search
-// adapter implements search.PlaylistProvider, in which case the handlers 503.
+// *playlistsync.Service satisfies it. It may be nil when no library adapter is
+// configured, in which case handlers 503. When a library is configured but no
+// Spotify source is present, Spotify-only methods return ErrSpotifyNotConfigured.
 type SyncService interface {
 	Import(ctx context.Context, url string, downloadMissing bool) (core.SyncedPlaylistDetail, error)
 	ImportOnce(ctx context.Context, url string) (core.SyncedPlaylistDetail, error)
@@ -65,6 +66,9 @@ func (s *Server) handleImportPlaylistOnce(w http.ResponseWriter, r *http.Request
 		if errors.Is(err, playlistsync.ErrNotPlaylistURL) {
 			status = http.StatusBadRequest
 		}
+		if errors.Is(err, playlistsync.ErrSpotifyNotConfigured) {
+			status = http.StatusServiceUnavailable
+		}
 		writeJSON(w, status, map[string]string{"error": err.Error()})
 		return
 	}
@@ -88,6 +92,9 @@ func (s *Server) handleImportSyncedPlaylist(w http.ResponseWriter, r *http.Reque
 		status := http.StatusUnprocessableEntity
 		if errors.Is(err, playlistsync.ErrNotPlaylistURL) {
 			status = http.StatusBadRequest
+		}
+		if errors.Is(err, playlistsync.ErrSpotifyNotConfigured) {
+			status = http.StatusServiceUnavailable
 		}
 		writeJSON(w, status, map[string]string{"error": err.Error()})
 		return
@@ -134,7 +141,11 @@ func (s *Server) handleSyncNow(w http.ResponseWriter, r *http.Request) {
 	}
 	det, err := svc.Sync(r.Context(), chi.URLParam(r, "id"))
 	if err != nil {
-		writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": err.Error()})
+		status := http.StatusUnprocessableEntity
+		if errors.Is(err, playlistsync.ErrSpotifyNotConfigured) {
+			status = http.StatusServiceUnavailable
+		}
+		writeJSON(w, status, map[string]string{"error": err.Error()})
 		return
 	}
 	writeJSON(w, http.StatusOK, det)

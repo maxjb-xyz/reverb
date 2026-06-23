@@ -402,6 +402,56 @@ func TestRemoveSyncedTrackHappyPath(t *testing.T) {
 	}
 }
 
+// TestImportSpotifyNotConfiguredReturns503 asserts that Import returns 503 when
+// the service returns ErrSpotifyNotConfigured (library present, Spotify absent).
+func TestImportSpotifyNotConfiguredReturns503(t *testing.T) {
+	svc := &fakeSync{importErr: playlistsync.ErrSpotifyNotConfigured}
+	srv, cookie := syncTestServer(t, svc)
+
+	rec := httptest.NewRecorder()
+	body := `{"url":"https://open.spotify.com/playlist/ABC"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/synced-playlists", strings.NewReader(body))
+	req.AddCookie(cookie)
+	srv.Handler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want 503: %s", rec.Code, rec.Body.String())
+	}
+}
+
+// TestImportOnceSpotifyNotConfiguredReturns503 asserts that ImportOnce returns
+// 503 when the service returns ErrSpotifyNotConfigured.
+func TestImportOnceSpotifyNotConfiguredReturns503(t *testing.T) {
+	svc := &fakeSync{importOnceErr: playlistsync.ErrSpotifyNotConfigured}
+	srv, cookie := syncTestServer(t, svc)
+
+	rec := httptest.NewRecorder()
+	body := `{"url":"https://open.spotify.com/playlist/ABC"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/playlists/import", strings.NewReader(body))
+	req.AddCookie(cookie)
+	srv.Handler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want 503: %s", rec.Code, rec.Body.String())
+	}
+}
+
+// TestSyncNowSpotifyNotConfiguredReturns503 asserts that Sync returns 503 when
+// the service returns ErrSpotifyNotConfigured.
+func TestSyncNowSpotifyNotConfiguredReturns503(t *testing.T) {
+	svc := &fakeSync{syncErr: playlistsync.ErrSpotifyNotConfigured}
+	srv, cookie := syncTestServer(t, svc)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/synced-playlists/p1/sync", nil)
+	req.AddCookie(cookie)
+	srv.Handler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want 503: %s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestRemoveSyncedTrackMissingParamsReturns400(t *testing.T) {
 	srv, cookie := syncTestServer(t, &fakeSync{})
 

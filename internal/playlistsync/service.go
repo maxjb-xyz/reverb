@@ -18,6 +18,11 @@ var ErrNotPlaylistURL = errors.New("not a spotify playlist url")
 // (auto-mirrored) and therefore not editable.
 var ErrNotEditable = errors.New("playlist is not editable")
 
+// ErrSpotifyNotConfigured is returned by Import, ImportOnce, and Sync when no
+// Spotify PlaylistSource has been configured. Managed-playlist operations
+// (CreateManaged, List, Detail, AddTrack, RemoveTrack) work without Spotify.
+var ErrSpotifyNotConfigured = errors.New("spotify is not configured")
+
 type PlaylistSource interface {
 	ParsePlaylistID(url string) (string, bool)
 	GetPlaylist(ctx context.Context, externalID string) (core.ExternalPlaylist, error)
@@ -104,6 +109,9 @@ func (s *Service) WithSettingsStore(ss SettingsStore) *Service {
 }
 
 func (s *Service) Import(ctx context.Context, rawURL string, downloadMissing bool) (core.SyncedPlaylistDetail, error) {
+	if s.src == nil {
+		return core.SyncedPlaylistDetail{}, ErrSpotifyNotConfigured
+	}
 	extID, ok := s.src.ParsePlaylistID(rawURL)
 	if !ok {
 		return core.SyncedPlaylistDetail{}, ErrNotPlaylistURL
@@ -184,6 +192,9 @@ func (s *Service) Detail(ctx context.Context, id string) (core.SyncedPlaylistDet
 }
 
 func (s *Service) Sync(ctx context.Context, id string) (core.SyncedPlaylistDetail, error) {
+	if s.src == nil {
+		return core.SyncedPlaylistDetail{}, ErrSpotifyNotConfigured
+	}
 	row, err := s.store.Get(ctx, id)
 	if err != nil {
 		return core.SyncedPlaylistDetail{}, err
@@ -225,6 +236,9 @@ func (s *Service) enqueueMissing(ctx context.Context, det core.SyncedPlaylistDet
 //
 // Returns ErrNotPlaylistURL when url is not a recognizable Spotify playlist URL.
 func (s *Service) ImportOnce(ctx context.Context, url string) (core.SyncedPlaylistDetail, error) {
+	if s.src == nil {
+		return core.SyncedPlaylistDetail{}, ErrSpotifyNotConfigured
+	}
 	extID, ok := s.src.ParsePlaylistID(url)
 	if !ok {
 		return core.SyncedPlaylistDetail{}, ErrNotPlaylistURL

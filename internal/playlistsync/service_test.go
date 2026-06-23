@@ -892,6 +892,92 @@ func TestCreateManagedCreatesLocalModeOncePlaylist(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// nil-src (no Spotify) tests
+// ---------------------------------------------------------------------------
+
+// TestNilSrcSpotifyMethodsReturnErrSpotifyNotConfigured asserts that Import,
+// ImportOnce, and Sync all return ErrSpotifyNotConfigured when the service was
+// constructed without a PlaylistSource (src=nil). All other managed-playlist
+// operations must work normally.
+func TestNilSrcSpotifyMethodsReturnErrSpotifyNotConfigured(t *testing.T) {
+	svc := NewService(nil, fakeMatcher{}, &fakeDownloader{}, newMemStore(), nil, func() int64 { return 100 }, seqID())
+
+	_, err := svc.Import(context.Background(), "spotify:playlist:PL", false)
+	if !errors.Is(err, ErrSpotifyNotConfigured) {
+		t.Fatalf("Import with nil src: want ErrSpotifyNotConfigured, got %v", err)
+	}
+
+	_, err = svc.ImportOnce(context.Background(), "spotify:playlist:PL")
+	if !errors.Is(err, ErrSpotifyNotConfigured) {
+		t.Fatalf("ImportOnce with nil src: want ErrSpotifyNotConfigured, got %v", err)
+	}
+
+	// Seed a row so Sync can attempt to look up the playlist.
+	store := newMemStore()
+	svc2 := NewService(nil, fakeMatcher{}, &fakeDownloader{}, store, nil, func() int64 { return 100 }, seqID())
+	_, err = svc2.Sync(context.Background(), "nonexistent-id")
+	if !errors.Is(err, ErrSpotifyNotConfigured) {
+		t.Fatalf("Sync with nil src: want ErrSpotifyNotConfigured, got %v", err)
+	}
+}
+
+// TestNilSrcManagedPlaylistOpsWork asserts that CreateManaged, List, Detail,
+// AddTrack, and RemoveTrack all work when the service has a nil PlaylistSource.
+func TestNilSrcManagedPlaylistOpsWork(t *testing.T) {
+	store := newMemStore()
+	svc := NewService(nil, fakeMatcher{}, &fakeDownloader{}, store, nil, func() int64 { return 200 }, seqID())
+
+	// CreateManaged works.
+	det, err := svc.CreateManaged(context.Background(), "No Spotify Playlist")
+	if err != nil {
+		t.Fatalf("CreateManaged: %v", err)
+	}
+	if det.Name != "No Spotify Playlist" {
+		t.Fatalf("Name = %q, want 'No Spotify Playlist'", det.Name)
+	}
+	if det.Source != "local" || det.Mode != "once" {
+		t.Fatalf("unexpected Source=%q Mode=%q", det.Source, det.Mode)
+	}
+
+	// List works.
+	list, err := svc.List(context.Background())
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if len(list) != 1 {
+		t.Fatalf("List: want 1 playlist, got %d", len(list))
+	}
+
+	// Detail works.
+	got, err := svc.Detail(context.Background(), det.ID)
+	if err != nil {
+		t.Fatalf("Detail: %v", err)
+	}
+	if got.ID != det.ID {
+		t.Fatalf("Detail ID mismatch")
+	}
+
+	// AddTrack works (library entry — no Spotify matching needed).
+	entry := core.ExternalResult{Source: "library", ExternalID: "lib-t1", Title: "Track 1", Type: core.EntityTrack}
+	det2, err := svc.AddTrack(context.Background(), det.ID, entry)
+	if err != nil {
+		t.Fatalf("AddTrack: %v", err)
+	}
+	if det2.TotalCount != 1 {
+		t.Fatalf("TotalCount = %d after AddTrack, want 1", det2.TotalCount)
+	}
+
+	// RemoveTrack works.
+	det3, err := svc.RemoveTrack(context.Background(), det.ID, "library", "lib-t1")
+	if err != nil {
+		t.Fatalf("RemoveTrack: %v", err)
+	}
+	if det3.TotalCount != 0 {
+		t.Fatalf("TotalCount = %d after RemoveTrack, want 0", det3.TotalCount)
+	}
+}
+
+// ---------------------------------------------------------------------------
 // MigrateLibraryPlaylists tests
 // ---------------------------------------------------------------------------
 

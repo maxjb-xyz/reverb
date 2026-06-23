@@ -352,10 +352,10 @@ func (b *Builder) Build(ctx context.Context) (ServiceBundle, error) {
 		log.Printf("no downloaders configured (add one via settings)")
 	}
 
-	// Playlist-sync service (synced-playlist pages + scheduler). Needs a library
-	// to match against, a download Manager to fetch missing tracks, and a search
-	// source implementing search.PlaylistProvider (spotify does). Nil when any is
-	// missing — the API handlers 503 in that case.
+	// Playlist-sync service (managed playlists + optional Spotify import/sync).
+	// Requires a library and a download Manager; Spotify is optional — when no
+	// PlaylistProvider-capable search source is configured, Import/ImportOnce/Sync
+	// return ErrSpotifyNotConfigured but all managed-playlist operations work.
 	bundle.Sync = b.BuildSyncService(sources, libAdapter, bundle.Manager)
 	if bundle.Sync != nil {
 		log.Printf("playlist sync service active")

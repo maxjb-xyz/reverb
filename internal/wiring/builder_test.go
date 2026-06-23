@@ -116,3 +116,40 @@ func TestBuilderManagerWithLibraryAndDownloader(t *testing.T) {
 	// Build must NOT start the manager — caller controls lifecycle.
 	bundle.Manager.Stop()
 }
+
+// TestBuilderSyncServiceRequiresLibraryAndManager asserts that the sync service
+// is nil when the library or manager is absent, regardless of search sources.
+func TestBuilderSyncServiceRequiresLibraryAndManager(t *testing.T) {
+	st := newTestStore(t)
+	// Library + downloader but no Spotify search source → sync service must still
+	// be constructed (managed playlists work without Spotify).
+	addInstance(t, st, "library", "subsonic", `{"url":"http://x"}`)
+	addInstance(t, st, "downloader", "spotdl", `{"output_dir":"/music"}`)
+	b := newTestBuilder(t, st)
+
+	bundle, err := b.Build(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bundle.Sync == nil {
+		t.Fatal("expected sync service with library + manager, even without Spotify")
+	}
+	bundle.Manager.Stop()
+}
+
+// TestBuilderSyncServiceNilWithoutLibrary asserts that the sync service is nil
+// when no library adapter is configured (even with Spotify + downloader present).
+func TestBuilderSyncServiceNilWithoutLibrary(t *testing.T) {
+	st := newTestStore(t)
+	addInstance(t, st, "search", "spotify", `{"client_id":"c"}`)
+	addInstance(t, st, "downloader", "spotdl", `{"output_dir":"/music"}`)
+	b := newTestBuilder(t, st)
+
+	bundle, err := b.Build(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bundle.Sync != nil {
+		t.Fatal("expected nil sync service without a library adapter")
+	}
+}

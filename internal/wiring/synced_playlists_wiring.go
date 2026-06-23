@@ -179,13 +179,14 @@ func (s *dbSettingsStore) UpsertSetting(ctx context.Context, key, value string) 
 	return s.q.UpsertSetting(ctx, db.UpsertSettingParams{Key: key, Value: value})
 }
 
-// BuildSyncService constructs a *playlistsync.Service from the built services:
-// the first enabled search source implementing search.PlaylistProvider (spotify
-// does), a matching.Service over the library, the download Manager, and the
-// store adapter over the shared *db.Queries. It returns nil when there is no
-// PlaylistProvider-capable source, no library, or no download Manager — sync
-// needs a source to fetch from, a library to match against, and a downloader to
-// fetch missing tracks. The API handlers return 503 when the service is nil.
+// BuildSyncService constructs a *playlistsync.Service from the built services.
+// It requires a library adapter and a download Manager; both are needed for the
+// managed-playlist operations (CreateManaged, List, Detail, AddTrack, RemoveTrack)
+// that work without any Spotify source. Returns nil only when the library or
+// Manager is absent. When a search source implementing search.PlaylistProvider
+// (spotify) is present it is wired in as src; otherwise src is nil and the
+// Spotify-only methods (Import, ImportOnce, Sync) return ErrSpotifyNotConfigured
+// while all managed-playlist operations continue to work normally.
 func (b *Builder) BuildSyncService(
 	sources []search.SearchSource,
 	lib library.LibraryAdapter,
@@ -194,17 +195,13 @@ func (b *Builder) BuildSyncService(
 	if lib == nil || mgr == nil {
 		return nil
 	}
-	var provider search.PlaylistProvider
+	var src playlistsync.PlaylistSource // nil when Spotify is not configured
 	for _, s := range sources {
 		if pp, ok := s.(search.PlaylistProvider); ok {
-			provider = pp
+			src = spotifyPlaylistSource{p: pp}
 			break
 		}
 	}
-	if provider == nil {
-		return nil
-	}
-	src := spotifyPlaylistSource{p: provider}
 	matcher := matching.NewService(lib, b.queries, b.version.LibraryVersion)
 	store := NewSyncStore(b.queries)
 	settings := &dbSettingsStore{q: b.queries}
