@@ -26,9 +26,28 @@ const postDownloadMock = vi.fn(
     } as DownloadJob),
 )
 
+const retryDownloadMock = vi.fn(
+  (_id: string, _manualUrl?: string): Promise<DownloadJob> =>
+    Promise.resolve({
+      id: 'job-1',
+      source: 'spotify',
+      externalId: 'sp1',
+      status: 'queued',
+      progress: 0,
+      dedupKey: 'dk',
+      downloaderName: 'spotDL',
+      priority: 0,
+      attempts: 0,
+      playWhenReady: false,
+      createdAt: 1,
+      startedAt: 0,
+      finishedAt: 0,
+    } as DownloadJob),
+)
+
 vi.mock('../../lib/downloadApi', () => ({
   postDownload: (req: unknown) => postDownloadMock(req),
-  retryDownload: vi.fn(() => Promise.resolve()),
+  retryDownload: (...args: Parameters<typeof retryDownloadMock>) => retryDownloadMock(...args),
   reqFromResult: (r: { source: string; externalId: string; artist: string; title: string; album: string; isrc?: string; durationMs?: number }, downloader?: string) => ({
     source: r.source,
     externalId: r.externalId,
@@ -89,6 +108,7 @@ describe('DownloadAction', () => {
   beforeEach(() => {
     useDownloads.setState({ jobs: {} })
     vi.clearAllMocks()
+    retryDownloadMock.mockClear()
     // default: 1 enabled downloader
     useAdaptersMock = vi.fn(() => ({
       data: [{ id: 'a1', type: 'downloader', name: 'spotDL', enabled: true, priority: 1, config: {} }],
@@ -205,5 +225,86 @@ describe('DownloadAction', () => {
 
     expect(screen.getByText(/no downloader/i)).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /download/i })).not.toBeInTheDocument()
+  })
+
+  // ── 10. failed: Retry option visible ─────────────────────────────────────
+  it('failed job → clicking trigger opens menu with Retry option', () => {
+    useDownloads.getState().upsert(makeJob({ status: 'failed', progress: 0 }))
+    render(<DownloadAction result={makeResult()} onPlay={onPlay} />)
+
+    const trigger = screen.getByRole('button', { name: /retry download/i })
+    fireEvent.click(trigger)
+
+    // Menu should be open; PortalMenu renders role="menu"
+    expect(screen.getByRole('menu', { name: /retry options/i })).toBeInTheDocument()
+    // Retry menuitem visible
+    expect(screen.getByRole('menuitem', { name: /^retry$/i })).toBeInTheDocument()
+  })
+
+  // ── 11. failed: "Download from a link…" affordance visible ───────────────
+  it('failed job → menu shows "Download from a link…" affordance', () => {
+    useDownloads.getState().upsert(makeJob({ status: 'failed', progress: 0 }))
+    render(<DownloadAction result={makeResult()} onPlay={onPlay} />)
+
+    fireEvent.click(screen.getByRole('button', { name: /retry download/i }))
+
+    expect(screen.getByRole('menuitem', { name: /download from a link/i })).toBeInTheDocument()
+  })
+
+  // ── 12. failed: valid URL submit calls retryDownload(id, url) ────────────
+  it('entering a valid URL and submitting calls retryDownload with jobId and url', async () => {
+    useDownloads.getState().upsert(makeJob({ status: 'failed', progress: 0 }))
+    render(<DownloadAction result={makeResult()} onPlay={onPlay} />)
+
+    // Open menu
+    fireEvent.click(screen.getByRole('button', { name: /retry download/i }))
+    // Click "Download from a link…" to reveal input
+    fireEvent.click(screen.getByRole('menuitem', { name: /download from a link/i }))
+
+    const input = screen.getByRole('textbox', { name: /manual download url/i })
+    fireEvent.change(input, { target: { value: 'https://youtube.com/watch?v=abc' } })
+
+    const submitBtn = screen.getByRole('button', { name: /^download$/i })
+    fireEvent.click(submitBtn)
+
+    await waitFor(() => expect(retryDownloadMock).toHaveBeenCalledTimes(1))
+    expect(retryDownloadMock).toHaveBeenCalledWith('job-1', 'https://youtube.com/watch?v=abc')
+  })
+
+  // ── 13. failed: plain Retry calls retryDownload(id) with no second arg ───
+  it('plain Retry calls retryDownload with jobId only (no manualUrl)', async () => {
+    useDownloads.getState().upsert(makeJob({ status: 'failed', progress: 0 }))
+    render(<DownloadAction result={makeResult()} onPlay={onPlay} />)
+
+    // Open menu then click Retry menuitem
+    fireEvent.click(screen.getByRole('button', { name: /retry download/i }))
+    fireEvent.click(screen.getByRole('menuitem', { name: /^retry$/i }))
+
+    await waitFor(() => expect(retryDownloadMock).toHaveBeenCalledTimes(1))
+    expect(retryDownloadMock).toHaveBeenCalledWith('job-1')
+    expect(retryDownloadMock).not.toHaveBeenCalledWith('job-1', expect.anything())
+  })
+
+  // ── 14. non-failed states: no retry/link affordance ──────────────────────
+  it.each([
+    ['missing', undefined],
+    ['running', makeJob({ status: 'running', progress: 50 })],
+    ['completed', makeJob({ status: 'completed', progress: 100, libraryTrackId: undefined })],
+  ])('%s state → no "Download from a link" affordance', (_label, jobOrUndefined) => {
+    if (jobOrUndefined) useDownloads.getState().upsert(jobOrUndefined)
+    render(<DownloadAction result={makeResult()} onPlay={onPlay} />)
+
+    expect(screen.queryByRole('button', { name: /retry download/i })).not.toBeInTheDocument()
+    expect(screen.queryByText(/download from a link/i)).not.toBeInTheDocument()
+  })
+
+  it('in-library state → no "Download from a link" affordance', () => {
+    const result = makeResult({
+      match: { status: 'in_library', libraryTrackId: 'lib-t3', method: 'isrc', confidence: 1 },
+    })
+    render(<DownloadAction result={result} onPlay={onPlay} />)
+
+    expect(screen.queryByRole('button', { name: /retry download/i })).not.toBeInTheDocument()
+    expect(screen.queryByText(/download from a link/i)).not.toBeInTheDocument()
   })
 })

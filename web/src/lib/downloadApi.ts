@@ -40,8 +40,11 @@ export function cancelDownload(id: string): Promise<unknown> {
   return api.post(`/downloads/${encodeURIComponent(id)}/cancel`)
 }
 
-export function retryDownload(id: string): Promise<DownloadJob> {
-  return api.post<DownloadJob>(`/downloads/${encodeURIComponent(id)}/retry`)
+export function retryDownload(id: string, manualUrl?: string): Promise<DownloadJob> {
+  return api.post<DownloadJob>(
+    `/downloads/${encodeURIComponent(id)}/retry`,
+    manualUrl !== undefined ? { manualUrl } : undefined,
+  )
 }
 
 export function postBatchDownload(tracks: ExternalTrackRef[]): Promise<DownloadJob[]> {

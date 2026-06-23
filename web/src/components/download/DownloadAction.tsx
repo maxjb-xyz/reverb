@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { Badge, ProgressRing, Icon, Button } from '../ui'
 import { DownloadPopover } from './DownloadPopover'
+import { PortalMenu } from '../PortalMenu'
 import { useDownloads } from '../../lib/downloadStore'
 import { postDownload, retryDownload, reqFromResult } from '../../lib/downloadApi'
 import { useAdapters } from '../../lib/adaptersApi'
@@ -25,6 +26,12 @@ export function DownloadAction({ result, onPlay }: Props) {
   // Optimistic: flip to "Downloading" the instant the user clicks, before the
   // POST round-trips. The real job (from the store) takes over once it lands.
   const [optimistic, setOptimistic] = useState(false)
+
+  // Failed-state popover
+  const [failedMenuOpen, setFailedMenuOpen] = useState(false)
+  const [showUrlInput, setShowUrlInput] = useState(false)
+  const [urlValue, setUrlValue] = useState('')
+  const failedTriggerRef = useRef<HTMLButtonElement>(null)
 
   const job = useDownloads((s) => s.byExternal(result.source, result.externalId))
   const downloaders = useDownloaders()
@@ -108,21 +115,104 @@ export function DownloadAction({ result, onPlay }: Props) {
 
   // ── 4. Failed ────────────────────────────────────────────────────────────
   if (job?.status === 'failed') {
+    const failedJob = job
+
+    function closeFailedMenu() {
+      setFailedMenuOpen(false)
+      setShowUrlInput(false)
+      setUrlValue('')
+    }
+
+    function handleUrlSubmit(e: React.FormEvent) {
+      e.preventDefault()
+      const url = urlValue.trim()
+      if (!url || !url.startsWith('http')) return
+      void retryDownload(failedJob.id, url).then((j) => {
+        useDownloads.getState().upsert(j)
+        closeFailedMenu()
+      })
+    }
+
     return (
-      <span className="inline-flex items-center gap-2">
+      <span className="relative inline-flex items-center gap-2">
         <Icon name="warn" className="text-xs text-text-muted" />
         <button
+          ref={failedTriggerRef}
           type="button"
           aria-label="Retry download"
           onClick={(e) => {
             e.stopPropagation()
-            void retryDownload(job.id).then((j) => useDownloads.getState().upsert(j))
+            setFailedMenuOpen((o) => !o)
           }}
           className="inline-flex items-center gap-1 rounded-full border border-border-subtle px-2.5 py-1 text-xs font-bold text-text-primary transition-colors hover:bg-raised-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent active:opacity-80"
         >
           <Icon name="retry" className="text-xs" />
           Retry
         </button>
+
+        {failedMenuOpen && (
+          <PortalMenu
+            triggerRef={failedTriggerRef}
+            onClose={closeFailedMenu}
+            label="Retry options"
+            widthClass="w-56"
+          >
+            {/* Plain retry */}
+            <button
+              type="button"
+              role="menuitem"
+              onClick={(e) => {
+                e.stopPropagation()
+                void retryDownload(failedJob.id).then((j) => {
+                  useDownloads.getState().upsert(j)
+                  closeFailedMenu()
+                })
+              }}
+              className="flex w-full items-center gap-2 rounded-t-xl px-3 py-2.5 text-sm text-text-primary hover:bg-raised-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+            >
+              <Icon name="retry" className="text-xs" />
+              Retry
+            </button>
+
+            {/* Download from a link */}
+            {!showUrlInput ? (
+              <button
+                type="button"
+                role="menuitem"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setShowUrlInput(true)
+                }}
+                className="flex w-full items-center gap-2 rounded-b-xl px-3 py-2.5 text-sm text-text-primary hover:bg-raised-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+              >
+                <Icon name="dl" className="text-xs" />
+                Download from a link…
+              </button>
+            ) : (
+              <form
+                onSubmit={handleUrlSubmit}
+                onClick={(e) => e.stopPropagation()}
+                className="px-3 pb-3 pt-1"
+              >
+                <input
+                  autoFocus
+                  type="url"
+                  value={urlValue}
+                  onChange={(e) => setUrlValue(e.target.value)}
+                  placeholder="Paste a YouTube link"
+                  className="w-full rounded-lg border border-border-subtle bg-surface px-2.5 py-1.5 text-xs text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-accent"
+                  aria-label="Manual download URL"
+                />
+                <button
+                  type="submit"
+                  className="mt-2 w-full rounded-lg bg-accent px-2.5 py-1.5 text-xs font-bold text-white hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent active:opacity-80"
+                >
+                  Download
+                </button>
+              </form>
+            )}
+          </PortalMenu>
+        )}
       </span>
     )
   }
