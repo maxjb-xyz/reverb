@@ -21,6 +21,8 @@ import (
 type fakeCoverage struct {
 	artist     core.ArtistDetail
 	artistErr  error
+	profile    core.ExternalArtist
+	profileErr error
 	album      core.AlbumDetail
 	albumErr   error
 	covs       []core.AlbumCoverage
@@ -31,6 +33,11 @@ type fakeCoverage struct {
 func (f *fakeCoverage) ArtistDetail(_ context.Context, source, id string) (core.ArtistDetail, error) {
 	f.lastSource, f.lastID = source, id
 	return f.artist, f.artistErr
+}
+
+func (f *fakeCoverage) ArtistProfile(_ context.Context, source, id string) (core.ExternalArtist, error) {
+	f.lastSource, f.lastID = source, id
+	return f.profile, f.profileErr
 }
 
 func (f *fakeCoverage) AlbumDetail(_ context.Context, source, id string) (core.AlbumDetail, error) {
@@ -174,6 +181,51 @@ func TestCoverageBatchDownload(t *testing.T) {
 	}
 	if len(mgr.jobs) != 2 {
 		t.Fatalf("Enqueue called %d times, want 2", len(mgr.jobs))
+	}
+}
+
+func TestArtistProfileEndpoint(t *testing.T) {
+	cov := &fakeCoverage{
+		profile: core.ExternalArtist{
+			Source:     "spotify",
+			ExternalID: "xyz",
+			Name:       "Radiohead",
+			CoverURL:   "https://img/rh.jpg",
+		},
+	}
+	srv, cookie := coverageTestServer(t, cov, nil)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/artist/spotify/xyz/profile", nil)
+	req.AddCookie(cookie)
+	srv.Handler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d: %s", rec.Code, rec.Body.String())
+	}
+	var prof core.ExternalArtist
+	if err := json.Unmarshal(rec.Body.Bytes(), &prof); err != nil {
+		t.Fatal(err)
+	}
+	if prof.Name != "Radiohead" {
+		t.Errorf("Name: want %q, got %q", "Radiohead", prof.Name)
+	}
+	if prof.CoverURL != "https://img/rh.jpg" {
+		t.Errorf("CoverURL: want %q, got %q", "https://img/rh.jpg", prof.CoverURL)
+	}
+	if cov.lastSource != "spotify" || cov.lastID != "xyz" {
+		t.Errorf("params = %q/%q", cov.lastSource, cov.lastID)
+	}
+}
+
+func TestArtistProfileNilServiceReturns503(t *testing.T) {
+	srv, cookie := coverageTestServer(t, nil, nil)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/artist/spotify/xyz/profile", nil)
+	req.AddCookie(cookie)
+	srv.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want 503", rec.Code)
 	}
 }
 

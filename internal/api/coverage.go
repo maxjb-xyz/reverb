@@ -14,6 +14,7 @@ import (
 // in which case the handlers return 503.
 type CoverageService interface {
 	ArtistDetail(ctx context.Context, source, id string) (core.ArtistDetail, error)
+	ArtistProfile(ctx context.Context, source, id string) (core.ExternalArtist, error)
 	StreamCoverage(ctx context.Context, source, id string) <-chan core.AlbumCoverage
 	AlbumDetail(ctx context.Context, source, id string) (core.AlbumDetail, error)
 }
@@ -38,6 +39,20 @@ func (s *Server) handleArtistDetail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, det)
+}
+
+func (s *Server) handleArtistProfile(w http.ResponseWriter, r *http.Request) {
+	cov := s.coverage()
+	if cov == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "coverage unavailable"})
+		return
+	}
+	prof, err := cov.ArtistProfile(r.Context(), chi.URLParam(r, "source"), chi.URLParam(r, "id"))
+	if err != nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, prof)
 }
 
 func (s *Server) handleArtistCoverage(w http.ResponseWriter, r *http.Request) {

@@ -64,7 +64,10 @@ type ExternalArtist struct {
 	Source     string `json:"source"`
 	ExternalID string `json:"externalId"`
 	Name       string `json:"name"`
-	CoverURL   string `json:"coverUrl"`
+	CoverURL   string `json:"coverUrl,omitempty"`
+	// CoverArtID is set for library-source profiles where the image is served
+	// via /api/v1/cover/{id} rather than a remote URL.
+	CoverArtID string `json:"coverArtId,omitempty"`
 }
 
 // ExternalAlbum is an album fetched from a SearchSource (GetAlbum).

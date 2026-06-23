@@ -198,6 +198,7 @@ func (s *Server) routes() {
 			pr.Get("/cover/{id}", s.handleCover)
 			pr.Get("/search/everywhere", s.handleEverywhere)
 			pr.Get("/artist/{source}/{id}", s.handleArtistDetail)
+			pr.Get("/artist/{source}/{id}/profile", s.handleArtistProfile)
 			pr.Get("/artist/{source}/{id}/coverage", s.handleArtistCoverage)
 			pr.Get("/album/{source}/{id}", s.handleAlbumDetail)
 			pr.Get("/library/playlist/{id}", s.handleLibraryPlaylist)

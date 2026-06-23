@@ -62,6 +62,35 @@ func NewService(src DiscoSource, m Matcher, lib LibraryArtist, cache CoverageCac
 	return &Service{src: src, match: m, lib: lib, cache: cache, now: now, version: version}
 }
 
+// ArtistProfile returns a lightweight artist profile (name + image) for the
+// given source and id. It makes exactly one upstream call — no discography,
+// no library search. Callers use this for the now-playing "About the artist" card.
+func (s *Service) ArtistProfile(ctx context.Context, source, id string) (core.ExternalArtist, error) {
+	switch source {
+	case "spotify":
+		prof, err := s.src.GetArtist(ctx, id)
+		if err != nil {
+			return core.ExternalArtist{}, err
+		}
+		prof.Source = "spotify"
+		prof.ExternalID = id
+		return prof, nil
+	case "library":
+		art, err := s.lib.GetArtist(ctx, id)
+		if err != nil {
+			return core.ExternalArtist{}, err
+		}
+		return core.ExternalArtist{
+			Source:     "library",
+			ExternalID: id,
+			Name:       art.Name,
+			CoverArtID: art.CoverArtID,
+		}, nil
+	default:
+		return core.ExternalArtist{}, fmt.Errorf("unknown source %q", source)
+	}
+}
+
 // ArtistDetail returns the page skeleton. source is "library" or "spotify".
 func (s *Service) ArtistDetail(ctx context.Context, source, id string) (core.ArtistDetail, error) {
 	extID, libArtistID := "", ""

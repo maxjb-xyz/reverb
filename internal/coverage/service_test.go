@@ -617,6 +617,78 @@ func TestArtistDetailLibraryAlbumsDedup(t *testing.T) {
 	}
 }
 
+// TestArtistProfileSpotify: ArtistProfile("spotify", id) calls GetArtist once and
+// returns the name + coverUrl. No discography call is made.
+func TestArtistProfileSpotify(t *testing.T) {
+	discoCallCount := 0
+	disco := fakeDisco{
+		artist: &core.ExternalArtist{
+			Source:     "spotify",
+			ExternalID: "sp1",
+			Name:       "Radiohead",
+			CoverURL:   "https://img/rh.jpg",
+		},
+	}
+	// Wrap fakeDisco in a countingDisco to assert GetArtistDiscography is not called.
+	cd := &countingDisco{fakeDisco: disco}
+	_ = discoCallCount // suppress unused warning
+	svc := NewService(cd, fakeMatcher{}, fakeLibrary{}, newMemCache(), func() int64 { return 1 }, func(context.Context) (int64, error) { return 1, nil })
+	prof, err := svc.ArtistProfile(context.Background(), "spotify", "sp1")
+	if err != nil {
+		t.Fatalf("ArtistProfile: unexpected error: %v", err)
+	}
+	if prof.Name != "Radiohead" {
+		t.Errorf("Name: want %q, got %q", "Radiohead", prof.Name)
+	}
+	if prof.CoverURL != "https://img/rh.jpg" {
+		t.Errorf("CoverURL: want %q, got %q", "https://img/rh.jpg", prof.CoverURL)
+	}
+	if prof.Source != "spotify" {
+		t.Errorf("Source: want %q, got %q", "spotify", prof.Source)
+	}
+	if prof.ExternalID != "sp1" {
+		t.Errorf("ExternalID: want %q, got %q", "sp1", prof.ExternalID)
+	}
+	// Discography must NOT have been fetched — ArtistProfile is lightweight.
+	if cd.albumSearchN != 0 {
+		t.Errorf("albumSearchN: want 0 (no discography), got %d", cd.albumSearchN)
+	}
+}
+
+// TestArtistProfileLibrary: ArtistProfile("library", id) calls lib.GetArtist once
+// and returns name + coverArtId. No external call is made.
+func TestArtistProfileLibrary(t *testing.T) {
+	// Extend fakeLibrary with a known artist that has a CoverArtID.
+	lib := fakeLibraryWithCover{}
+	svc := NewService(fakeDisco{}, fakeMatcher{}, lib, newMemCache(), func() int64 { return 1 }, func(context.Context) (int64, error) { return 1, nil })
+	prof, err := svc.ArtistProfile(context.Background(), "library", "libArtist1")
+	if err != nil {
+		t.Fatalf("ArtistProfile: unexpected error: %v", err)
+	}
+	if prof.Name != "Radiohead" {
+		t.Errorf("Name: want %q, got %q", "Radiohead", prof.Name)
+	}
+	if prof.CoverArtID != "cov42" {
+		t.Errorf("CoverArtID: want %q, got %q", "cov42", prof.CoverArtID)
+	}
+	if prof.Source != "library" {
+		t.Errorf("Source: want %q, got %q", "library", prof.Source)
+	}
+	if prof.ExternalID != "libArtist1" {
+		t.Errorf("ExternalID: want %q, got %q", "libArtist1", prof.ExternalID)
+	}
+}
+
+// fakeLibraryWithCover is a fakeLibrary variant that returns an artist with CoverArtID.
+type fakeLibraryWithCover struct{ fakeLibrary }
+
+func (f fakeLibraryWithCover) GetArtist(_ context.Context, id string) (core.Artist, error) {
+	if id == "libArtist1" {
+		return core.Artist{ID: "libArtist1", Name: "Radiohead", CoverArtID: "cov42"}, nil
+	}
+	return core.Artist{}, errors.New("not found")
+}
+
 // TestArtistDetailLibraryAlbumsSearchError: when the library Search fails,
 // ArtistDetail degrades gracefully — LibraryAlbums is empty, no error returned.
 func TestArtistDetailLibraryAlbumsSearchError(t *testing.T) {
