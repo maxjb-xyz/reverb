@@ -362,7 +362,8 @@ func TestStartManualURLWithSpotifyUsesPipeSyntax(t *testing.T) {
 	if n == 0 {
 		t.Fatal("no args captured")
 	}
-	want := "https://open.spotify.com/track/abc|https://youtube.com/watch?v=XYZ"
+	// spotDL requires the order "<audio-url>|<spotify-url>" — spotify URL SECOND.
+	want := "https://youtube.com/watch?v=XYZ|https://open.spotify.com/track/abc"
 	if r.gotArgs[n-1] != want {
 		t.Fatalf("trailing query arg: got %q, want %q (pipe syntax)", r.gotArgs[n-1], want)
 	}

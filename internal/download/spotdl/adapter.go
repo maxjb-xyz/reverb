@@ -137,9 +137,12 @@ func (a *Adapter) Start(ctx context.Context, req core.DownloadRequest, onProgres
 	//    (title/artist/album/ISRC from the configured client creds) while sourcing
 	//    the audio from the user-supplied URL (e.g. a specific YouTube video that
 	//    spotDL's own YouTube-Music search missed). spotDL's pipe form is:
-	//      "<spotify-track-url>|<source-url>"
-	//    which instructs it to fetch metadata from the first half and audio from the
-	//    second, giving the best of both paths for hard-to-find tracks.
+	//      "<audio-url>|<spotify-track-url>"
+	//    The order is REQUIRED: spotDL validates that the SECOND half contains
+	//    "spotify" (and raises QueryError otherwise), so the manual/audio URL comes
+	//    first and the Spotify track URL second — audio from the first half, metadata
+	//    from the second. (Getting the order backwards is the QueryError "please use
+	//    YouTubeURL|SpotifyURL".)
 	//
 	// 2. ManualURL only (non-Spotify or no ExternalID): download directly from the
 	//    user-supplied URL without any Spotify metadata lookup.
@@ -153,8 +156,9 @@ func (a *Adapter) Start(ctx context.Context, req core.DownloadRequest, onProgres
 
 	var query string
 	if manualURL != "" && req.Source == "spotify" && req.ExternalID != "" {
-		// Pipe: Spotify metadata + manual audio source.
-		query = "https://open.spotify.com/track/" + req.ExternalID + "|" + manualURL
+		// Pipe: manual audio source FIRST, Spotify metadata URL SECOND (spotDL
+		// requires "<audio-url>|<spotify-url>" — the spotify URL must be the 2nd half).
+		query = manualURL + "|" + "https://open.spotify.com/track/" + req.ExternalID
 	} else if manualURL != "" {
 		// Direct manual URL (non-Spotify or missing ID).
 		query = manualURL
