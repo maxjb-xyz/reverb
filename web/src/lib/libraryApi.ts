@@ -50,7 +50,7 @@ export function useAlbums(type = 'newest') {
 }
 
 export function createPlaylist(name: string): Promise<SyncedPlaylistDetail> {
-  return api.post<SyncedPlaylistDetail>('/library/playlists', { name })
+  return api.post<SyncedPlaylistDetail>('/playlists', { name })
 }
 
 export function importPlaylistOnce(url: string): Promise<SyncedPlaylistDetail> {

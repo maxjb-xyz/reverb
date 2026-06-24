@@ -145,7 +145,7 @@ export default function Library() {
                   subtitle={`${pl.trackCount} track${pl.trackCount !== 1 ? 's' : ''}`}
                   coverSrc={pl.coverUrl}
                   rounded="md"
-                  onClick={() => navigate(`/synced-playlist/${pl.id}`)}
+                  onClick={() => navigate(`/playlist/${pl.id}`)}
                 />
               ))}
             </div>

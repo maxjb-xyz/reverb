@@ -186,7 +186,7 @@ func TestCreatePlaylistHandler(t *testing.T) {
 	}
 	svc := &fakeSync{createDet: createDet}
 	srv, cookie := syncTestServer(t, svc)
-	rec := doAuthedBody(t, srv, http.MethodPost, "/api/v1/library/playlists", `{"name":"Road Trip"}`, cookie)
+	rec := doAuthedBody(t, srv, http.MethodPost, "/api/v1/playlists", `{"name":"Road Trip"}`, cookie)
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("status = %d, want 201: %s", rec.Code, rec.Body.String())
 	}
@@ -207,7 +207,7 @@ func TestCreatePlaylistHandlerRejectsEmptyName(t *testing.T) {
 	svc := &fakeSync{}
 	srv, cookie := syncTestServer(t, svc)
 	for _, body := range []string{`{"name":""}`, `{"name":"   "}`, `{}`} {
-		rec := doAuthedBody(t, srv, http.MethodPost, "/api/v1/library/playlists", body, cookie)
+		rec := doAuthedBody(t, srv, http.MethodPost, "/api/v1/playlists", body, cookie)
 		if rec.Code != http.StatusBadRequest {
 			t.Fatalf("body %s: status = %d, want 400", body, rec.Code)
 		}
@@ -236,7 +236,7 @@ func TestCreatePlaylistHandlerNoSyncService(t *testing.T) {
 		// Sync intentionally not set
 	})
 	cookie := &http.Cookie{Name: sessionCookie, Value: tok}
-	rec := doAuthedBody(t, srv, http.MethodPost, "/api/v1/library/playlists", `{"name":"Test"}`, cookie)
+	rec := doAuthedBody(t, srv, http.MethodPost, "/api/v1/playlists", `{"name":"Test"}`, cookie)
 	if rec.Code != http.StatusServiceUnavailable {
 		t.Fatalf("status = %d, want 503", rec.Code)
 	}
@@ -254,7 +254,7 @@ func TestPlaylistMutationsReturn503WhenNoLibrary(t *testing.T) {
 		Search: registry.NewRegistry("search"), Downloader: registry.NewRegistry("downloader")})
 	cookie := &http.Cookie{Name: sessionCookie, Value: tok}
 
-	rec := doAuthedBody(t, srv, http.MethodPost, "/api/v1/library/playlists", `{"name":"x"}`, cookie)
+	rec := doAuthedBody(t, srv, http.MethodPost, "/api/v1/playlists", `{"name":"x"}`, cookie)
 	if rec.Code != http.StatusServiceUnavailable {
 		t.Fatalf("create status = %d, want 503", rec.Code)
 	}
@@ -273,4 +273,27 @@ func TestLibraryNilAdapterReturns503(t *testing.T) {
 	if rec.Code != http.StatusServiceUnavailable {
 		t.Fatalf("status = %d, want 503", rec.Code)
 	}
+}
+
+func TestImportSyncedPlaylistRouteResponds(t *testing.T) {
+	// POST /api/v1/playlists/import-synced: 200 with sync service, 503 without.
+	t.Run("with sync service returns 200", func(t *testing.T) {
+		svc := &fakeSync{detail: core.SyncedPlaylistDetail{
+			SyncedPlaylist: core.SyncedPlaylist{ID: "imp-1", Name: "Imported"},
+		}}
+		srv, cookie := syncTestServer(t, svc)
+		body := `{"url":"https://open.spotify.com/playlist/XYZ","downloadMissing":false}`
+		rec := doAuthedBody(t, srv, http.MethodPost, "/api/v1/playlists/import-synced", body, cookie)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200: %s", rec.Code, rec.Body.String())
+		}
+	})
+	t.Run("without sync service returns 503", func(t *testing.T) {
+		srv, cookie := syncTestServer(t, nil)
+		body := `{"url":"https://open.spotify.com/playlist/XYZ"}`
+		rec := doAuthedBody(t, srv, http.MethodPost, "/api/v1/playlists/import-synced", body, cookie)
+		if rec.Code != http.StatusServiceUnavailable {
+			t.Fatalf("status = %d, want 503: %s", rec.Code, rec.Body.String())
+		}
+	})
 }

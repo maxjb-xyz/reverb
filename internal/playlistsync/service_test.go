@@ -1210,7 +1210,7 @@ func TestSetCoverUpdatesCoverURL(t *testing.T) {
 		t.Fatalf("CreateManaged: %v", err)
 	}
 
-	const newURL = "/api/v1/synced-playlists/pl-1/cover?v=1234"
+	const newURL = "/api/v1/playlists/pl-1/cover?v=1234"
 	det2, err := svc.SetCover(context.Background(), det.ID, newURL)
 	if err != nil {
 		t.Fatalf("SetCover: %v", err)

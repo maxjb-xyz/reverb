@@ -30,7 +30,7 @@ function wrapWithRoutes(ui: React.ReactNode) {
           <Route path="/" element={<>{ui}</>} />
           <Route path="/album/:source/:id" element={<div data-testid="album-page" />} />
           <Route path="/artist/:source/:id" element={<div data-testid="artist-page" />} />
-          <Route path="/synced-playlist/:id" element={<div data-testid="synced-playlist-page" />} />
+          <Route path="/playlist/:id" element={<div data-testid="synced-playlist-page" />} />
         </Routes>
       </MemoryRouter>
     </QueryClientProvider>
@@ -253,7 +253,7 @@ describe('Library page', () => {
     expect(screen.getByTestId('artist-page')).toBeInTheDocument()
   })
 
-  it('navigates to /synced-playlist/:id when a managed playlist card is clicked', () => {
+  it('navigates to /playlist/:id when a managed playlist card is clicked', () => {
     vi.mocked(useSyncedPlaylists).mockReturnValue({
       data: [makeSyncedPlaylist({ id: 'sp99', name: 'My Vibes' })],
       isLoading: false,

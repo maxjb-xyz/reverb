@@ -135,7 +135,7 @@ describe('AddToPlaylistMenu', () => {
     })
   })
 
-  it('create-and-add navigates to /synced-playlist/:id', async () => {
+  it('create-and-add navigates to /playlist/:id', async () => {
     renderMenu()
     const input = screen.getByLabelText(/new playlist name/i)
     fireEvent.change(input, { target: { value: 'New One' } })
@@ -144,7 +144,7 @@ describe('AddToPlaylistMenu', () => {
       expect(createPlaylist).toHaveBeenCalledWith('New One')
     })
     await waitFor(() => {
-      expect(mockNavigate).toHaveBeenCalledWith('/synced-playlist/p-new')
+      expect(mockNavigate).toHaveBeenCalledWith('/playlist/p-new')
     })
   })
 

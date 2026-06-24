@@ -63,7 +63,7 @@ describe('useSyncedPlaylists', () => {
     expect(result.current.data![0].name).toBe('My Synced Playlist')
     const fetchMock = vi.mocked(fetch)
     expect(fetchMock).toHaveBeenCalledWith(
-      expect.stringContaining('/synced-playlists'),
+      expect.stringContaining('/playlists'),
       expect.anything(),
     )
   })
@@ -76,7 +76,7 @@ describe('useSyncedPlaylist', () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(async (url: string) => {
-        if (url.includes('/synced-playlists/')) {
+        if (url.includes('/playlists/')) {
           return new Response(JSON.stringify(mockDetail), {
             status: 200,
             headers: { 'Content-Type': 'application/json' },
@@ -95,7 +95,7 @@ describe('useSyncedPlaylist', () => {
     expect(result.current.data?.ownedCount).toBe(15)
     const fetchMock = vi.mocked(fetch)
     expect(fetchMock).toHaveBeenCalledWith(
-      expect.stringContaining('/synced-playlists/sp-1'),
+      expect.stringContaining('/playlists/sp-1'),
       expect.anything(),
     )
   })
@@ -122,12 +122,12 @@ describe('importPlaylist', () => {
   })
   afterEach(() => vi.unstubAllGlobals())
 
-  it('POSTs to /synced-playlists with the correct body', async () => {
+  it('POSTs to /playlists/import-synced with the correct body', async () => {
     const result = await importPlaylist('https://open.spotify.com/playlist/abc', true)
     expect(result.name).toBe('My Synced Playlist')
     const fetchMock = vi.mocked(fetch)
     expect(fetchMock).toHaveBeenCalledWith(
-      expect.stringContaining('/synced-playlists'),
+      expect.stringContaining('/playlists/import-synced'),
       expect.objectContaining({ method: 'POST' }),
     )
     const [, init] = fetchMock.mock.calls[0] as [string, RequestInit]
@@ -153,11 +153,11 @@ describe('syncNow', () => {
   })
   afterEach(() => vi.unstubAllGlobals())
 
-  it('POSTs to /synced-playlists/{id}/sync', async () => {
+  it('POSTs to /playlists/{id}/sync', async () => {
     await syncNow('sp-1')
     const fetchMock = vi.mocked(fetch)
     expect(fetchMock).toHaveBeenCalledWith(
-      expect.stringContaining('/synced-playlists/sp-1/sync'),
+      expect.stringContaining('/playlists/sp-1/sync'),
       expect.objectContaining({ method: 'POST' }),
     )
   })
@@ -181,12 +181,12 @@ describe('downloadMissingForPlaylist', () => {
   })
   afterEach(() => vi.unstubAllGlobals())
 
-  it('POSTs to /synced-playlists/{id}/download-missing', async () => {
+  it('POSTs to /playlists/{id}/download-missing', async () => {
     const jobs = await downloadMissingForPlaylist('sp-1')
     expect(jobs).toHaveLength(2)
     const fetchMock = vi.mocked(fetch)
     expect(fetchMock).toHaveBeenCalledWith(
-      expect.stringContaining('/synced-playlists/sp-1/download-missing'),
+      expect.stringContaining('/playlists/sp-1/download-missing'),
       expect.objectContaining({ method: 'POST' }),
     )
   })
@@ -203,11 +203,11 @@ describe('updateSyncSettings', () => {
   })
   afterEach(() => vi.unstubAllGlobals())
 
-  it('PUTs settings to /synced-playlists/{id}/settings with the correct body', async () => {
+  it('PUTs settings to /playlists/{id}/settings with the correct body', async () => {
     await updateSyncSettings('sp-1', { syncEnabled: true, intervalSec: 7200, autoDownload: true })
     const fetchMock = vi.mocked(fetch)
     expect(fetchMock).toHaveBeenCalledWith(
-      expect.stringContaining('/synced-playlists/sp-1/settings'),
+      expect.stringContaining('/playlists/sp-1/settings'),
       expect.objectContaining({ method: 'PUT' }),
     )
     const [, init] = fetchMock.mock.calls[0] as [string, RequestInit]
@@ -236,12 +236,12 @@ describe('renameSyncedPlaylist', () => {
   })
   afterEach(() => vi.unstubAllGlobals())
 
-  it('PUTs to /synced-playlists/:id with name', async () => {
+  it('PUTs to /playlists/:id with name', async () => {
     const result = await renameSyncedPlaylist('sp-1', 'New Name')
     expect(result).toMatchObject({ name: 'New Name' })
     const fetchMock = vi.mocked(fetch)
     expect(fetchMock).toHaveBeenCalledWith(
-      expect.stringContaining('/synced-playlists/sp-1'),
+      expect.stringContaining('/playlists/sp-1'),
       expect.objectContaining({ method: 'PUT' }),
     )
     const [, init] = fetchMock.mock.calls[0] as [string, RequestInit]
@@ -261,11 +261,11 @@ describe('deleteSyncedPlaylist', () => {
   })
   afterEach(() => vi.unstubAllGlobals())
 
-  it('DELETEs /synced-playlists/{id}', async () => {
+  it('DELETEs /playlists/{id}', async () => {
     await deleteSyncedPlaylist('sp-1')
     const fetchMock = vi.mocked(fetch)
     expect(fetchMock).toHaveBeenCalledWith(
-      expect.stringContaining('/synced-playlists/sp-1'),
+      expect.stringContaining('/playlists/sp-1'),
       expect.objectContaining({ method: 'DELETE' }),
     )
   })
@@ -287,13 +287,13 @@ describe('uploadPlaylistCover', () => {
   })
   afterEach(() => vi.unstubAllGlobals())
 
-  it('POSTs to /synced-playlists/{id}/cover with multipart form data containing the image field', async () => {
+  it('POSTs to /playlists/{id}/cover with multipart form data containing the image field', async () => {
     const file = new File(['(image-data)'], 'cover.jpg', { type: 'image/jpeg' })
     const result = await uploadPlaylistCover('sp-1', file)
     expect(result.name).toBe('My Synced Playlist')
     const fetchMock = vi.mocked(fetch)
     expect(fetchMock).toHaveBeenCalledWith(
-      expect.stringContaining('/synced-playlists/sp-1/cover'),
+      expect.stringContaining('/playlists/sp-1/cover'),
       expect.objectContaining({ method: 'POST', credentials: 'include' }),
     )
     const [, init] = fetchMock.mock.calls[0] as [string, RequestInit]
@@ -331,7 +331,7 @@ describe('reorderSyncedTracks', () => {
   })
   afterEach(() => vi.unstubAllGlobals())
 
-  it('PUTs to /synced-playlists/{id}/tracks/order with {order:[...]} body', async () => {
+  it('PUTs to /playlists/{id}/tracks/order with {order:[...]} body', async () => {
     const order = [
       { source: 'spotify', externalId: 'e2' },
       { source: 'spotify', externalId: 'e1' },
@@ -341,7 +341,7 @@ describe('reorderSyncedTracks', () => {
     expect(result.name).toBe('My Synced Playlist')
     const fetchMock = vi.mocked(fetch)
     expect(fetchMock).toHaveBeenCalledWith(
-      expect.stringContaining('/synced-playlists/sp-1/tracks/order'),
+      expect.stringContaining('/playlists/sp-1/tracks/order'),
       expect.objectContaining({ method: 'PUT' }),
     )
     const [, init] = fetchMock.mock.calls[0] as [string, RequestInit]

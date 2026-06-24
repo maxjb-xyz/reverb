@@ -184,7 +184,7 @@ export default function Home() {
   // ------------------------------------------------------------------
   function handleShortcutClick(item: { id: string; type: 'album' | 'synced-playlist' }) {
     if (item.type === 'album') navigate(`/album/library/${item.id}`)
-    else navigate(`/synced-playlist/${item.id}`)
+    else navigate(`/playlist/${item.id}`)
   }
 
   async function handleHeroPlay() {

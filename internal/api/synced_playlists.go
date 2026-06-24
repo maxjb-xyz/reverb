@@ -407,7 +407,7 @@ func (s *Server) handleUploadPlaylistCover(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	coverURL := fmt.Sprintf("/api/v1/synced-playlists/%s/cover?v=%d", id, time.Now().Unix())
+	coverURL := fmt.Sprintf("/api/v1/playlists/%s/cover?v=%d", id, time.Now().Unix())
 	det, err := svc.SetCover(r.Context(), id, coverURL)
 	if err != nil {
 		if errors.Is(err, playlistsync.ErrNotEditable) {

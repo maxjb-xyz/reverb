@@ -89,11 +89,11 @@ export function ImportPlaylistDialog({ open, onClose }: ImportPlaylistDialogProp
       if (mode === 'one-time') {
         const detail = await importPlaylistOnce(trimmed)
         onClose()
-        navigate(`/synced-playlist/${detail.id}`)
+        navigate(`/playlist/${detail.id}`)
       } else {
         const detail = await importPlaylist(trimmed, downloadMissing)
         onClose()
-        navigate(`/synced-playlist/${detail.id}`)
+        navigate(`/playlist/${detail.id}`)
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Couldn't import — is the playlist public?")

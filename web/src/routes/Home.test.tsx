@@ -283,7 +283,7 @@ describe('Home feed', () => {
     expect(mockNavigate).not.toHaveBeenCalled()
   })
 
-  it('synced playlists appear in the shortcut grid and link to /synced-playlist/:id', async () => {
+  it('synced playlists appear in the shortcut grid and link to /playlist/:id', async () => {
     const { useAlbums } = await import('../lib/libraryApi')
     const { useSyncedPlaylists } = await import('../lib/syncedPlaylistApi')
 
@@ -309,9 +309,9 @@ describe('Home feed', () => {
     // The synced playlist name appears in the shortcut grid
     expect(screen.getByRole('button', { name: 'Classical' })).toBeInTheDocument()
 
-    // Clicking it navigates to /synced-playlist/sp1 (not /playlist/sp1)
+    // Clicking it navigates to /playlist/sp1
     mockNavigate.mockClear()
     fireEvent.click(screen.getByRole('button', { name: 'Classical' }))
-    expect(mockNavigate).toHaveBeenCalledWith('/synced-playlist/sp1')
+    expect(mockNavigate).toHaveBeenCalledWith('/playlist/sp1')
   })
 })

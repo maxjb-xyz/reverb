@@ -22,10 +22,10 @@ function RedirectToLibrary({ kind }: { kind: 'album' | 'artist' }) {
   return <Navigate to={`/${kind}/library/${id}`} replace />
 }
 
-/** Redirect legacy `/playlist/:id` URLs to the managed `/synced-playlist/:id` form. */
-function RedirectToSyncedPlaylist() {
+/** Redirect legacy `/synced-playlist/:id` URLs to the canonical `/playlist/:id` form. */
+function RedirectToPlaylist() {
   const { id = '' } = useParams()
-  return <Navigate to={`/synced-playlist/${id}`} replace />
+  return <Navigate to={`/playlist/${id}`} replace />
 }
 
 const queryClient = new QueryClient({
@@ -69,8 +69,8 @@ function Routed() {
         <Route path="/album/:id" element={<RedirectToLibrary kind="album" />} />
         <Route path="/artist/:source/:id" element={<Artist />} />
         <Route path="/artist/:id" element={<RedirectToLibrary kind="artist" />} />
-        <Route path="/playlist/:id" element={<RedirectToSyncedPlaylist />} />
-        <Route path="/synced-playlist/:id" element={<SyncedPlaylist />} />
+        <Route path="/playlist/:id" element={<SyncedPlaylist />} />
+        <Route path="/synced-playlist/:id" element={<RedirectToPlaylist />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="/admin" element={<Admin />} />
         <Route path="*" element={<Navigate to="/" replace />} />

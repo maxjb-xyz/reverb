@@ -53,7 +53,7 @@ function renderRail(initialPath = '/') {
           <Route path="/library" element={<div data-testid="library-page" />} />
           <Route path="/album/:source/:id" element={<div data-testid="album-page" />} />
           <Route path="/artist/:source/:id" element={<div data-testid="artist-page" />} />
-          <Route path="/synced-playlist/:id" element={<div data-testid="synced-playlist-page" />} />
+          <Route path="/playlist/:id" element={<div data-testid="synced-playlist-page" />} />
         </Routes>
       </MemoryRouter>
     </QueryClientProvider>,
@@ -157,7 +157,7 @@ describe('LibraryRail', () => {
     expect(screen.getByTestId('artist-page')).toBeInTheDocument()
   })
 
-  it('clicking a managed playlist row navigates to /synced-playlist/:id', () => {
+  it('clicking a managed playlist row navigates to /playlist/:id', () => {
     renderRail()
     // Playlists are shown by default
     const playlistBtn = screen.getByRole('button', { name: 'Chill Mix' })
@@ -185,7 +185,7 @@ describe('LibraryRail', () => {
     expect(screen.getByLabelText(/playlist url/i)).toBeInTheDocument()
   })
 
-  it('creating a playlist navigates to /synced-playlist/:id', async () => {
+  it('creating a playlist navigates to /playlist/:id', async () => {
     renderRail()
     fireEvent.click(screen.getByRole('button', { name: /create playlist/i }))
     await waitFor(() => {

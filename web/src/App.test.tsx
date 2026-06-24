@@ -81,10 +81,20 @@ test('/artist/:id redirects to /artist/library/:id and renders Artist page', () 
   expect(screen.getByText('Artist page')).toBeInTheDocument()
 })
 
-test('/playlist/:id redirects to /synced-playlist/:id and renders SyncedPlaylist page', () => {
+test('/playlist/:id renders SyncedPlaylist page directly', () => {
   mockStatus({ loading: false, setupRequired: false, authenticated: true, error: false })
   render(
     <MemoryRouter initialEntries={['/playlist/p42']}>
+      <App />
+    </MemoryRouter>,
+  )
+  expect(screen.getByText('SyncedPlaylist page')).toBeInTheDocument()
+})
+
+test('/synced-playlist/:id redirects to /playlist/:id and renders SyncedPlaylist page', () => {
+  mockStatus({ loading: false, setupRequired: false, authenticated: true, error: false })
+  render(
+    <MemoryRouter initialEntries={['/synced-playlist/p42']}>
       <App />
     </MemoryRouter>,
   )

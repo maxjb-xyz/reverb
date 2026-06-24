@@ -38,7 +38,7 @@ export function LibraryRail() {
       const pl = await createPlaylist('New Playlist')
       await qc.invalidateQueries({ queryKey: ['synced-playlists'] })
       setFilter('playlists')
-      navigate(`/synced-playlist/${pl.id}`)
+      navigate(`/playlist/${pl.id}`)
     } catch {
       // Needs a connected library provider; nothing to do otherwise.
     } finally {
@@ -143,7 +143,7 @@ function PlaylistList({ items }: { items: SyncedPlaylist[] }) {
           meta={`Playlist · ${p.trackCount} tracks`}
           rounded="md"
           isPlaying={false}
-          onClick={() => navigate(`/synced-playlist/${p.id}`)}
+          onClick={() => navigate(`/playlist/${p.id}`)}
         />
       ))}
     </>

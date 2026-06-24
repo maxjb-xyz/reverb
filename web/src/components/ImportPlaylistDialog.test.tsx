@@ -52,7 +52,7 @@ function wrap(ui: React.ReactNode) {
       <MemoryRouter>
         <Routes>
           <Route path="/" element={<>{ui}</>} />
-          <Route path="/synced-playlist/:id" element={<div data-testid="synced-playlist-page" />} />
+          <Route path="/playlist/:id" element={<div data-testid="synced-playlist-page" />} />
         </Routes>
       </MemoryRouter>
     </QueryClientProvider>
@@ -101,7 +101,7 @@ describe('ImportPlaylistDialog', () => {
     expect(screen.getByRole('button', { name: /^import$/i })).not.toBeDisabled()
   })
 
-  it('calls importPlaylist(url, downloadMissing) and navigates to /synced-playlist/:id on success', async () => {
+  it('calls importPlaylist(url, downloadMissing) and navigates to /playlist/:id on success', async () => {
     const detail = makeDetail({ id: 'sp-xyz' })
     vi.mocked(importPlaylist).mockResolvedValue(detail)
     const onClose = vi.fn()
@@ -125,7 +125,7 @@ describe('ImportPlaylistDialog', () => {
     })
 
     await waitFor(() => {
-      expect(mockNavigate).toHaveBeenCalledWith('/synced-playlist/sp-xyz')
+      expect(mockNavigate).toHaveBeenCalledWith('/playlist/sp-xyz')
     })
 
     expect(onClose).toHaveBeenCalled()
@@ -244,7 +244,7 @@ describe('ImportPlaylistDialog', () => {
     expect(oneTimeTab).toHaveAttribute('aria-selected', 'false')
   })
 
-  it('selecting One-time + submitting calls importPlaylistOnce and navigates to /synced-playlist/:id', async () => {
+  it('selecting One-time + submitting calls importPlaylistOnce and navigates to /playlist/:id', async () => {
     vi.mocked(importPlaylistOnce).mockResolvedValue(makeDetail({ id: 'pl-snap', mode: 'once' }))
     const onClose = vi.fn()
 
@@ -263,7 +263,7 @@ describe('ImportPlaylistDialog', () => {
     })
 
     await waitFor(() => {
-      expect(mockNavigate).toHaveBeenCalledWith('/synced-playlist/pl-snap')
+      expect(mockNavigate).toHaveBeenCalledWith('/playlist/pl-snap')
     })
 
     expect(onClose).toHaveBeenCalled()

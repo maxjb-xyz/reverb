@@ -48,7 +48,7 @@ test('playlist sync: import -> have/missing -> download missing -> flips owned -
 
   // 4) Lands on the synced playlist page: "My Mix" + "1 of 2 in library". Both track
   //    titles render; the missing row exposes a Download affordance.
-  await expect(page).toHaveURL(/\/synced-playlist\/sp1$/)
+  await expect(page).toHaveURL(/\/playlist\/sp1$/)
   await expect(page.getByRole('heading', { name: 'My Mix' })).toBeVisible()
   await expect(page.getByText('1 of 2 in library')).toBeVisible()
   await expect(page.getByText('Synced Owned Song', { exact: true })).toBeVisible()

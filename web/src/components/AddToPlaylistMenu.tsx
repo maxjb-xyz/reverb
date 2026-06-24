@@ -113,7 +113,7 @@ export function AddToPlaylistMenu({ track, onClose }: AddToPlaylistMenuProps) {
       const pl = await createPlaylist(name)
       await addSyncedTrack(pl.id, buildEntry())
       done(pl.id)
-      navigate(`/synced-playlist/${pl.id}`)
+      navigate(`/playlist/${pl.id}`)
     } catch {
       setError('Could not create playlist.')
       setBusy(false)

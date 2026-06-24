@@ -372,10 +372,8 @@ export async function installCompletenessMocks(page: Page): Promise<Completeness
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(state.downloads) })
   })
 
-  // Managed playlist "pl-1" (previously a Navidrome playlist; now a synced-playlist).
-  // The /playlist/pl-1 route redirects to /synced-playlist/pl-1, so serve the detail
-  // from the synced-playlists endpoint.
-  await page.route('**/api/v1/synced-playlists/pl-1', (route: Route) => {
+  // Managed playlist "pl-1" — serve the detail from the playlists endpoint.
+  await page.route('**/api/v1/playlists/pl-1', (route: Route) => {
     const owned = ownedLibraryTrack()
     const track = {
       state: 'full' as const,
@@ -648,29 +646,30 @@ type FullPlaylistSyncState = PlaylistSyncState & {
 export async function installPlaylistSyncMocks(page: Page): Promise<void> {
   const state: FullPlaylistSyncState = { missingOwned: false, synced: false, downloads: [] }
 
-  // POST /synced-playlists (import) → the initial 1-owned-1-missing detail.
-  // GET  /synced-playlists (list)   → [summary of sp1].
-  await page.route('**/api/v1/synced-playlists', (route: Route) => {
-    if (route.request().method() === 'POST') {
-      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(syncDetail(state)) })
-    }
-    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([syncSummary(state)]) })
-  })
+  // POST /playlists/import-synced (import) → the initial 1-owned-1-missing detail.
+  await page.route('**/api/v1/playlists/import-synced', (route: Route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(syncDetail(state)) }),
+  )
 
-  // GET /synced-playlists/sp1 → STATEFUL detail (reflects missingOwned + synced).
-  // POST /synced-playlists/sp1/sync → flip `synced` (next GET includes the 3rd track).
-  // POST /synced-playlists/sp1/download-missing → enqueue the missing job (header CTA).
-  await page.route('**/api/v1/synced-playlists/sp1/sync', (route: Route) => {
+  // GET /playlists (list) → [summary of sp1].
+  await page.route('**/api/v1/playlists', (route: Route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([syncSummary(state)]) }),
+  )
+
+  // GET /playlists/sp1 → STATEFUL detail (reflects missingOwned + synced).
+  // POST /playlists/sp1/sync → flip `synced` (next GET includes the 3rd track).
+  // POST /playlists/sp1/download-missing → enqueue the missing job (header CTA).
+  await page.route('**/api/v1/playlists/sp1/sync', (route: Route) => {
     state.synced = true
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(syncDetail(state)) })
   })
 
-  await page.route('**/api/v1/synced-playlists/sp1/download-missing', (route: Route) => {
+  await page.route('**/api/v1/playlists/sp1/download-missing', (route: Route) => {
     state.downloads = [syncMissingQueuedJob()]
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([syncMissingQueuedJob()]) })
   })
 
-  await page.route('**/api/v1/synced-playlists/sp1', (route: Route) =>
+  await page.route('**/api/v1/playlists/sp1', (route: Route) =>
     route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(syncDetail(state)) }),
   )
 

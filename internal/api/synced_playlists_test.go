@@ -171,7 +171,7 @@ func TestSyncedImportReturnsDetail(t *testing.T) {
 
 	rec := httptest.NewRecorder()
 	body := `{"url":"https://open.spotify.com/playlist/ext1","downloadMissing":true}`
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/synced-playlists", strings.NewReader(body))
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/playlists/import-synced", strings.NewReader(body))
 	req.AddCookie(cookie)
 	srv.Handler().ServeHTTP(rec, req)
 
@@ -193,7 +193,7 @@ func TestSyncedImportReturnsDetail(t *testing.T) {
 func TestSyncedImportMissingURLReturns400(t *testing.T) {
 	srv, cookie := syncTestServer(t, &fakeSync{})
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/synced-playlists", strings.NewReader(`{}`))
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/playlists/import-synced", strings.NewReader(`{}`))
 	req.AddCookie(cookie)
 	srv.Handler().ServeHTTP(rec, req)
 	if rec.Code != http.StatusBadRequest {
@@ -206,7 +206,7 @@ func TestSyncedImportBadURLReturns400(t *testing.T) {
 	srv, cookie := syncTestServer(t, svc)
 	rec := httptest.NewRecorder()
 	body := `{"url":"https://example.com/nope"}`
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/synced-playlists", strings.NewReader(body))
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/playlists/import-synced", strings.NewReader(body))
 	req.AddCookie(cookie)
 	srv.Handler().ServeHTTP(rec, req)
 	if rec.Code != http.StatusBadRequest {
@@ -222,7 +222,7 @@ func TestSyncedImportFetchErrorReturns422(t *testing.T) {
 	srv, cookie := syncTestServer(t, svc)
 	rec := httptest.NewRecorder()
 	body := `{"url":"https://open.spotify.com/playlist/ext1"}`
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/synced-playlists", strings.NewReader(body))
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/playlists/import-synced", strings.NewReader(body))
 	req.AddCookie(cookie)
 	srv.Handler().ServeHTTP(rec, req)
 	if rec.Code != http.StatusUnprocessableEntity {
@@ -239,7 +239,7 @@ func TestSyncedListReturns(t *testing.T) {
 	}}
 	srv, cookie := syncTestServer(t, svc)
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/synced-playlists", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/playlists", nil)
 	req.AddCookie(cookie)
 	srv.Handler().ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
@@ -258,7 +258,7 @@ func TestSyncedDownloadMissingReturnsJobs(t *testing.T) {
 	svc := &fakeSync{jobs: []core.DownloadJob{{ID: "j1"}, {ID: "j2"}}}
 	srv, cookie := syncTestServer(t, svc)
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/synced-playlists/p1/download-missing", nil)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/playlists/p1/download-missing", nil)
 	req.AddCookie(cookie)
 	srv.Handler().ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
@@ -278,7 +278,7 @@ func TestSyncedSettingsUpdates(t *testing.T) {
 	srv, cookie := syncTestServer(t, svc)
 	rec := httptest.NewRecorder()
 	body := `{"syncEnabled":true,"intervalSec":3600,"autoDownload":true}`
-	req := httptest.NewRequest(http.MethodPut, "/api/v1/synced-playlists/p9/settings", strings.NewReader(body))
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/playlists/p9/settings", strings.NewReader(body))
 	req.AddCookie(cookie)
 	srv.Handler().ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
@@ -293,7 +293,7 @@ func TestSyncedDelete(t *testing.T) {
 	svc := &fakeSync{}
 	srv, cookie := syncTestServer(t, svc)
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodDelete, "/api/v1/synced-playlists/p7", nil)
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/playlists/p7", nil)
 	req.AddCookie(cookie)
 	srv.Handler().ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
@@ -307,7 +307,7 @@ func TestSyncedDelete(t *testing.T) {
 func TestSyncedNilServiceReturns503(t *testing.T) {
 	srv, cookie := syncTestServer(t, nil)
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/synced-playlists", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/playlists", nil)
 	req.AddCookie(cookie)
 	srv.Handler().ServeHTTP(rec, req)
 	if rec.Code != http.StatusServiceUnavailable {
@@ -395,7 +395,7 @@ func TestAddSyncedTrackHappyPath(t *testing.T) {
 
 	rec := httptest.NewRecorder()
 	body := `{"source":"spotify","externalId":"t-new","title":"New Track","artist":"Artist","album":"Album","durationMs":210000}`
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/synced-playlists/pl-1/tracks", strings.NewReader(body))
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/playlists/pl-1/tracks", strings.NewReader(body))
 	req.AddCookie(cookie)
 	srv.Handler().ServeHTTP(rec, req)
 
@@ -413,7 +413,7 @@ func TestAddSyncedTrackNotEditableReturns409(t *testing.T) {
 
 	rec := httptest.NewRecorder()
 	body := `{"source":"spotify","externalId":"t-new","title":"T","artist":"A","album":"B","durationMs":200000}`
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/synced-playlists/pl-synced/tracks", strings.NewReader(body))
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/playlists/pl-synced/tracks", strings.NewReader(body))
 	req.AddCookie(cookie)
 	srv.Handler().ServeHTTP(rec, req)
 
@@ -429,7 +429,7 @@ func TestRemoveSyncedTrackHappyPath(t *testing.T) {
 	srv, cookie := syncTestServer(t, svc)
 
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodDelete, "/api/v1/synced-playlists/SP1/tracks?source=spotify&externalId=t-old", nil)
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/playlists/SP1/tracks?source=spotify&externalId=t-old", nil)
 	req.AddCookie(cookie)
 	srv.Handler().ServeHTTP(rec, req)
 
@@ -449,7 +449,7 @@ func TestImportSpotifyNotConfiguredReturns503(t *testing.T) {
 
 	rec := httptest.NewRecorder()
 	body := `{"url":"https://open.spotify.com/playlist/ABC"}`
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/synced-playlists", strings.NewReader(body))
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/playlists/import-synced", strings.NewReader(body))
 	req.AddCookie(cookie)
 	srv.Handler().ServeHTTP(rec, req)
 
@@ -482,7 +482,7 @@ func TestSyncNowSpotifyNotConfiguredReturns503(t *testing.T) {
 	srv, cookie := syncTestServer(t, svc)
 
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/synced-playlists/p1/sync", nil)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/playlists/p1/sync", nil)
 	req.AddCookie(cookie)
 	srv.Handler().ServeHTTP(rec, req)
 
@@ -498,9 +498,9 @@ func TestRemoveSyncedTrackMissingParamsReturns400(t *testing.T) {
 		name string
 		url  string
 	}{
-		{"missing both", "/api/v1/synced-playlists/SP1/tracks"},
-		{"missing externalId", "/api/v1/synced-playlists/SP1/tracks?source=spotify"},
-		{"missing source", "/api/v1/synced-playlists/SP1/tracks?externalId=t-old"},
+		{"missing both", "/api/v1/playlists/SP1/tracks"},
+		{"missing externalId", "/api/v1/playlists/SP1/tracks?source=spotify"},
+		{"missing source", "/api/v1/playlists/SP1/tracks?externalId=t-old"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -572,7 +572,7 @@ func TestUploadPlaylistCoverHappyPath(t *testing.T) {
 
 	body, ct := buildCoverMultipart(t, "image/png", pngData)
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/synced-playlists/pl-1/cover", body)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/playlists/pl-1/cover", body)
 	req.Header.Set("Content-Type", ct)
 	req.AddCookie(cookie)
 	srv.Handler().ServeHTTP(rec, req)
@@ -591,7 +591,7 @@ func TestUploadPlaylistCoverHappyPath(t *testing.T) {
 	if svc.setCoverID != "pl-1" {
 		t.Fatalf("SetCover id = %q, want pl-1", svc.setCoverID)
 	}
-	if !strings.Contains(svc.setCoverURL, "/api/v1/synced-playlists/pl-1/cover") {
+	if !strings.Contains(svc.setCoverURL, "/api/v1/playlists/pl-1/cover") {
 		t.Fatalf("SetCover url = %q, unexpected", svc.setCoverURL)
 	}
 
@@ -614,7 +614,7 @@ func TestUploadPlaylistCoverOversizedReturns413(t *testing.T) {
 	bigData := make([]byte, 5*1024*1024+1)
 	body, ct := buildCoverMultipart(t, "image/jpeg", bigData)
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/synced-playlists/pl-1/cover", body)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/playlists/pl-1/cover", body)
 	req.Header.Set("Content-Type", ct)
 	req.AddCookie(cookie)
 	srv.Handler().ServeHTTP(rec, req)
@@ -631,7 +631,7 @@ func TestUploadPlaylistCoverWrongTypeReturns400(t *testing.T) {
 
 	body, ct := buildCoverMultipart(t, "image/gif", []byte("GIF89a"))
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/synced-playlists/pl-1/cover", body)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/playlists/pl-1/cover", body)
 	req.Header.Set("Content-Type", ct)
 	req.AddCookie(cookie)
 	srv.Handler().ServeHTTP(rec, req)
@@ -658,7 +658,7 @@ func TestUploadPlaylistCoverSyncedPlaylistReturns409(t *testing.T) {
 	}
 	body, ct := buildCoverMultipart(t, "image/png", pngData)
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/synced-playlists/pl-synced/cover", body)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/playlists/pl-synced/cover", body)
 	req.Header.Set("Content-Type", ct)
 	req.AddCookie(cookie)
 	srv.Handler().ServeHTTP(rec, req)
@@ -684,7 +684,7 @@ func TestServePlaylistCoverHappyPath(t *testing.T) {
 	srv, cookie := syncTestServerWithDataDir(t, svc, dataDir)
 
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/synced-playlists/pl-1/cover", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/playlists/pl-1/cover", nil)
 	req.AddCookie(cookie)
 	srv.Handler().ServeHTTP(rec, req)
 
@@ -705,7 +705,7 @@ func TestServePlaylistCoverNotFoundReturns404(t *testing.T) {
 	srv, cookie := syncTestServerWithDataDir(t, svc, dataDir)
 
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/synced-playlists/no-such-pl/cover", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/playlists/no-such-pl/cover", nil)
 	req.AddCookie(cookie)
 	srv.Handler().ServeHTTP(rec, req)
 
@@ -732,7 +732,7 @@ func TestReorderSyncedTracksHappyPath(t *testing.T) {
 	}
 	bodyBytes, _ := json.Marshal(map[string]any{"order": order})
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPut, "/api/v1/synced-playlists/pl-1/tracks/order", bytes.NewReader(bodyBytes))
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/playlists/pl-1/tracks/order", bytes.NewReader(bodyBytes))
 	req.Header.Set("Content-Type", "application/json")
 	req.AddCookie(cookie)
 	srv.Handler().ServeHTTP(rec, req)
@@ -754,7 +754,7 @@ func TestReorderSyncedTracksNotEditableReturns409(t *testing.T) {
 
 	bodyBytes, _ := json.Marshal(map[string]any{"order": []core.TrackKey{}})
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPut, "/api/v1/synced-playlists/pl-synced/tracks/order", bytes.NewReader(bodyBytes))
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/playlists/pl-synced/tracks/order", bytes.NewReader(bodyBytes))
 	req.Header.Set("Content-Type", "application/json")
 	req.AddCookie(cookie)
 	srv.Handler().ServeHTTP(rec, req)
@@ -818,7 +818,7 @@ func TestUploadPlaylistCoverNonImageLabeledAsPng(t *testing.T) {
 	notAnImage := []byte("not an image at all")
 	body, ct := buildCoverMultipart(t, "image/png", notAnImage)
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/synced-playlists/pl-1/cover", body)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/playlists/pl-1/cover", body)
 	req.Header.Set("Content-Type", ct)
 	req.AddCookie(cookie)
 	srv.Handler().ServeHTTP(rec, req)
@@ -863,7 +863,7 @@ func TestUploadPlaylistCoverSniffedExtStored(t *testing.T) {
 	// Lie: declare as image/jpeg but send PNG bytes.
 	body, ct := buildCoverMultipart(t, "image/jpeg", pngData)
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/synced-playlists/pl-sniff/cover", body)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/playlists/pl-sniff/cover", body)
 	req.Header.Set("Content-Type", ct)
 	req.AddCookie(cookie)
 	srv.Handler().ServeHTTP(rec, req)
@@ -904,7 +904,7 @@ func TestUploadPlaylistCoverNotEditableNoFileWritten(t *testing.T) {
 	}
 	body, ct := buildCoverMultipart(t, "image/png", pngData)
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/synced-playlists/pl-synced/cover", body)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/playlists/pl-synced/cover", body)
 	req.Header.Set("Content-Type", ct)
 	req.AddCookie(cookie)
 	srv.Handler().ServeHTTP(rec, req)
@@ -951,7 +951,7 @@ func TestRenameSyncedPlaylist(t *testing.T) {
 	svc := &fakeSync{renameDet: core.SyncedPlaylistDetail{SyncedPlaylist: core.SyncedPlaylist{ID: "p1", Name: "New Name"}}}
 	srv, cookie := syncTestServer(t, svc)
 	body, _ := json.Marshal(map[string]string{"name": "New Name"})
-	req := httptest.NewRequest(http.MethodPut, "/api/v1/synced-playlists/p1", bytes.NewReader(body))
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/playlists/p1", bytes.NewReader(body))
 	req.AddCookie(cookie)
 	req.Header.Set("Content-Type", "application/json")
 	rr := httptest.NewRecorder()
@@ -971,7 +971,7 @@ func TestRenameSyncedPlaylistEmptyName(t *testing.T) {
 	svc := &fakeSync{}
 	srv, cookie := syncTestServer(t, svc)
 	body, _ := json.Marshal(map[string]string{"name": "   "})
-	req := httptest.NewRequest(http.MethodPut, "/api/v1/synced-playlists/p1", bytes.NewReader(body))
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/playlists/p1", bytes.NewReader(body))
 	req.AddCookie(cookie)
 	req.Header.Set("Content-Type", "application/json")
 	rr := httptest.NewRecorder()
@@ -985,7 +985,7 @@ func TestRenameSyncedPlaylistNotFound(t *testing.T) {
 	svc := &fakeSync{renameErr: playlistsync.ErrNotFound}
 	srv, cookie := syncTestServer(t, svc)
 	body, _ := json.Marshal(map[string]string{"name": "X"})
-	req := httptest.NewRequest(http.MethodPut, "/api/v1/synced-playlists/missing", bytes.NewReader(body))
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/playlists/missing", bytes.NewReader(body))
 	req.AddCookie(cookie)
 	req.Header.Set("Content-Type", "application/json")
 	rr := httptest.NewRecorder()
