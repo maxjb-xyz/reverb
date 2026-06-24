@@ -3,9 +3,9 @@ import { useQueryClient } from '@tanstack/react-query'
 import { RealtimeConnection, type WebSocketLike } from './realtime'
 import { useDownloads } from './downloadStore'
 import { useLibraryRevision } from './libraryRevisionStore'
-import { getDownloads } from './downloadApi'
+import { getDownloads, getQueueState } from './downloadApi'
 import { usePlayer } from './playerStore'
-import type { DownloadEvent, LibraryUpdatedEvent, RealtimeEvent, Track } from './types'
+import type { DownloadEvent, DownloadRemovedEvent, LibraryUpdatedEvent, QueueStateEvent, RealtimeEvent, Track } from './types'
 
 // trackFromJob synthesizes a minimal library Track for play-when-ready auto-play,
 // using the re-matched libraryTrackId (mirrors ExternalRow.trackFromMatch). The
@@ -89,6 +89,14 @@ export function useRealtime(makeSocket?: (url: string) => WebSocketLike): void {
           useLibraryRevision.getState().bump()
           break
         }
+        case 'download.queue': {
+          useDownloads.getState().setPaused((frame.payload as QueueStateEvent).paused)
+          break
+        }
+        case 'download.removed': {
+          useDownloads.getState().remove((frame.payload as DownloadRemovedEvent).jobIds)
+          break
+        }
         default:
           break
       }
@@ -97,6 +105,10 @@ export function useRealtime(makeSocket?: (url: string) => WebSocketLike): void {
     function onOpen() {
       // Resync the full job list on (re)connect so we never miss a transition.
       void getDownloads().then((jobs) => useDownloads.getState().setAll(jobs))
+      // Resync the paused flag (another client may have paused while we were away).
+      void getQueueState()
+        .then((q) => useDownloads.getState().setPaused(q.paused))
+        .catch(() => {})
     }
 
     const conn = new RealtimeConnection({ onEvent, onOpen }, makeSocket)

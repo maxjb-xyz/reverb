@@ -16,6 +16,7 @@ vi.mock('./playerStore', () => ({
 // downloadApi resync is stubbed (no real network).
 vi.mock('./downloadApi', () => ({
   getDownloads: vi.fn(() => Promise.resolve([])),
+  getQueueState: vi.fn(() => Promise.resolve({ paused: false })),
 }))
 
 // A controllable stub socket the test drives.
@@ -144,5 +145,22 @@ describe('useRealtime', () => {
     renderHook(() => useRealtime((url) => new StubSocket(url)), { wrapper })
     sockets[0].onmessage?.(frame('download.complete', { jobId: 'j2', dedupKey: 'dk2', status: 'completed', progress: 100, source: 'spotify', externalId: 'sp2', libraryTrackId: 't5' }))
     expect(playTrackList).not.toHaveBeenCalled()
+  })
+
+  it('handles download.queue (paused) and download.removed (drop jobs)', () => {
+    useDownloads.setState({
+      jobs: {
+        x: { id: 'x', dedupKey: 'x', status: 'completed', progress: 100, downloaderName: 'spotdl', priority: 0, attempts: 0, source: 's', externalId: 'x', playWhenReady: false, createdAt: 1, startedAt: 0, finishedAt: 0 } as never,
+      },
+      paused: false,
+    })
+    renderHook(() => useRealtime((url) => new StubSocket(url)), { wrapper })
+    const s = sockets[0]
+
+    s.onmessage?.(frame('download.queue', { paused: true }))
+    expect(useDownloads.getState().paused).toBe(true)
+
+    s.onmessage?.(frame('download.removed', { jobIds: ['x'] }))
+    expect(useDownloads.getState().jobs['x']).toBeUndefined()
   })
 })
