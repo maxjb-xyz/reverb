@@ -64,6 +64,9 @@ type DownloadJob struct {
 	// AddToPlaylistID mirrors DownloadRequest.AddToPlaylistID so the post-download
 	// playlist-add hook in runScan can read it from the rehydrated job.
 	AddToPlaylistID string         `json:"addToPlaylistId,omitempty"`
+	// DownloaderRef is downloader-internal handle for async downloaders (e.g. the
+	// Lidarr album id). Empty for synchronous downloaders like spotDL.
+	DownloaderRef string `json:"downloaderRef,omitempty"`
 	CreatedAt       int64          `json:"createdAt"`
 	StartedAt       int64          `json:"startedAt"`
 	FinishedAt      int64          `json:"finishedAt"`

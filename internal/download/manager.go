@@ -52,6 +52,9 @@ type JobStore interface {
 	// DeleteFinished hard-removes every terminal (completed/failed/canceled) job
 	// and returns the deleted ids so the Manager can publish a removal event.
 	DeleteFinished(ctx context.Context) ([]string, error)
+	// UpdateRef persists the downloader-internal ref (e.g. Lidarr album id) for a
+	// job, used by async downloaders after Submit.
+	UpdateRef(ctx context.Context, id string, ref string) error
 }
 
 // ScanController is the library slice the Manager needs (StartScan + ScanStatus).

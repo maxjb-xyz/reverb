@@ -220,6 +220,16 @@ func (s *memStore) DeleteFinished(_ context.Context) ([]string, error) {
 	return ids, nil
 }
 
+func (s *memStore) UpdateRef(_ context.Context, id string, ref string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if j, ok := s.jobs[id]; ok {
+		j.DownloaderRef = ref
+		s.jobs[id] = j
+	}
+	return nil
+}
+
 func (s *memStore) getReq(id string) (core.DownloadRequest, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

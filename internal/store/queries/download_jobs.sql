@@ -1,20 +1,20 @@
 -- name: InsertDownloadJob :exec
 INSERT INTO download_jobs (
     id, dedup_key, request_json, downloader_name, status, progress, error,
-    output_path, library_track_id, priority, requested_by, attempts,
+    output_path, library_track_id, priority, requested_by, attempts, downloader_ref,
     created_at, started_at, finished_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, unixepoch(), NULL, NULL);
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, unixepoch(), NULL, NULL);
 
 -- name: GetDownloadJob :one
 SELECT id, dedup_key, request_json, downloader_name, status, progress, error,
        output_path, library_track_id, cover_art_id, priority, requested_by, attempts,
-       created_at, started_at, finished_at
+       downloader_ref, created_at, started_at, finished_at
 FROM download_jobs WHERE id = ?;
 
 -- name: GetActiveDownloadJobByDedup :one
 SELECT id, dedup_key, request_json, downloader_name, status, progress, error,
        output_path, library_track_id, cover_art_id, priority, requested_by, attempts,
-       created_at, started_at, finished_at
+       downloader_ref, created_at, started_at, finished_at
 FROM download_jobs
 WHERE dedup_key = ? AND status IN ('queued', 'running')
 ORDER BY created_at ASC
@@ -23,14 +23,14 @@ LIMIT 1;
 -- name: ListDownloadJobs :many
 SELECT id, dedup_key, request_json, downloader_name, status, progress, error,
        output_path, library_track_id, cover_art_id, priority, requested_by, attempts,
-       created_at, started_at, finished_at
+       downloader_ref, created_at, started_at, finished_at
 FROM download_jobs
 ORDER BY created_at DESC;
 
 -- name: ListDownloadJobsByStatus :many
 SELECT id, dedup_key, request_json, downloader_name, status, progress, error,
        output_path, library_track_id, cover_art_id, priority, requested_by, attempts,
-       created_at, started_at, finished_at
+       downloader_ref, created_at, started_at, finished_at
 FROM download_jobs
 WHERE status = ?
 ORDER BY created_at DESC;
@@ -62,6 +62,9 @@ UPDATE download_jobs SET request_json = ? WHERE id = ?;
 
 -- name: IncrementDownloadJobAttempts :exec
 UPDATE download_jobs SET attempts = attempts + 1 WHERE id = ?;
+
+-- name: UpdateDownloadJobRef :exec
+UPDATE download_jobs SET downloader_ref = ? WHERE id = ?;
 
 -- name: DeleteDownloadJob :exec
 DELETE FROM download_jobs WHERE id = ?;

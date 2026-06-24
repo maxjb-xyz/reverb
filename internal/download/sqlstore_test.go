@@ -99,6 +99,28 @@ func TestSQLStoreInsertGetUpdate(t *testing.T) {
 	}
 }
 
+func TestSQLStoreDownloaderRefRoundTrip(t *testing.T) {
+	s := newSQLStore(t)
+	ctx := context.Background()
+	job := core.DownloadJob{ID: "r1", DedupKey: "dk", Status: core.DownloadRunning, DownloaderName: "lidarr", Source: "spotify", ExternalID: "e1"}
+	if err := s.Insert(ctx, job, core.DownloadRequest{Source: "spotify", ExternalID: "e1", Album: "Discovery", Artist: "Daft Punk"}); err != nil {
+		t.Fatal(err)
+	}
+	if got, _, _ := s.Get(ctx, "r1"); got.DownloaderRef != "" {
+		t.Fatalf("new job should have empty ref, got %q", got.DownloaderRef)
+	}
+	if err := s.UpdateRef(ctx, "r1", "lidarr-album-42"); err != nil {
+		t.Fatal(err)
+	}
+	got, ok, err := s.Get(ctx, "r1")
+	if err != nil || !ok {
+		t.Fatalf("get: %v ok=%v", err, ok)
+	}
+	if got.DownloaderRef != "lidarr-album-42" {
+		t.Fatalf("ref not persisted: %q", got.DownloaderRef)
+	}
+}
+
 func TestSQLStoreDeleteAndDeleteFinished(t *testing.T) {
 	s := newSQLStore(t)
 	ctx := context.Background()

@@ -34,6 +34,7 @@ type rowFields struct {
 	coverArtID     sql.NullString
 	priority       int64
 	attempts       int64
+	downloaderRef  string
 	createdAt      int64
 	startedAt      sql.NullInt64
 	finishedAt     sql.NullInt64
@@ -54,6 +55,7 @@ func toCoreFlatRow(r rowFields) (core.DownloadJob, error) {
 		DownloaderName: r.downloaderName,
 		Priority:       int(r.priority),
 		Attempts:       int(r.attempts),
+		DownloaderRef:  r.downloaderRef,
 		CreatedAt:      r.createdAt,
 	}
 	if r.libraryTrackID.Valid {
@@ -95,8 +97,8 @@ func fromGetRow(r db.GetDownloadJobRow) rowFields {
 		downloaderName: r.DownloaderName, status: r.Status, progress: r.Progress,
 		errStr: r.Error, outputPath: r.OutputPath,
 		libraryTrackID: r.LibraryTrackID, coverArtID: r.CoverArtID,
-		priority: r.Priority, attempts: r.Attempts, createdAt: r.CreatedAt,
-		startedAt: r.StartedAt, finishedAt: r.FinishedAt,
+		priority: r.Priority, attempts: r.Attempts, downloaderRef: r.DownloaderRef,
+		createdAt: r.CreatedAt, startedAt: r.StartedAt, finishedAt: r.FinishedAt,
 	}
 }
 
@@ -106,8 +108,8 @@ func fromGetDedupRow(r db.GetActiveDownloadJobByDedupRow) rowFields {
 		downloaderName: r.DownloaderName, status: r.Status, progress: r.Progress,
 		errStr: r.Error, outputPath: r.OutputPath,
 		libraryTrackID: r.LibraryTrackID, coverArtID: r.CoverArtID,
-		priority: r.Priority, attempts: r.Attempts, createdAt: r.CreatedAt,
-		startedAt: r.StartedAt, finishedAt: r.FinishedAt,
+		priority: r.Priority, attempts: r.Attempts, downloaderRef: r.DownloaderRef,
+		createdAt: r.CreatedAt, startedAt: r.StartedAt, finishedAt: r.FinishedAt,
 	}
 }
 
@@ -117,8 +119,8 @@ func fromListRow(r db.ListDownloadJobsRow) rowFields {
 		downloaderName: r.DownloaderName, status: r.Status, progress: r.Progress,
 		errStr: r.Error, outputPath: r.OutputPath,
 		libraryTrackID: r.LibraryTrackID, coverArtID: r.CoverArtID,
-		priority: r.Priority, attempts: r.Attempts, createdAt: r.CreatedAt,
-		startedAt: r.StartedAt, finishedAt: r.FinishedAt,
+		priority: r.Priority, attempts: r.Attempts, downloaderRef: r.DownloaderRef,
+		createdAt: r.CreatedAt, startedAt: r.StartedAt, finishedAt: r.FinishedAt,
 	}
 }
 
@@ -138,6 +140,7 @@ func (s *sqlStore) Insert(ctx context.Context, j core.DownloadJob, req core.Down
 		Priority:       int64(j.Priority),
 		RequestedBy:    sql.NullString{},
 		Attempts:       int64(j.Attempts),
+		DownloaderRef:  j.DownloaderRef,
 	})
 }
 
@@ -242,6 +245,10 @@ func (s *sqlStore) Delete(ctx context.Context, id string) error {
 
 func (s *sqlStore) DeleteFinished(ctx context.Context) ([]string, error) {
 	return s.q.DeleteFinishedDownloadJobs(ctx)
+}
+
+func (s *sqlStore) UpdateRef(ctx context.Context, id string, ref string) error {
+	return s.q.UpdateDownloadJobRef(ctx, db.UpdateDownloadJobRefParams{DownloaderRef: ref, ID: id})
 }
 
 func nullString(s string) sql.NullString {
