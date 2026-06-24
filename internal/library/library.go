@@ -26,14 +26,6 @@ type LibraryAdapter interface {
 	// AddTracksToPlaylist appends the given library track IDs to a playlist.
 	AddTracksToPlaylist(ctx context.Context, playlistID string, trackIDs []string) error
 
-	// RenamePlaylist changes a playlist's name.
-	RenamePlaylist(ctx context.Context, id, name string) error
-	// RemovePlaylistTracks removes tracks at the given zero-based indices (positions
-	// in the current playlist order).
-	RemovePlaylistTracks(ctx context.Context, id string, indices []int) error
-	// DeletePlaylist deletes a playlist.
-	DeletePlaylist(ctx context.Context, id string) error
-
 	// Stream forwards rangeHeader (the browser's inbound Range, may be "")
 	// to the upstream source and returns the upstream response for proxying.
 	Stream(ctx context.Context, trackID string, opts core.StreamOpts, rangeHeader string) (core.StreamHandle, error)

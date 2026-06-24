@@ -65,6 +65,11 @@ type fakeSync struct {
 	reorderOrder []core.TrackKey
 	reorderDet   core.SyncedPlaylistDetail
 	reorderErr   error
+
+	renameID   string
+	renameName string
+	renameDet  core.SyncedPlaylistDetail
+	renameErr  error
 }
 
 func (f *fakeSync) Import(_ context.Context, url string, downloadMissing bool) (core.SyncedPlaylistDetail, error) {
@@ -118,6 +123,10 @@ func (f *fakeSync) SetCover(_ context.Context, id, coverURL string) (core.Synced
 func (f *fakeSync) ReorderTracks(_ context.Context, id string, order []core.TrackKey) (core.SyncedPlaylistDetail, error) {
 	f.reorderID, f.reorderOrder = id, order
 	return f.reorderDet, f.reorderErr
+}
+func (f *fakeSync) Rename(_ context.Context, id, name string) (core.SyncedPlaylistDetail, error) {
+	f.renameID, f.renameName = id, name
+	return f.renameDet, f.renameErr
 }
 
 // syncTestServer builds a Server with a fake sync service.
@@ -931,5 +940,57 @@ func TestCoverExtFromContentType(t *testing.T) {
 		if ok != tc.ok || got != tc.want {
 			t.Errorf("coverExtFromContentType(%q) = %q, %v; want %q, %v", tc.ct, got, ok, tc.want, tc.ok)
 		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Rename synced playlist tests
+// ---------------------------------------------------------------------------
+
+func TestRenameSyncedPlaylist(t *testing.T) {
+	svc := &fakeSync{renameDet: core.SyncedPlaylistDetail{SyncedPlaylist: core.SyncedPlaylist{ID: "p1", Name: "New Name"}}}
+	srv, cookie := syncTestServer(t, svc)
+	body, _ := json.Marshal(map[string]string{"name": "New Name"})
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/synced-playlists/p1", bytes.NewReader(body))
+	req.AddCookie(cookie)
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rr.Code)
+	}
+	if svc.renameID != "p1" {
+		t.Errorf("renameID = %q", svc.renameID)
+	}
+	if svc.renameName != "New Name" {
+		t.Errorf("renameName = %q", svc.renameName)
+	}
+}
+
+func TestRenameSyncedPlaylistEmptyName(t *testing.T) {
+	svc := &fakeSync{}
+	srv, cookie := syncTestServer(t, svc)
+	body, _ := json.Marshal(map[string]string{"name": "   "})
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/synced-playlists/p1", bytes.NewReader(body))
+	req.AddCookie(cookie)
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rr.Code)
+	}
+}
+
+func TestRenameSyncedPlaylistNotFound(t *testing.T) {
+	svc := &fakeSync{renameErr: errors.New("not found")}
+	srv, cookie := syncTestServer(t, svc)
+	body, _ := json.Marshal(map[string]string{"name": "X"})
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/synced-playlists/missing", bytes.NewReader(body))
+	req.AddCookie(cookie)
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", rr.Code)
 	}
 }

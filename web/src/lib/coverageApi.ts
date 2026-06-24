@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { api } from './api'
-import type { AlbumDetail, ArtistDetail, Playlist } from './types'
+import type { AlbumDetail, ArtistDetail } from './types'
 
 export interface ArtistProfile {
   name: string
@@ -34,10 +34,3 @@ export function useAlbumDetail(source: string, id: string) {
   })
 }
 
-export function usePlaylistDetail(id: string) {
-  return useQuery({
-    queryKey: ['playlist-detail', id],
-    queryFn: () => api.get<Playlist>(`/library/playlist/${encodeURIComponent(id)}`),
-    enabled: !!id,
-  })
-}

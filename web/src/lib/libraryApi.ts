@@ -53,18 +53,6 @@ export function createPlaylist(name: string): Promise<SyncedPlaylistDetail> {
   return api.post<SyncedPlaylistDetail>('/library/playlists', { name })
 }
 
-export function renamePlaylist(id: string, name: string): Promise<{ ok: boolean }> {
-  return api.put(`/library/playlist/${encodeURIComponent(id)}`, { name })
-}
-
-export function deletePlaylist(id: string): Promise<{ ok: boolean }> {
-  return api.del(`/library/playlist/${encodeURIComponent(id)}`)
-}
-
-export function removePlaylistTrack(id: string, index: number): Promise<{ ok: boolean }> {
-  return api.post(`/library/playlist/${encodeURIComponent(id)}/remove`, { indices: [index] })
-}
-
 export function importPlaylistOnce(url: string): Promise<SyncedPlaylistDetail> {
   return api.post<SyncedPlaylistDetail>('/playlists/import', { url })
 }

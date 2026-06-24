@@ -1144,6 +1144,57 @@ func TestMigrateLibraryPlaylistsPerPlaylistError(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// Rename tests
+// ---------------------------------------------------------------------------
+
+func TestServiceRename(t *testing.T) {
+	now := int64(1000)
+	stor := newMemStore()
+	id := "pl1"
+	stor.rows[id] = &memRow{SyncedRow{ID: id, Name: "Old", CoverURL: "cover.jpg", TracksJSON: "[]", Mode: "once"}}
+	svc := NewService(nil, nil, nil, stor, nil, func() int64 { return now }, func() string { return id })
+	det, err := svc.Rename(context.Background(), id, "New Name")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if det.Name != "New Name" {
+		t.Errorf("Name = %q, want %q", det.Name, "New Name")
+	}
+	if stor.rows[id].Name != "New Name" {
+		t.Errorf("stored name = %q", stor.rows[id].Name)
+	}
+}
+
+func TestServiceRenameEmptyName(t *testing.T) {
+	stor := newMemStore()
+	id := "pl1"
+	stor.rows[id] = &memRow{SyncedRow{ID: id, Name: "Old", Mode: "once"}}
+	svc := NewService(nil, nil, nil, stor, nil, func() int64 { return 0 }, func() string { return id })
+	_, err := svc.Rename(context.Background(), id, "   ")
+	if err == nil {
+		t.Fatal("expected error for empty name")
+	}
+}
+
+func TestServiceRenameAllModes(t *testing.T) {
+	for _, mode := range []string{"local", "once", "synced"} {
+		t.Run(mode, func(t *testing.T) {
+			stor := newMemStore()
+			id := "pl-" + mode
+			stor.rows[id] = &memRow{SyncedRow{ID: id, Name: "Old", TracksJSON: "[]", Mode: mode}}
+			svc := NewService(nil, nil, nil, stor, nil, func() int64 { return 0 }, func() string { return id })
+			det, err := svc.Rename(context.Background(), id, "New")
+			if err != nil {
+				t.Fatalf("mode %q: unexpected error: %v", mode, err)
+			}
+			if det.Name != "New" {
+				t.Errorf("mode %q: Name = %q", mode, det.Name)
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
 // SetCover tests
 // ---------------------------------------------------------------------------
 

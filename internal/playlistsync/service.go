@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"strings"
 
 	"github.com/maxjb-xyz/reverb/internal/core"
 )
@@ -502,6 +503,24 @@ func (s *Service) SetCover(ctx context.Context, id, coverURL string) (core.Synce
 		return core.SyncedPlaylistDetail{}, ErrNotEditable
 	}
 	if err := s.store.UpdateTracks(ctx, id, row.Name, coverURL, row.TracksJSON, s.now()); err != nil {
+		return core.SyncedPlaylistDetail{}, err
+	}
+	return s.Detail(ctx, id)
+}
+
+// Rename updates the name of a managed playlist.
+// Returns ErrNotFound (via store.Get) when the playlist does not exist.
+// Returns a validation error when name is empty after trimming.
+func (s *Service) Rename(ctx context.Context, id, name string) (core.SyncedPlaylistDetail, error) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return core.SyncedPlaylistDetail{}, errors.New("name cannot be empty")
+	}
+	row, err := s.store.Get(ctx, id)
+	if err != nil {
+		return core.SyncedPlaylistDetail{}, err
+	}
+	if err := s.store.UpdateTracks(ctx, id, name, row.CoverURL, row.TracksJSON, s.now()); err != nil {
 		return core.SyncedPlaylistDetail{}, err
 	}
 	return s.Detail(ctx, id)

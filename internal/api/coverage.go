@@ -102,19 +102,6 @@ func (s *Server) handleAlbumDetail(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, det)
 }
 
-func (s *Server) handleLibraryPlaylist(w http.ResponseWriter, r *http.Request) {
-	lib, ok := s.libraryReady(w)
-	if !ok {
-		return
-	}
-	pl, err := lib.GetPlaylist(r.Context(), chi.URLParam(r, "id"))
-	if err != nil {
-		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
-		return
-	}
-	writeJSON(w, http.StatusOK, pl)
-}
-
 // maxBatchDownloadTracks caps a single POST /downloads/batch request so a runaway
 // or malicious body can't enqueue an unbounded number of jobs.
 const maxBatchDownloadTracks = 500

@@ -36,15 +36,6 @@ export interface Artist {
   albums?: Album[]
 }
 
-export interface Playlist {
-  id: string
-  name: string
-  coverArtId: string
-  songCount: number
-  durationMs: number
-  tracks?: Track[]
-}
-
 export interface SearchResults {
   tracks: Track[]
   albums: Album[]

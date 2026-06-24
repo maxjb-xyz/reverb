@@ -249,32 +249,6 @@ func (a *Adapter) AddTracksToPlaylist(ctx context.Context, playlistID string, tr
 	return a.client.GetJSON(ctx, "updatePlaylist", params, nil)
 }
 
-// RenamePlaylist changes a playlist's name via the Subsonic updatePlaylist endpoint.
-func (a *Adapter) RenamePlaylist(ctx context.Context, id, name string) error {
-	params := url.Values{}
-	params.Set("playlistId", id)
-	params.Set("name", name)
-	return a.client.GetJSON(ctx, "updatePlaylist", params, nil)
-}
-
-// RemovePlaylistTracks removes tracks at the given zero-based indices from a
-// playlist via the Subsonic updatePlaylist endpoint (one songIndexToRemove per index).
-func (a *Adapter) RemovePlaylistTracks(ctx context.Context, id string, indices []int) error {
-	params := url.Values{}
-	params.Set("playlistId", id)
-	for _, i := range indices {
-		params.Add("songIndexToRemove", strconv.Itoa(i))
-	}
-	return a.client.GetJSON(ctx, "updatePlaylist", params, nil)
-}
-
-// DeletePlaylist deletes a playlist via the Subsonic deletePlaylist endpoint.
-func (a *Adapter) DeletePlaylist(ctx context.Context, id string) error {
-	params := url.Values{}
-	params.Set("id", id)
-	return a.client.GetJSON(ctx, "deletePlaylist", params, nil)
-}
-
 func (a *Adapter) Stream(ctx context.Context, trackID string, opts core.StreamOpts, rangeHeader string) (core.StreamHandle, error) {
 	params := url.Values{}
 	params.Set("id", trackID)

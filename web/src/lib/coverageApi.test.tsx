@@ -1,7 +1,7 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
 import { renderHook, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { useArtistDetail, useAlbumDetail, usePlaylistDetail } from './coverageApi'
+import { useArtistDetail, useAlbumDetail } from './coverageApi'
 import { postBatchDownload } from './downloadApi'
 import type { ArtistDetail, AlbumDetail, ExternalTrackRef } from './types'
 
@@ -104,37 +104,6 @@ describe('useAlbumDetail', () => {
 
   it('does not fetch when source or id is empty', () => {
     const { result } = renderHook(() => useAlbumDetail('spotify', ''), { wrapper })
-    expect(result.current.fetchStatus).toBe('idle')
-  })
-})
-
-describe('usePlaylistDetail', () => {
-  beforeEach(() => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async () =>
-        new Response(
-          JSON.stringify({ id: 'pl-1', name: 'My Playlist', coverArtId: '', songCount: 3, durationMs: 0 }),
-          { status: 200, headers: { 'Content-Type': 'application/json' } },
-        ),
-      ),
-    )
-  })
-  afterEach(() => vi.unstubAllGlobals())
-
-  it('fetches playlist detail at the correct URL', async () => {
-    const { result } = renderHook(() => usePlaylistDetail('pl-1'), { wrapper })
-    await waitFor(() => expect(result.current.isSuccess).toBe(true))
-    expect(result.current.data?.name).toBe('My Playlist')
-    const fetchMock = vi.mocked(fetch)
-    expect(fetchMock).toHaveBeenCalledWith(
-      expect.stringContaining('/library/playlist/pl-1'),
-      expect.anything(),
-    )
-  })
-
-  it('does not fetch when id is empty', () => {
-    const { result } = renderHook(() => usePlaylistDetail(''), { wrapper })
     expect(result.current.fetchStatus).toBe('idle')
   })
 })

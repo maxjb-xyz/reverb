@@ -41,6 +41,7 @@ type SyncService interface {
 	RemoveTrack(ctx context.Context, id, source, externalID string) (core.SyncedPlaylistDetail, error)
 	SetCover(ctx context.Context, id, coverURL string) (core.SyncedPlaylistDetail, error)
 	ReorderTracks(ctx context.Context, id string, order []core.TrackKey) (core.SyncedPlaylistDetail, error)
+	Rename(ctx context.Context, id, name string) (core.SyncedPlaylistDetail, error)
 }
 
 // sync returns the currently active synced-playlist service under the read lock.
@@ -485,6 +486,36 @@ func (s *Server) handleReorderSyncedTracks(w http.ResponseWriter, r *http.Reques
 			return
 		}
 		writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, det)
+}
+
+// renameSyncedBody is the PUT /synced-playlists/{id} request DTO.
+type renameSyncedBody struct {
+	Name string `json:"name"`
+}
+
+// handleRenameSyncedPlaylist handles PUT /api/v1/synced-playlists/{id}.
+// body: {"name":"..."} → 200 core.SyncedPlaylistDetail; 400 empty name; 404 not found.
+func (s *Server) handleRenameSyncedPlaylist(w http.ResponseWriter, r *http.Request) {
+	svc := s.sync()
+	if svc == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "playlist sync unavailable"})
+		return
+	}
+	var body renameSyncedBody
+	if err := decode(r, &body); err != nil || strings.TrimSpace(body.Name) == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "name is required"})
+		return
+	}
+	det, err := svc.Rename(r.Context(), chi.URLParam(r, "id"), body.Name)
+	if err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
 	writeJSON(w, http.StatusOK, det)
