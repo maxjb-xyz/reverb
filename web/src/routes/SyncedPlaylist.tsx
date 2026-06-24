@@ -7,6 +7,7 @@ import {
   downloadMissingForPlaylist,
   updateSyncSettings,
   deleteSyncedPlaylist,
+  renameSyncedPlaylist,
   removeSyncedTrack,
   uploadPlaylistCover,
   reorderSyncedTracks,
@@ -92,6 +93,11 @@ export default function SyncedPlaylist() {
   // "…" menu state
   const [menuOpen, setMenuOpen] = useState(false)
   const menuTriggerRef = useRef<HTMLDivElement>(null)
+
+  // Inline title edit state
+  const [editingName, setEditingName] = useState(false)
+  const [nameInput, setNameInput] = useState('')
+  const nameInputRef = useRef<HTMLInputElement>(null)
 
   // Schedule settings local state — seeded from detail once loaded
   const [syncEnabled, setSyncEnabled] = useState<boolean | null>(null)
@@ -203,6 +209,18 @@ export default function SyncedPlaylist() {
       qc.invalidateQueries({ queryKey: ['synced-playlist', id] })
     } catch (err) {
       console.error('Failed to update sync settings:', err)
+    }
+  }
+
+  async function handleRename() {
+    const trimmed = nameInput.trim()
+    setEditingName(false)
+    if (!trimmed || trimmed === detail?.name) return
+    try {
+      await renameSyncedPlaylist(id, trimmed)
+      void qc.invalidateQueries({ queryKey: ['synced-playlist', id] })
+    } catch {
+      // silent — title will revert on next render
     }
   }
 
@@ -349,9 +367,32 @@ export default function SyncedPlaylist() {
                 </Badge>
               )}
             </div>
-            <h1 className="text-4xl font-black leading-tight tracking-tight text-text-primary truncate">
-              {detail.name}
-            </h1>
+            {editingName ? (
+              <input
+                ref={nameInputRef}
+                value={nameInput}
+                aria-label="Playlist name"
+                className="text-4xl font-black leading-tight tracking-tight text-text-primary bg-transparent border-b border-text-primary outline-none w-full truncate"
+                onChange={(e) => setNameInput(e.target.value)}
+                onBlur={() => void handleRename()}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') { e.currentTarget.blur() }
+                  if (e.key === 'Escape') { setEditingName(false) }
+                }}
+                autoFocus
+              />
+            ) : (
+              <h1
+                className="text-4xl font-black leading-tight tracking-tight text-text-primary truncate cursor-pointer hover:opacity-80 transition-opacity"
+                onClick={() => {
+                  setNameInput(detail.name)
+                  setEditingName(true)
+                }}
+                title="Click to rename"
+              >
+                {detail.name}
+              </h1>
+            )}
             <div className="mt-2 text-sm text-text-secondary flex flex-wrap items-center gap-x-1">
               <span>
                 {detail.source === 'local'

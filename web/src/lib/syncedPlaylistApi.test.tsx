@@ -9,6 +9,7 @@ import {
   downloadMissingForPlaylist,
   updateSyncSettings,
   deleteSyncedPlaylist,
+  renameSyncedPlaylist,
   uploadPlaylistCover,
   reorderSyncedTracks,
 } from './syncedPlaylistApi'
@@ -214,6 +215,38 @@ describe('updateSyncSettings', () => {
     expect(body.syncEnabled).toBe(true)
     expect(body.intervalSec).toBe(7200)
     expect(body.autoDownload).toBe(true)
+  })
+})
+
+// ── renameSyncedPlaylist ──────────────────────────────────────────────────────
+
+describe('renameSyncedPlaylist', () => {
+  beforeEach(() => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (_url: string, init?: RequestInit) => {
+        const body = JSON.parse(init?.body as string) as { name: string }
+        if (body.name !== 'New Name') return new Response(null, { status: 400 })
+        return new Response(JSON.stringify({ ...mockDetail, name: 'New Name' }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        })
+      }),
+    )
+  })
+  afterEach(() => vi.unstubAllGlobals())
+
+  it('PUTs to /synced-playlists/:id with name', async () => {
+    const result = await renameSyncedPlaylist('sp-1', 'New Name')
+    expect(result).toMatchObject({ name: 'New Name' })
+    const fetchMock = vi.mocked(fetch)
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('/synced-playlists/sp-1'),
+      expect.objectContaining({ method: 'PUT' }),
+    )
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    const body = JSON.parse(init.body as string)
+    expect(body.name).toBe('New Name')
   })
 })
 

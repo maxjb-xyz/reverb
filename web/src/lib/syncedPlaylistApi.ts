@@ -41,6 +41,10 @@ export function updateSyncSettings(id: string, settings: UpdateSyncSettingsReq):
   return api.put(`/synced-playlists/${encodeURIComponent(id)}/settings`, settings)
 }
 
+export function renameSyncedPlaylist(id: string, name: string): Promise<SyncedPlaylistDetail> {
+  return api.put<SyncedPlaylistDetail>(`/synced-playlists/${encodeURIComponent(id)}`, { name })
+}
+
 export function deleteSyncedPlaylist(id: string): Promise<unknown> {
   return api.del(`/synced-playlists/${encodeURIComponent(id)}`)
 }
