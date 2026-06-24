@@ -217,6 +217,14 @@ export interface RealtimeEvent {
   payload: unknown
 }
 
+export interface QueueStateEvent {
+  paused: boolean
+}
+
+export interface DownloadRemovedEvent {
+  jobIds: string[]
+}
+
 export interface SyncedPlaylist {
   id: string
   source: string

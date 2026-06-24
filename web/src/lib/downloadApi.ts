@@ -62,3 +62,24 @@ export function reqFromExternalRef(t: ExternalTrackRef): CreateDownloadReq {
     durationMs: t.durationMs,
   }
 }
+
+export function pauseQueue(): Promise<{ paused: boolean }> {
+  return api.post<{ paused: boolean }>('/downloads/pause')
+}
+
+export function resumeQueue(): Promise<{ paused: boolean }> {
+  return api.post<{ paused: boolean }>('/downloads/resume')
+}
+
+export function getQueueState(): Promise<{ paused: boolean }> {
+  return api.get<{ paused: boolean }>('/downloads/queue')
+}
+
+export function clearDownload(id: string): Promise<unknown> {
+  return api.post(`/downloads/${encodeURIComponent(id)}/clear`)
+}
+
+// clearDownloads clears the given ids, or ALL finished jobs when ids is omitted/empty.
+export function clearDownloads(ids?: string[]): Promise<{ removed: number }> {
+  return api.post<{ removed: number }>('/downloads/clear', ids && ids.length ? { ids } : {})
+}
