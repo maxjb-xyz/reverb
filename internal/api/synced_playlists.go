@@ -511,7 +511,7 @@ func (s *Server) handleRenameSyncedPlaylist(w http.ResponseWriter, r *http.Reque
 	}
 	det, err := svc.Rename(r.Context(), chi.URLParam(r, "id"), body.Name)
 	if err != nil {
-		if strings.Contains(err.Error(), "not found") {
+		if errors.Is(err, playlistsync.ErrNotFound) {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
 			return
 		}

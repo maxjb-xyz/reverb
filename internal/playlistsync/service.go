@@ -24,6 +24,9 @@ var ErrNotEditable = errors.New("playlist is not editable")
 // (CreateManaged, List, Detail, AddTrack, RemoveTrack) work without Spotify.
 var ErrSpotifyNotConfigured = errors.New("spotify is not configured")
 
+// ErrNotFound is returned when a requested playlist ID does not exist in the store.
+var ErrNotFound = errors.New("playlist not found")
+
 type PlaylistSource interface {
 	ParsePlaylistID(url string) (string, bool)
 	GetPlaylist(ctx context.Context, externalID string) (core.ExternalPlaylist, error)

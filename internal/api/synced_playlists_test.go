@@ -982,7 +982,7 @@ func TestRenameSyncedPlaylistEmptyName(t *testing.T) {
 }
 
 func TestRenameSyncedPlaylistNotFound(t *testing.T) {
-	svc := &fakeSync{renameErr: errors.New("not found")}
+	svc := &fakeSync{renameErr: playlistsync.ErrNotFound}
 	srv, cookie := syncTestServer(t, svc)
 	body, _ := json.Marshal(map[string]string{"name": "X"})
 	req := httptest.NewRequest(http.MethodPut, "/api/v1/synced-playlists/missing", bytes.NewReader(body))

@@ -203,7 +203,7 @@ func (ms *memStore) Upsert(_ context.Context, p core.SyncedPlaylist, tracksJSON 
 func (ms *memStore) Get(_ context.Context, id string) (SyncedRow, error) {
 	r, ok := ms.rows[id]
 	if !ok {
-		return SyncedRow{}, fmt.Errorf("synced playlist %q not found", id)
+		return SyncedRow{}, ErrNotFound
 	}
 	return r.SyncedRow, nil
 }

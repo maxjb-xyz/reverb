@@ -88,6 +88,9 @@ func (s *syncStore) Upsert(ctx context.Context, p core.SyncedPlaylist, tracksJSO
 func (s *syncStore) Get(ctx context.Context, id string) (playlistsync.SyncedRow, error) {
 	row, err := s.q.GetSyncedPlaylist(ctx, id)
 	if err != nil {
+		if err == sql.ErrNoRows {
+			return playlistsync.SyncedRow{}, playlistsync.ErrNotFound
+		}
 		return playlistsync.SyncedRow{}, err
 	}
 	return rowToSync(row), nil
