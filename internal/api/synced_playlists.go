@@ -505,7 +505,12 @@ func (s *Server) handleRenameSyncedPlaylist(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	var body renameSyncedBody
-	if err := decode(r, &body); err != nil || strings.TrimSpace(body.Name) == "" {
+	if err := decode(r, &body); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+		return
+	}
+	body.Name = strings.TrimSpace(body.Name)
+	if body.Name == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "name is required"})
 		return
 	}
@@ -515,7 +520,7 @@ func (s *Server) handleRenameSyncedPlaylist(w http.ResponseWriter, r *http.Reque
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
 			return
 		}
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": err.Error()})
 		return
 	}
 	writeJSON(w, http.StatusOK, det)

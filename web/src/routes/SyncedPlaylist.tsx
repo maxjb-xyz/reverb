@@ -98,6 +98,9 @@ export default function SyncedPlaylist() {
   const [editingName, setEditingName] = useState(false)
   const [nameInput, setNameInput] = useState('')
   const nameInputRef = useRef<HTMLInputElement>(null)
+  // Set synchronously by Escape so the blur-triggered handleRename can tell a
+  // cancel from a save (React state wouldn't flush before the blur fires).
+  const renameCancelledRef = useRef(false)
 
   // Schedule settings local state — seeded from detail once loaded
   const [syncEnabled, setSyncEnabled] = useState<boolean | null>(null)
@@ -213,8 +216,12 @@ export default function SyncedPlaylist() {
   }
 
   async function handleRename() {
-    const trimmed = nameInput.trim()
     setEditingName(false)
+    if (renameCancelledRef.current) {
+      renameCancelledRef.current = false
+      return
+    }
+    const trimmed = nameInput.trim()
     if (!trimmed || trimmed === detail?.name) return
     try {
       await renameSyncedPlaylist(id, trimmed)
@@ -377,7 +384,7 @@ export default function SyncedPlaylist() {
                 onBlur={() => void handleRename()}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') { e.currentTarget.blur() }
-                  if (e.key === 'Escape') { setEditingName(false) }
+                  if (e.key === 'Escape') { renameCancelledRef.current = true; e.currentTarget.blur() }
                 }}
                 autoFocus
               />

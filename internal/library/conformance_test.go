@@ -50,11 +50,6 @@ func (fakeAdapter) CreatePlaylist(ctx context.Context, name string) (core.Playli
 func (fakeAdapter) AddTracksToPlaylist(ctx context.Context, playlistID string, trackIDs []string) error {
 	return nil
 }
-func (fakeAdapter) RenamePlaylist(ctx context.Context, id, name string) error       { return nil }
-func (fakeAdapter) RemovePlaylistTracks(ctx context.Context, id string, indices []int) error {
-	return nil
-}
-func (fakeAdapter) DeletePlaylist(ctx context.Context, id string) error { return nil }
 func (fakeAdapter) Stream(ctx context.Context, trackID string, opts core.StreamOpts, rangeHeader string) (core.StreamHandle, error) {
 	return core.StreamHandle{
 		Body:          io.NopCloser(strings.NewReader("audio-bytes")),

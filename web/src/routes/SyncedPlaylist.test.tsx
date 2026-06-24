@@ -34,6 +34,7 @@ const mockDeleteSyncedPlaylist = vi.fn().mockResolvedValue({})
 const mockRemoveSyncedTrack = vi.fn().mockResolvedValue({})
 const mockUploadPlaylistCover = vi.fn().mockResolvedValue({})
 const mockReorderSyncedTracks = vi.fn().mockResolvedValue({})
+const mockRenameSyncedPlaylist = vi.fn().mockResolvedValue({})
 
 vi.mock('../lib/syncedPlaylistApi', () => ({
   useSyncedPlaylist: (...args: unknown[]) => mockUseSyncedPlaylist(...args),
@@ -44,6 +45,7 @@ vi.mock('../lib/syncedPlaylistApi', () => ({
   removeSyncedTrack: (...args: unknown[]) => mockRemoveSyncedTrack(...args),
   uploadPlaylistCover: (...args: unknown[]) => mockUploadPlaylistCover(...args),
   reorderSyncedTracks: (...args: unknown[]) => mockReorderSyncedTracks(...args),
+  renameSyncedPlaylist: (...args: unknown[]) => mockRenameSyncedPlaylist(...args),
 }))
 
 // ── DownloadAction mock (avoids adapter fetch noise) ──────────────────────────
@@ -165,6 +167,8 @@ describe('SyncedPlaylist page', () => {
     mockUploadPlaylistCover.mockResolvedValue({})
     mockReorderSyncedTracks.mockReset()
     mockReorderSyncedTracks.mockResolvedValue({})
+    mockRenameSyncedPlaylist.mockReset()
+    mockRenameSyncedPlaylist.mockResolvedValue({})
   })
   afterEach(() => {
     vi.restoreAllMocks()
@@ -245,6 +249,30 @@ describe('SyncedPlaylist page', () => {
     expect(screen.queryByText(/imported/i)).not.toBeInTheDocument()
     expect(screen.queryByText('local')).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /sync now/i })).not.toBeInTheDocument()
+  })
+
+  it('rename: editing the title and committing saves via renameSyncedPlaylist', async () => {
+    await renderLoaded()
+    fireEvent.click(screen.getByRole('heading', { name: 'Test Synced Playlist' }))
+    const input = screen.getByRole('textbox', { name: 'Playlist name' })
+    fireEvent.change(input, { target: { value: 'Road Trip' } })
+    fireEvent.blur(input)
+    await waitFor(() => expect(mockRenameSyncedPlaylist).toHaveBeenCalledWith('sp1', 'Road Trip'))
+  })
+
+  it('rename: pressing Escape cancels without saving (regression)', async () => {
+    await renderLoaded()
+    fireEvent.click(screen.getByRole('heading', { name: 'Test Synced Playlist' }))
+    const input = screen.getByRole('textbox', { name: 'Playlist name' })
+    fireEvent.change(input, { target: { value: 'Changed Name' } })
+    // Escape marks the edit cancelled; the input's blur then runs handleRename,
+    // which must NOT save the typed value.
+    fireEvent.keyDown(input, { key: 'Escape' })
+    fireEvent.blur(input)
+    expect(mockRenameSyncedPlaylist).not.toHaveBeenCalled()
+    await waitFor(() =>
+      expect(screen.queryByRole('textbox', { name: 'Playlist name' })).not.toBeInTheDocument(),
+    )
   })
 
   it('shows relative sync time', async () => {
