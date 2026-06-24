@@ -3,6 +3,7 @@ package download
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -1567,5 +1568,109 @@ func TestFailedDownloadPublishesFailedEvent(t *testing.T) {
 	}
 	if persisted.Status != core.DownloadFailed {
 		t.Fatalf("persisted job status: got %v want DownloadFailed", persisted.Status)
+	}
+}
+
+// fakeAsyncDL is a fake AsyncDownloader (also a Downloader) for async-lane tests.
+type fakeAsyncDL struct {
+	mu          sync.Mutex
+	name        string
+	submitRef   string
+	submitErr   error
+	submitCalls int
+	cancelCalls int
+	status      AsyncStatus
+}
+
+func (d *fakeAsyncDL) Type() string                         { return "downloader" }
+func (d *fakeAsyncDL) Name() string                         { return d.name }
+func (d *fakeAsyncDL) ConfigSchema() registry.ConfigSchema  { return registry.ConfigSchema{} }
+func (d *fakeAsyncDL) Init(map[string]any) error            { return nil }
+func (d *fakeAsyncDL) TestConnection(context.Context) error { return nil }
+func (d *fakeAsyncDL) CanDownload(context.Context, core.DownloadRequest) (bool, error) {
+	return false, nil
+}
+func (d *fakeAsyncDL) Start(context.Context, core.DownloadRequest, func(int)) (string, error) {
+	return "", fmt.Errorf("fakeAsyncDL.Start should never be called")
+}
+func (d *fakeAsyncDL) Submit(_ context.Context, _ core.DownloadRequest) (string, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.submitCalls++
+	return d.submitRef, d.submitErr
+}
+func (d *fakeAsyncDL) Poll(_ context.Context, _ string) (AsyncStatus, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.status, nil
+}
+func (d *fakeAsyncDL) CancelAsync(_ context.Context, _ string) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.cancelCalls++
+	return nil
+}
+func (d *fakeAsyncDL) setStatus(s AsyncStatus) { d.mu.Lock(); d.status = s; d.mu.Unlock() }
+
+func TestEnqueueAsyncSubmitsAndDoesNotPinWorker(t *testing.T) {
+	async := &fakeAsyncDL{name: "lidarr", submitRef: "album-42"}
+	store := newMemStore()
+	m, _ := testManager(t, []Downloader{async}, store, nil, nil, nil)
+
+	job, err := m.Enqueue(context.Background(), core.DownloadRequest{
+		Source: "spotify", ExternalID: "e1", Artist: "Daft Punk", Title: "One More Time",
+		Album: "Discovery", Downloader: "lidarr",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if async.submitCalls != 1 {
+		t.Fatalf("Submit calls = %d, want 1", async.submitCalls)
+	}
+	// After submit the job is running, carries the ref, and was NOT pushed to the
+	// worker queue (the fake's Start panics if a worker ever ran it).
+	got, _, _ := store.Get(context.Background(), job.ID)
+	if got.Status != core.DownloadRunning {
+		t.Fatalf("status = %s, want running", got.Status)
+	}
+	if got.DownloaderRef != "album-42" {
+		t.Fatalf("ref = %q, want album-42", got.DownloaderRef)
+	}
+}
+
+func TestEnqueueAsyncSubmitErrorFailsJob(t *testing.T) {
+	async := &fakeAsyncDL{name: "lidarr", submitErr: fmt.Errorf("couldn't find album in Lidarr")}
+	store := newMemStore()
+	m, _ := testManager(t, []Downloader{async}, store, nil, nil, nil)
+
+	job, _ := m.Enqueue(context.Background(), core.DownloadRequest{
+		Source: "spotify", ExternalID: "e1", Artist: "X", Title: "Y", Album: "Z", Downloader: "lidarr",
+	})
+	got, _, _ := store.Get(context.Background(), job.ID)
+	if got.Status != core.DownloadFailed {
+		t.Fatalf("status = %s, want failed", got.Status)
+	}
+	if got.Error == "" {
+		t.Fatal("failed job should carry an error message")
+	}
+}
+
+func TestCancelAsyncJob(t *testing.T) {
+	async := &fakeAsyncDL{name: "lidarr", submitRef: "album-7"}
+	store := newMemStore()
+	m, _ := testManager(t, []Downloader{async}, store, nil, nil, nil)
+
+	job, _ := m.Enqueue(context.Background(), core.DownloadRequest{
+		Source: "spotify", ExternalID: "e1", Artist: "X", Title: "Y", Album: "Z", Downloader: "lidarr",
+	})
+	if err := m.Cancel(context.Background(), job.ID); err != nil {
+		t.Fatal(err)
+	}
+	if async.cancelCalls != 1 {
+		t.Fatalf("CancelAsync calls = %d, want 1", async.cancelCalls)
+	}
+	got, _, _ := store.Get(context.Background(), job.ID)
+	if got.Status != core.DownloadCanceled {
+		t.Fatalf("status = %s, want canceled", got.Status)
 	}
 }

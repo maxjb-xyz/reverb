@@ -268,6 +268,50 @@ func (m *Manager) Stop() {
 	m.mu.Unlock()
 }
 
+// asyncFor returns the AsyncDownloader registered under name, or nil if that
+// downloader isn't registered or isn't async.
+func (m *Manager) asyncFor(name string) AsyncDownloader {
+	for _, d := range m.downloaders {
+		if d.Name() == name {
+			if a, ok := d.(AsyncDownloader); ok {
+				return a
+			}
+		}
+	}
+	return nil
+}
+
+// submitAsync hands a freshly-enqueued job to an async downloader. On success it
+// persists the ref and flips the job to running (progress -1 = searching); the
+// reconciler then advances it. On error it fails the job. Runs outside m.mu.
+func (m *Manager) submitAsync(ctx context.Context, job core.DownloadJob, req core.DownloadRequest, async AsyncDownloader) {
+	ref, err := async.Submit(ctx, req)
+	cur, ok, _ := m.store.Get(ctx, job.ID)
+	if !ok {
+		return
+	}
+	if err != nil {
+		cur.Status = core.DownloadFailed
+		cur.Error = err.Error()
+		cur.FinishedAt = m.clock.Now().Unix()
+		_ = m.store.Update(ctx, cur)
+		m.publishEvent(TopicFailed, cur, err.Error())
+		m.mu.Lock()
+		delete(m.reqs, job.ID)
+		m.mu.Unlock()
+		log.Printf("download submit failed: %q via %s — %v", cur.Title, job.DownloaderName, err)
+		return
+	}
+	_ = m.store.UpdateRef(ctx, cur.ID, ref)
+	cur.DownloaderRef = ref
+	cur.Status = core.DownloadRunning
+	cur.StartedAt = m.clock.Now().Unix()
+	cur.Progress = -1 // searching — indeterminate until the download starts
+	_ = m.store.Update(ctx, cur)
+	m.publishEvent(TopicProgress, cur, "")
+	log.Printf("download submitted to %s: %q (job %s, ref %s)", job.DownloaderName, cur.Title, shortID(cur.ID), ref)
+}
+
 // pick chooses the downloader: an explicit name if set & present, else the first
 // (priority order is preserved by the input slice) whose CanDownload returns true.
 func (m *Manager) pick(ctx context.Context, req core.DownloadRequest) (Downloader, error) {
@@ -341,15 +385,21 @@ func (m *Manager) Enqueue(ctx context.Context, req core.DownloadRequest) (core.D
 	log.Printf("download queued: %q by %q (job %s, downloader %s)", job.Title, job.Artist, shortID(job.ID), job.DownloaderName)
 	id := job.ID
 
-	// Unlock BEFORE dispatching to the queue. Workers re-acquire m.mu inside the
-	// progress callback, so a blocking send under m.mu would deadlock. The job is
-	// already persisted as queued, so nothing is lost even if we shut down between
-	// unlock and send.
+	// Unlock BEFORE dispatching. Workers re-acquire m.mu inside the progress
+	// callback, so a blocking send under m.mu would deadlock. The job is already
+	// persisted as queued, so nothing is lost even if we shut down between here and
+	// the dispatch.
 	m.mu.Unlock()
 
-	// Blocking send: never silently drops the job, never deadlocks (no lock held).
-	// Cancelled only when the Manager is stopping, which is safe — the job is in
-	// the DB and can be recovered on restart.
+	// Async downloader (e.g. Lidarr): hand off via Submit and let the reconciler
+	// advance the job — never pin a worker. Submit runs OUTSIDE m.mu (it makes
+	// network calls).
+	if async, ok := dl.(AsyncDownloader); ok {
+		m.submitAsync(ctx, job, req, async)
+		return job, nil
+	}
+
+	// Sync downloader: dispatch to the worker pool.
 	select {
 	case m.queue <- id:
 	case <-m.stopCh:
@@ -751,6 +801,24 @@ func (m *Manager) Cancel(ctx context.Context, jobID string) error {
 	if !ok {
 		return fmt.Errorf("job %q not found", jobID)
 	}
+
+	// Async job (running via an external manager like Lidarr): cancel externally.
+	if job.DownloaderRef != "" {
+		if async := m.asyncFor(job.DownloaderName); async != nil {
+			_ = async.CancelAsync(ctx, job.DownloaderRef)
+		}
+		job.Status = core.DownloadCanceled
+		job.FinishedAt = m.clock.Now().Unix()
+		if err := m.store.Update(ctx, job); err != nil {
+			return err
+		}
+		m.publishEvent(TopicFailed, job, "canceled")
+		m.mu.Lock()
+		delete(m.reqs, jobID)
+		m.mu.Unlock()
+		return nil
+	}
+
 	if job.Status == core.DownloadQueued {
 		job.Status = core.DownloadCanceled
 		job.FinishedAt = m.clock.Now().Unix()

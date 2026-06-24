@@ -34,3 +34,31 @@ type Downloader interface {
 	// cancelable: when canceled, an in-flight download must abort promptly.
 	Start(ctx context.Context, req core.DownloadRequest, onProgress func(int)) (outputPath string, err error)
 }
+
+// AsyncDownloader is an OPTIONAL capability. An adapter implementing it hands the
+// request to an external manager (e.g. Lidarr) and reports progress by polling,
+// instead of blocking in Start. The Manager detects it via a type assertion and
+// runs such jobs on the reconciler lane (never pinning a worker). Detected for the
+// admin UI via the registry capability probe "async".
+type AsyncDownloader interface {
+	// Submit hands req to the external system and returns a ref to track it. Must
+	// NOT block on completion. An error means the request couldn't be placed (e.g.
+	// album not found) → the job fails.
+	Submit(ctx context.Context, req core.DownloadRequest) (ref string, err error)
+
+	// Poll reports the current state of a submitted job. State == DownloadCompleted
+	// means the files were imported into the library folder (the Manager then runs
+	// the normal scan + rematch). State == DownloadFailed carries Error. Otherwise
+	// the job is still running; Progress is 0-100 or -1 (unknown).
+	Poll(ctx context.Context, ref string) (AsyncStatus, error)
+
+	// CancelAsync best-effort abandons the external job.
+	CancelAsync(ctx context.Context, ref string) error
+}
+
+// AsyncStatus is the polled state of an async download.
+type AsyncStatus struct {
+	State    core.DownloadStatus
+	Progress int
+	Error    string
+}
