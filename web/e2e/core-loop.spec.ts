@@ -46,12 +46,12 @@ test('core loop: login -> search everywhere -> download -> in-library -> play', 
   await expect(downloadBtn).toBeVisible()
 
   // 5) Click Download -> POST /downloads -> queued job-1. The row shows a
-  //    "Downloading" badge (no title attribute). WAIT for that downloading state to
+  //    "Queued" badge (no title attribute). WAIT for that queued state to
   //    render (so the POST's upsert has applied) BEFORE sending the WS completion
   //    frame — otherwise the POST response can resolve after the completion and
   //    clobber it back to queued.
   await downloadBtn.click()
-  await expect(page.getByText('Downloading')).toBeVisible()
+  await expect(page.getByText('Queued')).toBeVisible()
   await ws.complete()
 
   // The Download/progress state disappears; the in-library button appears.

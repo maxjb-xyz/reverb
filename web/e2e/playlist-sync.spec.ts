@@ -60,11 +60,11 @@ test('playlist sync: import -> have/missing -> download missing -> flips owned -
   await expect(rowDownloadBtn).toBeVisible()
 
   // 5) Headline live-flip: click the missing row's Download → POST /downloads →
-  //    "Downloading". WAIT for that state to render (so the POST upsert has applied)
+  //    "Queued". WAIT for that state to render (so the POST upsert has applied)
   //    BEFORE sending the WS completion frame (mirror core-loop/completeness
   //    ordering), else the POST response can resolve after completion and clobber it.
   await rowDownloadBtn.click()
-  await expect(page.getByText('Downloading')).toBeVisible()
+  await expect(page.getByText('Queued')).toBeVisible()
   await ws.complete()
 
   // The row's Download button disappears — the missing track is now owned (live,
