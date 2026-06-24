@@ -1674,3 +1674,59 @@ func TestCancelAsyncJob(t *testing.T) {
 		t.Fatalf("status = %s, want canceled", got.Status)
 	}
 }
+
+func TestReconcileAdvancesProgressThenCompletes(t *testing.T) {
+	clk := newFakeClock()
+	async := &fakeAsyncDL{name: "lidarr", submitRef: "album-9"}
+	store := newMemStore()
+	scanner := &fakeScanner{}
+	bus := events.New()
+	m := NewManager(Config{Workers: 1, DebounceWindow: time.Second, ScanPollEvery: time.Millisecond, ScanPollMax: time.Second, ScanSettleMax: 10 * time.Millisecond},
+		[]Downloader{async}, store, bus, scanner, &fakeRematcher{trackID: "t1"}, &fakeVersion{v: 1}, clk, nil)
+	t.Cleanup(m.Stop)
+	m.Start()
+
+	job, _ := m.Enqueue(context.Background(), core.DownloadRequest{
+		Source: "spotify", ExternalID: "e1", Artist: "A", Title: "T", Album: "Al", Downloader: "lidarr",
+	})
+
+	// Downloading at 40%.
+	async.setStatus(AsyncStatus{State: core.DownloadRunning, Progress: 40})
+	m.reconcileOnce(context.Background())
+	if got, _, _ := store.Get(context.Background(), job.ID); got.Progress != 40 {
+		t.Fatalf("progress = %d, want 40", got.Progress)
+	}
+
+	// Imported → completed, and a scan is scheduled.
+	async.setStatus(AsyncStatus{State: core.DownloadCompleted, Progress: 100})
+	m.reconcileOnce(context.Background())
+	if got, _, _ := store.Get(context.Background(), job.ID); got.Status != core.DownloadCompleted {
+		t.Fatalf("status = %s, want completed", got.Status)
+	}
+	// Fire the debounced scan; the rematcher links the track.
+	clk.Advance(time.Second)
+	// waitForScan uses wall-clock polling against the fakeScanner (idle → returns fast).
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if got, _, _ := store.Get(context.Background(), job.ID); got.LibraryTrackID == "t1" {
+			return
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	got, _, _ := store.Get(context.Background(), job.ID)
+	t.Fatalf("expected scan rematch to set library_track_id, got %q", got.LibraryTrackID)
+}
+
+func TestReconcileFailMapsToFailed(t *testing.T) {
+	async := &fakeAsyncDL{name: "lidarr", submitRef: "album-1"}
+	store := newMemStore()
+	m, _ := testManager(t, []Downloader{async}, store, nil, nil, nil)
+	job, _ := m.Enqueue(context.Background(), core.DownloadRequest{Source: "spotify", ExternalID: "e", Artist: "A", Title: "T", Album: "Al", Downloader: "lidarr"})
+
+	async.setStatus(AsyncStatus{State: core.DownloadFailed, Error: "Lidarr found no release"})
+	m.reconcileOnce(context.Background())
+	got, _, _ := store.Get(context.Background(), job.ID)
+	if got.Status != core.DownloadFailed || got.Error != "Lidarr found no release" {
+		t.Fatalf("job = %+v, want failed with reason", got)
+	}
+}

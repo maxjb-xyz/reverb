@@ -104,6 +104,11 @@ type Config struct {
 	// marked failed — so a stuck/rate-limited downloader (e.g. spotDL backing off
 	// for 24h) can't pin a worker forever.
 	JobTimeout time.Duration
+	// ReconcileEvery is the poll cadence for async (e.g. Lidarr) jobs.
+	ReconcileEvery time.Duration
+	// AsyncMaxAge bounds how long an async job may stay in-flight before it's
+	// failed (Lidarr never found/imported a release).
+	AsyncMaxAge time.Duration
 }
 
 func (c Config) withDefaults() Config {
@@ -124,6 +129,12 @@ func (c Config) withDefaults() Config {
 	}
 	if c.JobTimeout <= 0 {
 		c.JobTimeout = 15 * time.Minute
+	}
+	if c.ReconcileEvery <= 0 {
+		c.ReconcileEvery = 10 * time.Second
+	}
+	if c.AsyncMaxAge <= 0 {
+		c.AsyncMaxAge = 7 * 24 * time.Hour
 	}
 	return c
 }
@@ -195,6 +206,11 @@ func (m *Manager) Start() {
 		go m.worker()
 	}
 	log.Printf("download manager: %d worker(s) started, %d downloader(s) available", m.cfg.Workers, len(m.downloaders))
+	if m.hasAsync() {
+		m.wg.Add(1)
+		go m.reconcileLoop()
+		log.Printf("download manager: async reconciler started (every %s)", m.cfg.ReconcileEvery)
+	}
 	go m.backfillUnlinked()
 }
 
@@ -279,6 +295,94 @@ func (m *Manager) asyncFor(name string) AsyncDownloader {
 		}
 	}
 	return nil
+}
+
+// hasAsync reports whether any configured downloader is an AsyncDownloader.
+func (m *Manager) hasAsync() bool {
+	for _, d := range m.downloaders {
+		if _, ok := d.(AsyncDownloader); ok {
+			return true
+		}
+	}
+	return false
+}
+
+// reconcileOnce polls every in-flight async job (running, with a ref) once: it
+// updates progress, completes (and schedules the scan) on import, fails on error,
+// and gives up on jobs older than AsyncMaxAge. Safe to call from a test.
+func (m *Manager) reconcileOnce(ctx context.Context) {
+	jobs, err := m.store.List(ctx)
+	if err != nil {
+		return
+	}
+	now := m.clock.Now().Unix()
+	for _, j := range jobs {
+		if j.Status != core.DownloadRunning || j.DownloaderRef == "" {
+			continue
+		}
+		async := m.asyncFor(j.DownloaderName)
+		if async == nil {
+			continue
+		}
+		if j.StartedAt > 0 && m.cfg.AsyncMaxAge > 0 && now-j.StartedAt > int64(m.cfg.AsyncMaxAge.Seconds()) {
+			j.Status = core.DownloadFailed
+			j.Error = "timed out waiting for the downloader to finish"
+			j.FinishedAt = now
+			_ = m.store.Update(ctx, j)
+			m.publishEvent(TopicFailed, j, j.Error)
+			m.mu.Lock()
+			delete(m.reqs, j.ID)
+			m.mu.Unlock()
+			continue
+		}
+		st, perr := async.Poll(ctx, j.DownloaderRef)
+		if perr != nil {
+			continue // transient — retry next tick
+		}
+		switch st.State {
+		case core.DownloadCompleted:
+			j.Status = core.DownloadCompleted
+			j.Progress = 100
+			j.FinishedAt = now
+			_ = m.store.Update(ctx, j)
+			m.publishEvent(TopicComplete, j, "")
+			m.mu.Lock()
+			delete(m.reqs, j.ID)
+			m.mu.Unlock()
+			m.scheduleScan(j.ID) // reuse the normal scan + rematch path
+		case core.DownloadFailed:
+			j.Status = core.DownloadFailed
+			j.Error = st.Error
+			j.FinishedAt = now
+			_ = m.store.Update(ctx, j)
+			m.publishEvent(TopicFailed, j, st.Error)
+			m.mu.Lock()
+			delete(m.reqs, j.ID)
+			m.mu.Unlock()
+		default: // still running — publish progress changes
+			if st.Progress != j.Progress {
+				j.Progress = st.Progress
+				_ = m.store.Update(ctx, j)
+				m.publishEvent(TopicProgress, j, "")
+			}
+		}
+	}
+}
+
+// reconcileLoop ticks reconcileOnce until Stop. Launched by Start only when an
+// async downloader is configured.
+func (m *Manager) reconcileLoop() {
+	defer m.wg.Done()
+	t := time.NewTicker(m.cfg.ReconcileEvery)
+	defer t.Stop()
+	for {
+		select {
+		case <-m.stopCh:
+			return
+		case <-t.C:
+			m.reconcileOnce(context.Background())
+		}
+	}
 }
 
 // submitAsync hands a freshly-enqueued job to an async downloader. On success it
