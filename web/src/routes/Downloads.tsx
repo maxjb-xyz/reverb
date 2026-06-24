@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useEffect } from 'react'
 import { useDownloads } from '../lib/downloadStore'
 import {
   pauseQueue,
@@ -156,6 +156,20 @@ export default function Downloads() {
     })
   const clearSelection = () => setSelected(new Set())
 
+  // Prune stale selections: if a selected job is removed from `jobs` (e.g. via
+  // WS download.removed or clearFinished), drop it from the selection set so the
+  // bulk bar count stays accurate.
+  useEffect(() => {
+    setSelected((prev) => {
+      if (prev.size === 0) return prev
+      const next = new Set<string>()
+      for (const id of prev) {
+        if (jobs[id]) next.add(id)
+      }
+      return next.size === prev.size ? prev : next
+    })
+  }, [jobs])
+
   async function togglePause() {
     if (paused) {
       setPaused(false) // optimistic; the WS event confirms
@@ -169,6 +183,7 @@ export default function Downloads() {
   function clearFinished() {
     const ids = all.filter((j) => TERMINAL.includes(j.status)).map((j) => j.id)
     remove(ids) // optimistic
+    clearSelection()
     void clearDownloads(undefined)
   }
 

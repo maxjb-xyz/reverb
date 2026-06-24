@@ -34,4 +34,11 @@ describe('downloadApi queue/clear', () => {
     expect(call[0]).toBe('/api/v1/downloads/clear')
     expect(JSON.parse((call[1] as RequestInit).body as string)).toEqual({ ids: ['a', 'b'] })
   })
+
+  it('clearDownloads (no args) POSTs /downloads/clear with body {}', async () => {
+    await clearDownloads()
+    const call = (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls.at(-1)!
+    expect(call[0]).toBe('/api/v1/downloads/clear')
+    expect(JSON.parse((call[1] as RequestInit).body as string)).toEqual({})
+  })
 })

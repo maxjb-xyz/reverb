@@ -22,8 +22,26 @@ describe('download parts', () => {
     expect(screen.getByText('Done')).toBeInTheDocument()
   })
 
-  it('DownloadProgress renders a bar', () => {
+  it('StatusLabel renders "Canceled" for canceled status', () => {
+    render(<StatusLabel job={job({ status: 'canceled' })} />)
+    expect(screen.getByText('Canceled')).toBeInTheDocument()
+  })
+
+  it('StatusLabel renders "Downloading" for running with progress -1 (indeterminate)', () => {
+    render(<StatusLabel job={job({ status: 'running', progress: -1 })} />)
+    expect(screen.getByText('Downloading')).toBeInTheDocument()
+  })
+
+  it('DownloadProgress determinate: inner fill has correct width style', () => {
     const { container } = render(<DownloadProgress progress={40} />)
-    expect(container.querySelector('div')).toBeTruthy()
+    const outer = container.querySelector('div')!
+    const inner = outer.querySelector('div')!
+    expect(inner.style.width).toBe('40%')
+  })
+
+  it('DownloadProgress indeterminate (progress=-1): renders animate-pulse element', () => {
+    const { container } = render(<DownloadProgress progress={-1} />)
+    const pulse = container.querySelector('.animate-pulse')
+    expect(pulse).toBeTruthy()
   })
 })

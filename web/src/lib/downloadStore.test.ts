@@ -94,6 +94,15 @@ describe('downloadStore', () => {
     expect(useDownloads.getState().jobs['jnew'].coverArtId).toBe('art-99')
   })
 
+  it('completed() returns newest-first when two jobs differ in createdAt', () => {
+    useDownloads.getState().setAll([
+      job({ id: 'older', status: 'completed', createdAt: 10 }),
+      job({ id: 'newer', status: 'completed', createdAt: 20 }),
+    ])
+    const result = useDownloads.getState().completed()
+    expect(result.map((j) => j.id)).toEqual(['newer', 'older'])
+  })
+
   it('active() returns only queued/running newest-first', () => {
     useDownloads.getState().setAll([
       job({ id: 'a', status: 'completed', createdAt: 3 }),

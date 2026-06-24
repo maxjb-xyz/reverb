@@ -180,6 +180,8 @@ describe('DownloadAction', () => {
     })
     rerender(<DownloadAction result={result} />)
     expect(screen.getByText('Downloading')).toBeInTheDocument()
+    // Symmetric negative: once running, 'Queued' must be gone.
+    expect(screen.queryByText('Queued')).not.toBeInTheDocument()
   })
 
   // ── 5. job completed ──────────────────────────────────────────────────────

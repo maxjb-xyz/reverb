@@ -74,6 +74,17 @@ describe('Downloads page', () => {
     expect(clearDownloads).toHaveBeenCalledWith(undefined)
   })
 
+  it('clearFinished clears selection (bulk bar disappears)', () => {
+    useDownloads.getState().setAll([job('c', 'completed')])
+    renderPage()
+    // Select the completed row so the bulk bar shows.
+    fireEvent.click(screen.getByLabelText('Select c'))
+    expect(screen.getByText(/1 selected/)).toBeInTheDocument()
+    // Click "Clear finished" — the bulk bar must disappear.
+    fireEvent.click(screen.getByRole('button', { name: /clear finished/i }))
+    expect(screen.queryByText(/selected/)).not.toBeInTheDocument()
+  })
+
   it('selecting rows shows a bulk bar and bulk-clears', () => {
     useDownloads.getState().setAll([job('c1', 'completed'), job('c2', 'completed')])
     renderPage()
