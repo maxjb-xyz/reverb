@@ -2,10 +2,16 @@ package api
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
+
+	"github.com/maxjb-xyz/reverb/internal/auth"
+	"github.com/maxjb-xyz/reverb/internal/registry"
+	"github.com/maxjb-xyz/reverb/internal/store"
 )
 
 func newRec() *httptest.ResponseRecorder { return httptest.NewRecorder() }
@@ -94,5 +100,56 @@ func TestPutSettingsPartialUpdate(t *testing.T) {
 	}
 	if !body.DynamicBackground {
 		t.Fatal("dynamicBackground should be updated to true")
+	}
+}
+
+func TestDefaultDownloaderSetting(t *testing.T) {
+	st, err := store.Open(t.TempDir() + "/s.db")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { st.Close() })
+	if err := st.Migrate(); err != nil {
+		t.Fatal(err)
+	}
+	authSvc := auth.NewService(st.Q(), time.Now)
+	_ = authSvc.SetAdminPassword(context.Background(), "pw")
+	tok, _ := authSvc.CreateSession(context.Background())
+	reg := registry.NewRegistry("downloader")
+	reg.Register("spotdl", func() registry.Plugin { return nil })
+	reg.Register("lidarr", func() registry.Plugin { return nil })
+	srv := NewServer(Deps{Auth: authSvc, Adapters: st.Q(), Downloader: reg})
+	cookie := &http.Cookie{Name: sessionCookie, Value: tok}
+
+	put := func(body string) int {
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodPut, "/api/v1/settings", bytes.NewBufferString(body))
+		req.AddCookie(cookie)
+		srv.Handler().ServeHTTP(rec, req)
+		return rec.Code
+	}
+	// Valid: a registered downloader name.
+	if code := put(`{"defaultDownloader":"lidarr"}`); code != http.StatusOK {
+		t.Fatalf("set valid default = %d", code)
+	}
+	// Valid: empty = "Always ask".
+	if code := put(`{"defaultDownloader":""}`); code != http.StatusOK {
+		t.Fatalf("clear default = %d", code)
+	}
+	// Invalid: unknown downloader → 400.
+	if code := put(`{"defaultDownloader":"bogus"}`); code != http.StatusBadRequest {
+		t.Fatalf("unknown default = %d, want 400", code)
+	}
+	// GET reflects the last valid set ("").
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/settings", nil)
+	req.AddCookie(cookie)
+	srv.Handler().ServeHTTP(rec, req)
+	var dto struct {
+		DefaultDownloader string `json:"defaultDownloader"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &dto)
+	if dto.DefaultDownloader != "" {
+		t.Fatalf("default = %q, want empty", dto.DefaultDownloader)
 	}
 }

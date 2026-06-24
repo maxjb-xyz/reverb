@@ -10,6 +10,7 @@ import (
 const (
 	keyAccentColor       = "accent_color"
 	keyDynamicBackground = "dynamic_background"
+	keyDefaultDownloader = "default_downloader"
 	defaultAccentColor   = "#F0354B"
 )
 
@@ -18,6 +19,7 @@ var hexColorRE = regexp.MustCompile(`^#[0-9a-fA-F]{6}$`)
 type settingsDTO struct {
 	AccentColor       string `json:"accentColor"`
 	DynamicBackground bool   `json:"dynamicBackground"`
+	DefaultDownloader string `json:"defaultDownloader"`
 }
 
 func (s *Server) currentSettings(r *http.Request) settingsDTO {
@@ -31,6 +33,9 @@ func (s *Server) currentSettings(r *http.Request) settingsDTO {
 	if v, err := s.deps.Adapters.GetSetting(r.Context(), keyDynamicBackground); err == nil {
 		out.DynamicBackground = v != "false"
 	}
+	if v, err := s.deps.Adapters.GetSetting(r.Context(), keyDefaultDownloader); err == nil {
+		out.DefaultDownloader = v
+	}
 	return out
 }
 
@@ -42,6 +47,7 @@ func (s *Server) handleGetSettings(w http.ResponseWriter, r *http.Request) {
 type putSettingsBody struct {
 	AccentColor       *string `json:"accentColor"`
 	DynamicBackground *bool   `json:"dynamicBackground"`
+	DefaultDownloader *string `json:"defaultDownloader"`
 }
 
 func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
@@ -74,5 +80,29 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	if body.DefaultDownloader != nil {
+		name := *body.DefaultDownloader
+		if name != "" && !s.downloaderRegistered(name) {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "defaultDownloader must be empty or a registered downloader"})
+			return
+		}
+		if err := s.deps.Adapters.UpsertSetting(r.Context(), db.UpsertSettingParams{Key: keyDefaultDownloader, Value: name}); err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not save settings"})
+			return
+		}
+	}
 	writeJSON(w, http.StatusOK, s.currentSettings(r))
+}
+
+// downloaderRegistered reports whether name is a registered downloader adapter.
+func (s *Server) downloaderRegistered(name string) bool {
+	if s.deps.Downloader == nil {
+		return false
+	}
+	for _, n := range s.deps.Downloader.Names() {
+		if n == name {
+			return true
+		}
+	}
+	return false
 }
