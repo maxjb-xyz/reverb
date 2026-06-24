@@ -149,14 +149,37 @@ describe('DownloadAction', () => {
   })
 
   // ── 4. job queued ─────────────────────────────────────────────────────────
-  it('queued job → renders indeterminate ProgressRing with aria-label "Loading"', () => {
+  it('queued job → renders indeterminate ProgressRing with aria-label "Loading" and "Queued" badge', () => {
     useDownloads.getState().upsert(makeJob({ status: 'queued', progress: -1 }))
     render(<DownloadAction result={makeResult()} onPlay={onPlay} />)
 
     const ring = screen.getByRole('img', { name: /loading/i })
     expect(ring).toBeInTheDocument()
     expect(ring).toHaveAttribute('aria-busy', 'true')
-    expect(screen.getByText(/downloading/i)).toBeInTheDocument()
+    expect(screen.getByText('Queued')).toBeInTheDocument()
+    expect(screen.queryByText(/downloading/i)).not.toBeInTheDocument()
+  })
+
+  // ── 4b. queued vs running ─────────────────────────────────────────────────
+  it('shows Queued for a queued job and Downloading for a running job', () => {
+    useDownloads.setState({
+      jobs: {
+        j: { id: 'j', dedupKey: 'j', status: 'queued', progress: 0, downloaderName: 'spotdl', priority: 0, attempts: 0, source: 'spotify', externalId: 'ext1', playWhenReady: false, createdAt: 1, startedAt: 0, finishedAt: 0 },
+      },
+      paused: false,
+    })
+    const result = { source: 'spotify', externalId: 'ext1', title: 'T', artist: 'A', album: 'Al' } as never
+    const { rerender } = render(<DownloadAction result={result} />)
+    expect(screen.getByText('Queued')).toBeInTheDocument()
+
+    useDownloads.setState({
+      jobs: {
+        j: { id: 'j', dedupKey: 'j', status: 'running', progress: 42, downloaderName: 'spotdl', priority: 0, attempts: 0, source: 'spotify', externalId: 'ext1', playWhenReady: false, createdAt: 1, startedAt: 0, finishedAt: 0 },
+      },
+      paused: false,
+    })
+    rerender(<DownloadAction result={result} />)
+    expect(screen.getByText('Downloading')).toBeInTheDocument()
   })
 
   // ── 5. job completed ──────────────────────────────────────────────────────

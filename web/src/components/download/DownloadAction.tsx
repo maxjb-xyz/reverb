@@ -134,19 +134,25 @@ export function DownloadAction({ result, onPlay }: Props) {
     )
   }
 
-  // ── 2. Active (running or queued) ─────────────────────────────────────────
-  // Also covers the optimistic state (clicked, server not yet acknowledged) so
-  // the row reads "Downloading" immediately. progress <= 0 stays indeterminate so
-  // a just-started (running, 0%) job spins rather than showing an empty ring.
-  if ((optimistic && !job) || job?.status === 'running' || job?.status === 'queued') {
-    const isIndeterminate = !job || job.status === 'queued' || job.progress <= 0
+  // ── 2a. Queued (incl. optimistic post-click) ─────────────────────────────
+  // A worker hasn't picked it up yet — show "Queued" with an indeterminate ring,
+  // NOT a fake progress %. (New jobs are created queued, so the optimistic state
+  // is honestly "queued".)
+  if ((optimistic && !job) || job?.status === 'queued') {
     return (
       <span className="inline-flex items-center gap-2">
-        <ProgressRing
-          value={isIndeterminate ? 0 : job.progress}
-          size={24}
-          indeterminate={isIndeterminate}
-        />
+        <ProgressRing value={0} size={24} indeterminate />
+        <Badge kind="status">Queued</Badge>
+      </span>
+    )
+  }
+
+  // ── 2b. Running (a worker is downloading it) ─────────────────────────────
+  if (job?.status === 'running') {
+    const isIndeterminate = job.progress <= 0
+    return (
+      <span className="inline-flex items-center gap-2">
+        <ProgressRing value={isIndeterminate ? 0 : job.progress} size={24} indeterminate={isIndeterminate} />
         <Badge kind="downloading">Downloading</Badge>
       </span>
     )
