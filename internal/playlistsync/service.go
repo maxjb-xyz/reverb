@@ -155,6 +155,7 @@ func (s *Service) Detail(ctx context.Context, id string) (core.SyncedPlaylistDet
 	_ = json.Unmarshal([]byte(row.TracksJSON), &tracks)
 	det := core.SyncedPlaylistDetail{SyncedPlaylist: rowToSummary(row, len(tracks))}
 	det.TotalCount = len(tracks)
+	det.Tracks = []core.AlbumDetailTrack{} // never emit null; always an array
 	for i, tr := range tracks {
 		dt := core.AlbumDetailTrack{Title: tr.Title, Artist: tr.Artist, Album: tr.Album, TrackNumber: i + 1, DurationMs: tr.DurationMs, CoverURL: tr.CoverURL,
 			ArtistExternalID: tr.ArtistExternalID, AlbumExternalID: tr.AlbumExternalID}

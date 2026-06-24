@@ -113,6 +113,7 @@ const missingRowWithExternalIds: AlbumDetailTrack = {
 const mockDetail: SyncedPlaylistDetail = {
   id: 'sp1',
   source: 'spotify',
+  mode: 'synced',
   externalId: 'ext1',
   name: 'Test Synced Playlist',
   coverUrl: 'https://example.com/cover.jpg',
@@ -213,6 +214,37 @@ describe('SyncedPlaylist page', () => {
   it('shows "Synced playlist" eyebrow', async () => {
     await renderLoaded()
     expect(screen.getByText('Synced playlist')).toBeInTheDocument()
+  })
+
+  it('does NOT crash on an empty playlist (tracks null)', async () => {
+    // Regression: an empty managed playlist's Detail returns tracks:null; the page
+    // must guard it (tracks ?? []) instead of calling .filter on null (black screen).
+    mockUseSyncedPlaylist.mockReturnValue({
+      data: { ...mockDetail, source: 'local', mode: 'once', name: 'Empty One', tracks: null },
+      isLoading: false,
+      isError: false,
+    })
+    wrapper(<SyncedPlaylist />)
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { name: 'Empty One' })).toBeInTheDocument(),
+    )
+  })
+
+  it('a local playlist renders as a plain "Playlist" (no Synced/Imported, no source pill, no sync UI)', async () => {
+    mockUseSyncedPlaylist.mockReturnValue({
+      data: { ...mockDetail, source: 'local', mode: 'once', name: 'My Playlist' },
+      isLoading: false,
+      isError: false,
+    })
+    wrapper(<SyncedPlaylist />)
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { name: 'My Playlist' })).toBeInTheDocument(),
+    )
+    expect(screen.getByText('Playlist')).toBeInTheDocument()
+    expect(screen.queryByText('Synced playlist')).not.toBeInTheDocument()
+    expect(screen.queryByText(/imported/i)).not.toBeInTheDocument()
+    expect(screen.queryByText('local')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /sync now/i })).not.toBeInTheDocument()
   })
 
   it('shows relative sync time', async () => {

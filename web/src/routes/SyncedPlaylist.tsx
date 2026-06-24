@@ -156,11 +156,13 @@ export default function SyncedPlaylist() {
 
   // ── Derived data ────────────────────────────────────────────────────────────
 
-  const ownedTracks: Track[] = detail.tracks
+  const tracks = detail.tracks ?? []
+
+  const ownedTracks: Track[] = tracks
     .filter((t) => t.state === 'full' && t.libraryTrack)
     .map((t) => ({ ...t.libraryTrack!, ...(t.artistExternalId ? { artistExternalId: t.artistExternalId } : {}) }))
 
-  const missingCount = detail.tracks.filter((t) => t.state === 'none').length
+  const missingCount = tracks.filter((t) => t.state === 'none').length
 
   const ownedIndexMap = new Map<string, number>(
     ownedTracks.map((t, i) => [t.id, i]),
@@ -257,8 +259,7 @@ export default function SyncedPlaylist() {
     e.preventDefault()
     const from = dragSourceIdx.current
     if (from === null || from === idx || !detail) return
-    const base = detail.tracks
-    const currentOrder = trackOrder ?? base.map((_, i) => i)
+    const currentOrder = trackOrder ?? tracks.map((_, i) => i)
     const next = [...currentOrder]
     const [moved] = next.splice(from, 1)
     next.splice(idx, 0, moved)
@@ -270,7 +271,7 @@ export default function SyncedPlaylist() {
     e.preventDefault()
     dragSourceIdx.current = null
     if (!trackOrder || !detail) return
-    const orderedTracks = trackOrder.map((i) => detail.tracks[i])
+    const orderedTracks = trackOrder.map((i) => tracks[i])
     const order = buildTrackOrderPayload(orderedTracks)
     try {
       await reorderSyncedTracks(id, order)
@@ -340,24 +341,28 @@ export default function SyncedPlaylist() {
           <div className="min-w-0 pb-1">
             <div className="flex items-center gap-2 mb-1">
               <span className="text-xs font-semibold uppercase tracking-widest text-text-muted">
-                {detail.mode === 'once' ? 'Imported' : 'Synced playlist'}
+                {detail.source === 'spotify' && detail.mode === 'synced' ? 'Synced playlist' : 'Playlist'}
               </span>
-              <Badge kind="status" tone="success">
-                {detail.source}
-              </Badge>
+              {detail.source === 'spotify' && (
+                <Badge kind="status" tone="success">
+                  {detail.source}
+                </Badge>
+              )}
             </div>
             <h1 className="text-4xl font-black leading-tight tracking-tight text-text-primary truncate">
               {detail.name}
             </h1>
             <div className="mt-2 text-sm text-text-secondary flex flex-wrap items-center gap-x-1">
               <span>
-                {detail.ownedCount} of {detail.totalCount} in library
+                {detail.source === 'local'
+                  ? `${detail.totalCount} song${detail.totalCount !== 1 ? 's' : ''}`
+                  : `${detail.ownedCount} of ${detail.totalCount} in library`}
               </span>
-              {missingCount > 0 && (
+              {detail.source !== 'local' && missingCount > 0 && (
                 <span className="text-accent">· {missingCount} missing</span>
               )}
             </div>
-            {detail.mode !== 'once' && (
+            {detail.source === 'spotify' && detail.mode === 'synced' && (
               <div className="mt-1 text-xs text-text-muted">
                 Synced {relativeTime(detail.lastSyncedAt)}
               </div>
@@ -468,8 +473,8 @@ export default function SyncedPlaylist() {
 
       {/* Track list */}
       <div className="space-y-0.5">
-        {(trackOrder ?? detail.tracks.map((_, i) => i)).map((origIdx, displayIdx) => {
-          const t = detail.tracks[origIdx]
+        {(trackOrder ?? tracks.map((_, i) => i)).map((origIdx, displayIdx) => {
+          const t = tracks[origIdx]
           const isDraggable = detail.mode === 'once'
 
           const dragHandle = isDraggable
@@ -605,7 +610,7 @@ export default function SyncedPlaylist() {
             </div>
           )
         })}
-        {detail.tracks.length === 0 && (
+        {tracks.length === 0 && (
           <EmptyState icon="browse" title="No tracks in this playlist" />
         )}
       </div>

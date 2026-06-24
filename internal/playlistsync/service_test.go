@@ -1356,6 +1356,31 @@ func TestDetailSetsKeyOnAllRows(t *testing.T) {
 	}
 }
 
+// TestDetailEmptyPlaylistHasNonNilTracks asserts that Detail on a brand-new empty
+// managed playlist returns Tracks == [] (non-nil slice), never null. This prevents
+// the FE from crashing with "Cannot read properties of null (reading 'filter')".
+func TestDetailEmptyPlaylistHasNonNilTracks(t *testing.T) {
+	svc := NewService(
+		&fakeSource{playlists: map[string]core.ExternalPlaylist{}},
+		fakeMatcher{},
+		&fakeDownloader{},
+		newMemStore(),
+		nil,
+		func() int64 { return 1000 },
+		seqID(),
+	)
+	det, err := svc.CreateManaged(context.Background(), "Empty Playlist")
+	if err != nil {
+		t.Fatalf("CreateManaged: %v", err)
+	}
+	if det.Tracks == nil {
+		t.Fatal("Detail.Tracks is nil for an empty playlist; want non-nil empty slice (JSON must be [] not null)")
+	}
+	if len(det.Tracks) != 0 {
+		t.Fatalf("Detail.Tracks len = %d, want 0", len(det.Tracks))
+	}
+}
+
 // TestDetailLibrarySourceTrackCoverArtID asserts that Detail carries CoverArtID
 // from a stored library-source entry onto the synthesized LibraryTrack.
 func TestDetailLibrarySourceTrackCoverArtID(t *testing.T) {
