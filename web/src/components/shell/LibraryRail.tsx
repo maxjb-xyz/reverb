@@ -47,7 +47,7 @@ export function LibraryRail() {
   }
 
   return (
-    <aside className="flex flex-col min-h-0 bg-surface rounded-lg overflow-hidden">
+    <aside className="flex flex-col h-full min-h-0 bg-surface rounded-lg overflow-hidden">
       {/* Header — "Your Library" opens the full library page */}
       <div className="px-4 pt-4 pb-2">
         <div className="flex items-center">
