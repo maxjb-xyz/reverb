@@ -2,6 +2,43 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import { useDownloads } from './downloadStore'
 import type { DownloadEvent, DownloadJob } from './types'
 
+function mkJob(id: string, status: DownloadJob['status'], createdAt = 1): DownloadJob {
+  return {
+    id, dedupKey: id, status, progress: 0, downloaderName: '', priority: 0, attempts: 0,
+    source: 'spotify', externalId: id, playWhenReady: false, createdAt, startedAt: 0, finishedAt: 0,
+  }
+}
+
+describe('downloadStore paused/remove/selectors', () => {
+  beforeEach(() => {
+    useDownloads.setState({ jobs: {}, paused: false })
+  })
+
+  it('setPaused toggles paused', () => {
+    useDownloads.getState().setPaused(true)
+    expect(useDownloads.getState().paused).toBe(true)
+  })
+
+  it('remove deletes the given ids', () => {
+    useDownloads.getState().setAll([mkJob('a', 'completed'), mkJob('b', 'failed')])
+    useDownloads.getState().remove(['a'])
+    expect(useDownloads.getState().jobs['a']).toBeUndefined()
+    expect(useDownloads.getState().jobs['b']).toBeDefined()
+  })
+
+  it('status selectors partition jobs', () => {
+    useDownloads.getState().setAll([
+      mkJob('r', 'running'), mkJob('q', 'queued'), mkJob('c', 'completed'), mkJob('f', 'failed'),
+    ])
+    const s = useDownloads.getState()
+    expect(s.running().map((j) => j.id)).toEqual(['r'])
+    expect(s.queued().map((j) => j.id)).toEqual(['q'])
+    expect(s.completed().map((j) => j.id)).toEqual(['c'])
+    expect(s.failed().map((j) => j.id)).toEqual(['f'])
+    expect(s.active().map((j) => j.id).sort()).toEqual(['q', 'r'])
+  })
+})
+
 function job(partial: Partial<DownloadJob>): DownloadJob {
   return {
     id: 'j1', dedupKey: 'dk', status: 'queued', progress: 0, downloaderName: 'spotdl',

@@ -3,10 +3,17 @@ import type { DownloadEvent, DownloadJob } from './types'
 
 interface DownloadStore {
   jobs: Record<string, DownloadJob>
+  paused: boolean
   upsert(job: DownloadJob): void
   applyEvent(ev: DownloadEvent): void
   setAll(jobs: DownloadJob[]): void
+  setPaused(paused: boolean): void
+  remove(ids: string[]): void
   active(): DownloadJob[]
+  running(): DownloadJob[]
+  queued(): DownloadJob[]
+  completed(): DownloadJob[]
+  failed(): DownloadJob[]
   byExternal(source: string, externalId: string): DownloadJob | undefined
 }
 
@@ -33,8 +40,11 @@ function jobFromEvent(ev: DownloadEvent): DownloadJob {
   }
 }
 
+const byCreatedDesc = (a: DownloadJob, b: DownloadJob) => b.createdAt - a.createdAt
+
 export const useDownloads = create<DownloadStore>((set, get) => ({
   jobs: {},
+  paused: false,
   upsert: (job) => set((s) => ({ jobs: { ...s.jobs, [job.id]: job } })),
   applyEvent: (ev) =>
     set((s) => {
@@ -57,10 +67,22 @@ export const useDownloads = create<DownloadStore>((set, get) => ({
       for (const j of jobs) map[j.id] = j
       return { jobs: map }
     }),
+  setPaused: (paused) => set({ paused }),
+  remove: (ids) =>
+    set((s) => {
+      if (ids.length === 0) return s
+      const next = { ...s.jobs }
+      for (const id of ids) delete next[id]
+      return { jobs: next }
+    }),
   active: () =>
     Object.values(get().jobs)
       .filter((j) => j.status === 'queued' || j.status === 'running')
-      .sort((a, b) => b.createdAt - a.createdAt),
+      .sort(byCreatedDesc),
+  running: () => Object.values(get().jobs).filter((j) => j.status === 'running').sort(byCreatedDesc),
+  queued: () => Object.values(get().jobs).filter((j) => j.status === 'queued').sort(byCreatedDesc),
+  completed: () => Object.values(get().jobs).filter((j) => j.status === 'completed').sort(byCreatedDesc),
+  failed: () => Object.values(get().jobs).filter((j) => j.status === 'failed').sort(byCreatedDesc),
   byExternal: (source, externalId) =>
     Object.values(get().jobs).find((j) => j.source === source && j.externalId === externalId),
 }))
