@@ -5,6 +5,7 @@ import { DownloadPopover } from './DownloadPopover'
 import { useDownloads } from '../../lib/downloadStore'
 import { postDownload, retryDownload, reqFromResult } from '../../lib/downloadApi'
 import { useAdapters } from '../../lib/adaptersApi'
+import { useSettings } from '../../lib/settingsApi'
 import type { ExternalResult } from '../../lib/types'
 
 interface Props {
@@ -32,6 +33,12 @@ export function DownloadAction({ result, onPlay }: Props) {
   const [urlValue, setUrlValue] = useState('')
   const [urlError, setUrlError] = useState<string | null>(null)
   const modalPanelRef = useRef<HTMLDivElement>(null)
+
+  // Lidarr album disclosure — holds the downloader name awaiting user confirm
+  const [pendingLidarr, setPendingLidarr] = useState<string | null>(null)
+
+  const settings = useSettings()
+  const defaultDownloader = settings.data?.defaultDownloader ?? ''
 
   const job = useDownloads((s) => s.byExternal(result.source, result.externalId))
   const downloaders = useDownloaders()
@@ -99,10 +106,24 @@ export function DownloadAction({ result, onPlay }: Props) {
       .catch(() => setOptimistic(false))
   }
 
+  function chooseDownloader(name: string) {
+    if (name === 'lidarr') {
+      setPendingLidarr(name)
+      return
+    }
+    enqueue(name)
+  }
+
   function handleDownloadClick(e: React.MouseEvent) {
     e.stopPropagation()
     if (downloaders.length === 1) {
-      enqueue(downloaders[0].name)
+      chooseDownloader(downloaders[0].name)
+      return
+    }
+    // ≥2 downloaders: use the default if it's set AND still enabled, else ask.
+    const def = downloaders.find((d) => d.name === defaultDownloader)
+    if (def) {
+      chooseDownloader(def.name)
     } else {
       setPopoverOpen(true)
     }
@@ -110,7 +131,7 @@ export function DownloadAction({ result, onPlay }: Props) {
 
   function handlePick(name: string) {
     setPopoverOpen(false)
-    enqueue(name)
+    chooseDownloader(name)
   }
 
   // ── 1. In library ─────────────────────────────────────────────────────────
@@ -313,8 +334,9 @@ export function DownloadAction({ result, onPlay }: Props) {
   // ── 6. Available (≥1 downloader, no active job) ───────────────────────────
   // Just the Download button — the redundant "Available" badge only widened the
   // row's right slot (and shifted the album column as the state changed).
+  const hasActiveDefault = downloaders.length > 1 && downloaders.some((d) => d.name === defaultDownloader)
   return (
-    <span className="relative inline-flex items-center justify-end gap-2">
+    <span className="relative inline-flex items-center justify-end gap-1">
       <Button
         variant="secondary"
         size="sm"
@@ -324,6 +346,17 @@ export function DownloadAction({ result, onPlay }: Props) {
         Download
       </Button>
 
+      {hasActiveDefault && (
+        <button
+          type="button"
+          aria-label="Choose downloader"
+          onClick={(e) => { e.stopPropagation(); setPopoverOpen(true) }}
+          className="inline-grid h-7 w-6 place-items-center rounded-full border border-border-subtle text-text-secondary transition-colors hover:bg-raised-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+        >
+          <Icon name="dl" className="text-xs" />
+        </button>
+      )}
+
       {popoverOpen && (
         <DownloadPopover
           downloaders={downloaders.map((d) => ({ id: d.id, name: d.name }))}
@@ -332,6 +365,39 @@ export function DownloadAction({ result, onPlay }: Props) {
           onClose={() => setPopoverOpen(false)}
         />
       )}
+
+      {pendingLidarr &&
+        createPortal(
+          <>
+            <div className="fixed inset-0 z-40" aria-hidden="true" onClick={() => setPendingLidarr(null)} />
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-label="Confirm Lidarr download"
+              className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-80 max-w-[calc(100vw-2rem)] rounded-xl border border-border-subtle bg-raised p-4 shadow-pop"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <p className="text-sm font-bold text-text-primary">Download the whole album?</p>
+              <p className="mt-1 text-xs text-text-secondary">
+                Lidarr fetches the full album{result.album ? ` "${result.album}"` : ''}, not just "{result.title}".
+              </p>
+              <div className="mt-3 flex justify-end gap-2">
+                <Button variant="ghost" size="sm" aria-label="Cancel" onClick={() => setPendingLidarr(null)}>
+                  Cancel
+                </Button>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  aria-label="Confirm Lidarr album download"
+                  onClick={() => { const n = pendingLidarr; setPendingLidarr(null); enqueue(n!) }}
+                >
+                  Download album
+                </Button>
+              </div>
+            </div>
+          </>,
+          document.body,
+        )}
     </span>
   )
 }

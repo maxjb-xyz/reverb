@@ -60,6 +60,10 @@ vi.mock('../../lib/downloadApi', () => ({
   }),
 }))
 
+vi.mock('../../lib/settingsApi', () => ({
+  useSettings: () => ({ data: { accentColor: '#F0354B', dynamicBackground: true, defaultDownloader: 'spotdl' } }),
+}))
+
 // Mock adaptersApi — controlled per test via useAdaptersMock
 let useAdaptersMock = vi.fn(() => ({ data: undefined as unknown }))
 vi.mock('../../lib/adaptersApi', () => ({
@@ -409,5 +413,42 @@ describe('DownloadAction', () => {
 
     await waitFor(() => expect(retryDownloadMock).toHaveBeenCalledTimes(1))
     expect(retryDownloadMock).toHaveBeenCalledWith('job-1', 'https://youtube.com/watch?v=ok')
+  })
+
+  // ── 19. default downloader: normal click enqueues spotdl directly ──────────
+  it('default downloader: a normal click enqueues spotdl directly (no popover)', () => {
+    useAdaptersMock = vi.fn(() => ({
+      data: [
+        { id: 'a1', type: 'downloader', name: 'spotdl', enabled: true, priority: 1, config: {} },
+        { id: 'a2', type: 'downloader', name: 'lidarr', enabled: true, priority: 2, config: {} },
+      ],
+    }))
+    const result = { source: 'spotify', externalId: 'e1', title: 'T', artist: 'A', album: 'Al' } as never
+    render(<DownloadAction result={result} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Download T' }))
+    expect(postDownloadMock).toHaveBeenCalledWith(expect.objectContaining({ downloader: 'spotdl' }))
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
+  // ── 20. override caret → pick Lidarr → album disclosure → confirm enqueues lidarr
+  it('override caret → pick Lidarr → album disclosure → confirm enqueues lidarr', () => {
+    useAdaptersMock = vi.fn(() => ({
+      data: [
+        { id: 'a1', type: 'downloader', name: 'spotdl', enabled: true, priority: 1, config: {} },
+        { id: 'a2', type: 'downloader', name: 'lidarr', enabled: true, priority: 2, config: {} },
+      ],
+    }))
+    const result = { source: 'spotify', externalId: 'e2', title: 'T2', artist: 'A', album: 'Discovery' } as never
+    render(<DownloadAction result={result} />)
+    // The split-button caret opens the picker even though a default is set.
+    fireEvent.click(screen.getByRole('button', { name: 'Choose downloader' }))
+    fireEvent.click(screen.getByRole('button', { name: 'lidarr' }))
+    // Lidarr routes through the album disclosure — NOT enqueued yet.
+    expect(screen.getByText(/whole album/i)).toBeInTheDocument()
+    expect(screen.getByText(/Discovery/)).toBeInTheDocument()
+    expect(postDownloadMock).not.toHaveBeenCalledWith(expect.objectContaining({ downloader: 'lidarr' }))
+    // Confirm → enqueues via lidarr.
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm Lidarr album download' }))
+    expect(postDownloadMock).toHaveBeenCalledWith(expect.objectContaining({ downloader: 'lidarr' }))
   })
 })
