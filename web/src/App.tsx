@@ -12,6 +12,7 @@ import Album from './routes/Album'
 import Artist from './routes/Artist'
 import Home from './routes/Home'
 import Admin from './routes/Admin'
+import Downloads from './routes/Downloads'
 import SyncedPlaylist from './routes/SyncedPlaylist'
 
 /** Redirect bare `/album/:id` or `/artist/:id` URLs to the source-qualified form
@@ -73,6 +74,7 @@ function Routed() {
         <Route path="/synced-playlist/:id" element={<RedirectToPlaylist />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="/admin" element={<Admin />} />
+        <Route path="/downloads" element={<Downloads />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>
