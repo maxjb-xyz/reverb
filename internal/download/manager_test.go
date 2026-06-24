@@ -1730,3 +1730,27 @@ func TestReconcileFailMapsToFailed(t *testing.T) {
 		t.Fatalf("job = %+v, want failed with reason", got)
 	}
 }
+
+func TestAsyncCapabilityProbe(t *testing.T) {
+	registry.RegisterCapability("async", func(p registry.Plugin) bool {
+		_, ok := p.(AsyncDownloader)
+		return ok
+	})
+	caps := registry.DescribeCapabilities(&fakeAsyncDL{name: "lidarr"})
+	found := false
+	for _, c := range caps {
+		if c == "async" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("async capability not detected, caps = %v", caps)
+	}
+	// A plain sync downloader is NOT async.
+	caps = registry.DescribeCapabilities(&fakeDL{name: "spotdl"})
+	for _, c := range caps {
+		if c == "async" {
+			t.Fatal("sync downloader must not report async")
+		}
+	}
+}

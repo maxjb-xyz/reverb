@@ -13,6 +13,7 @@ import (
 	"github.com/maxjb-xyz/reverb/internal/auth"
 	"github.com/maxjb-xyz/reverb/internal/config"
 	"github.com/maxjb-xyz/reverb/internal/download"
+	"github.com/maxjb-xyz/reverb/internal/download/lidarr"
 	"github.com/maxjb-xyz/reverb/internal/download/spotdl"
 	"github.com/maxjb-xyz/reverb/internal/events"
 	"github.com/maxjb-xyz/reverb/internal/library/subsonic"
@@ -68,6 +69,12 @@ func main() {
 	searchReg.Register("spotify", func() registry.Plugin { return spotify.New() })
 	downloaderReg := registry.NewRegistry("downloader")
 	downloaderReg.Register("spotdl", func() registry.Plugin { return spotdl.New() })
+	downloaderReg.Register("lidarr", func() registry.Plugin { return lidarr.New() })
+	// Surface the async capability to the admin UI (/adapters/available).
+	registry.RegisterCapability("async", func(p registry.Plugin) bool {
+		_, ok := p.(download.AsyncDownloader)
+		return ok
+	})
 
 	// EventBus backs both the WS endpoint and the Manager's typed events.
 	bus := events.New()
