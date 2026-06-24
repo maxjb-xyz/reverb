@@ -92,3 +92,9 @@ type LibraryUpdatedEvent struct {
 	ArtistIDs []string `json:"artistIds"`
 	AlbumIDs  []string `json:"albumIds"`
 }
+
+// DownloadRemovedEvent is published on topic download.removed when one or more
+// finished jobs are cleared (hard-deleted). The client drops them from its store.
+type DownloadRemovedEvent struct {
+	JobIDs []string `json:"jobIds"`
+}

@@ -17,6 +17,7 @@ const (
 	TopicComplete      = "download.complete"
 	TopicFailed        = "download.failed"
 	TopicLibraryUpdate = "library.updated"
+	TopicRemoved       = "download.removed"
 )
 
 // Downloader acquires an external track. CanDownload is a cheap heuristic for the

@@ -783,6 +783,56 @@ func (m *Manager) Retry(ctx context.Context, jobID string, manualURL string) (co
 	return job, nil
 }
 
+// Clear hard-deletes a single terminal job (completed/failed/canceled) and
+// publishes download.removed. It refuses to delete a queued/running job — those
+// are canceled, not cleared.
+func (m *Manager) Clear(ctx context.Context, jobID string) error {
+	job, ok, err := m.store.Get(ctx, jobID)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return fmt.Errorf("job %q not found", jobID)
+	}
+	if job.Status == core.DownloadQueued || job.Status == core.DownloadRunning {
+		return fmt.Errorf("cannot clear active job %q (status %s)", jobID, job.Status)
+	}
+	if err := m.store.Delete(ctx, jobID); err != nil {
+		return err
+	}
+	m.mu.Lock()
+	delete(m.reqs, jobID)
+	m.mu.Unlock()
+	m.publishRemoved([]string{jobID})
+	return nil
+}
+
+// ClearFinished hard-deletes ALL terminal jobs and publishes a single
+// download.removed carrying every deleted id.
+func (m *Manager) ClearFinished(ctx context.Context) ([]string, error) {
+	ids, err := m.store.DeleteFinished(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if len(ids) > 0 {
+		m.mu.Lock()
+		for _, id := range ids {
+			delete(m.reqs, id)
+		}
+		m.mu.Unlock()
+		m.publishRemoved(ids)
+	}
+	return ids, nil
+}
+
+// publishRemoved emits download.removed for the given job ids.
+func (m *Manager) publishRemoved(ids []string) {
+	if m.bus == nil {
+		return
+	}
+	m.bus.Publish(events.Event{Topic: TopicRemoved, Payload: core.DownloadRemovedEvent{JobIDs: ids}})
+}
+
 // SeedRequest rehydrates the originating request for a job (used after restart or
 // to retry a job whose in-memory request was cleared on completion). The
 // composition root rehydrates queued jobs from request_json at startup.

@@ -1208,6 +1208,73 @@ func TestPlaylistAdderCalledOnCompletionWithAddToPlaylistID(t *testing.T) {
 	}
 }
 
+func TestClearRemovesTerminalJobAndPublishes(t *testing.T) {
+	dl := &fakeDL{name: "dl", canDownload: true}
+	store := newMemStore()
+	m, bus := testManager(t, []Downloader{dl}, store, nil, nil, nil)
+
+	sub, unsub := bus.Subscribe(TopicRemoved)
+	defer unsub()
+
+	// Seed a completed job directly in the store.
+	job := core.DownloadJob{ID: "done1", DedupKey: "dk", Status: core.DownloadCompleted, Source: "spotify", ExternalID: "e"}
+	if err := store.Insert(context.Background(), job, core.DownloadRequest{}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := m.Clear(context.Background(), "done1"); err != nil {
+		t.Fatalf("Clear: %v", err)
+	}
+	if _, ok, _ := store.Get(context.Background(), "done1"); ok {
+		t.Fatal("job should be deleted")
+	}
+	select {
+	case ev := <-sub:
+		re := ev.Payload.(core.DownloadRemovedEvent)
+		if len(re.JobIDs) != 1 || re.JobIDs[0] != "done1" {
+			t.Fatalf("removed event = %+v", re)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("expected download.removed event")
+	}
+}
+
+func TestClearRejectsActiveJob(t *testing.T) {
+	store := newMemStore()
+	m, _ := testManager(t, []Downloader{&fakeDL{name: "dl", canDownload: true}}, store, nil, nil, nil)
+	job := core.DownloadJob{ID: "run1", DedupKey: "dk", Status: core.DownloadRunning}
+	if err := store.Insert(context.Background(), job, core.DownloadRequest{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.Clear(context.Background(), "run1"); err == nil {
+		t.Fatal("Clear of a running job must error")
+	}
+	if _, ok, _ := store.Get(context.Background(), "run1"); !ok {
+		t.Fatal("running job must NOT be deleted")
+	}
+}
+
+func TestClearFinishedDeletesOnlyTerminal(t *testing.T) {
+	store := newMemStore()
+	m, _ := testManager(t, []Downloader{&fakeDL{name: "dl", canDownload: true}}, store, nil, nil, nil)
+	for _, tc := range []struct{ id, st string }{{"a", "completed"}, {"b", "failed"}, {"c", "queued"}, {"d", "canceled"}} {
+		j := core.DownloadJob{ID: tc.id, DedupKey: "dk-" + tc.id, Status: core.DownloadStatus(tc.st)}
+		if err := store.Insert(context.Background(), j, core.DownloadRequest{}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	ids, err := m.ClearFinished(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ids) != 3 {
+		t.Fatalf("ClearFinished removed %v, want 3 (a,b,d)", ids)
+	}
+	if _, ok, _ := store.Get(context.Background(), "c"); !ok {
+		t.Fatal("queued job c must survive")
+	}
+}
+
 // TestPlaylistAdderNotCalledWhenNoAddToPlaylistID asserts that jobs without
 // AddToPlaylistID do not trigger any playlist add call.
 func TestPlaylistAdderNotCalledWhenNoAddToPlaylistID(t *testing.T) {
