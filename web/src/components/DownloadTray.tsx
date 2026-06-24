@@ -1,274 +1,152 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { useDownloads } from '../lib/downloadStore'
 import { useUI } from '../lib/uiStore'
-import { cancelDownload, retryDownload, postDownload } from '../lib/downloadApi'
-import { useAdapters } from '../lib/adaptersApi'
+import { cancelDownload, retryDownload, clearDownload } from '../lib/downloadApi'
 import { IconButton } from './ui/IconButton'
 import { Button } from './ui/Button'
 import { Cover } from './ui/Cover'
-import { Badge } from './ui/Badge'
-import { ProgressRing } from './ui/ProgressRing'
 import { Icon } from './ui/Icon'
+import { StatusLabel, DownloadProgress, failureMessage } from './download/parts'
 import type { DownloadJob } from '../lib/types'
-import type { AdapterInstance } from '../lib/adaptersApi'
 
-// ── failureMessage ────────────────────────────────────────────────────────────
-// Pure helper: maps known error substrings to friendly copy framed with track
-// title + downloader context. Always returns a descriptive string — never a
-// bare "Failed" or "Error".
+const TIDY_DELAY_MS = 5000
 
-// eslint-disable-next-line react-refresh/only-export-components -- failureMessage is a pure helper exported for unit tests alongside the component
-export function failureMessage(job: DownloadJob): string {
-  const title = job.title ?? job.externalId
-  const dl = job.downloaderName || 'the downloader'
-  const err = (job.error ?? '').toLowerCase()
-
-  if (!err) {
-    return `Couldn't download "${title}" on ${dl}`
-  }
-
-  if (err.includes('no match') || err.includes('no matching') || err.includes('source not found')) {
-    return `No matching source found for "${title}" on ${dl}`
-  }
-
-  if (err.includes('timeout') || err.includes('timed out')) {
-    return `Timed out while downloading "${title}" on ${dl}`
-  }
-
-  if (err.includes('exit') || err.includes('crashed') || err.includes('killed')) {
-    return `${dl} exited with an error while downloading "${title}"`
-  }
-
-  if (err.includes('not found') || err.includes('404')) {
-    return `"${title}" was not found on ${dl}`
-  }
-
-  if (err.includes('auth') || err.includes('unauthorized') || err.includes('forbidden')) {
-    return `${dl} authentication failed - check your credentials`
-  }
-
-  // Generic fallback: contextual but never bare "Error" / "Failed"
-  return `Couldn't download "${title}" on ${dl}`
-}
-
-// ── Helpers ────────────────────────────────────────────────────────────────────
-
-function useDownloaders(): AdapterInstance[] {
-  const { data } = useAdapters()
-  if (!data) return []
-  return data
-    .filter((a) => a.type === 'downloader' && a.enabled)
-    .sort((a, b) => a.priority - b.priority)
-}
-
-function nextDownloader(current: string, list: AdapterInstance[]): AdapterInstance | undefined {
-  const idx = list.findIndex((d) => d.name === current)
-  return idx >= 0 && idx < list.length - 1 ? list[idx + 1] : list.find((d) => d.name !== current)
-}
-
-function ProgressBar({ progress }: { progress: number }) {
-  if (progress < 0) {
-    return (
-      <div className="h-1 w-full overflow-hidden rounded-full bg-border-subtle">
-        <div className="h-full w-1/3 animate-pulse bg-accent" />
-      </div>
-    )
-  }
-  return (
-    <div className="h-1 w-full overflow-hidden rounded-full bg-border-subtle">
-      <div className="h-full bg-accent" style={{ width: `${progress}%` }} />
-    </div>
-  )
-}
-
-// ── JobRow ────────────────────────────────────────────────────────────────────
-
-function JobRow({ j, downloaders }: { j: DownloadJob; downloaders: AdapterInstance[] }) {
-  const [expanded, setExpanded] = useState(false)
+// ── Row ─────────────────────────────────────────────────────────────────────
+function TrayRow({ j }: { j: DownloadJob }) {
   const active = j.status === 'queued' || j.status === 'running'
   const failed = j.status === 'failed'
-  const showCancel = active
-  const showRetry = failed || j.status === 'canceled'
-
-  const next = failed && downloaders.length > 1 ? nextDownloader(j.downloaderName, downloaders) : undefined
-
-  function handleRetry() {
-    void retryDownload(j.id)
-  }
-
-  function handleCancel() {
-    void cancelDownload(j.id)
-  }
-
-  function handleTryNext(downloaderName: string) {
-    void postDownload({
-      source: j.source,
-      externalId: j.externalId,
-      artist: j.artist ?? '',
-      title: j.title ?? j.externalId,
-      album: j.album ?? '',
-      isrc: j.isrc,
-      downloader: downloaderName,
-    }).then((newJob) => useDownloads.getState().upsert(newJob))
-  }
 
   return (
-    <li className="rounded-lg border border-border-subtle bg-surface-raised px-3 py-3 transition-colors hover:bg-raised">
+    <li className="rounded-lg px-2 py-2 transition-colors hover:bg-raised-hover">
       <div className="flex items-center gap-3">
-        {/* Cover */}
-        <Cover
-          src={undefined}
-          alt={j.title ?? j.externalId}
-          size={40}
-        />
-
-        {/* Title + status */}
+        <Cover src={undefined} alt={j.title ?? j.externalId} size={36} />
         <div className="min-w-0 flex-1">
-          <div className="truncate text-sm font-semibold text-text-primary">
-            {j.title ?? j.externalId}
-          </div>
-          {j.artist && (
-            <div className="truncate text-xs text-text-secondary">{j.artist}</div>
-          )}
-
-          {/* Status line */}
-          <div className="mt-1 flex items-center gap-1.5">
-            {j.status === 'queued' && (
-              <Badge kind="status">Queued</Badge>
-            )}
-            {j.status === 'running' && (
-              <Badge kind="downloading">
-                {j.progress >= 0 ? `${j.progress}%` : 'Downloading'}
-              </Badge>
-            )}
-            {j.status === 'completed' && (
-              <Badge kind="in-library">
-                <Icon name="check" className="w-3 h-3" />
-                Done
-              </Badge>
-            )}
-            {j.status === 'canceled' && (
-              <Badge kind="status" tone="warning">Canceled</Badge>
-            )}
-            {failed && (
-              <span
-                data-testid={`failure-message-${j.id}`}
-                className="flex items-center gap-1 text-xs font-medium text-error"
-              >
-                <Icon name="warn" className="w-3 h-3 flex-none" />
+          <div className="truncate text-[13px] font-semibold text-text-primary">{j.title ?? j.externalId}</div>
+          {j.artist && <div className="truncate text-xs text-text-secondary">{j.artist}</div>}
+          <div className="mt-1">
+            {failed ? (
+              <span data-testid={`failure-${j.id}`} className="text-xs font-medium text-error">
                 {failureMessage(j)}
               </span>
-            )}
+            ) : j.status !== 'queued' ? (
+              <StatusLabel job={j} />
+            ) : null}
           </div>
-
-          {/* Expandable raw error */}
-          {failed && j.error && (
-            <button
-              type="button"
-              aria-label={expanded ? 'Hide raw error' : 'Show raw error'}
-              onClick={() => setExpanded((v) => !v)}
-              className="mt-0.5 text-xs text-text-muted underline-offset-2 hover:text-text-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded"
-            >
-              {expanded ? 'Hide details' : 'Show details'}
-            </button>
-          )}
-          {expanded && j.error && (
-            <p className="mt-1 rounded bg-raised px-2 py-1 font-mono text-xs text-text-muted break-all">
-              {j.error}
-            </p>
-          )}
         </div>
 
-        {/* Progress ring for active jobs */}
-        {(j.status === 'running' || j.status === 'queued') && (
-          <ProgressRing
-            value={j.progress >= 0 ? j.progress : 0}
-            size={28}
-            indeterminate={j.status === 'queued' || j.progress < 0}
-          />
-        )}
-
-        {/* Action buttons */}
-        <div className="flex items-center gap-2 flex-none">
-          {showCancel && (
-            <Button
-              variant="ghost"
-              size="sm"
-              aria-label={`Cancel download of ${j.title ?? j.id}`}
-              onClick={handleCancel}
-            >
-              Cancel
-            </Button>
+        {/* Trailing action */}
+        <div className="flex-none">
+          {active && (
+            <IconButton name="x" label={`Cancel ${j.title ?? j.id}`} size="sm" onClick={() => void cancelDownload(j.id)} />
           )}
-          {showRetry && (
-            <Button
-              variant="secondary"
-              size="sm"
-              aria-label={`Retry download of ${j.title ?? j.id}`}
-              onClick={handleRetry}
-            >
+          {failed && (
+            <Button variant="secondary" size="sm" aria-label={`Retry ${j.title ?? j.id}`} onClick={() => void retryDownload(j.id)}>
               <Icon name="retry" className="w-3 h-3 mr-1" />
               Retry
             </Button>
           )}
-          {next && (
-            <Button
-              variant="primary"
-              size="sm"
-              aria-label={`Try ${next.name} for ${j.title ?? j.id}`}
-              onClick={() => handleTryNext(next.name)}
-            >
-              Try {next.name}
-            </Button>
+          {(j.status === 'completed' || j.status === 'canceled') && (
+            <IconButton name="x" label={`Clear ${j.title ?? j.id}`} size="sm" onClick={() => void clearDownload(j.id)} />
           )}
         </div>
       </div>
-
-      {/* Progress bar for active jobs */}
-      {active && (
+      {j.status === 'running' && (
         <div className="mt-2">
-          <ProgressBar progress={j.progress} />
+          <DownloadProgress progress={j.progress} />
         </div>
       )}
     </li>
   )
 }
 
-// ── DownloadTray ──────────────────────────────────────────────────────────────
+function Section({ title, count, jobs }: { title: string; count: number; jobs: DownloadJob[] }) {
+  if (jobs.length === 0) return null
+  return (
+    <div>
+      <div className="mt-3 mb-1 px-2 text-[11px] font-bold uppercase tracking-wider text-text-muted">
+        {title} · {count}
+      </div>
+      <ul className="space-y-1">
+        {jobs.map((j) => (
+          <TrayRow key={j.id} j={j} />
+        ))}
+      </ul>
+    </div>
+  )
+}
 
+// ── DownloadTray ──────────────────────────────────────────────────────────────
 export function DownloadTray() {
   const rightPanel = useUI((s) => s.rightPanel)
   const closePanel = useUI((s) => s.closePanel)
   const jobs = useDownloads((s) => s.jobs)
-  const downloaders = useDownloaders()
+  const running = useDownloads((s) => s.running)
+  const queued = useDownloads((s) => s.queued)
+  const completed = useDownloads((s) => s.completed)
+  const failed = useDownloads((s) => s.failed)
+
+  const runningJobs = running()
+  const queuedJobs = queued()
+  const completedJobs = completed()
+  const failedJobs = failed()
+  const total = Object.keys(jobs).length
+  const activeCount = runningJobs.length + queuedJobs.length
+
+  // Auto-tidy: hide completed rows ~5s after the queue goes fully idle. Failed
+  // rows are sticky; active rows always show. View-only — never deletes records.
+  const [tidied, setTidied] = useState(false)
+  useEffect(() => {
+    if (activeCount > 0) {
+      setTidied(false)
+      return
+    }
+    const t = setTimeout(() => setTidied(true), TIDY_DELAY_MS)
+    return () => clearTimeout(t)
+  }, [activeCount])
+  const shownCompleted = tidied ? [] : completedJobs
 
   if (rightPanel !== 'downloads') return null
 
-  const list = Object.values(jobs).sort((a, b) => b.createdAt - a.createdAt)
+  const isEmpty = total === 0
+  const nothingToShow = runningJobs.length + queuedJobs.length + shownCompleted.length + failedJobs.length === 0
 
   return (
-    <aside
-      className={[
-        // Sits cleanly inside the right column — no self-gate absolute positioning
-        'flex h-full w-full flex-col bg-surface',
-        'md:w-80',
-        'border-l border-border-subtle',
-      ].join(' ')}
-    >
+    <aside className="flex h-full w-full flex-col border-l border-border-subtle bg-surface md:w-80">
       <div className="flex items-center justify-between border-b border-border-subtle px-4 py-3.5">
-        <h2 className="text-base font-bold text-text-primary">Download Tray</h2>
+        <h2 className="text-base font-bold text-text-primary">Downloads</h2>
         <IconButton name="x" label="Close downloads" size="sm" onClick={closePanel} />
       </div>
 
-      <div className="flex-1 overflow-auto p-2">
-        {list.length === 0 && (
-          <div className="px-2 py-4 text-sm text-text-muted">No downloads yet.</div>
+      {!isEmpty && (
+        <Link
+          to="/downloads"
+          onClick={closePanel}
+          aria-label="See all downloads"
+          className="mx-3 mt-3 flex items-center justify-between rounded-lg bg-raised px-3 py-2 text-[13px] font-semibold text-text-primary transition-colors hover:bg-raised-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+        >
+          <span>See all downloads</span>
+          <span className="text-accent">{total} →</span>
+        </Link>
+      )}
+
+      <div className="flex-1 overflow-auto px-1 pb-3">
+        {isEmpty || nothingToShow ? (
+          <div className="flex h-full flex-col items-center justify-center gap-2 px-6 text-center">
+            <div className="grid h-14 w-14 place-items-center rounded-full bg-raised">
+              <Icon name="dl" className="h-6 w-6 text-text-muted" />
+            </div>
+            <p className="text-sm font-bold text-text-primary">Nothing downloading</p>
+            <p className="text-xs text-text-muted">Search for a track and hit download — it'll show up here and land in your library.</p>
+          </div>
+        ) : (
+          <>
+            <Section title="Downloading" count={runningJobs.length} jobs={runningJobs} />
+            <Section title="Queued" count={queuedJobs.length} jobs={queuedJobs} />
+            <Section title="Done" count={shownCompleted.length} jobs={shownCompleted} />
+            <Section title="Failed" count={failedJobs.length} jobs={failedJobs} />
+          </>
         )}
-        <ul className="space-y-2">
-          {list.map((j) => (
-            <JobRow key={j.id} j={j} downloaders={downloaders} />
-          ))}
-        </ul>
       </div>
     </aside>
   )

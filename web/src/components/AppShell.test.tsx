@@ -89,7 +89,7 @@ describe('AppShell', () => {
     useUI.setState({ rightPanel: 'downloads' })
     renderShell()
     expect(screen.getByTestId('right-panel-column')).toBeInTheDocument()
-    expect(screen.getByText('Download Tray')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Downloads' })).toBeInTheDocument()
   })
 
   it('mobile chrome (MobileTabNav) is in the DOM', () => {
