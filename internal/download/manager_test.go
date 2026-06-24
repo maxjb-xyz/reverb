@@ -1363,6 +1363,55 @@ func TestBackfillSkipsAlreadyLinkedAndNonCompleted(t *testing.T) {
 	}
 }
 
+func TestPauseGatesDispatchResumeDrains(t *testing.T) {
+	dl := &fakeDL{name: "dl", canDownload: true}
+	store := newMemStore()
+	m, bus := testManager(t, []Downloader{dl}, store, nil, nil, nil)
+
+	sub, unsub := bus.Subscribe(TopicQueueState)
+	defer unsub()
+
+	m.Pause()
+	if !m.IsPaused() {
+		t.Fatal("expected IsPaused() true after Pause")
+	}
+	select {
+	case ev := <-sub:
+		if !ev.Payload.(core.QueueStateEvent).Paused {
+			t.Fatal("pause event should carry Paused=true")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("expected download.queue event on Pause")
+	}
+
+	job, err := m.Enqueue(context.Background(), core.DownloadRequest{Source: "spotify", ExternalID: "e1", Artist: "A", Title: "T", Album: "Al"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// While paused, no worker may pick the job up: it stays queued.
+	time.Sleep(80 * time.Millisecond)
+	if got, _, _ := store.Get(context.Background(), job.ID); got.Status != core.DownloadQueued {
+		t.Fatalf("paused: want job to stay queued, got %s", got.Status)
+	}
+
+	m.Resume()
+	if m.IsPaused() {
+		t.Fatal("expected IsPaused() false after Resume")
+	}
+
+	// After resume the job runs to completion (poll, RealClock fakeDL completes fast).
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if got, _, _ := store.Get(context.Background(), job.ID); got.Status == core.DownloadCompleted {
+			return
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	got, _, _ := store.Get(context.Background(), job.ID)
+	t.Fatalf("after resume: want completed, got %s", got.Status)
+}
+
 func TestFailedDownloadPublishesFailedEvent(t *testing.T) {
 	dlErr := errors.New("network timeout")
 	dl := &fakeDL{name: "dl", canDownload: true, errOnStart: dlErr}

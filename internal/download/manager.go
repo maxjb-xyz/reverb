@@ -21,6 +21,14 @@ func shortID(id string) string {
 	return id
 }
 
+// closedChan returns an already-closed channel — receiving from it returns
+// immediately. Used as the "running" (open-gate) state of the pause gate.
+func closedChan() chan struct{} {
+	c := make(chan struct{})
+	close(c)
+	return c
+}
+
 // JobStore is the persistence slice the Manager needs. *db.Queries does NOT
 // satisfy this directly (it speaks db.DownloadJob); the composition root adapts
 // it via a thin sqlStore wrapper (Task 7). The in-memory test store satisfies it.
@@ -137,6 +145,8 @@ type Manager struct {
 	reqs     map[string]core.DownloadRequest
 	debounce func() bool // active debounce timer stop (or nil)
 	pending  bool        // a completion is awaiting the scan window
+	paused   bool          // dispatch gate: workers stop pulling NEW jobs while true
+	resumeCh chan struct{} // closed when running; a fresh OPEN channel while paused
 
 	wg       sync.WaitGroup
 	stopOnce sync.Once
@@ -167,6 +177,7 @@ func NewManager(cfg Config, downloaders []Downloader, store JobStore, bus Publis
 		cancels:     map[string]context.CancelFunc{},
 		reqs:        map[string]core.DownloadRequest{},
 		stopCh:      make(chan struct{}),
+		resumeCh:    closedChan(),
 	}
 }
 
@@ -383,11 +394,31 @@ func (m *Manager) publishEvent(topic string, job core.DownloadJob, errMsg string
 func (m *Manager) worker() {
 	defer m.wg.Done()
 	for {
+		// Wait at the gate BEFORE pulling a job so a paused queue dispatches
+		// nothing new. In-flight jobs are unaffected (already pulled). Stop
+		// unblocks a gated worker.
+		select {
+		case <-m.stopCh:
+			return
+		case <-m.gate():
+		}
 		select {
 		case <-m.stopCh:
 			return
 		case id := <-m.queue:
-			m.process(id)
+			// Guard: if Pause() arrived while we were waiting at the queue,
+			// return the job to the channel and re-loop so the gate blocks us.
+			select {
+			case <-m.gate():
+				m.process(id)
+			default:
+				// Paused — re-queue and let the next gate iteration block.
+				select {
+				case m.queue <- id:
+				case <-m.stopCh:
+					return
+				}
+			}
 		}
 	}
 }
@@ -831,6 +862,56 @@ func (m *Manager) publishRemoved(ids []string) {
 		return
 	}
 	m.bus.Publish(events.Event{Topic: TopicRemoved, Payload: core.DownloadRemovedEvent{JobIDs: ids}})
+}
+
+// gate returns the current resume channel. When running it is closed (receiving
+// returns instantly); when paused it is open (receiving blocks until Resume).
+func (m *Manager) gate() <-chan struct{} {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.resumeCh
+}
+
+// Pause stops dispatching NEW jobs. Jobs already running finish; queued jobs stay
+// queued. In-memory only (a restart comes up running). Idempotent.
+func (m *Manager) Pause() {
+	m.mu.Lock()
+	if m.paused {
+		m.mu.Unlock()
+		return
+	}
+	m.paused = true
+	m.resumeCh = make(chan struct{}) // open: workers block on it at the gate
+	m.mu.Unlock()
+	m.publishQueueState(true)
+}
+
+// Resume re-enables dispatch, unblocking any gated workers. Idempotent.
+func (m *Manager) Resume() {
+	m.mu.Lock()
+	if !m.paused {
+		m.mu.Unlock()
+		return
+	}
+	m.paused = false
+	close(m.resumeCh) // unblock workers; the now-closed channel reads as "running"
+	m.mu.Unlock()
+	m.publishQueueState(false)
+}
+
+// IsPaused reports the current gate state.
+func (m *Manager) IsPaused() bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.paused
+}
+
+// publishQueueState emits download.queue with the current paused flag.
+func (m *Manager) publishQueueState(paused bool) {
+	if m.bus == nil {
+		return
+	}
+	m.bus.Publish(events.Event{Topic: TopicQueueState, Payload: core.QueueStateEvent{Paused: paused}})
 }
 
 // SeedRequest rehydrates the originating request for a job (used after restart or

@@ -98,3 +98,9 @@ type LibraryUpdatedEvent struct {
 type DownloadRemovedEvent struct {
 	JobIDs []string `json:"jobIds"`
 }
+
+// QueueStateEvent is published on topic download.queue when the queue is paused
+// or resumed, so every client reflects the gate state live.
+type QueueStateEvent struct {
+	Paused bool `json:"paused"`
+}
