@@ -4,6 +4,7 @@ import { api } from './api'
 export interface AppSettings {
   accentColor: string
   dynamicBackground: boolean
+  defaultDownloader: string
 }
 
 const DEFAULT_ACCENT_CHANNELS = '240 53 75' // #F0354B

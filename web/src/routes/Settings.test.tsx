@@ -16,6 +16,15 @@ vi.mock('../lib/settingsApi', () => ({
 // AccentSwatches is rendered inside Settings — we need settingsApi mocked above and
 // the component itself to render (not stub it out), so we only stub the api module
 // to prevent real fetch calls from the logout button.
+vi.mock('../lib/adaptersApi', () => ({
+  useAdapters: () => ({
+    data: [
+      { id: 'a1', type: 'downloader', name: 'spotdl', enabled: true, priority: 1, config: {} },
+      { id: 'a2', type: 'downloader', name: 'lidarr', enabled: true, priority: 2, config: {} },
+    ],
+  }),
+}))
+
 vi.mock('../lib/api', () => ({
   api: {
     get: vi.fn(() => Promise.resolve({})),
@@ -108,5 +117,15 @@ describe('Settings', () => {
   it('NO adapter UI present — no Remove button', () => {
     wrap(<Settings />)
     expect(screen.queryByRole('button', { name: /remove/i })).toBeNull()
+  })
+})
+
+describe('Settings default downloader', () => {
+  beforeEach(() => mockMutate.mockClear())
+  it('shows a Default downloader select and saves the choice', () => {
+    wrap(<Settings />)
+    const select = screen.getByLabelText('Default downloader')
+    fireEvent.change(select, { target: { value: 'lidarr' } })
+    expect(mockMutate).toHaveBeenCalledWith({ defaultDownloader: 'lidarr' })
   })
 })
