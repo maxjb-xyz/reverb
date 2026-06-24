@@ -10,6 +10,44 @@ import (
 	"database/sql"
 )
 
+const deleteDownloadJob = `-- name: DeleteDownloadJob :exec
+DELETE FROM download_jobs WHERE id = ?
+`
+
+func (q *Queries) DeleteDownloadJob(ctx context.Context, id string) error {
+	_, err := q.db.ExecContext(ctx, deleteDownloadJob, id)
+	return err
+}
+
+const deleteFinishedDownloadJobs = `-- name: DeleteFinishedDownloadJobs :many
+DELETE FROM download_jobs
+WHERE status IN ('completed', 'failed', 'canceled')
+RETURNING id
+`
+
+func (q *Queries) DeleteFinishedDownloadJobs(ctx context.Context) ([]string, error) {
+	rows, err := q.db.QueryContext(ctx, deleteFinishedDownloadJobs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getActiveDownloadJobByDedup = `-- name: GetActiveDownloadJobByDedup :one
 SELECT id, dedup_key, request_json, downloader_name, status, progress, error,
        output_path, library_track_id, cover_art_id, priority, requested_by, attempts,

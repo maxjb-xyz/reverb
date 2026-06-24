@@ -38,6 +38,12 @@ type JobStore interface {
 	// request_json so that ManualURL (and any other late-added field) survives a
 	// server restart between a Retry call and the worker picking up the job.
 	UpdateRequest(ctx context.Context, id string, req core.DownloadRequest) error
+	// Delete hard-removes a single job row (used by Clear; the Manager guarantees
+	// the job is in a terminal state before calling this).
+	Delete(ctx context.Context, id string) error
+	// DeleteFinished hard-removes every terminal (completed/failed/canceled) job
+	// and returns the deleted ids so the Manager can publish a removal event.
+	DeleteFinished(ctx context.Context) ([]string, error)
 }
 
 // ScanController is the library slice the Manager needs (StartScan + ScanStatus).

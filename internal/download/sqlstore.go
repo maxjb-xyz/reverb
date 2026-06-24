@@ -236,6 +236,14 @@ func (s *sqlStore) UpdateRequest(ctx context.Context, id string, req core.Downlo
 	})
 }
 
+func (s *sqlStore) Delete(ctx context.Context, id string) error {
+	return s.q.DeleteDownloadJob(ctx, id)
+}
+
+func (s *sqlStore) DeleteFinished(ctx context.Context) ([]string, error) {
+	return s.q.DeleteFinishedDownloadJobs(ctx)
+}
+
 func nullString(s string) sql.NullString {
 	if s == "" {
 		return sql.NullString{}

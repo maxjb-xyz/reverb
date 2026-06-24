@@ -62,3 +62,11 @@ UPDATE download_jobs SET request_json = ? WHERE id = ?;
 
 -- name: IncrementDownloadJobAttempts :exec
 UPDATE download_jobs SET attempts = attempts + 1 WHERE id = ?;
+
+-- name: DeleteDownloadJob :exec
+DELETE FROM download_jobs WHERE id = ?;
+
+-- name: DeleteFinishedDownloadJobs :many
+DELETE FROM download_jobs
+WHERE status IN ('completed', 'failed', 'canceled')
+RETURNING id;

@@ -97,3 +97,47 @@ func TestSQLStoreInsertGetUpdate(t *testing.T) {
 		t.Fatalf("list: %v len=%d", err, len(list))
 	}
 }
+
+func TestSQLStoreDeleteAndDeleteFinished(t *testing.T) {
+	s := newSQLStore(t)
+	ctx := context.Background()
+	mk := func(id, status string) {
+		j := core.DownloadJob{ID: id, DedupKey: "dk-" + id, Status: core.DownloadStatus(status), DownloaderName: "spotdl", Source: "spotify", ExternalID: id}
+		if err := s.Insert(ctx, j, core.DownloadRequest{Source: "spotify", ExternalID: id}); err != nil {
+			t.Fatal(err)
+		}
+		// Insert persists status via the status column on the row's initial write;
+		// set the non-queued statuses explicitly through Update.
+		j.Status = core.DownloadStatus(status)
+		if err := s.Update(ctx, j); err != nil {
+			t.Fatal(err)
+		}
+	}
+	mk("a", "completed")
+	mk("b", "failed")
+	mk("c", "queued")
+	mk("d", "canceled")
+
+	// Delete a single job.
+	if err := s.Delete(ctx, "a"); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok, _ := s.Get(ctx, "a"); ok {
+		t.Fatal("job a should be deleted")
+	}
+
+	// DeleteFinished removes terminal jobs (b failed, d canceled), keeps queued c.
+	ids, err := s.DeleteFinished(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ids) != 2 {
+		t.Fatalf("DeleteFinished returned %v, want 2 ids (b,d)", ids)
+	}
+	if _, ok, _ := s.Get(ctx, "c"); !ok {
+		t.Fatal("queued job c must survive DeleteFinished")
+	}
+	if _, ok, _ := s.Get(ctx, "b"); ok {
+		t.Fatal("failed job b should be gone")
+	}
+}

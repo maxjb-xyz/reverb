@@ -198,6 +198,28 @@ func (s *memStore) UpdateRequest(_ context.Context, id string, req core.Download
 	return nil
 }
 
+func (s *memStore) Delete(_ context.Context, id string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.jobs, id)
+	delete(s.reqs, id)
+	return nil
+}
+
+func (s *memStore) DeleteFinished(_ context.Context) ([]string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var ids []string
+	for id, j := range s.jobs {
+		if j.Status == core.DownloadCompleted || j.Status == core.DownloadFailed || j.Status == core.DownloadCanceled {
+			ids = append(ids, id)
+			delete(s.jobs, id)
+			delete(s.reqs, id)
+		}
+	}
+	return ids, nil
+}
+
 func (s *memStore) getReq(id string) (core.DownloadRequest, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
