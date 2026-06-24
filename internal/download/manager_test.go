@@ -1412,6 +1412,90 @@ func TestPauseGatesDispatchResumeDrains(t *testing.T) {
 	t.Fatalf("after resume: want completed, got %s", got.Status)
 }
 
+// TestPauseKeepsBufferedJobsQueued asserts that jobs enqueued while the manager is
+// paused remain in the Queued state (no worker picks them up), and that they all
+// drain to Completed once Resume is called.
+func TestPauseKeepsBufferedJobsQueued(t *testing.T) {
+	dl := &fakeDL{name: "dl", canDownload: true}
+	store := newMemStore()
+	m, _ := testManager(t, []Downloader{dl}, store, nil, nil, nil)
+
+	m.Pause()
+
+	// Enqueue 3 distinct jobs while paused.
+	var jobIDs [3]string
+	for i := 0; i < 3; i++ {
+		j, err := m.Enqueue(context.Background(), core.DownloadRequest{
+			Source: "spotify", ExternalID: string(rune('a' + i)), Artist: "A", Title: "T" + string(rune('a'+i)), Album: "Al",
+		})
+		if err != nil {
+			t.Fatalf("enqueue %d: %v", i, err)
+		}
+		jobIDs[i] = j.ID
+	}
+
+	// After ~80ms none should have been dispatched (they stay Queued).
+	time.Sleep(80 * time.Millisecond)
+	for _, id := range jobIDs {
+		cur, _, _ := store.Get(context.Background(), id)
+		if cur.Status != core.DownloadQueued {
+			t.Fatalf("paused: job %s should be Queued, got %s", id, cur.Status)
+		}
+	}
+
+	// Resume and wait for all 3 to complete.
+	m.Resume()
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		jobs, _ := store.List(context.Background())
+		done := 0
+		for _, j := range jobs {
+			if j.Status == core.DownloadCompleted {
+				done++
+			}
+		}
+		if done == 3 {
+			return
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	jobs, _ := store.List(context.Background())
+	done := 0
+	for _, j := range jobs {
+		if j.Status == core.DownloadCompleted {
+			done++
+		}
+	}
+	t.Fatalf("after resume: want 3 completed, got %d", done)
+}
+
+// TestStopUnblocksPausedWorkers asserts that calling Stop() while the manager is
+// paused does not hang — the paused workers must wake up and exit cleanly.
+func TestStopUnblocksPausedWorkers(t *testing.T) {
+	dl := &fakeDL{name: "dl", canDownload: true}
+	store := newMemStore()
+	bus := events.New()
+	m := NewManager(
+		Config{Workers: 2, DebounceWindow: 5 * time.Second, ScanPollEvery: time.Millisecond, ScanPollMax: time.Second, ScanSettleMax: 10 * time.Millisecond},
+		[]Downloader{dl}, store, bus, &fakeScanner{}, &fakeRematcher{trackID: "t1"}, &fakeVersion{v: 1}, RealClock{}, nil,
+	)
+	m.Start()
+	m.Pause()
+
+	done := make(chan struct{})
+	go func() {
+		m.Stop()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		// Stop returned — workers unblocked successfully.
+	case <-time.After(2 * time.Second):
+		t.Fatal("Stop hung with workers paused")
+	}
+}
+
 func TestFailedDownloadPublishesFailedEvent(t *testing.T) {
 	dlErr := errors.New("network timeout")
 	dl := &fakeDL{name: "dl", canDownload: true, errOnStart: dlErr}

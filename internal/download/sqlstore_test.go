@@ -2,6 +2,7 @@ package download
 
 import (
 	"context"
+	"sort"
 	"testing"
 
 	"github.com/maxjb-xyz/reverb/internal/core"
@@ -133,6 +134,13 @@ func TestSQLStoreDeleteAndDeleteFinished(t *testing.T) {
 	}
 	if len(ids) != 2 {
 		t.Fatalf("DeleteFinished returned %v, want 2 ids (b,d)", ids)
+	}
+	// Assert the returned ids are EXACTLY {"b","d"} — not just the count.
+	sortedIDs := make([]string, len(ids))
+	copy(sortedIDs, ids)
+	sort.Strings(sortedIDs)
+	if len(sortedIDs) != 2 || sortedIDs[0] != "b" || sortedIDs[1] != "d" {
+		t.Fatalf("DeleteFinished returned %v, want exactly [b d]", ids)
 	}
 	if _, ok, _ := s.Get(ctx, "c"); !ok {
 		t.Fatal("queued job c must survive DeleteFinished")
