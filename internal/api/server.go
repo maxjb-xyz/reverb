@@ -37,6 +37,11 @@ type DownloadManager interface {
 	List(ctx context.Context) ([]core.DownloadJob, error)
 	Cancel(ctx context.Context, jobID string) error
 	Retry(ctx context.Context, jobID string, manualURL string) (core.DownloadJob, error)
+	Pause()
+	Resume()
+	IsPaused() bool
+	Clear(ctx context.Context, jobID string) error
+	ClearFinished(ctx context.Context) ([]string, error)
 	Stop()
 }
 
@@ -223,6 +228,11 @@ func (s *Server) routes() {
 			pr.Post("/playlists/{id}/cover", s.handleUploadPlaylistCover)
 			pr.Get("/playlists/{id}/cover", s.handleServePlaylistCover)
 			pr.Put("/playlists/{id}/tracks/order", s.handleReorderSyncedTracks)
+			pr.Post("/downloads/pause", s.handlePauseQueue)
+			pr.Post("/downloads/resume", s.handleResumeQueue)
+			pr.Get("/downloads/queue", s.handleQueueState)
+			pr.Post("/downloads/clear", s.handleClearDownloads)
+			pr.Post("/downloads/{id}/clear", s.handleClearDownload)
 			pr.Post("/downloads/batch", s.handleBatchDownload)
 			pr.Post("/downloads", s.handleCreateDownload)
 			pr.Get("/downloads", s.handleListDownloads)

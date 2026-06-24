@@ -237,6 +237,34 @@ paths:
                 playWhenReady: { type: boolean }
               required: [source, externalId, artist, title]
       responses: { "200": { description: DownloadJob }, "400": { description: invalid } }
+  /downloads/pause:
+    post:
+      summary: Pause the download queue (stop dispatching new jobs)
+      responses: { "200": { description: "{paused:true}" } }
+  /downloads/resume:
+    post:
+      summary: Resume the download queue
+      responses: { "200": { description: "{paused:false}" } }
+  /downloads/queue:
+    get:
+      summary: Queue state (paused flag)
+      responses: { "200": { description: "{paused:boolean}" } }
+  /downloads/clear:
+    post:
+      summary: Clear finished downloads (hard delete); body {ids?} else all finished
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties: { ids: { type: array, items: { type: string } } }
+      responses: { "200": { description: "{removed:number}" } }
+  /downloads/{id}/clear:
+    post:
+      summary: Clear a single finished download (hard delete)
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses: { "200": { description: ok }, "422": { description: job is active } }
   /downloads/{id}/cancel:
     post:
       summary: Cancel a queued/running download

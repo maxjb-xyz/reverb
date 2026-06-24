@@ -88,6 +88,87 @@ func (s *Server) handleCancelDownload(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
+func (s *Server) handlePauseQueue(w http.ResponseWriter, r *http.Request) {
+	dl := s.downloads()
+	if dl == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "no downloader configured"})
+		return
+	}
+	dl.Pause()
+	writeJSON(w, http.StatusOK, map[string]bool{"paused": true})
+}
+
+func (s *Server) handleResumeQueue(w http.ResponseWriter, r *http.Request) {
+	dl := s.downloads()
+	if dl == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "no downloader configured"})
+		return
+	}
+	dl.Resume()
+	writeJSON(w, http.StatusOK, map[string]bool{"paused": false})
+}
+
+func (s *Server) handleQueueState(w http.ResponseWriter, r *http.Request) {
+	dl := s.downloads()
+	if dl == nil {
+		writeJSON(w, http.StatusOK, map[string]bool{"paused": false})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"paused": dl.IsPaused()})
+}
+
+func (s *Server) handleClearDownload(w http.ResponseWriter, r *http.Request) {
+	dl := s.downloads()
+	if dl == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "no downloader configured"})
+		return
+	}
+	id := chi.URLParam(r, "id")
+	if err := dl.Clear(r.Context(), id); err != nil {
+		writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+// clearBody is the OPTIONAL body for POST /downloads/clear. Omitted/empty ids
+// means "clear all finished"; a non-empty ids list clears exactly those (active
+// ids are skipped, not errored).
+type clearBody struct {
+	IDs []string `json:"ids"`
+}
+
+func (s *Server) handleClearDownloads(w http.ResponseWriter, r *http.Request) {
+	dl := s.downloads()
+	if dl == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "no downloader configured"})
+		return
+	}
+	var body clearBody
+	if r.Body != nil {
+		raw, rerr := io.ReadAll(r.Body)
+		if rerr == nil && len(raw) > 0 {
+			_ = json.Unmarshal(raw, &body) // tolerate empty/malformed → clear finished
+		}
+	}
+	if len(body.IDs) == 0 {
+		ids, err := dl.ClearFinished(r.Context())
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not clear"})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]int{"removed": len(ids)})
+		return
+	}
+	removed := 0
+	for _, id := range body.IDs {
+		if err := dl.Clear(r.Context(), id); err == nil {
+			removed++
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]int{"removed": removed})
+}
+
 // retryBody is the OPTIONAL JSON body for POST /downloads/{id}/retry.
 // An absent or empty body is tolerated (plain retry, no manual URL).
 type retryBody struct {

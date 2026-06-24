@@ -18,6 +18,8 @@ var wsTopics = []string{
 	download.TopicComplete,
 	download.TopicFailed,
 	download.TopicLibraryUpdate,
+	download.TopicQueueState,
+	download.TopicRemoved,
 }
 
 // wsEnvelope is the JSON frame written to the client: {type, payload}.

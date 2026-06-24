@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -15,6 +16,8 @@ import (
 	"github.com/maxjb-xyz/reverb/internal/store"
 )
 
+var errActiveClear = errors.New("cannot clear active job")
+
 // fakeManager is an in-memory DownloadManager.
 type fakeManager struct {
 	jobs           map[string]core.DownloadJob
@@ -22,6 +25,9 @@ type fakeManager struct {
 	canceled       []string
 	retried        []string
 	lastRetryURL   string // manualURL from the most recent Retry call
+	paused         bool
+	cleared        []string
+	clearedFinish  int
 }
 
 func newFakeManager() *fakeManager { return &fakeManager{jobs: map[string]core.DownloadJob{}} }
@@ -49,6 +55,28 @@ func (m *fakeManager) Retry(_ context.Context, id string, manualURL string) (cor
 	return core.DownloadJob{ID: id, Status: core.DownloadQueued, Attempts: 1}, nil
 }
 func (m *fakeManager) Stop() {}
+func (m *fakeManager) Pause()         { m.paused = true }
+func (m *fakeManager) Resume()        { m.paused = false }
+func (m *fakeManager) IsPaused() bool { return m.paused }
+func (m *fakeManager) Clear(_ context.Context, id string) error {
+	if j, ok := m.jobs[id]; ok && (j.Status == core.DownloadQueued || j.Status == core.DownloadRunning) {
+		return errActiveClear
+	}
+	m.cleared = append(m.cleared, id)
+	delete(m.jobs, id)
+	return nil
+}
+func (m *fakeManager) ClearFinished(context.Context) ([]string, error) {
+	var ids []string
+	for id, j := range m.jobs {
+		if j.Status == core.DownloadCompleted || j.Status == core.DownloadFailed || j.Status == core.DownloadCanceled {
+			ids = append(ids, id)
+			delete(m.jobs, id)
+		}
+	}
+	m.clearedFinish = len(ids)
+	return ids, nil
+}
 
 func downloadTestServer(t *testing.T, mgr DownloadManager) (*Server, *http.Cookie) {
 	t.Helper()
@@ -203,5 +231,87 @@ func TestCreateDownloadNilManager503(t *testing.T) {
 	srv.Handler().ServeHTTP(rec, req)
 	if rec.Code != http.StatusServiceUnavailable {
 		t.Fatalf("status = %d, want 503", rec.Code)
+	}
+}
+
+func TestPauseResumeQueue(t *testing.T) {
+	mgr := newFakeManager()
+	srv, cookie := downloadTestServer(t, mgr)
+
+	post := func(path string) int {
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodPost, path, nil)
+		req.AddCookie(cookie)
+		srv.Handler().ServeHTTP(rec, req)
+		return rec.Code
+	}
+	if post("/api/v1/downloads/pause") != http.StatusOK || !mgr.paused {
+		t.Fatal("pause should set paused=true")
+	}
+	if post("/api/v1/downloads/resume") != http.StatusOK || mgr.paused {
+		t.Fatal("resume should set paused=false")
+	}
+
+	// GET /downloads/queue reflects state.
+	mgr.paused = true
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/downloads/queue", nil)
+	req.AddCookie(cookie)
+	srv.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("queue status = %d", rec.Code)
+	}
+	var q struct {
+		Paused bool `json:"paused"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &q); err != nil {
+		t.Fatal(err)
+	}
+	if !q.Paused {
+		t.Fatal("GET /downloads/queue should report paused=true")
+	}
+}
+
+func TestClearSingleAndFinished(t *testing.T) {
+	mgr := newFakeManager()
+	mgr.jobs["done"] = core.DownloadJob{ID: "done", Status: core.DownloadCompleted}
+	mgr.jobs["run"] = core.DownloadJob{ID: "run", Status: core.DownloadRunning}
+	srv, cookie := downloadTestServer(t, mgr)
+
+	// Clear a terminal job → 200.
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/downloads/done/clear", nil)
+	req.AddCookie(cookie)
+	srv.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("clear terminal = %d", rec.Code)
+	}
+
+	// Clear an active job → 422.
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "/api/v1/downloads/run/clear", nil)
+	req.AddCookie(cookie)
+	srv.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("clear active = %d, want 422", rec.Code)
+	}
+
+	// Bulk clear finished (no ids) → removes the remaining terminal jobs.
+	mgr.jobs["f"] = core.DownloadJob{ID: "f", Status: core.DownloadFailed}
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "/api/v1/downloads/clear", bytes.NewBufferString(`{}`))
+	req.AddCookie(cookie)
+	srv.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("bulk clear = %d", rec.Code)
+	}
+	var resp struct {
+		Removed int `json:"removed"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatal(err)
+	}
+	if resp.Removed < 1 {
+		t.Fatalf("bulk clear removed %d, want >=1", resp.Removed)
 	}
 }
