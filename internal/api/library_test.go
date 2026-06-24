@@ -249,7 +249,7 @@ func TestPlaylistMutationsReturn503WhenNoLibrary(t *testing.T) {
 	authSvc := auth.NewService(st.Q(), time.Now)
 	_ = authSvc.SetAdminPassword(context.Background(), "pw")
 	tok, _ := authSvc.CreateSession(context.Background())
-	// No sync service — POST /library/playlists returns 503 (sync unavailable).
+	// No sync service — POST /playlists returns 503 (sync unavailable).
 	srv := NewServer(Deps{Auth: authSvc, Library: nil,
 		Search: registry.NewRegistry("search"), Downloader: registry.NewRegistry("downloader")})
 	cookie := &http.Cookie{Name: sessionCookie, Value: tok}

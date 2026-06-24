@@ -693,7 +693,7 @@ export async function installPlaylistSyncMocks(page: Page): Promise<void> {
   await page.route('**/api/v1/library/artists', (route: Route) =>
     route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([]) }),
   )
-  await page.route('**/api/v1/library/playlists', (route: Route) =>
+  await page.route('**/api/v1/playlists', (route: Route) =>
     route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([]) }),
   )
 
