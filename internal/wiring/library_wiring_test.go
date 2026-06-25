@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/maxjb-xyz/reverb/internal/library"
+	"github.com/maxjb-xyz/reverb/internal/library/embedded"
 	"github.com/maxjb-xyz/reverb/internal/registry"
 	"github.com/maxjb-xyz/reverb/internal/store/db"
 )
@@ -33,7 +34,7 @@ func TestBuildLibraryAdapterAppliesEnvSecret(t *testing.T) {
 	}}
 	env := map[string]string{"REVERB_LIBRARY_PASSWORD": "env-pw"}
 
-	got, err := BuildLibraryAdapter(context.Background(), reg, instances, func(k string) string { return env[k] })
+	got, err := BuildLibraryAdapter(context.Background(), reg, instances, func(k string) string { return env[k] }, embedded.ModeExternal, embedded.Credentials{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -52,7 +53,7 @@ func TestBuildLibraryAdapterNoEnabledInstance(t *testing.T) {
 	reg := registry.NewRegistry("library")
 	reg.Register("subsonic", func() registry.Plugin { return &stubLib{} })
 	instances := []db.AdapterInstance{{ID: "i1", Type: "library", Name: "subsonic", Enabled: 0}}
-	got, err := BuildLibraryAdapter(context.Background(), reg, instances, func(string) string { return "" })
+	got, err := BuildLibraryAdapter(context.Background(), reg, instances, func(string) string { return "" }, embedded.ModeExternal, embedded.Credentials{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -65,7 +66,7 @@ func TestBuildLibraryAdapterIgnoresNonLibraryTypes(t *testing.T) {
 	reg := registry.NewRegistry("library")
 	reg.Register("subsonic", func() registry.Plugin { return &stubLib{} })
 	instances := []db.AdapterInstance{{ID: "i1", Type: "search", Name: "spotify", Enabled: 1}}
-	got, _ := BuildLibraryAdapter(context.Background(), reg, instances, func(string) string { return "" })
+	got, _ := BuildLibraryAdapter(context.Background(), reg, instances, func(string) string { return "" }, embedded.ModeExternal, embedded.Credentials{})
 	if got != nil {
 		t.Fatal("expected nil — only library type counts")
 	}
@@ -91,7 +92,7 @@ func TestBuildLibraryAdapterInitFails(t *testing.T) {
 		ConfigJson: `{"url":"http://nav:4533","username":"alice","password":"secret"}`,
 	}}
 
-	got, err := BuildLibraryAdapter(context.Background(), reg, instances, func(string) string { return "" })
+	got, err := BuildLibraryAdapter(context.Background(), reg, instances, func(string) string { return "" }, embedded.ModeExternal, embedded.Credentials{})
 	if err == nil {
 		t.Fatal("expected an error from Init failure, got nil")
 	}

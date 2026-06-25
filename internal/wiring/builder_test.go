@@ -45,8 +45,22 @@ func addInstance(t *testing.T, st *store.Store, typ, name, cfg string) {
 	}
 }
 
+// setExternalMode pins the library_backend_mode setting to "external" so
+// builder tests that expect no library adapter are not affected by the
+// built-in mode default (which synthesizes a localhost adapter when no
+// library instance is present and no mode is set).
+func setExternalMode(t *testing.T, st *store.Store) {
+	t.Helper()
+	if err := st.Q().UpsertSetting(context.Background(), db.UpsertSettingParams{
+		Key: "library_backend_mode", Value: "external",
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestBuilderBuildEmpty(t *testing.T) {
 	st := newTestStore(t)
+	setExternalMode(t, st)
 	b := newTestBuilder(t, st)
 	bundle, err := b.Build(context.Background())
 	if err != nil {
@@ -87,6 +101,7 @@ func TestBuilderBuildLibraryAndSearch(t *testing.T) {
 
 func TestBuilderManagerRequiresLibrary(t *testing.T) {
 	st := newTestStore(t)
+	setExternalMode(t, st)
 	// Downloader present but no library → manager must be nil (warning-only case).
 	addInstance(t, st, "downloader", "spotdl", `{"output_dir":"/music"}`)
 	b := newTestBuilder(t, st)
@@ -141,6 +156,7 @@ func TestBuilderSyncServiceRequiresLibraryAndManager(t *testing.T) {
 // when no library adapter is configured (even with Spotify + downloader present).
 func TestBuilderSyncServiceNilWithoutLibrary(t *testing.T) {
 	st := newTestStore(t)
+	setExternalMode(t, st)
 	addInstance(t, st, "search", "spotify", `{"client_id":"c"}`)
 	addInstance(t, st, "downloader", "spotdl", `{"output_dir":"/music"}`)
 	b := newTestBuilder(t, st)

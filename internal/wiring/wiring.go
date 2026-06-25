@@ -14,6 +14,7 @@ import (
 	"github.com/maxjb-xyz/reverb/internal/coverage"
 	"github.com/maxjb-xyz/reverb/internal/download"
 	"github.com/maxjb-xyz/reverb/internal/library"
+	"github.com/maxjb-xyz/reverb/internal/library/embedded"
 	"github.com/maxjb-xyz/reverb/internal/matching"
 	"github.com/maxjb-xyz/reverb/internal/playlistsync"
 	"github.com/maxjb-xyz/reverb/internal/registry"
@@ -21,16 +22,38 @@ import (
 	"github.com/maxjb-xyz/reverb/internal/store/db"
 )
 
-// BuildLibraryAdapter builds the active LibraryAdapter from the first enabled
-// adapter_instance of type "library". It applies env secret overrides
-// (REVERB_LIBRARY_PASSWORD) onto the stored config_json before Init. The library
-// is optional: with no enabled library instance it returns (nil, nil).
+// BuildLibraryAdapter builds the active library adapter. In built-in mode it
+// synthesizes a subsonic adapter pointed at the bundled localhost Navidrome with
+// the internal admin credentials, ignoring stored instances. In external mode it
+// uses the first enabled "library" adapter instance (legacy behavior).
 func BuildLibraryAdapter(
 	ctx context.Context,
 	reg *registry.Registry,
 	instances []db.AdapterInstance,
 	getenv func(string) string,
+	mode embedded.Mode,
+	creds embedded.Credentials,
 ) (library.LibraryAdapter, error) {
+	if mode == embedded.ModeBuiltIn {
+		plugin, err := reg.Create("subsonic")
+		if err != nil {
+			return nil, fmt.Errorf("built-in library: %w", err)
+		}
+		lib, ok := plugin.(library.LibraryAdapter)
+		if !ok {
+			return nil, fmt.Errorf("built-in library: subsonic is not a LibraryAdapter")
+		}
+		if err := lib.Init(map[string]any{
+			"url":      "http://127.0.0.1:4533",
+			"username": creds.Username,
+			"password": creds.Password,
+		}); err != nil {
+			return nil, fmt.Errorf("built-in library init: %w", err)
+		}
+		return lib, nil
+	}
+
+	// external mode (unchanged behavior)
 	var inst *db.AdapterInstance
 	for i := range instances {
 		if instances[i].Type == "library" && instances[i].Enabled == 1 {
@@ -41,27 +64,23 @@ func BuildLibraryAdapter(
 	if inst == nil {
 		return nil, nil
 	}
-
 	plugin, err := reg.Create(inst.Name)
 	if err != nil {
 		return nil, fmt.Errorf("library adapter %q: %w", inst.Name, err)
 	}
 	lib, ok := plugin.(library.LibraryAdapter)
 	if !ok {
-		return nil, fmt.Errorf("adapter %q is not a LibraryAdapter", inst.Name)
+		return nil, fmt.Errorf("library adapter %q: not a LibraryAdapter", inst.Name)
 	}
-
 	cfg := map[string]any{}
 	if inst.ConfigJson != "" {
 		if err := json.Unmarshal([]byte(inst.ConfigJson), &cfg); err != nil {
 			return nil, fmt.Errorf("library adapter %q config: %w", inst.Name, err)
 		}
 	}
-	// Env secret override — env wins for the password just before Init().
 	if pw := getenv("REVERB_LIBRARY_PASSWORD"); pw != "" {
 		cfg["password"] = pw
 	}
-
 	if err := lib.Init(cfg); err != nil {
 		return nil, fmt.Errorf("library adapter %q init: %w", inst.Name, err)
 	}
@@ -229,6 +248,7 @@ type ServiceBundle struct {
 	Coverage   *coverage.Service      // may be nil (needs a library + a DiscoSource)
 	Manager    *download.Manager      // may be nil; NOT started yet
 	Sync       *playlistsync.Service  // may be nil (needs a library, a Manager + a PlaylistProvider)
+	Supervisor *embedded.Supervisor   // bundled Navidrome supervisor; nil in external mode wiring helpers
 }
 
 // VersionStore is the library_version reader/writer the Manager + matcher need.
@@ -298,7 +318,24 @@ func (b *Builder) Build(ctx context.Context) (ServiceBundle, error) {
 
 	var bundle ServiceBundle
 
-	libAdapter, err := BuildLibraryAdapter(ctx, b.libraryReg, instances, b.getenv)
+	// Resolve effective backend mode and (if built-in) ensure internal creds.
+	modeSetting, _ := b.queries.GetSetting(ctx, "library_backend_mode")
+	hasLibInst := false
+	for i := range instances {
+		if instances[i].Type == "library" && instances[i].Enabled == 1 {
+			hasLibInst = true
+			break
+		}
+	}
+	mode := embedded.ResolveMode(modeSetting, hasLibInst)
+	var creds embedded.Credentials
+	if mode == embedded.ModeBuiltIn {
+		creds, err = embedded.EnsureInternalCredentials(ctx, b.queries)
+		if err != nil {
+			return bundle, fmt.Errorf("built-in library credentials: %w", err)
+		}
+	}
+	libAdapter, err := BuildLibraryAdapter(ctx, b.libraryReg, instances, b.getenv, mode, creds)
 	if err != nil {
 		libAdapter = nil
 		log.Printf("WARNING: library adapter not available: %v", err)
