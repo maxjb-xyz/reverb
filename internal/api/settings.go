@@ -8,18 +8,20 @@ import (
 )
 
 const (
-	keyAccentColor       = "accent_color"
-	keyDynamicBackground = "dynamic_background"
-	keyDefaultDownloader = "default_downloader"
-	defaultAccentColor   = "#F0354B"
+	keyAccentColor        = "accent_color"
+	keyDynamicBackground  = "dynamic_background"
+	keyDefaultDownloader  = "default_downloader"
+	keyLibraryBackendMode = "library_backend_mode"
+	defaultAccentColor    = "#F0354B"
 )
 
 var hexColorRE = regexp.MustCompile(`^#[0-9a-fA-F]{6}$`)
 
 type settingsDTO struct {
-	AccentColor       string `json:"accentColor"`
-	DynamicBackground bool   `json:"dynamicBackground"`
-	DefaultDownloader string `json:"defaultDownloader"`
+	AccentColor        string `json:"accentColor"`
+	DynamicBackground  bool   `json:"dynamicBackground"`
+	DefaultDownloader  string `json:"defaultDownloader"`
+	LibraryBackendMode string `json:"libraryBackendMode"`
 }
 
 func (s *Server) currentSettings(r *http.Request) settingsDTO {
@@ -36,6 +38,9 @@ func (s *Server) currentSettings(r *http.Request) settingsDTO {
 	if v, err := s.deps.Adapters.GetSetting(r.Context(), keyDefaultDownloader); err == nil {
 		out.DefaultDownloader = v
 	}
+	if v, err := s.deps.Adapters.GetSetting(r.Context(), keyLibraryBackendMode); err == nil && v != "" {
+		out.LibraryBackendMode = v
+	}
 	return out
 }
 
@@ -45,9 +50,10 @@ func (s *Server) handleGetSettings(w http.ResponseWriter, r *http.Request) {
 
 // putSettingsBody uses pointers so an omitted field is left unchanged.
 type putSettingsBody struct {
-	AccentColor       *string `json:"accentColor"`
-	DynamicBackground *bool   `json:"dynamicBackground"`
-	DefaultDownloader *string `json:"defaultDownloader"`
+	AccentColor        *string `json:"accentColor"`
+	DynamicBackground  *bool   `json:"dynamicBackground"`
+	DefaultDownloader  *string `json:"defaultDownloader"`
+	LibraryBackendMode *string `json:"libraryBackendMode"`
 }
 
 func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
@@ -87,6 +93,17 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if err := s.deps.Adapters.UpsertSetting(r.Context(), db.UpsertSettingParams{Key: keyDefaultDownloader, Value: name}); err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not save settings"})
+			return
+		}
+	}
+	if body.LibraryBackendMode != nil {
+		mode := *body.LibraryBackendMode
+		if mode != "" && mode != "built-in" && mode != "external" {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "libraryBackendMode must be empty, \"built-in\", or \"external\""})
+			return
+		}
+		if err := s.deps.Adapters.UpsertSetting(r.Context(), db.UpsertSettingParams{Key: keyLibraryBackendMode, Value: mode}); err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not save settings"})
 			return
 		}

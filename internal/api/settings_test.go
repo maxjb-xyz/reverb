@@ -153,3 +153,48 @@ func TestDefaultDownloaderSetting(t *testing.T) {
 		t.Fatalf("default = %q, want empty", dto.DefaultDownloader)
 	}
 }
+
+func TestLibraryBackendModeSetting(t *testing.T) {
+	st, err := store.Open(t.TempDir() + "/s.db")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { st.Close() })
+	if err := st.Migrate(); err != nil {
+		t.Fatal(err)
+	}
+	authSvc := auth.NewService(st.Q(), time.Now)
+	_ = authSvc.SetAdminPassword(context.Background(), "pw")
+	tok, _ := authSvc.CreateSession(context.Background())
+	srv := NewServer(Deps{Auth: authSvc, Adapters: st.Q()})
+	cookie := &http.Cookie{Name: sessionCookie, Value: tok}
+
+	put := func(body string) int {
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodPut, "/api/v1/settings", bytes.NewBufferString(body))
+		req.AddCookie(cookie)
+		srv.Handler().ServeHTTP(rec, req)
+		return rec.Code
+	}
+	if code := put(`{"libraryBackendMode":"external"}`); code != http.StatusOK {
+		t.Fatalf("set external = %d", code)
+	}
+	if code := put(`{"libraryBackendMode":"built-in"}`); code != http.StatusOK {
+		t.Fatalf("set built-in = %d", code)
+	}
+	if code := put(`{"libraryBackendMode":"bogus"}`); code != http.StatusBadRequest {
+		t.Fatalf("bogus mode = %d, want 400", code)
+	}
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/settings", nil)
+	req.AddCookie(cookie)
+	srv.Handler().ServeHTTP(rec, req)
+	var dto struct {
+		LibraryBackendMode string `json:"libraryBackendMode"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &dto)
+	if dto.LibraryBackendMode != "built-in" {
+		t.Fatalf("mode = %q, want built-in", dto.LibraryBackendMode)
+	}
+}
