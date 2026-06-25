@@ -2,6 +2,23 @@ import { useQuery } from '@tanstack/react-query'
 import { api } from './api'
 import type { Album, Artist, SearchResults, SyncedPlaylistDetail } from './types'
 
+export interface LibraryStatus {
+  mode: string
+  state: string // 'starting' | 'ready' | 'degraded' | 'external' | 'unconfigured'
+}
+
+export function getLibraryStatus(): Promise<LibraryStatus> {
+  return api.get<LibraryStatus>('/library/status')
+}
+
+export function useLibraryStatus() {
+  return useQuery({
+    queryKey: ['library', 'status'],
+    queryFn: getLibraryStatus,
+    refetchInterval: (q) => (q.state.data?.state === 'starting' ? 3000 : false),
+  })
+}
+
 export function streamUrl(id: string): string {
   return `/api/v1/stream/${encodeURIComponent(id)}`
 }

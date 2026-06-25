@@ -88,6 +88,7 @@ vi.mock('../lib/libraryApi', async (importOriginal) => {
     ...actual,
     useAlbums: vi.fn(),
     useArtists: vi.fn(),
+    useLibraryStatus: vi.fn(),
     coverUrl: vi.fn((id: string) => `/api/v1/cover/${id}`),
   }
 })
@@ -105,9 +106,10 @@ import type { SyncedPlaylist } from '../lib/types'
 
 describe('Library page', () => {
   beforeEach(async () => {
-    const { useAlbums, useArtists } = await import('../lib/libraryApi')
+    const { useAlbums, useArtists, useLibraryStatus } = await import('../lib/libraryApi')
     vi.mocked(useAlbums).mockReturnValue({ data: [], isLoading: false, error: null } as unknown as UseQueryResult<Album[], Error>)
     vi.mocked(useArtists).mockReturnValue({ data: [], isLoading: false, error: null } as unknown as UseQueryResult<Artist[], Error>)
+    vi.mocked(useLibraryStatus).mockReturnValue({ data: { mode: 'built-in', state: 'ready' }, isLoading: false, error: null } as unknown as ReturnType<typeof useLibraryStatus>)
     vi.mocked(useSyncedPlaylists).mockReturnValue({ data: [], isLoading: false, error: null } as unknown as ReturnType<typeof useSyncedPlaylists>)
   })
 
@@ -300,5 +302,51 @@ describe('Library page', () => {
     fireEvent.click(screen.getByRole('button', { name: /^playlists$/i }))
 
     expect(screen.getByRole('button', { name: /synced one/i })).toBeInTheDocument()
+  })
+})
+
+// ------------------------------------------------------------------
+// Library starting indicator
+// ------------------------------------------------------------------
+
+describe('Library starting indicator', () => {
+  beforeEach(async () => {
+    const { useAlbums, useArtists, useLibraryStatus } = await import('../lib/libraryApi')
+    vi.mocked(useAlbums).mockReturnValue({ data: [], isLoading: false, error: null } as unknown as UseQueryResult<Album[], Error>)
+    vi.mocked(useArtists).mockReturnValue({ data: [], isLoading: false, error: null } as unknown as UseQueryResult<Artist[], Error>)
+    vi.mocked(useLibraryStatus).mockReturnValue({ data: { mode: 'built-in', state: 'ready' }, isLoading: false, error: null } as unknown as ReturnType<typeof useLibraryStatus>)
+    vi.mocked(useSyncedPlaylists).mockReturnValue({ data: [], isLoading: false, error: null } as unknown as ReturnType<typeof useSyncedPlaylists>)
+  })
+
+  afterEach(() => vi.clearAllMocks())
+
+  it('shows a starting banner when the bundled library is starting', async () => {
+    const { useLibraryStatus } = await import('../lib/libraryApi')
+    vi.mocked(useLibraryStatus).mockReturnValue({
+      data: { mode: 'built-in', state: 'starting' },
+      isLoading: false,
+      error: null,
+    } as unknown as ReturnType<typeof useLibraryStatus>)
+
+    render(wrap(<Library />))
+    expect(screen.getByText(/library starting/i)).toBeInTheDocument()
+  })
+
+  it('shows a degraded banner when the library is degraded', async () => {
+    const { useLibraryStatus } = await import('../lib/libraryApi')
+    vi.mocked(useLibraryStatus).mockReturnValue({
+      data: { mode: 'built-in', state: 'degraded' },
+      isLoading: false,
+      error: null,
+    } as unknown as ReturnType<typeof useLibraryStatus>)
+
+    render(wrap(<Library />))
+    expect(screen.getByText(/library unavailable/i)).toBeInTheDocument()
+  })
+
+  it('shows no status banner when library is ready', () => {
+    render(wrap(<Library />))
+    expect(screen.queryByText(/library starting/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/library unavailable/i)).not.toBeInTheDocument()
   })
 })

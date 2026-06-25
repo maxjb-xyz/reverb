@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useAlbums, useArtists } from '../lib/libraryApi'
+import { useAlbums, useArtists, useLibraryStatus } from '../lib/libraryApi'
 import { useSyncedPlaylists } from '../lib/syncedPlaylistApi'
 import { Chip, MediaCard, Skeleton, EmptyState, Button } from '../components/ui'
 import { ImportPlaylistDialog } from '../components/ImportPlaylistDialog'
@@ -41,9 +41,22 @@ export default function Library() {
   const albums = useAlbums('newest')
   const artists = useArtists()
   const syncedPlaylists = useSyncedPlaylists()
+  const libStatus = useLibraryStatus()
 
   return (
     <div className="space-y-6">
+      {/* Library status banners */}
+      {libStatus.data?.state === 'starting' && (
+        <div className="rounded-lg border border-border-subtle bg-raised px-4 py-2 text-sm text-text-secondary">
+          Library starting… the bundled music server is coming up.
+        </div>
+      )}
+      {libStatus.data?.state === 'degraded' && (
+        <div className="rounded-lg border border-red-500/40 bg-red-500/10 px-4 py-2 text-sm text-red-300">
+          Library unavailable — the bundled server failed to start. Check logs or switch to an external server in Settings.
+        </div>
+      )}
+
       {/* Page header */}
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-text-primary">Your Library</h1>
