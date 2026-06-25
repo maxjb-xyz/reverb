@@ -4,7 +4,7 @@ import { MemoryRouter } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import Setup from './Setup'
 
-vi.mock('../lib/api', () => ({ api: { post: vi.fn(() => Promise.resolve({ ok: true })) } }))
+vi.mock('../lib/api', () => ({ api: { post: vi.fn(() => Promise.resolve({ ok: true })), put: vi.fn(() => Promise.resolve({})) } }))
 vi.mock('../lib/adaptersApi', () => ({
   useAvailableAdapters: vi.fn(() => ({ data: [{ type: 'library', name: 'subsonic', configSchema: { fields: [] }, capabilities: [] }] })),
   createAdapter: vi.fn(() => Promise.resolve({ data: {}, pendingRestart: true })),
@@ -43,5 +43,18 @@ describe('Setup wizard', () => {
     fireEvent.click(screen.getByRole('button', { name: /continue/i }))
     await waitFor(() => expect(api.post).toHaveBeenCalledWith('/setup/admin', { password: 'hunter2' }))
     expect(await screen.findByText(/add a library/i)).toBeInTheDocument()
+  })
+
+  it('library step offers a Built-in option that sets built-in mode and advances', async () => {
+    renderSetup()
+    // advance past password
+    fireEvent.change(screen.getByPlaceholderText('Choose a password'), { target: { value: 'hunter2' } })
+    fireEvent.click(screen.getByRole('button', { name: /continue/i }))
+    await screen.findByText(/add a library/i)
+
+    fireEvent.click(screen.getByRole('button', { name: /use built-in/i }))
+    await waitFor(() =>
+      expect(api.put).toHaveBeenCalledWith('/settings', { libraryBackendMode: 'built-in' }),
+    )
   })
 })

@@ -173,6 +173,22 @@ export default function Setup() {
 
       {!chosen && (
         <div className="space-y-4">
+          {step === 'library' && (
+            <>
+              <button
+                type="button"
+                onClick={async () => {
+                  await api.put('/settings', { libraryBackendMode: 'built-in' })
+                  advance()
+                }}
+                className="w-full rounded-xl border border-border-subtle bg-raised p-4 text-left hover:border-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent transition-colors"
+              >
+                <div className="font-semibold text-text-primary">Use built-in library (recommended)</div>
+                <div className="text-sm text-text-secondary">Reverb manages a music server for your folder — no setup.</div>
+              </button>
+              <div className="text-xs uppercase tracking-wide text-text-muted">or connect an existing server</div>
+            </>
+          )}
           <div className="flex flex-wrap gap-2">
             {choices.map((c) => (
               <button
@@ -184,7 +200,7 @@ export default function Setup() {
                 {c.name}
               </button>
             ))}
-            {choices.length === 0 && (
+            {choices.length === 0 && step !== 'library' && (
               <p className="text-sm text-text-muted">No adapters available for this step.</p>
             )}
           </div>
@@ -216,6 +232,9 @@ export default function Setup() {
             schema={chosen.configSchema}
             submitLabel="Add"
             onSubmit={async (config) => {
+              if (step === 'library') {
+                await api.put('/settings', { libraryBackendMode: 'external' })
+              }
               await createAdapter({ type: copy.type, name: chosen.name, enabled: true, priority: 0, config })
               advance()
             }}
