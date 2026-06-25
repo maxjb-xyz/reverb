@@ -72,3 +72,42 @@ func TestSupervisor_BuiltIn_BecomesReadyThenShutsDown(t *testing.T) {
 		t.Fatalf("shutdown: %v", err)
 	}
 }
+
+func TestSupervisor_CrashLoop_GoesDegraded(t *testing.T) {
+	var starts int
+	var mu sync.Mutex
+	s := New(Options{
+		Mode: ModeBuiltIn,
+		Runner: func(ctx context.Context, _ []string) (Process, error) {
+			mu.Lock()
+			starts++
+			mu.Unlock()
+			// crash immediately: Wait returns at once
+			crash := make(chan struct{})
+			close(crash)
+			return &fakeProcess{ctx: ctx, crash: crash}, nil
+		},
+		Probe:        func(context.Context) error { return errors.New("never ready") },
+		ProbeEvery:   time.Millisecond,
+		RestartDelay: time.Millisecond,
+		MaxRestarts:  3,
+	})
+	s.Start()
+
+	deadline := time.Now().Add(2 * time.Second)
+	for s.Health() != HealthDegraded && time.Now().Before(deadline) {
+		time.Sleep(2 * time.Millisecond)
+	}
+	if s.Health() != HealthDegraded {
+		t.Fatalf("health = %q, want degraded", s.Health())
+	}
+	mu.Lock()
+	got := starts
+	mu.Unlock()
+	if got != 3 {
+		t.Errorf("runner started %d times, want 3 (MaxRestarts)", got)
+	}
+	if err := s.Shutdown(context.Background()); err != nil {
+		t.Errorf("shutdown after degraded: %v", err)
+	}
+}
