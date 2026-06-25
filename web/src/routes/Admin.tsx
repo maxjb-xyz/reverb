@@ -9,6 +9,7 @@ import {
   type AdapterInstance,
 } from '../lib/adaptersApi'
 import { AdapterSection } from '../components/admin/AdapterSection'
+import { AdapterForm } from '../components/AdapterForm'
 import { Chip, Skeleton, EmptyState, Select } from '../components/ui'
 import { useSettings, useUpdateSettings } from '../lib/settingsApi'
 
@@ -82,13 +83,17 @@ export default function Admin() {
   const avail = available.data ?? []
   const isLoading = adapters.isLoading || available.isLoading
 
-  const libraryInstances = list.filter((a) => a.type === 'library')
   const searchInstances = list.filter((a) => a.type === 'search')
   const downloaderInstances = list.filter((a) => a.type === 'downloader')
 
-  const libraryAvail = avail.filter((a) => a.type === 'library')
   const searchAvail = avail.filter((a) => a.type === 'search')
   const downloaderAvail = avail.filter((a) => a.type === 'downloader')
+
+  // Library is single-active: a "switch", not a list. The library backend is one
+  // choice — Built-in (bundled, no config) or External (one Subsonic server).
+  const libMode = settings.data?.libraryBackendMode ?? 'built-in'
+  const libProvider = avail.find((a) => a.type === 'library') ?? null
+  const libInstance = list.find((a) => a.type === 'library') ?? null
 
   return (
     <div className="max-w-4xl space-y-6 pb-8">
@@ -111,21 +116,20 @@ export default function Admin() {
       {/* ── Providers tab ── */}
       {tab === 'providers' && (
         <div className="space-y-8">
-          {/* Library backend mode — governs the Library providers below */}
-          <div className="rounded-lg border border-border-subtle bg-raised p-6 space-y-3">
+          {/* Library backend — single-active switch (Built-in | External Subsonic) */}
+          <section className="rounded-lg border border-border-subtle bg-raised p-6 space-y-4">
             <div className="flex items-center justify-between gap-5">
               <div className="flex-1 min-w-0">
-                <h2 className="text-base font-extrabold text-text-primary">Library backend</h2>
+                <h2 className="text-lg font-extrabold tracking-tight text-text-primary">Library backend</h2>
                 <p className="text-xs text-text-secondary mt-0.5">
-                  Built-in runs a bundled music server that scans your music folder — no external
-                  setup. External connects to your own Navidrome/Subsonic server (configure it
-                  below). Changing this takes effect after a restart.
+                  Where your music collection lives. Only one is active at a time — switching takes
+                  effect after a restart.
                 </p>
               </div>
               <div className="flex-none">
                 <Select
                   label="Library backend"
-                  value={settings.data?.libraryBackendMode ?? 'built-in'}
+                  value={libMode}
                   options={[
                     { value: 'built-in', label: 'Built-in (bundled)' },
                     { value: 'external', label: 'External Subsonic' },
@@ -134,14 +138,37 @@ export default function Admin() {
                 />
               </div>
             </div>
-            {(settings.data?.libraryBackendMode ?? 'built-in') === 'built-in' && (
-              <p className="text-xs text-text-muted">
-                Built-in is active — Reverb scans the folder mounted at <code>/music</code> (set{' '}
-                <code>REVERB_DOWNLOAD_DIR</code> to change it). The library providers below are only
-                used when you switch to External.
+
+            {libMode === 'built-in' ? (
+              <p className="text-xs text-text-muted border-t border-border-subtle pt-4">
+                Reverb runs a bundled music server that scans the folder mounted at{' '}
+                <code>/music</code> (set <code>REVERB_DOWNLOAD_DIR</code> to change it). No external
+                setup needed.
               </p>
+            ) : (
+              <div className="space-y-3 border-t border-border-subtle pt-4">
+                <h3 className="text-sm font-extrabold text-text-primary">
+                  {libInstance ? 'Subsonic server' : 'Connect your Subsonic server'}
+                </h3>
+                {available.isLoading ? (
+                  <Skeleton className="h-20 w-full" />
+                ) : libProvider ? (
+                  <AdapterForm
+                    name={libProvider.name}
+                    schema={libProvider.configSchema}
+                    initial={libInstance?.config}
+                    submitLabel="Save"
+                    onSubmit={async (config) => {
+                      if (libInstance) await onUpdate(libInstance, config)
+                      else await onCreate('library', libProvider.name, config)
+                    }}
+                  />
+                ) : (
+                  <p className="text-sm text-text-muted">No library provider is registered.</p>
+                )}
+              </div>
             )}
-          </div>
+          </section>
 
           {isLoading ? (
             <div className="space-y-4" aria-label="Loading providers">
@@ -149,23 +176,9 @@ export default function Admin() {
               <Skeleton className="h-20 w-full" />
               <Skeleton className="h-6 w-40" />
               <Skeleton className="h-20 w-full" />
-              <Skeleton className="h-6 w-40" />
-              <Skeleton className="h-20 w-full" />
             </div>
           ) : (
             <>
-              <AdapterSection
-                title="Library providers"
-                subtitle="Where your music collection lives"
-                type="library"
-                instances={libraryInstances}
-                available={libraryAvail}
-                onCreate={(name, config) => onCreate('library', name, config)}
-                onUpdate={onUpdate}
-                onToggle={(inst) => void onToggle(inst)}
-                onRemove={(id) => void onRemove(id)}
-              />
-
               <AdapterSection
                 title="Search providers"
                 subtitle="Priority-ordered — first match wins"

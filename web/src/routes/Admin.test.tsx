@@ -22,14 +22,17 @@ vi.mock('../lib/adaptersApi', () => ({
   SECRET_SENTINEL: '••••••••',
 }))
 
-// ── Mock settingsApi (Library backend mode control) ─────────────────────────────
+// ── Mock settingsApi (Library backend switch) ───────────────────────────────────
+const mockUseSettings = vi.fn()
 const mockUpdateSettingsMutate = vi.fn()
 vi.mock('../lib/settingsApi', () => ({
-  useSettings: () => ({
-    data: { accentColor: '#F0354B', dynamicBackground: true, defaultDownloader: '', libraryBackendMode: 'built-in' },
-  }),
+  useSettings: () => mockUseSettings(),
   useUpdateSettings: () => ({ mutate: mockUpdateSettingsMutate }),
 }))
+
+const settingsData = (libraryBackendMode: string) => ({
+  data: { accentColor: '#F0354B', dynamicBackground: true, defaultDownloader: '', libraryBackendMode },
+})
 
 // ── Default mock return values ────────────────────────────────────────────────
 const makeAdapter = (overrides = {}) => ({
@@ -50,9 +53,23 @@ const makeAvailable = (overrides = {}) => ({
   ...overrides,
 })
 
+// A library provider available for the External form (subsonic-shaped schema).
+const subsonicAvailable = makeAvailable({
+  type: 'library',
+  name: 'subsonic',
+  configSchema: {
+    fields: [
+      { key: 'url', label: 'Server URL', type: 'string', required: true, secret: false },
+      { key: 'username', label: 'Username', type: 'string', required: true, secret: false },
+      { key: 'password', label: 'Password', type: 'string', required: true, secret: true },
+    ],
+  },
+})
+
 function setupDefaultMocks() {
   mockUseAdapters.mockReturnValue({ data: [], isLoading: false })
   mockUseAvailableAdapters.mockReturnValue({ data: [], isLoading: false })
+  mockUseSettings.mockReturnValue(settingsData('built-in'))
 }
 
 function wrap(ui: ReactElement) {
@@ -87,21 +104,59 @@ describe('Admin', () => {
     expect(screen.getByRole('button', { name: /users/i })).toBeInTheDocument()
   })
 
-  // ── Library backend mode control (lives in Providers, not user Settings) ─────
-  it('Providers tab shows the Library backend mode control and saves the choice', () => {
+  // ── Library backend: single-active switch (lives in Providers, not user Settings) ─
+  it('Providers tab shows the Library backend switch and saves the choice', () => {
     wrap(<Admin />)
     const select = screen.getByLabelText('Library backend')
     fireEvent.change(select, { target: { value: 'external' } })
     expect(mockUpdateSettingsMutate).toHaveBeenCalledWith({ libraryBackendMode: 'external' })
   })
 
-  // ── Providers tab — three section headings ───────────────────────────────────
-  it('Providers tab renders all three section headings', () => {
+  it('Built-in mode shows the bundled hint and NOT the external server form', () => {
+    mockUseSettings.mockReturnValue(settingsData('built-in'))
+    mockUseAvailableAdapters.mockReturnValue({ data: [subsonicAvailable], isLoading: false })
     wrap(<Admin />)
-    // Use heading role to avoid matching EmptyState text that also contains these words
-    expect(screen.getByRole('heading', { name: /library providers/i })).toBeInTheDocument()
+    expect(screen.getByText(/bundled music server/i)).toBeInTheDocument()
+    expect(screen.queryByLabelText('Server URL')).toBeNull()
+  })
+
+  it('External mode shows the single Subsonic server form (no "add" list)', () => {
+    mockUseSettings.mockReturnValue(settingsData('external'))
+    mockUseAvailableAdapters.mockReturnValue({ data: [subsonicAvailable], isLoading: false })
+    wrap(<Admin />)
+    expect(screen.getByLabelText('Server URL')).toBeInTheDocument()
+    // It's a switch, not a list: no "Add library" affordance anywhere.
+    expect(screen.queryByRole('button', { name: /add library/i })).toBeNull()
+  })
+
+  it('External mode with no instance: saving the form creates the library adapter', async () => {
+    mockUseSettings.mockReturnValue(settingsData('external'))
+    mockUseAvailableAdapters.mockReturnValue({ data: [subsonicAvailable], isLoading: false })
+    mockUseAdapters.mockReturnValue({ data: [], isLoading: false })
+    wrap(<Admin />)
+    fireEvent.change(screen.getByLabelText('Server URL'), { target: { value: 'http://nav:4533' } })
+    fireEvent.change(screen.getByLabelText('Username'), { target: { value: 'admin' } })
+    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'pw' } })
+    fireEvent.click(screen.getByRole('button', { name: /^save$/i }))
+    await waitFor(() =>
+      expect(mockCreateAdapter).toHaveBeenCalledWith({
+        type: 'library',
+        name: 'subsonic',
+        enabled: true,
+        priority: 0,
+        config: { url: 'http://nav:4533', username: 'admin', password: 'pw' },
+      })
+    )
+  })
+
+  // ── Providers tab — section headings (library is a switch card, not a list) ───
+  it('Providers tab renders the library switch + search/downloader sections', () => {
+    wrap(<Admin />)
+    expect(screen.getByRole('heading', { name: /library backend/i })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: /search providers/i })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: /downloaders/i })).toBeInTheDocument()
+    // No multi-instance "Library providers" list anymore.
+    expect(screen.queryByRole('heading', { name: /library providers/i })).toBeNull()
   })
 
   it('shows skeleton loaders while adapters are loading', () => {
@@ -111,37 +166,34 @@ describe('Admin', () => {
     expect(screen.getByLabelText(/loading providers/i)).toBeInTheDocument()
   })
 
-  // ── Add library opens AdapterForm ────────────────────────────────────────────
-  it('clicking "Add library" opens the inline AdapterForm (single provider auto-selected)', () => {
+  // ── Add (search section — still a multi-instance AdapterSection) ──────────────
+  it('clicking "Add search" opens the inline AdapterForm (single provider auto-selected)', () => {
     mockUseAvailableAdapters.mockReturnValue({
-      data: [makeAvailable({ type: 'library', name: 'LocalFS' })],
+      data: [makeAvailable({ type: 'search', name: 'MusicBrainz', configSchema: { fields: [{ key: 'path', label: 'Path', type: 'text', required: true, secret: false }] } })],
       isLoading: false,
     })
     wrap(<Admin />)
-    fireEvent.click(screen.getByRole('button', { name: /add library/i }))
-    // Inline (not a modal): the chosen provider's config form appears in place.
-    expect(screen.getByText('Add LocalFS')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /add search/i }))
+    expect(screen.getByText('Add MusicBrainz')).toBeInTheDocument()
     expect(screen.getByLabelText(/path/i)).toBeInTheDocument()
   })
 
   it('submitting the add form calls createAdapter', async () => {
     mockUseAvailableAdapters.mockReturnValue({
-      data: [makeAvailable({ type: 'library', name: 'LocalFS' })],
+      data: [makeAvailable({ type: 'search', name: 'MusicBrainz', configSchema: { fields: [{ key: 'path', label: 'Path', type: 'text', required: true, secret: false }] } })],
       isLoading: false,
     })
     wrap(<Admin />)
-    fireEvent.click(screen.getByRole('button', { name: /add library/i }))
-    // Fill in the path field
-    fireEvent.change(screen.getByLabelText(/path/i), { target: { value: '/music' } })
-    // Submit
+    fireEvent.click(screen.getByRole('button', { name: /add search/i }))
+    fireEvent.change(screen.getByLabelText(/path/i), { target: { value: '/x' } })
     fireEvent.click(screen.getByRole('button', { name: /^add$/i }))
     await waitFor(() =>
       expect(mockCreateAdapter).toHaveBeenCalledWith({
-        type: 'library',
-        name: 'LocalFS',
+        type: 'search',
+        name: 'MusicBrainz',
         enabled: true,
         priority: 0,
-        config: { path: '/music' },
+        config: { path: '/x' },
       })
     )
   })
@@ -172,30 +224,28 @@ describe('Admin', () => {
     expect(screen.queryByRole('table')).toBeNull()
   })
 
-  // ── Adapter instances render ─────────────────────────────────────────────────
-  it('renders adapter instances in the correct section', () => {
+  // ── Adapter instances render (search/downloader are multi-instance lists) ─────
+  it('renders search and downloader instances in their sections', () => {
     mockUseAdapters.mockReturnValue({
       data: [
-        makeAdapter({ id: '1', type: 'library', name: 'LocalFS' }),
         makeAdapter({ id: '2', type: 'search', name: 'MusicBrainz', priority: 1 }),
         makeAdapter({ id: '3', type: 'downloader', name: 'spotDL', priority: 1 }),
       ],
       isLoading: false,
     })
     wrap(<Admin />)
-    expect(screen.getByText('LocalFS')).toBeInTheDocument()
     expect(screen.getByText('MusicBrainz')).toBeInTheDocument()
     expect(screen.getByText('spotDL')).toBeInTheDocument()
   })
 
-  // ── Cancel closes form ────────────────────────────────────────────────────────
+  // ── Cancel closes form (search section) ──────────────────────────────────────
   it('Cancel button closes the inline AdapterForm', () => {
     mockUseAvailableAdapters.mockReturnValue({
-      data: [makeAvailable({ type: 'library', name: 'LocalFS' })],
+      data: [makeAvailable({ type: 'search', name: 'MusicBrainz', configSchema: { fields: [{ key: 'path', label: 'Path', type: 'text', required: true, secret: false }] } })],
       isLoading: false,
     })
     wrap(<Admin />)
-    fireEvent.click(screen.getByRole('button', { name: /add library/i }))
+    fireEvent.click(screen.getByRole('button', { name: /add search/i }))
     expect(screen.getByLabelText(/path/i)).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: /cancel/i }))
     expect(screen.queryByLabelText(/path/i)).toBeNull()
