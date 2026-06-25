@@ -10,8 +10,11 @@ import {
 } from '../lib/adaptersApi'
 import { AdapterSection } from '../components/admin/AdapterSection'
 import { AdapterForm } from '../components/AdapterForm'
-import { Chip, Skeleton, EmptyState, Select } from '../components/ui'
+import { Chip, Skeleton, EmptyState, Select, Button } from '../components/ui'
 import { useSettings, useUpdateSettings } from '../lib/settingsApi'
+import { useLibraryStatus } from '../lib/libraryApi'
+
+const modeLabel = (m: string) => (m === 'external' ? 'External Subsonic' : 'Built-in (bundled)')
 
 type Tab = 'providers' | 'server' | 'users'
 
@@ -31,8 +34,12 @@ export default function Admin() {
   const available = useAvailableAdapters()
   const settings = useSettings()
   const updateSettings = useUpdateSettings()
+  const libStatus = useLibraryStatus()
 
   const [tab, setTab] = useState<Tab>('providers')
+  // The mode the user has picked in the dropdown but not yet applied. null = no
+  // pending pick (the dropdown reflects the saved mode).
+  const [pickedMode, setPickedMode] = useState<'built-in' | 'external' | null>(null)
 
   function refresh() {
     void qc.invalidateQueries({ queryKey: ['adapters', 'list'] })
@@ -90,16 +97,17 @@ export default function Admin() {
   const downloaderAvail = avail.filter((a) => a.type === 'downloader')
 
   // Library is single-active: a "switch", not a list — Built-in (bundled, no
-  // config) or External (one Subsonic server). The stored setting is "" until the
-  // user picks explicitly, so mirror the backend's ResolveMode here: an unset
-  // setting resolves to External when a library adapter is already configured
-  // (existing deployments stay external), else Built-in. This keeps the Select
-  // value and the rendered body in sync and reflects the mode the server runs.
+  // config) or External (one Subsonic server).
   const libProvider = avail.find((a) => a.type === 'library') ?? null
   const libInstance = list.find((a) => a.type === 'library') ?? null
   const hasEnabledLibrary = list.some((a) => a.type === 'library' && a.enabled)
+
+  // savedMode = the persisted desired mode. The stored setting is "" until picked
+  // explicitly, so mirror the backend's ResolveMode: unset → External when a
+  // library adapter is configured (existing deployments stay external), else
+  // Built-in. selectedMode = what the dropdown shows (a pending pick, or saved).
   const rawMode = settings.data?.libraryBackendMode
-  const libMode: 'built-in' | 'external' =
+  const savedMode: 'built-in' | 'external' =
     rawMode === 'external'
       ? 'external'
       : rawMode === 'built-in'
@@ -107,6 +115,19 @@ export default function Admin() {
         : hasEnabledLibrary
           ? 'external'
           : 'built-in'
+  const selectedMode = pickedMode ?? savedMode
+  const pendingApply = selectedMode !== savedMode
+  // runningMode = the mode the server booted with (changes need a restart). A
+  // saved change that hasn't been restarted shows runningMode !== savedMode.
+  const runningMode = libStatus.data?.mode
+  const pendingRestart = !!runningMode && runningMode !== savedMode
+
+  function applyMode() {
+    updateSettings.mutate(
+      { libraryBackendMode: selectedMode },
+      { onSuccess: () => setPickedMode(null) },
+    )
+  }
 
   return (
     <div className="max-w-4xl space-y-6 pb-8">
@@ -135,24 +156,34 @@ export default function Admin() {
               <div className="flex-1 min-w-0">
                 <h2 className="text-lg font-extrabold tracking-tight text-text-primary">Library backend</h2>
                 <p className="text-xs text-text-secondary mt-0.5">
-                  Where your music collection lives. Only one is active at a time — switching takes
-                  effect after a restart.
+                  Where your music collection lives. Only one is active at a time.
                 </p>
               </div>
               <div className="flex-none">
                 <Select
                   label="Library backend"
-                  value={libMode}
+                  value={selectedMode}
                   options={[
                     { value: 'built-in', label: 'Built-in (bundled)' },
                     { value: 'external', label: 'External Subsonic' },
                   ]}
-                  onChange={(v) => updateSettings.mutate({ libraryBackendMode: v })}
+                  onChange={(v) => setPickedMode(v as 'built-in' | 'external')}
                 />
               </div>
             </div>
 
-            {libMode === 'built-in' ? (
+            {/* A saved change that hasn't been restarted yet. */}
+            {pendingRestart && (
+              <div
+                role="status"
+                className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-200"
+              >
+                <span className="font-semibold">Running {modeLabel(runningMode!)}.</span>{' '}
+                Restart Reverb to apply {modeLabel(savedMode)}.
+              </div>
+            )}
+
+            {selectedMode === 'built-in' ? (
               <p className="text-xs text-text-muted border-t border-border-subtle pt-4">
                 Reverb runs a bundled music server that scans the folder mounted at{' '}
                 <code>/music</code> (set <code>REVERB_DOWNLOAD_DIR</code> to change it). No external
@@ -179,6 +210,25 @@ export default function Admin() {
                 ) : (
                   <p className="text-sm text-text-muted">No library provider is registered.</p>
                 )}
+                {!libInstance && (
+                  <p className="text-xs text-amber-300/80">
+                    Save your Subsonic server above before applying — otherwise the library will be
+                    unavailable after the restart.
+                  </p>
+                )}
+              </div>
+            )}
+
+            {/* Mode changes are restart-only, so apply is explicit (not save-on-change). */}
+            {pendingApply && (
+              <div className="flex items-center gap-3 border-t border-border-subtle pt-4">
+                <Button size="sm" variant="primary" onClick={applyMode}>
+                  Apply (requires restart)
+                </Button>
+                <span className="text-xs text-text-muted">
+                  Switches to <span className="font-semibold">{modeLabel(selectedMode)}</span> the
+                  next time Reverb restarts.
+                </span>
               </div>
             )}
           </section>

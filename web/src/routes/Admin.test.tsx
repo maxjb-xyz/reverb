@@ -30,6 +30,12 @@ vi.mock('../lib/settingsApi', () => ({
   useUpdateSettings: () => ({ mutate: mockUpdateSettingsMutate }),
 }))
 
+// ── Mock libraryApi (running mode for the running-vs-pending note) ──────────────
+const mockUseLibraryStatus = vi.fn()
+vi.mock('../lib/libraryApi', () => ({
+  useLibraryStatus: () => mockUseLibraryStatus(),
+}))
+
 const settingsData = (libraryBackendMode: string) => ({
   data: { accentColor: '#F0354B', dynamicBackground: true, defaultDownloader: '', libraryBackendMode },
 })
@@ -70,6 +76,7 @@ function setupDefaultMocks() {
   mockUseAdapters.mockReturnValue({ data: [], isLoading: false })
   mockUseAvailableAdapters.mockReturnValue({ data: [], isLoading: false })
   mockUseSettings.mockReturnValue(settingsData('built-in'))
+  mockUseLibraryStatus.mockReturnValue({ data: { mode: 'built-in', state: 'ready' } })
 }
 
 function wrap(ui: ReactElement) {
@@ -105,11 +112,39 @@ describe('Admin', () => {
   })
 
   // ── Library backend: single-active switch (lives in Providers, not user Settings) ─
-  it('Providers tab shows the Library backend switch and saves the choice', () => {
-    wrap(<Admin />)
+  it('changing the dropdown does NOT auto-save; Apply persists the choice', () => {
+    wrap(<Admin />) // saved + running = built-in
     const select = screen.getByLabelText('Library backend')
     fireEvent.change(select, { target: { value: 'external' } })
-    expect(mockUpdateSettingsMutate).toHaveBeenCalledWith({ libraryBackendMode: 'external' })
+    // Picking a mode must not persist on its own (it queues a restart-only change).
+    expect(mockUpdateSettingsMutate).not.toHaveBeenCalled()
+    // An explicit Apply appears and persists the pending pick.
+    fireEvent.click(screen.getByRole('button', { name: /apply \(requires restart\)/i }))
+    expect(mockUpdateSettingsMutate).toHaveBeenCalledWith(
+      { libraryBackendMode: 'external' },
+      expect.objectContaining({ onSuccess: expect.any(Function) }),
+    )
+  })
+
+  it('no Apply button when the selection matches the saved mode', () => {
+    wrap(<Admin />) // saved = built-in, no pending pick
+    expect(screen.queryByRole('button', { name: /apply \(requires restart\)/i })).toBeNull()
+  })
+
+  it('shows a running-vs-pending note when the saved mode differs from the running mode', () => {
+    mockUseSettings.mockReturnValue(settingsData('built-in')) // desired: built-in
+    mockUseLibraryStatus.mockReturnValue({ data: { mode: 'external', state: 'ready' } }) // running: external
+    wrap(<Admin />)
+    const note = screen.getByRole('status')
+    expect(note).toHaveTextContent(/running external subsonic/i)
+    expect(note).toHaveTextContent(/restart reverb to apply built-in/i)
+  })
+
+  it('hides the running-vs-pending note when running matches saved', () => {
+    mockUseSettings.mockReturnValue(settingsData('built-in'))
+    mockUseLibraryStatus.mockReturnValue({ data: { mode: 'built-in', state: 'ready' } })
+    wrap(<Admin />)
+    expect(screen.queryByRole('status')).toBeNull()
   })
 
   it('Built-in mode shows the bundled hint and NOT the external server form', () => {
