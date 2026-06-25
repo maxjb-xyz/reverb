@@ -33,7 +33,7 @@ func newTestBuilder(t *testing.T, st *store.Store) *Builder {
 	searchReg.Register("spotify", func() registry.Plugin { return &stubSource{} })
 	dlReg := registry.NewRegistry("downloader")
 	dlReg.Register("spotdl", func() registry.Plugin { return spotdl.New() })
-	return NewBuilder(libReg, searchReg, dlReg, st.Q(), st, events.New(), nil, func(string) string { return "" })
+	return NewBuilder(libReg, searchReg, dlReg, st.Q(), st, events.New(), nil, func(string) string { return "" }, t.TempDir())
 }
 
 func addInstance(t *testing.T, st *store.Store, typ, name, cfg string) {

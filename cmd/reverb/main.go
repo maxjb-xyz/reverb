@@ -4,9 +4,12 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
+	"os/signal"
 	"path/filepath"
+	"syscall"
 	"time"
 
 	"github.com/maxjb-xyz/reverb/internal/api"
@@ -87,12 +90,19 @@ func main() {
 	builder := wiring.NewBuilder(
 		libraryReg, searchReg, downloaderReg,
 		st.Q(), st, bus, download.RealClock{}, os.Getenv,
+		filepath.Dir(cfg.DBPath),
 	)
 
 	bundle, err := builder.Build(context.Background())
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	// Start the bundled-library supervisor (no-op in external mode).
+	if bundle.Supervisor != nil {
+		bundle.Supervisor.Start()
+	}
+
 	if bundle.Manager != nil {
 		bundle.Manager.Start()
 		defer bundle.Manager.Stop()
@@ -142,8 +152,24 @@ func main() {
 	srv := api.NewServer(deps)
 
 	addr := fmt.Sprintf(":%d", cfg.Port)
+	ln, err := net.Listen("tcp", addr)
+	if err != nil {
+		log.Fatal(err)
+	}
 	log.Printf("reverb listening on %s (dev=%v)", addr, cfg.Dev)
-	if err := http.ListenAndServe(addr, srv.Handler()); err != nil {
+
+	stop := make(chan struct{})
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
+	go func() { <-sig; close(stop) }()
+
+	httpSrv := &http.Server{Handler: srv.Handler()}
+	if err := serveWithShutdown(httpSrv, ln, stop, func(ctx context.Context) error {
+		if bundle.Supervisor != nil {
+			return bundle.Supervisor.Shutdown(ctx)
+		}
+		return nil
+	}); err != nil {
 		log.Fatal(err)
 	}
 }

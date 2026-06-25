@@ -271,10 +271,12 @@ type Builder struct {
 	bus           download.Publisher
 	clock         download.Clock
 	getenv        func(string) string
+	dataDir       string
 }
 
 // NewBuilder constructs a Builder. clock may be nil (download.NewManager applies
-// a RealClock default).
+// a RealClock default). dataDir is Reverb's data directory (filepath.Dir of DBPath);
+// it is used to derive Navidrome's data directory in built-in mode.
 func NewBuilder(
 	libraryReg, searchReg, downloaderReg *registry.Registry,
 	queries *db.Queries,
@@ -282,6 +284,7 @@ func NewBuilder(
 	bus download.Publisher,
 	clock download.Clock,
 	getenv func(string) string,
+	dataDir string,
 ) *Builder {
 	return &Builder{
 		libraryReg:    libraryReg,
@@ -292,7 +295,18 @@ func NewBuilder(
 		bus:           bus,
 		clock:         clock,
 		getenv:        getenv,
+		dataDir:       dataDir,
 	}
+}
+
+// naviBin returns the Navidrome binary path. It honours REVERB_NAVIDROME_BIN;
+// otherwise it falls back to "navidrome" (resolved on PATH — the Docker image
+// installs it at /usr/local/bin/navidrome).
+func (b *Builder) naviBin() string {
+	if v := b.getenv("REVERB_NAVIDROME_BIN"); v != "" {
+		return v
+	}
+	return "navidrome"
 }
 
 // nowMilli is the coverage cache clock (epoch millis). It honors an injected
@@ -345,6 +359,19 @@ func (b *Builder) Build(ctx context.Context) (ServiceBundle, error) {
 		log.Printf("library adapter active: %s", libAdapter.Name())
 	}
 	bundle.Library = libAdapter
+
+	// Bundled-Navidrome supervisor (no-op when not built-in).
+	var naviEnv []string
+	if mode == embedded.ModeBuiltIn {
+		opts := embedded.DefaultNaviOptions(b.dataDir, embedded.MusicDir(b.getenv), creds.Password)
+		naviEnv = embedded.BuildNavidromeEnv(opts)
+	}
+	bundle.Supervisor = embedded.New(embedded.Options{
+		Mode:   mode,
+		Env:    naviEnv,
+		Runner: embedded.ExecRunner(b.naviBin()),
+		Probe:  embedded.PingProbe("http://127.0.0.1:4533", nil),
+	})
 
 	// Search sources + matcher + aggregator.
 	sources := BuildSearchSources(b.searchReg, instances, b.getenv)
