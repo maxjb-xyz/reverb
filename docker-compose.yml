@@ -1,9 +1,11 @@
 # Production-ish single-host deployment for Reverb.
 #
-# Reverb writes downloads (via spotDL) into the shared /music volume. Point your
-# Subsonic/Navidrome library adapter at the SAME music so downloads appear in the
-# library after a scan. See the commented `navidrome` service below for a ready
-# pairing. Secrets come ONLY from .env (copy .env.example -> .env).
+# By default the Reverb image ships a bundled Navidrome — just mount your music
+# at /music and start it. No extra service needed. Secrets come ONLY from .env
+# (copy .env.example -> .env).
+#
+# If you prefer your own Navidrome/Subsonic server (Library backend = External),
+# see the commented `navidrome` service at the bottom of this file.
 
 services:
   reverb:
@@ -31,9 +33,11 @@ services:
     restart: unless-stopped
 
   # ---------------------------------------------------------------------------
-  # Optional: a Navidrome that scans the SAME music dir. Uncomment to run the
-  # full pairing. In Reverb's Settings UI add a Subsonic library adapter with
+  # ONLY if you set Library backend = External in Reverb Settings.
+  # In that mode Reverb does NOT start its bundled Navidrome, and you can run
+  # your own here. In Reverb's Settings UI add a Subsonic library adapter with
   # base URL http://navidrome:4533 (and REVERB_LIBRARY_PASSWORD in .env).
+  # If you use the default built-in mode, leave this commented out.
   # ---------------------------------------------------------------------------
   # navidrome:
   #   image: deluan/navidrome:latest

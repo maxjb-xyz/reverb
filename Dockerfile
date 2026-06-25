@@ -51,12 +51,24 @@ ARG SPOTDL_VERSION=4.5.0
 RUN pip install --no-cache-dir "spotdl==${SPOTDL_VERSION}" \
  && pip install --no-cache-dir --upgrade yt-dlp
 COPY --from=gobuild /out/reverb /usr/local/bin/reverb
+# --- Bundled Navidrome (GPL-3.0, shipped unmodified as a separate process) ---
+ARG TARGETARCH
+ARG NAVIDROME_VERSION=0.62.0
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends tini wget ca-certificates \
+ && rm -rf /var/lib/apt/lists/* \
+ && wget -O /tmp/navidrome.tar.gz \
+      "https://github.com/navidrome/navidrome/releases/download/v${NAVIDROME_VERSION}/navidrome_${NAVIDROME_VERSION}_linux_${TARGETARCH}.tar.gz" \
+ && mkdir -p /tmp/nd \
+ && tar -xzf /tmp/navidrome.tar.gz -C /tmp/nd \
+ && install -m 0755 /tmp/nd/navidrome /usr/local/bin/navidrome \
+ && rm -rf /tmp/navidrome.tar.gz /tmp/nd
 # Non-root user (uid 1000 — the typical first host user, so a bind-mounted music
 # library you own is writable with no setup). Create + own /data and /music BEFORE
 # the VOLUME declaration so the `reverb-data` named volume inherits this ownership
 # and the DB opens with zero host-side config.
 RUN useradd --create-home --uid 1000 reverb \
- && mkdir -p /data /music \
+ && mkdir -p /data /data/navidrome /music \
  && chown -R reverb:reverb /data /music
 ENV REVERB_DB=/data/reverb.db
 # spotDL is bundled and used as the default downloader out of the box; it writes
@@ -66,4 +78,4 @@ ENV REVERB_DOWNLOAD_DIR=/music
 VOLUME ["/data"]
 EXPOSE 8090
 USER reverb
-ENTRYPOINT ["reverb"]
+ENTRYPOINT ["/usr/bin/tini", "--", "reverb"]

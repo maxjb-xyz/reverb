@@ -64,6 +64,15 @@ password (unless you set `REVERB_ADMIN_PASSWORD` in `.env`), then connect your
 The **downloader (spotDL) is already configured** — nothing to set up. Full
 details: [docs/deployment.md](docs/deployment.md).
 
+## Library backends
+
+By default Reverb runs a **bundled music server** (Navidrome) inside the same
+container — just mount your music at `/music` and start it. Nothing else to set up.
+
+Prefer your own server? In **Settings → Library backend**, switch to **External
+Subsonic** and add your Navidrome/Subsonic server under **Admin**. In external
+mode nothing extra runs inside the Reverb container.
+
 ## Configuration reference
 
 Reverb is configured by flags, environment variables, and the in-app Settings UI.
