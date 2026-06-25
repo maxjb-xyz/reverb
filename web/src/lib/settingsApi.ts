@@ -5,6 +5,7 @@ export interface AppSettings {
   accentColor: string
   dynamicBackground: boolean
   defaultDownloader: string
+  libraryBackendMode: string // 'built-in' | 'external'
 }
 
 const DEFAULT_ACCENT_CHANNELS = '240 53 75' // #F0354B

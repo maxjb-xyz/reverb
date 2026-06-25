@@ -7,9 +7,9 @@ import Settings from './Settings'
 const mockMutate = vi.fn()
 
 vi.mock('../lib/settingsApi', () => ({
-  useSettings: vi.fn(() => ({ data: { accentColor: '#F0354B', dynamicBackground: true } })),
+  useSettings: vi.fn(() => ({ data: { accentColor: '#F0354B', dynamicBackground: true, libraryBackendMode: 'built-in' } })),
   useUpdateSettings: vi.fn(() => ({ mutate: mockMutate })),
-  putSettings: vi.fn(() => Promise.resolve({ accentColor: '#F0354B', dynamicBackground: true })),
+  putSettings: vi.fn(() => Promise.resolve({ accentColor: '#F0354B', dynamicBackground: true, libraryBackendMode: 'built-in' })),
   applyAccent: vi.fn(),
 }))
 
@@ -127,5 +127,15 @@ describe('Settings default downloader', () => {
     const select = screen.getByLabelText('Default downloader')
     fireEvent.change(select, { target: { value: 'lidarr' } })
     expect(mockMutate).toHaveBeenCalledWith({ defaultDownloader: 'lidarr' })
+  })
+})
+
+describe('Settings library backend mode', () => {
+  beforeEach(() => mockMutate.mockClear())
+  it('shows a Library backend select and saves the choice', () => {
+    wrap(<Settings />)
+    const select = screen.getByLabelText('Library backend')
+    fireEvent.change(select, { target: { value: 'external' } })
+    expect(mockMutate).toHaveBeenCalledWith({ libraryBackendMode: 'external' })
   })
 })
