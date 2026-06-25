@@ -22,6 +22,15 @@ vi.mock('../lib/adaptersApi', () => ({
   SECRET_SENTINEL: '••••••••',
 }))
 
+// ── Mock settingsApi (Library backend mode control) ─────────────────────────────
+const mockUpdateSettingsMutate = vi.fn()
+vi.mock('../lib/settingsApi', () => ({
+  useSettings: () => ({
+    data: { accentColor: '#F0354B', dynamicBackground: true, defaultDownloader: '', libraryBackendMode: 'built-in' },
+  }),
+  useUpdateSettings: () => ({ mutate: mockUpdateSettingsMutate }),
+}))
+
 // ── Default mock return values ────────────────────────────────────────────────
 const makeAdapter = (overrides = {}) => ({
   id: 'inst-1',
@@ -76,6 +85,14 @@ describe('Admin', () => {
     expect(screen.getByRole('button', { name: /providers/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /server/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /users/i })).toBeInTheDocument()
+  })
+
+  // ── Library backend mode control (lives in Providers, not user Settings) ─────
+  it('Providers tab shows the Library backend mode control and saves the choice', () => {
+    wrap(<Admin />)
+    const select = screen.getByLabelText('Library backend')
+    fireEvent.change(select, { target: { value: 'external' } })
+    expect(mockUpdateSettingsMutate).toHaveBeenCalledWith({ libraryBackendMode: 'external' })
   })
 
   // ── Providers tab — three section headings ───────────────────────────────────

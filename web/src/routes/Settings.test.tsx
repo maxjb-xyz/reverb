@@ -129,13 +129,3 @@ describe('Settings default downloader', () => {
     expect(mockMutate).toHaveBeenCalledWith({ defaultDownloader: 'lidarr' })
   })
 })
-
-describe('Settings library backend mode', () => {
-  beforeEach(() => mockMutate.mockClear())
-  it('shows a Library backend select and saves the choice', () => {
-    wrap(<Settings />)
-    const select = screen.getByLabelText('Library backend')
-    fireEvent.change(select, { target: { value: 'external' } })
-    expect(mockMutate).toHaveBeenCalledWith({ libraryBackendMode: 'external' })
-  })
-})

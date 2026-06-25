@@ -94,27 +94,6 @@ export default function Settings() {
             </div>
           </div>
 
-          {/* Library backend row */}
-          <div className="flex items-center gap-5 py-5">
-            <div className="flex-1 min-w-0">
-              <div className="text-sm font-bold text-text-primary">Library backend</div>
-              <div className="text-xs text-text-secondary mt-0.5">
-                Built-in runs a managed music server for your folder. External connects to your own Navidrome/Subsonic server (configure it under Admin). Changing this takes effect after a restart.
-              </div>
-            </div>
-            <div className="flex-none">
-              <Select
-                label="Library backend"
-                value={settings.data?.libraryBackendMode ?? 'built-in'}
-                options={[
-                  { value: 'built-in', label: 'Built-in (bundled)' },
-                  { value: 'external', label: 'External Subsonic' },
-                ]}
-                onChange={(v) => updateSettings.mutate({ libraryBackendMode: v })}
-              />
-            </div>
-          </div>
-
           {/* Theme row — dark only, honest */}
           <div className="flex items-center gap-5 py-5">
             <div className="flex-1 min-w-0">

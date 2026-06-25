@@ -9,7 +9,8 @@ import {
   type AdapterInstance,
 } from '../lib/adaptersApi'
 import { AdapterSection } from '../components/admin/AdapterSection'
-import { Chip, Skeleton, EmptyState } from '../components/ui'
+import { Chip, Skeleton, EmptyState, Select } from '../components/ui'
+import { useSettings, useUpdateSettings } from '../lib/settingsApi'
 
 type Tab = 'providers' | 'server' | 'users'
 
@@ -27,6 +28,8 @@ export default function Admin() {
   const qc = useQueryClient()
   const adapters = useAdapters()
   const available = useAvailableAdapters()
+  const settings = useSettings()
+  const updateSettings = useUpdateSettings()
 
   const [tab, setTab] = useState<Tab>('providers')
 
@@ -108,6 +111,38 @@ export default function Admin() {
       {/* ── Providers tab ── */}
       {tab === 'providers' && (
         <div className="space-y-8">
+          {/* Library backend mode — governs the Library providers below */}
+          <div className="rounded-lg border border-border-subtle bg-raised p-6 space-y-3">
+            <div className="flex items-center justify-between gap-5">
+              <div className="flex-1 min-w-0">
+                <h2 className="text-base font-extrabold text-text-primary">Library backend</h2>
+                <p className="text-xs text-text-secondary mt-0.5">
+                  Built-in runs a bundled music server that scans your music folder — no external
+                  setup. External connects to your own Navidrome/Subsonic server (configure it
+                  below). Changing this takes effect after a restart.
+                </p>
+              </div>
+              <div className="flex-none">
+                <Select
+                  label="Library backend"
+                  value={settings.data?.libraryBackendMode ?? 'built-in'}
+                  options={[
+                    { value: 'built-in', label: 'Built-in (bundled)' },
+                    { value: 'external', label: 'External Subsonic' },
+                  ]}
+                  onChange={(v) => updateSettings.mutate({ libraryBackendMode: v })}
+                />
+              </div>
+            </div>
+            {(settings.data?.libraryBackendMode ?? 'built-in') === 'built-in' && (
+              <p className="text-xs text-text-muted">
+                Built-in is active — Reverb scans the folder mounted at <code>/music</code> (set{' '}
+                <code>REVERB_DOWNLOAD_DIR</code> to change it). The library providers below are only
+                used when you switch to External.
+              </p>
+            )}
+          </div>
+
           {isLoading ? (
             <div className="space-y-4" aria-label="Loading providers">
               <Skeleton className="h-6 w-40" />
