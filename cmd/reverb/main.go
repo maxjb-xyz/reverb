@@ -19,6 +19,7 @@ import (
 	"github.com/maxjb-xyz/reverb/internal/download/lidarr"
 	"github.com/maxjb-xyz/reverb/internal/download/spotdl"
 	"github.com/maxjb-xyz/reverb/internal/events"
+	"github.com/maxjb-xyz/reverb/internal/library/embedded"
 	"github.com/maxjb-xyz/reverb/internal/library/subsonic"
 	"github.com/maxjb-xyz/reverb/internal/playlistsync"
 	"github.com/maxjb-xyz/reverb/internal/registry"
@@ -148,6 +149,19 @@ func main() {
 	}
 	if bundle.Sync != nil {
 		deps.Sync = bundle.Sync
+	}
+	if bundle.Supervisor != nil {
+		sup := bundle.Supervisor
+		deps.LibraryStatus = func() (string, string) {
+			h := sup.Health()
+			if h == embedded.HealthExternal {
+				if bundle.Library != nil {
+					return "external", "ready"
+				}
+				return "external", "unconfigured"
+			}
+			return "built-in", string(h)
+		}
 	}
 	srv := api.NewServer(deps)
 

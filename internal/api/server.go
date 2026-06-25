@@ -93,6 +93,9 @@ type Deps struct {
 	// SQLite DB). Used by the playlist-cover upload handler. When empty, cover
 	// uploads are unavailable.
 	DataDir string
+	// LibraryStatus reports (mode, state) for the bundled-library status endpoint.
+	// nil in tests/legacy — handler falls back based on whether a library adapter is present.
+	LibraryStatus func() (mode string, state string)
 }
 
 type Server struct {
@@ -201,6 +204,7 @@ func (s *Server) routes() {
 			pr.Get("/settings", s.handleGetSettings)
 			pr.Put("/settings", s.handlePutSettings)
 			pr.Get("/config/pending-restart", s.handlePendingRestart)
+			pr.Get("/library/status", s.handleLibraryStatus)
 			pr.Get("/library/search", s.handleLibrarySearch)
 			pr.Get("/library/artists", s.handleLibraryArtists)
 			pr.Get("/library/artist/{id}", s.handleLibraryArtist)
