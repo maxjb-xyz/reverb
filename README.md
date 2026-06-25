@@ -59,9 +59,11 @@ with `REVERB_VERSION=0.1.0` in `.env` (defaults to `latest`). Prefer to build fr
 source? See [Development & contributing](#development--contributing).
 
 Open http://localhost:8090 and complete the **first-run wizard**: set an admin
-password (unless you set `REVERB_ADMIN_PASSWORD` in `.env`), then connect your
-**library** (Subsonic/Navidrome) and **search** (Spotify) adapters in Settings.
-The **downloader (spotDL) is already configured** — nothing to set up. Full
+password (unless you set `REVERB_ADMIN_PASSWORD` in `.env`), then add a
+**search** (Spotify) adapter in Settings. The **library and downloader are
+already configured** — the bundled Navidrome serves music from `/music`
+automatically, and spotDL is pre-configured for downloads. To use your own
+Navidrome/Subsonic instead, see [Library backends](#library-backends). Full
 details: [docs/deployment.md](docs/deployment.md).
 
 ## Library backends

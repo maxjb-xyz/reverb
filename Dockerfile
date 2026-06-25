@@ -52,6 +52,7 @@ RUN pip install --no-cache-dir "spotdl==${SPOTDL_VERSION}" \
  && pip install --no-cache-dir --upgrade yt-dlp
 COPY --from=gobuild /out/reverb /usr/local/bin/reverb
 # --- Bundled Navidrome (GPL-3.0, shipped unmodified as a separate process) ---
+# TARGETARCH is set automatically by buildx; for a plain 'docker build' pass --build-arg TARGETARCH=amd64|arm64.
 ARG TARGETARCH
 ARG NAVIDROME_VERSION=0.62.0
 RUN apt-get update \

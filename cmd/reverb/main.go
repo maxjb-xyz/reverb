@@ -152,6 +152,9 @@ func main() {
 	}
 	if bundle.Supervisor != nil {
 		sup := bundle.Supervisor
+		// LibraryStatus closure and supervisor are boot-bound: backend-mode changes are
+		// restart-only, so bundle is immutable after wiring. The unsynchronised
+		// bundle.Library read below is safe — the bundle is never mutated post-boot.
 		deps.LibraryStatus = func() (string, string) {
 			h := sup.Health()
 			if h == embedded.HealthExternal {

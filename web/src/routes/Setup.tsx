@@ -232,6 +232,7 @@ export default function Setup() {
             schema={chosen.configSchema}
             submitLabel="Add"
             onSubmit={async (config) => {
+              // Only the library step sets external backend mode; other steps are adapter-type-only.
               if (step === 'library') {
                 await api.put('/settings', { libraryBackendMode: 'external' })
               }

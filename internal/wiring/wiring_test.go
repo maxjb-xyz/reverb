@@ -33,6 +33,31 @@ func TestBuildLibraryAdapter_BuiltIn_IgnoresInstancesUsesLocalhost(t *testing.T)
 	}
 }
 
+func TestBuildLibraryAdapter_BuiltIn_UsesLocalhostURL(t *testing.T) {
+	// Registers the capturing stubLib under "subsonic" so we can assert the exact
+	// config map that BuildLibraryAdapter synthesizes for built-in mode.
+	reg := registry.NewRegistry("library")
+	captured := &stubLib{}
+	reg.Register("subsonic", func() registry.Plugin { return captured })
+
+	_, err := BuildLibraryAdapter(
+		context.Background(), reg, nil /*no instances*/, func(string) string { return "" },
+		embedded.ModeBuiltIn, embedded.Credentials{Username: "admin", Password: "pw"},
+	)
+	if err != nil {
+		t.Fatalf("built-in build: %v", err)
+	}
+	if captured.got["url"] != "http://127.0.0.1:4533" {
+		t.Errorf("url = %q, want http://127.0.0.1:4533", captured.got["url"])
+	}
+	if captured.got["username"] != "admin" {
+		t.Errorf("username = %q, want admin", captured.got["username"])
+	}
+	if captured.got["password"] != "pw" {
+		t.Errorf("password = %q, want pw", captured.got["password"])
+	}
+}
+
 func TestBuildLibraryAdapter_External_UsesInstanceConfig(t *testing.T) {
 	inst := []db.AdapterInstance{{
 		ID: "x", Type: "library", Name: "subsonic", Enabled: 1,

@@ -366,6 +366,14 @@ func (b *Builder) Build(ctx context.Context) (ServiceBundle, error) {
 		opts := embedded.DefaultNaviOptions(b.dataDir, embedded.MusicDir(b.getenv), creds.Password)
 		naviEnv = embedded.BuildNavidromeEnv(opts)
 	}
+	// RELOAD-PATH CONTRACT: Build is called both at boot (main.go) AND on every live
+	// adapter create/update/delete (via serviceReloader.Reload). The Supervisor
+	// constructed here is only Started/Shutdown by main.go at boot; on the live-reload
+	// path the returned bundle's Supervisor is intentionally NOT started or swapped into
+	// the running process — backend-mode changes are restart-only (matching the
+	// "takes effect after a restart" UI copy). Do NOT start this supervisor on the reload
+	// path: doing so would exec a SECOND Navidrome on 127.0.0.1:4533, causing a port
+	// conflict and a broken resource invariant.
 	bundle.Supervisor = embedded.New(embedded.Options{
 		Mode:   mode,
 		Env:    naviEnv,
