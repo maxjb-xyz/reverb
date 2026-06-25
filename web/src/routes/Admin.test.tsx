@@ -149,6 +149,31 @@ describe('Admin', () => {
     )
   })
 
+  // ── Unset setting must resolve to the EFFECTIVE mode (regression: "" showed
+  //    "Built-in" in the dropdown while rendering the External form) ────────────
+  it('Unset setting + a configured library resolves to External (form + dropdown agree)', () => {
+    mockUseSettings.mockReturnValue(settingsData('')) // never explicitly chosen
+    mockUseAvailableAdapters.mockReturnValue({ data: [subsonicAvailable], isLoading: false })
+    mockUseAdapters.mockReturnValue({
+      data: [makeAdapter({ id: '1', type: 'library', name: 'subsonic', enabled: true })],
+      isLoading: false,
+    })
+    wrap(<Admin />)
+    const select = screen.getByLabelText('Library backend') as HTMLSelectElement
+    expect(select.value).toBe('external')
+    expect(screen.getByLabelText('Server URL')).toBeInTheDocument()
+  })
+
+  it('Unset setting + no library configured resolves to Built-in (hint, no form)', () => {
+    mockUseSettings.mockReturnValue(settingsData(''))
+    mockUseAvailableAdapters.mockReturnValue({ data: [subsonicAvailable], isLoading: false })
+    mockUseAdapters.mockReturnValue({ data: [], isLoading: false })
+    wrap(<Admin />)
+    const select = screen.getByLabelText('Library backend') as HTMLSelectElement
+    expect(select.value).toBe('built-in')
+    expect(screen.queryByLabelText('Server URL')).toBeNull()
+  })
+
   // ── Providers tab — section headings (library is a switch card, not a list) ───
   it('Providers tab renders the library switch + search/downloader sections', () => {
     wrap(<Admin />)

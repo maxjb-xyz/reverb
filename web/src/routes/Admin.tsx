@@ -89,11 +89,24 @@ export default function Admin() {
   const searchAvail = avail.filter((a) => a.type === 'search')
   const downloaderAvail = avail.filter((a) => a.type === 'downloader')
 
-  // Library is single-active: a "switch", not a list. The library backend is one
-  // choice — Built-in (bundled, no config) or External (one Subsonic server).
-  const libMode = settings.data?.libraryBackendMode ?? 'built-in'
+  // Library is single-active: a "switch", not a list — Built-in (bundled, no
+  // config) or External (one Subsonic server). The stored setting is "" until the
+  // user picks explicitly, so mirror the backend's ResolveMode here: an unset
+  // setting resolves to External when a library adapter is already configured
+  // (existing deployments stay external), else Built-in. This keeps the Select
+  // value and the rendered body in sync and reflects the mode the server runs.
   const libProvider = avail.find((a) => a.type === 'library') ?? null
   const libInstance = list.find((a) => a.type === 'library') ?? null
+  const hasEnabledLibrary = list.some((a) => a.type === 'library' && a.enabled)
+  const rawMode = settings.data?.libraryBackendMode
+  const libMode: 'built-in' | 'external' =
+    rawMode === 'external'
+      ? 'external'
+      : rawMode === 'built-in'
+        ? 'built-in'
+        : hasEnabledLibrary
+          ? 'external'
+          : 'built-in'
 
   return (
     <div className="max-w-4xl space-y-6 pb-8">
