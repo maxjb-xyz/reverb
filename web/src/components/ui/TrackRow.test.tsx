@@ -7,7 +7,7 @@ import type { Track } from '../../lib/types'
 
 vi.mock('../../lib/libraryApi', () => ({
   createPlaylist: vi.fn(),
-  coverUrl: vi.fn(() => ''),
+  coverUrl: vi.fn((id: string) => (id ? `cover:${id}` : '')),
 }))
 vi.mock('../../lib/syncedPlaylistApi', () => ({
   useSyncedPlaylists: vi.fn(),
@@ -67,6 +67,15 @@ describe('TrackRow', () => {
   it('renders the track title', () => {
     renderRow({ onPlay: vi.fn() })
     expect(screen.getByText('Karma Police')).toBeInTheDocument()
+  })
+
+  it('falls back to the album cover when the per-song cover errors', () => {
+    renderRow({ onPlay: vi.fn() })
+    const img = document.querySelector('img') as HTMLImageElement
+    expect(img.getAttribute('src')).toBe('cover:cov-1') // per-song coverArtId
+    fireEvent.error(img)
+    const img2 = document.querySelector('img') as HTMLImageElement
+    expect(img2.getAttribute('src')).toBe('cover:alb-1') // album fallback
   })
 
   it('renders the artist name', () => {

@@ -48,6 +48,22 @@ describe('Cover', () => {
     expect(placeholder).toBeInTheDocument()
   })
 
+  it('falls back to fallbackSrc on first error, placeholder on second', () => {
+    const { container } = render(
+      <Cover src="https://bad/song.jpg" fallbackSrc="https://ok/album.jpg" alt="X" />,
+    )
+    const img = container.querySelector('img')!
+    expect(img).toHaveAttribute('src', 'https://bad/song.jpg')
+    // First error → swap to the fallback (album) src, NOT a placeholder yet.
+    fireEvent.error(img)
+    const img2 = container.querySelector('img')!
+    expect(img2).toHaveAttribute('src', 'https://ok/album.jpg')
+    expect(container.querySelector('[data-testid="cover-placeholder"]')).not.toBeInTheDocument()
+    // Second error (fallback also failed) → placeholder.
+    fireEvent.error(img2)
+    expect(container.querySelector('[data-testid="cover-placeholder"]')).toBeInTheDocument()
+  })
+
   it('applies rounded-full when specified', () => {
     const { container } = render(<Cover alt="Artist" rounded="full" />)
     const root = container.firstChild as HTMLElement

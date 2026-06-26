@@ -35,6 +35,11 @@ interface TrackRowProps {
 
 export function TrackRow({ track, index, active = false, playing, onPlay, right, coverSrc, rightWidth = 'auto', artistNode, albumNode, artistTo, albumTo }: TrackRowProps) {
   const src = coverSrc ?? (track.coverArtId ? coverUrl(track.coverArtId, 80) : undefined)
+  // Library per-song artwork is often missing (no embedded art); the album cover
+  // reliably resolves, so use it as a fallback. Only for library covers, not when
+  // an external image URL was supplied.
+  const fallbackSrc =
+    !coverSrc && track.coverArtId && track.albumId ? coverUrl(track.albumId, 80) : undefined
   const [menuOpen, setMenuOpen] = useState(false)
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
@@ -70,7 +75,7 @@ export function TrackRow({ track, index, active = false, playing, onPlay, right,
 
       {/* Cover — with hover play button overlaid */}
       <div className="relative flex-none">
-        <Cover src={src} alt={track.title} size={40} rounded="md" />
+        <Cover src={src} fallbackSrc={fallbackSrc} alt={track.title} size={40} rounded="md" />
         {/* Hover play button: hidden by default, revealed on row hover */}
         <button
           type="button"

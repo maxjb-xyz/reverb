@@ -1,18 +1,29 @@
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { Icon } from './Icon'
 import { Skeleton } from './Skeleton'
 
 interface CoverProps {
   src?: string
+  /** Tried once if `src` fails to load. Used for library track covers, where the
+   *  per-song artwork may be missing but the album artwork resolves. */
+  fallbackSrc?: string
   alt: string
   size?: number | 'full'
   rounded?: 'md' | 'full'
   className?: string
 }
 
-export function Cover({ src, alt, size = 48, rounded = 'md', className }: CoverProps) {
+export function Cover({ src, fallbackSrc, alt, size = 48, rounded = 'md', className }: CoverProps) {
   const [loaded, setLoaded] = useState(false)
   const [errored, setErrored] = useState(false)
+  const [usingFallback, setUsingFallback] = useState(false)
+
+  // Reset load/error/fallback state whenever the source changes (row recycling).
+  useEffect(() => {
+    setLoaded(false)
+    setErrored(false)
+    setUsingFallback(false)
+  }, [src, fallbackSrc])
 
   const roundedClass = rounded === 'full' ? 'rounded-full' : 'rounded-md'
 
@@ -20,8 +31,20 @@ export function Cover({ src, alt, size = 48, rounded = 'md', className }: CoverP
     typeof size === 'number' ? { width: size, height: size } : {}
   const sizeClass = size === 'full' ? 'w-full h-full' : ''
 
+  const activeSrc = usingFallback ? fallbackSrc : src
+
+  function handleError() {
+    // On the first failure, try the fallback (e.g. album art) before giving up.
+    if (!usingFallback && fallbackSrc && fallbackSrc !== src) {
+      setUsingFallback(true)
+      setLoaded(false)
+    } else {
+      setErrored(true)
+    }
+  }
+
   const showPlaceholder = !src || errored
-  const showSkeleton = !!src && !errored && !loaded
+  const showSkeleton = !!activeSrc && !errored && !loaded
 
   return (
     <div
@@ -52,11 +75,11 @@ export function Cover({ src, alt, size = 48, rounded = 'md', className }: CoverP
             />
           )}
           <img
-            src={src}
+            src={activeSrc}
             alt={alt}
             loading="lazy"
             onLoad={() => setLoaded(true)}
-            onError={() => setErrored(true)}
+            onError={handleError}
             className={[
               'w-full h-full object-cover',
               roundedClass,

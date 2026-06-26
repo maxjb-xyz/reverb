@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 
 	"github.com/maxjb-xyz/reverb/internal/core"
 	"github.com/maxjb-xyz/reverb/internal/library"
@@ -286,7 +287,16 @@ func (a *Adapter) CoverArt(ctx context.Context, id string, size int) (core.Cover
 		resp.Body.Close()
 		return core.CoverArt{}, fmt.Errorf("subsonic getCoverArt %q: HTTP %d", id, resp.StatusCode)
 	}
-	return core.CoverArt{Body: resp.Body, ContentType: resp.Header.Get("Content-Type")}, nil
+	// Navidrome returns HTTP 200 with an application/json Subsonic "failed" body
+	// (not image bytes) when a file has no embedded artwork. Only stream genuine
+	// image responses; otherwise error so the API doesn't proxy — or cache — a
+	// JSON error as a cover image.
+	ct := resp.Header.Get("Content-Type")
+	if !strings.HasPrefix(ct, "image/") {
+		resp.Body.Close()
+		return core.CoverArt{}, fmt.Errorf("subsonic getCoverArt %q: non-image response (%s)", id, ct)
+	}
+	return core.CoverArt{Body: resp.Body, ContentType: ct}, nil
 }
 
 func (a *Adapter) StartScan(ctx context.Context) error {

@@ -207,6 +207,24 @@ func TestCoverArt(t *testing.T) {
 	}
 }
 
+func TestCoverArt_RejectsNonImageResponse(t *testing.T) {
+	// Navidrome returns HTTP 200 with a JSON "failed" body (not image bytes) when a
+	// file has no embedded artwork. The adapter must surface that as an error so the
+	// API doesn't proxy — and cache — a JSON error as a cover image.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"subsonic-response":{"status":"failed","error":{"code":70,"message":"Artwork not found"}}}`))
+	}))
+	t.Cleanup(srv.Close)
+	a := New().WithHTTPClient(srv.Client())
+	if err := a.Init(map[string]any{"url": srv.URL, "username": "u", "password": "p"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.CoverArt(context.Background(), "mf-123", 80); err == nil {
+		t.Fatal("expected an error for a non-image (JSON) cover response, got nil")
+	}
+}
+
 func TestScanStatus(t *testing.T) {
 	a := newTestAdapter(t)
 	st, err := a.ScanStatus(context.Background())
