@@ -329,6 +329,7 @@ ui:
 - Custom themed player bars (tron lightcycle, lightsaber, etc.)
 - Device control: control devices logged into your account
 - Search feature searches spotify playlists
+- Listening Parties with other users
 
 ---
 
