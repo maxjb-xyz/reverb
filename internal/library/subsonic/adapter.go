@@ -263,6 +263,14 @@ func (a *Adapter) Stream(ctx context.Context, trackID string, opts core.StreamOp
 	if err != nil {
 		return core.StreamHandle{}, err
 	}
+	// Navidrome returns 200 + application/json (a Subsonic "failed" body) when the
+	// track ID is unknown — e.g. a stale ID after a library-backend swap. Reject it
+	// so the API errors instead of proxying JSON as audio (the player would
+	// otherwise report "no supported source").
+	if ct := resp.Header.Get("Content-Type"); strings.Contains(ct, "json") {
+		resp.Body.Close()
+		return core.StreamHandle{}, fmt.Errorf("subsonic stream %q: error response (%s)", trackID, ct)
+	}
 	return core.StreamHandle{
 		Body:          resp.Body,
 		ContentType:   resp.Header.Get("Content-Type"),

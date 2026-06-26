@@ -169,3 +169,45 @@ func TestBuilderSyncServiceNilWithoutLibrary(t *testing.T) {
 		t.Fatal("expected nil sync service without a library adapter")
 	}
 }
+
+func TestReconcileLibraryIdentity_BumpsOnBackendChange(t *testing.T) {
+	st, err := store.Open(t.TempDir() + "/s.db")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { st.Close() })
+	if err := st.Migrate(); err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	b := &Builder{queries: st.Q(), version: st}
+
+	// Seed a prior identity (external) + a known version, as if matches were cached
+	// against an external Navidrome.
+	if err := st.Q().UpsertSetting(ctx, db.UpsertSettingParams{Key: settingLibraryIdentity, Value: "external:http://old:4533"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.SetLibraryVersion(ctx, 5); err != nil {
+		t.Fatal(err)
+	}
+
+	// Switching to the bundled backend changes identity → version must bump so the
+	// match cache (keyed by library_version) is invalidated.
+	if err := b.reconcileLibraryIdentity(ctx, "builtin"); err != nil {
+		t.Fatal(err)
+	}
+	if v, _ := st.LibraryVersion(ctx); v != 6 {
+		t.Fatalf("library_version = %d, want 6 (bumped on identity change)", v)
+	}
+	if id, _ := st.Q().GetSetting(ctx, settingLibraryIdentity); id != "builtin" {
+		t.Fatalf("library_identity = %q, want builtin", id)
+	}
+
+	// Unchanged identity → no further bump.
+	if err := b.reconcileLibraryIdentity(ctx, "builtin"); err != nil {
+		t.Fatal(err)
+	}
+	if v, _ := st.LibraryVersion(ctx); v != 6 {
+		t.Fatalf("library_version = %d, want 6 (no bump when identity unchanged)", v)
+	}
+}

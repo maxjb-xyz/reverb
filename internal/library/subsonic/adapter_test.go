@@ -225,6 +225,23 @@ func TestCoverArt_RejectsNonImageResponse(t *testing.T) {
 	}
 }
 
+func TestStream_RejectsJSONErrorResponse(t *testing.T) {
+	// A stale track ID makes Navidrome return HTTP 200 + a JSON "failed" body. The
+	// adapter must error rather than hand the JSON to the player as audio.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"subsonic-response":{"status":"failed","error":{"code":70,"message":"data not found"}}}`))
+	}))
+	t.Cleanup(srv.Close)
+	a := New().WithHTTPClient(srv.Client())
+	if err := a.Init(map[string]any{"url": srv.URL, "username": "u", "password": "p"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.Stream(context.Background(), "stale-id", core.StreamOpts{}, ""); err == nil {
+		t.Fatal("expected an error for a JSON (non-audio) stream response, got nil")
+	}
+}
+
 func TestScanStatus(t *testing.T) {
 	a := newTestAdapter(t)
 	st, err := a.ScanStatus(context.Background())

@@ -258,6 +258,46 @@ type VersionStore interface {
 	SetLibraryVersion(ctx context.Context, v int64) error
 }
 
+const settingLibraryIdentity = "library_identity"
+
+// libraryIdentity returns a stable fingerprint of the active library backend.
+// Different backends (bundled vs a given external server) assign different track
+// IDs, so a change in identity means cached matches are no longer valid.
+func libraryIdentity(mode embedded.Mode, instances []db.AdapterInstance) string {
+	if mode == embedded.ModeBuiltIn {
+		return "builtin"
+	}
+	for i := range instances {
+		if instances[i].Type == "library" && instances[i].Enabled == 1 {
+			var cfg map[string]any
+			_ = json.Unmarshal([]byte(instances[i].ConfigJson), &cfg)
+			if u, ok := cfg["url"].(string); ok && u != "" {
+				return "external:" + u
+			}
+			return "external:" + instances[i].ID
+		}
+	}
+	return "external"
+}
+
+// reconcileLibraryIdentity bumps library_version (invalidating the match + coverage
+// caches) when the active library backend's identity differs from the last boot,
+// so matches from a previous backend (with different track IDs) are not reused.
+// No-op when the identity is unchanged.
+func (b *Builder) reconcileLibraryIdentity(ctx context.Context, identity string) error {
+	if stored, err := b.queries.GetSetting(ctx, settingLibraryIdentity); err == nil && stored == identity {
+		return nil
+	}
+	cur, err := b.version.LibraryVersion(ctx)
+	if err != nil {
+		return err
+	}
+	if err := b.version.SetLibraryVersion(ctx, cur+1); err != nil {
+		return err
+	}
+	return b.queries.UpsertSetting(ctx, db.UpsertSettingParams{Key: settingLibraryIdentity, Value: identity})
+}
+
 // Builder captures everything needed to (re)build a ServiceBundle from the
 // current DB state: the registries, the DB queries (adapter rows + match cache +
 // download persistence), the version store, the event bus, the clock, and the
@@ -342,6 +382,15 @@ func (b *Builder) Build(ctx context.Context) (ServiceBundle, error) {
 		}
 	}
 	mode := embedded.ResolveMode(modeSetting, hasLibInst)
+
+	// When the active library backend changes identity (e.g. external Navidrome →
+	// bundled), its track IDs are entirely different. Bump library_version so the
+	// match cache (which stores per-library track IDs) is invalidated and playlists
+	// re-match against the new library — otherwise playback/links use dead IDs.
+	if err := b.reconcileLibraryIdentity(ctx, libraryIdentity(mode, instances)); err != nil {
+		log.Printf("WARNING: library identity reconcile: %v", err)
+	}
+
 	var creds embedded.Credentials
 	if mode == embedded.ModeBuiltIn {
 		creds, err = embedded.EnsureInternalCredentials(ctx, b.queries)
