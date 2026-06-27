@@ -105,21 +105,12 @@ func (s *Server) handleCreateInvite(w http.ResponseWriter, r *http.Request) {
 	}
 
 	cu, _ := currentUser(r)
-	code, err := s.deps.Auth.CreateInvite(r.Context(), body.RoleID, body.ExpiresAt, cu.ID)
+	id, code, err := s.deps.Auth.CreateInvite(r.Context(), body.RoleID, body.ExpiresAt, cu.ID)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not create invite"})
 		return
 	}
-	// Fetch the newly-created invite to return its ID too.
-	items, _ := s.deps.Auth.ListInvites(r.Context())
-	for _, inv := range items {
-		if inv.Code == code {
-			writeJSON(w, http.StatusCreated, inv)
-			return
-		}
-	}
-	// Fallback: return just the code.
-	writeJSON(w, http.StatusCreated, map[string]string{"code": code})
+	writeJSON(w, http.StatusCreated, map[string]string{"id": id, "code": code})
 }
 
 // handleDeleteInvite removes an invite by ID. Admin only.

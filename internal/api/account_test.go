@@ -45,3 +45,13 @@ func TestChangeOwnPasswordWrongCurrent(t *testing.T) {
 		t.Fatal("wrong current should 400")
 	}
 }
+
+func TestChangeOwnPasswordEmptyCurrentReturns400(t *testing.T) {
+	srv := newTestServer(t)
+	mustSetupOwner(t, srv, "owner", "pw12345")
+	tok := mustLogin(t, srv, "owner", "pw12345")
+	// empty current with non-empty new must be rejected with 400, not delegated to bcrypt
+	if rr := doPOST(t, srv, "/api/v1/account/password", tok, `{"current":"","new":"newpw678"}`); rr.Code != 400 {
+		t.Fatalf("empty current password = %d, want 400 (body: %s)", rr.Code, rr.Body)
+	}
+}

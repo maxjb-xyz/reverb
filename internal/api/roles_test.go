@@ -100,3 +100,23 @@ func TestCapabilitiesMetadata(t *testing.T) {
 		t.Fatalf("want 6 capabilities, got %d", len(caps))
 	}
 }
+
+func TestUpdateRoleEmptyNameReturns400(t *testing.T) {
+	srv := newTestServer(t)
+	mustSetupOwner(t, srv, "owner", "pw12345")
+	tok := mustLogin(t, srv, "owner", "pw12345")
+
+	// Create a custom role first
+	rr := doPOST(t, srv, "/api/v1/roles", tok, `{"name":"DJ","capabilities":["can_create_playlists"]}`)
+	if rr.Code != 201 {
+		t.Fatalf("create role = %d (%s)", rr.Code, rr.Body)
+	}
+	var created struct{ ID string }
+	json.Unmarshal(rr.Body.Bytes(), &created)
+
+	// PATCH with empty name → 400
+	rr = doPATCH(t, srv, "/api/v1/roles/"+created.ID, tok, `{"name":"","capabilities":["can_create_playlists"]}`)
+	if rr.Code != 400 {
+		t.Fatalf("update role empty name = %d, want 400 (body: %s)", rr.Code, rr.Body)
+	}
+}

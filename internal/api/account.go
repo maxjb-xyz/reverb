@@ -1,6 +1,7 @@
 package api
 
 import (
+	"log"
 	"net/http"
 
 	"github.com/maxjb-xyz/reverb/internal/auth"
@@ -29,7 +30,7 @@ func (s *Server) handleChangePassword(w http.ResponseWriter, r *http.Request) {
 		Current string `json:"current"`
 		New     string `json:"new"`
 	}
-	if err := decode(r, &b); err != nil || b.New == "" {
+	if err := decode(r, &b); err != nil || b.New == "" || b.Current == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "current and new required"})
 		return
 	}
@@ -42,6 +43,8 @@ func (s *Server) handleChangePassword(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleLogoutAll(w http.ResponseWriter, r *http.Request) {
 	cu, _ := currentUser(r)
-	_ = s.deps.Auth.LogoutAll(r.Context(), cu.ID, s.tokenFromRequest(r))
+	if err := s.deps.Auth.LogoutAll(r.Context(), cu.ID, s.tokenFromRequest(r)); err != nil {
+		log.Printf("logout-all: failed to delete sessions for user %s: %v", cu.ID, err)
+	}
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }

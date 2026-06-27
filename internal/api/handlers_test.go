@@ -7,6 +7,29 @@ import (
 	"testing"
 )
 
+func TestMeIncludesCreatedAt(t *testing.T) {
+	srv := newTestServer(t)
+	mustSetupOwner(t, srv, "owner", "pw12345")
+	tok := mustLogin(t, srv, "owner", "pw12345")
+	rr := doGET(t, srv, "/api/v1/me", tok)
+	if rr.Code != 200 {
+		t.Fatalf("GET /me = %d (%s)", rr.Code, rr.Body)
+	}
+	var body map[string]any
+	if err := json.Unmarshal(rr.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode /me body: %v", err)
+	}
+	v, ok := body["createdAt"]
+	if !ok {
+		t.Fatalf("/me response missing createdAt field: %s", rr.Body)
+	}
+	// createdAt is a JSON number; json.Unmarshal decodes it as float64
+	ts, _ := v.(float64)
+	if ts <= 0 {
+		t.Fatalf("/me createdAt = %v, want non-zero unix timestamp", v)
+	}
+}
+
 func TestHealth(t *testing.T) {
 	srv := NewServer(Deps{})
 	rec := httptest.NewRecorder()

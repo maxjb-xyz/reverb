@@ -89,6 +89,31 @@ func TestDeleteInvite(t *testing.T) {
 	}
 }
 
+// TestCreateInviteReturnsIDAndCode verifies that POST /invites returns a body
+// with non-empty id and code fields (no ListInvites scan).
+func TestCreateInviteReturnsIDAndCode(t *testing.T) {
+	srv := newTestServer(t)
+	mustSetupOwner(t, srv, "owner", "pw12345")
+	tok := mustLogin(t, srv, "owner", "pw12345")
+	rr := doPOST(t, srv, "/api/v1/invites", tok, `{}`)
+	if rr.Code != 201 {
+		t.Fatalf("create invite = %d (%s)", rr.Code, rr.Body)
+	}
+	var body struct {
+		ID   string `json:"id"`
+		Code string `json:"code"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode invite body: %v / %s", err, rr.Body)
+	}
+	if body.ID == "" {
+		t.Fatalf("invite response missing non-empty id: %s", rr.Body)
+	}
+	if body.Code == "" {
+		t.Fatalf("invite response missing non-empty code: %s", rr.Body)
+	}
+}
+
 // TestRegistrationStatus verifies that GET /auth/registration-status is
 // reachable WITHOUT a session and returns the expected JSON shape.
 func TestRegistrationStatus(t *testing.T) {

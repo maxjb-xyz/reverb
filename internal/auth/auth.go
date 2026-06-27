@@ -26,6 +26,7 @@ var (
 	ErrUserDisabled   = errors.New("user disabled")
 	ErrUsernameTaken  = errors.New("username taken")
 	ErrOwnerProtected = errors.New("owner account is protected")
+	ErrUserNotFound   = errors.New("user not found")
 	ErrRoleNotFound   = errors.New("role not found")
 	ErrRoleInUse      = errors.New("role is assigned to users")
 	ErrLastAdmin      = errors.New("would leave no administrator")
@@ -93,12 +94,13 @@ func NewService(q Querier, now func() time.Time) *Service {
 
 // CurrentUser is the resolved identity carried through the request context.
 type CurrentUser struct {
-	ID       string          `json:"id"`
-	Username string          `json:"username"`
-	RoleID   string          `json:"roleId"`
-	RoleName string          `json:"roleName"`
-	IsOwner  bool            `json:"isOwner"`
-	Caps     map[string]bool `json:"-"`
+	ID        string          `json:"id"`
+	Username  string          `json:"username"`
+	RoleID    string          `json:"roleId"`
+	RoleName  string          `json:"roleName"`
+	IsOwner   bool            `json:"isOwner"`
+	CreatedAt int64           `json:"createdAt"`
+	Caps      map[string]bool `json:"-"`
 }
 
 func (u CurrentUser) Has(cap string) bool { return u.Caps[cap] }
@@ -195,12 +197,13 @@ func (s *Service) ResolveSession(ctx context.Context, tok string) (CurrentUser, 
 	}
 	_ = s.q.TouchUserLastSeen(ctx, u.ID)
 	return CurrentUser{
-		ID:       u.ID,
-		Username: u.Username,
-		RoleID:   u.RoleID,
-		RoleName: roleName,
-		IsOwner:  u.IsOwner == 1,
-		Caps:     caps,
+		ID:        u.ID,
+		Username:  u.Username,
+		RoleID:    u.RoleID,
+		RoleName:  roleName,
+		IsOwner:   u.IsOwner == 1,
+		CreatedAt: u.CreatedAt,
+		Caps:      caps,
 	}, nil
 }
 
@@ -408,7 +411,7 @@ func (s *Service) CreateUser(ctx context.Context, username, password, roleID str
 func (s *Service) UpdateUserRole(ctx context.Context, id, roleID string) error {
 	u, err := s.q.GetUserByID(ctx, id)
 	if err != nil {
-		return ErrRoleNotFound
+		return ErrUserNotFound
 	}
 	if u.IsOwner == 1 && roleID != "role-admin" {
 		return ErrOwnerProtected
@@ -443,7 +446,7 @@ func (s *Service) UpdateUserRole(ctx context.Context, id, roleID string) error {
 func (s *Service) SetUserDisabled(ctx context.Context, id string, disabled bool) error {
 	u, err := s.q.GetUserByID(ctx, id)
 	if err != nil {
-		return nil // user not found; no-op
+		return ErrUserNotFound
 	}
 	if u.IsOwner == 1 {
 		return ErrOwnerProtected
@@ -478,7 +481,7 @@ func (s *Service) AdminSetPassword(ctx context.Context, id, password string) err
 func (s *Service) DeleteUser(ctx context.Context, id string) error {
 	u, err := s.q.GetUserByID(ctx, id)
 	if err != nil {
-		return nil // user not found; no-op
+		return ErrUserNotFound
 	}
 	if u.IsOwner == 1 {
 		return ErrOwnerProtected
@@ -624,7 +627,11 @@ func (s *Service) DeleteRole(ctx context.Context, id string) error {
 	if _, err := s.q.GetRole(ctx, id); err != nil {
 		return nil // not found; no-op
 	}
-	if n, _ := s.q.CountUsersWithRole(ctx, id); n > 0 {
+	n, err := s.q.CountUsersWithRole(ctx, id)
+	if err != nil {
+		return err
+	}
+	if n > 0 {
 		return ErrRoleInUse
 	}
 	if pol, err := s.GetRegPolicy(ctx); err == nil && pol.DefaultRoleID == id {
@@ -741,13 +748,14 @@ type InviteView struct {
 }
 
 // CreateInvite generates a random invite code and inserts it into the database.
-func (s *Service) CreateInvite(ctx context.Context, roleID *string, expiresAt *int64, createdBy string) (string, error) {
+// It returns the new invite's id and code.
+func (s *Service) CreateInvite(ctx context.Context, roleID *string, expiresAt *int64, createdBy string) (id, code string, err error) {
 	raw := make([]byte, 12)
 	if _, err := rand.Read(raw); err != nil {
-		return "", err
+		return "", "", err
 	}
-	code := base64.RawURLEncoding.EncodeToString(raw)
-	id := uuid.NewString()
+	code = base64.RawURLEncoding.EncodeToString(raw)
+	id = uuid.NewString()
 
 	var dbRoleID sql.NullString
 	if roleID != nil {
@@ -769,9 +777,9 @@ func (s *Service) CreateInvite(ctx context.Context, roleID *string, expiresAt *i
 		CreatedBy: dbCreatedBy,
 		ExpiresAt: dbExpiresAt,
 	}); err != nil {
-		return "", err
+		return "", "", err
 	}
-	return code, nil
+	return id, code, nil
 }
 
 // ListInvites returns all invite rows as views.

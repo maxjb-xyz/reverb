@@ -102,6 +102,7 @@ func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"id": cu.ID, "username": cu.Username, "roleId": cu.RoleID,
 		"roleName": cu.RoleName, "isOwner": cu.IsOwner, "capabilities": caps,
+		"createdAt": cu.CreatedAt,
 	})
 }
 

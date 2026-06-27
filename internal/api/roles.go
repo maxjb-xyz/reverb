@@ -45,8 +45,8 @@ func (s *Server) handleUpdateRole(w http.ResponseWriter, r *http.Request) {
 		Name         string   `json:"name"`
 		Capabilities []string `json:"capabilities"`
 	}
-	if err := decode(r, &b); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request"})
+	if err := decode(r, &b); err != nil || b.Name == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "name required"})
 		return
 	}
 	if err := s.deps.Auth.UpdateRole(r.Context(), id, b.Name, b.Capabilities); err != nil {

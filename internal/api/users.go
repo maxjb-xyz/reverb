@@ -55,6 +55,8 @@ func (s *Server) handleUpdateUser(w http.ResponseWriter, r *http.Request) {
 	if b.RoleID != nil {
 		if err := s.deps.Auth.UpdateUserRole(r.Context(), id, *b.RoleID); err != nil {
 			switch {
+			case errors.Is(err, auth.ErrUserNotFound):
+				writeJSON(w, http.StatusNotFound, map[string]string{"error": "user not found"})
 			case errors.Is(err, auth.ErrOwnerProtected):
 				writeJSON(w, http.StatusConflict, map[string]string{"error": "owner account is protected"})
 			case errors.Is(err, auth.ErrLastAdmin):
@@ -70,6 +72,8 @@ func (s *Server) handleUpdateUser(w http.ResponseWriter, r *http.Request) {
 	if b.Disabled != nil {
 		if err := s.deps.Auth.SetUserDisabled(r.Context(), id, *b.Disabled); err != nil {
 			switch {
+			case errors.Is(err, auth.ErrUserNotFound):
+				writeJSON(w, http.StatusNotFound, map[string]string{"error": "user not found"})
 			case errors.Is(err, auth.ErrOwnerProtected):
 				writeJSON(w, http.StatusConflict, map[string]string{"error": "owner account is protected"})
 			case errors.Is(err, auth.ErrLastAdmin):
@@ -87,6 +91,8 @@ func (s *Server) handleDeleteUser(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if err := s.deps.Auth.DeleteUser(r.Context(), id); err != nil {
 		switch {
+		case errors.Is(err, auth.ErrUserNotFound):
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "user not found"})
 		case errors.Is(err, auth.ErrOwnerProtected):
 			writeJSON(w, http.StatusConflict, map[string]string{"error": "owner account is protected"})
 		case errors.Is(err, auth.ErrLastAdmin):
