@@ -21,10 +21,10 @@ function map409Message(errBody: Record<string, unknown> | null | undefined): str
   if (msg.includes('registration default')) {
     return 'This role is the registration default — pick another default first.'
   }
-  if (msg.includes('in use')) {
+  if (msg.includes('assigned to users') || msg.includes('in use')) {
     return "Reassign this role's users first."
   }
-  return "Reassign this role's users first."
+  return "Couldn't complete that — please try again."
 }
 
 // ── Capability checklist ───────────────────────────────────────────────────────

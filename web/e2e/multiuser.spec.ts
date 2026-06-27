@@ -8,7 +8,7 @@ import { installApiMocks, ownerMe, externalTrack } from './mocks'
 //      and lands in the onboarding wizard.
 //   2) Capability gating of the Admin surface: an admin sees the Admin menu entry;
 //      a non-admin does not, and is redirected away from /admin.
-//   3) Capability gating of the download control: a user without `can_download`
+//   3) Capability gating of the download control: a user without `auto_approve`
 //      sees no download affordance on a not-in-library result; one with it does.
 
 // ── helpers ──────────────────────────────────────────────────────────────────

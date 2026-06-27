@@ -47,8 +47,34 @@ func TestAutoApproveImpliesRequest(t *testing.T) {
 	tok := mustLogin(t, srv, "owner", "pw12345")
 	doPOST(t, srv, "/api/v1/roles", tok, `{"name":"DJ","capabilities":["auto_approve"]}`)
 	rr := doGET(t, srv, "/api/v1/roles", tok)
-	if !bytesContain(rr.Body.Bytes(), `"request"`) {
-		t.Fatalf("auto_approve should have implied request: %s", rr.Body)
+	var roles []struct {
+		Name         string   `json:"name"`
+		Capabilities []string `json:"capabilities"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &roles); err != nil {
+		t.Fatalf("failed to decode roles: %v", err)
+	}
+	var djCaps []string
+	for _, r := range roles {
+		if r.Name == "DJ" {
+			djCaps = r.Capabilities
+			break
+		}
+	}
+	if djCaps == nil {
+		t.Fatalf("DJ role not found in response: %s", rr.Body)
+	}
+	hasRequest, hasAutoApprove := false, false
+	for _, c := range djCaps {
+		if c == "request" {
+			hasRequest = true
+		}
+		if c == "auto_approve" {
+			hasAutoApprove = true
+		}
+	}
+	if !hasRequest || !hasAutoApprove {
+		t.Fatalf("DJ role caps = %v; want both auto_approve and request", djCaps)
 	}
 }
 

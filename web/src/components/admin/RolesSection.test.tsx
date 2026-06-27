@@ -28,27 +28,28 @@ function wrap(ui: React.ReactNode) {
   return <QueryClientProvider client={qc}>{ui}</QueryClientProvider>
 }
 
+// Real capability registry keys (mirrors GET /capabilities contract)
 const CAPABILITIES = [
-  { key: 'library.read', label: 'Browse library', description: 'Stream and browse the music library.' },
-  { key: 'download', label: 'Download music', description: 'Download tracks for offline use.' },
-  { key: 'playlist.write', label: 'Edit playlists', description: 'Create and modify playlists.' },
-  { key: 'settings.read', label: 'View settings', description: 'Read server settings.' },
-  { key: 'settings.write', label: 'Edit settings', description: 'Change server settings.' },
-  { key: 'admin', label: 'Admin panel', description: 'Full administrative access.' },
+  { key: 'is_admin', label: 'Full administrator', description: 'Complete access; bypasses all restrictions. Opens the Admin area.' },
+  { key: 'can_manage_users', label: 'Manage users & roles', description: 'Create and edit users, edit roles, and control registration & invites. Opens the Admin area.' },
+  { key: 'can_manage_library', label: 'Manage library & integrations', description: 'Configure the music backend, search providers, and downloaders. Opens the Admin area.' },
+  { key: 'request', label: 'Request music', description: 'Ask to add music to the library.' },
+  { key: 'auto_approve', label: 'Auto-approve music', description: 'Requests to add music are fulfilled immediately, without approval.' },
+  { key: 'can_create_playlists', label: 'Create & edit playlists', description: 'Make and manage their own playlists.' },
 ]
 
 const SYSTEM_ROLE = {
   id: 'r-sys',
   name: 'Admin',
   isSystem: true,
-  capabilities: ['library.read', 'admin'],
+  capabilities: ['is_admin', 'can_manage_users'],
 }
 
 const CUSTOM_ROLE = {
   id: 'r-custom',
   name: 'Reader',
   isSystem: false,
-  capabilities: ['library.read'],
+  capabilities: ['request'],
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -103,8 +104,8 @@ describe('RolesSection', () => {
     fireEvent.click(editBtns[editBtns.length - 1])
     // The capability checklist form should appear with checkboxes for each capability
     await waitFor(() => {
-      // "Download music" doesn't appear as a role chip, so it only appears in the checklist
-      expect(screen.getByRole('checkbox', { name: /download music/i })).toBeInTheDocument()
+      // "Auto-approve music" doesn't appear as a role chip on the Reader role
+      expect(screen.getByRole('checkbox', { name: /auto-approve music/i })).toBeInTheDocument()
     })
   })
 
@@ -114,12 +115,12 @@ describe('RolesSection', () => {
     fireEvent.click(editBtns[editBtns.length - 1])
 
     await waitFor(() => {
-      expect(screen.getByText('Download music')).toBeInTheDocument()
+      expect(screen.getByText('Auto-approve music')).toBeInTheDocument()
     })
 
-    // Toggle "Download music" (currently unchecked for Reader role)
-    const downloadCheckbox = screen.getByRole('checkbox', { name: /download music/i })
-    fireEvent.click(downloadCheckbox)
+    // Toggle "Auto-approve music" (currently unchecked for Reader role)
+    const autoApproveCheckbox = screen.getByRole('checkbox', { name: /auto-approve music/i })
+    fireEvent.click(autoApproveCheckbox)
 
     // Save
     fireEvent.click(screen.getByRole('button', { name: /^save$/i }))
@@ -127,7 +128,7 @@ describe('RolesSection', () => {
     await waitFor(() => {
       expect(updateRole).toHaveBeenCalledWith('r-custom', {
         name: 'Reader',
-        capabilities: expect.arrayContaining(['library.read', 'download']),
+        capabilities: expect.arrayContaining(['request', 'auto_approve']),
       })
     })
   })
@@ -139,18 +140,18 @@ describe('RolesSection', () => {
     fireEvent.click(editBtns[0])
 
     await waitFor(() => {
-      expect(screen.getByRole('checkbox', { name: /download music/i })).toBeInTheDocument()
+      expect(screen.getByRole('checkbox', { name: /auto-approve music/i })).toBeInTheDocument()
     })
 
-    const downloadCheckbox = screen.getByRole('checkbox', { name: /download music/i })
-    fireEvent.click(downloadCheckbox)
+    const autoApproveCheckbox = screen.getByRole('checkbox', { name: /auto-approve music/i })
+    fireEvent.click(autoApproveCheckbox)
 
     fireEvent.click(screen.getByRole('button', { name: /^save$/i }))
 
     await waitFor(() => {
       expect(updateRole).toHaveBeenCalledWith('r-sys', {
         name: 'Admin',
-        capabilities: expect.arrayContaining(['library.read', 'admin', 'download']),
+        capabilities: expect.arrayContaining(['is_admin', 'can_manage_users', 'auto_approve']),
       })
     })
   })
@@ -162,7 +163,7 @@ describe('RolesSection', () => {
 
     await waitFor(() => {
       // Description text from CAPABILITIES mock
-      expect(screen.getByText('Download tracks for offline use.')).toBeInTheDocument()
+      expect(screen.getByText('Ask to add music to the library.')).toBeInTheDocument()
     })
   })
 
@@ -172,15 +173,15 @@ describe('RolesSection', () => {
 
     await waitFor(() => {
       // The create form should open with capability checkboxes
-      expect(screen.getByRole('checkbox', { name: /download music/i })).toBeInTheDocument()
+      expect(screen.getByRole('checkbox', { name: /auto-approve music/i })).toBeInTheDocument()
     })
 
     // Fill in name
     const nameInput = screen.getByRole('textbox', { name: /role name/i })
     fireEvent.change(nameInput, { target: { value: 'Moderator' } })
 
-    // Check "Edit playlists"
-    const playlistCheckbox = screen.getByRole('checkbox', { name: /edit playlists/i })
+    // Check "Create & edit playlists"
+    const playlistCheckbox = screen.getByRole('checkbox', { name: /create & edit playlists/i })
     fireEvent.click(playlistCheckbox)
 
     fireEvent.click(screen.getByRole('button', { name: /^save$/i }))
@@ -188,24 +189,24 @@ describe('RolesSection', () => {
     await waitFor(() => {
       expect(createRole).toHaveBeenCalledWith({
         name: 'Moderator',
-        capabilities: ['playlist.write'],
+        capabilities: ['can_create_playlists'],
       })
     })
   })
 
-  it('delete button calls deleteRole', async () => {
+  it('delete button calls deleteRole with the role id', async () => {
     render(wrap(<RolesSection />))
-    // Both roles now have Delete buttons; click the first one
+    // Both roles now have Delete buttons; click the first one (SYSTEM_ROLE, id: 'r-sys')
     const deleteBtns = screen.getAllByRole('button', { name: /delete/i })
     fireEvent.click(deleteBtns[0])
     await waitFor(() => {
-      expect(deleteRole).toHaveBeenCalled()
+      expect(deleteRole).toHaveBeenCalledWith('r-sys')
     })
   })
 
   it('handles deleteRole 409 (role in use) with a friendly message', async () => {
     vi.mocked(deleteRole).mockRejectedValue(
-      Object.assign(new Error('Role is in use'), { status: 409, body: { error: 'role is in use' } }),
+      Object.assign(new Error('role is assigned to users'), { status: 409, body: { error: 'role is assigned to users' } }),
     )
     render(wrap(<RolesSection />))
     const deleteBtns = screen.getAllByRole('button', { name: /delete/i })

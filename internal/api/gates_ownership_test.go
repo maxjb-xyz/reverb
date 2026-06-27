@@ -15,7 +15,7 @@ import (
 )
 
 // TestDownloadRequiresCapability verifies that a user whose role lacks
-// can_download (role-requester) is rejected with 403 on POST /downloads, while
+// auto_approve (role-requester) is rejected with 403 on POST /downloads, while
 // the capability gate runs before the handler (no Manager needed).
 func TestDownloadRequiresCapability(t *testing.T) {
 	srv := newTestServer(t)
@@ -23,7 +23,7 @@ func TestDownloadRequiresCapability(t *testing.T) {
 	otok := mustLogin(t, srv, "owner", "pw12345")
 	doPOST(t, srv, "/api/v1/users", otok, `{"username":"req","password":"reqpw123","roleId":"role-requester"}`)
 	rtok := mustLogin(t, srv, "req", "reqpw123")
-	// requester lacks can_download → must 403
+	// requester lacks auto_approve → must 403
 	if rec := doPOST(t, srv, "/api/v1/downloads", rtok, `{"source":"spotify","externalId":"x","title":"t","artist":"a"}`); rec.Code != http.StatusForbidden {
 		t.Fatalf("requester download = %d, want 403: %s", rec.Code, rec.Body.String())
 	}
