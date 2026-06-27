@@ -15,6 +15,7 @@ import Admin from './routes/Admin'
 import Downloads from './routes/Downloads'
 import SyncedPlaylist from './routes/SyncedPlaylist'
 import Signup from './routes/Signup'
+import Account from './routes/Account'
 
 /** Redirect bare `/album/:id` or `/artist/:id` URLs to the source-qualified form
  *  `/album/library/:id` / `/artist/library/:id`. These old URLs may exist in
@@ -79,6 +80,7 @@ function Routed() {
         <Route path="/artist/:id" element={<RedirectToLibrary kind="artist" />} />
         <Route path="/playlist/:id" element={<SyncedPlaylist />} />
         <Route path="/synced-playlist/:id" element={<RedirectToPlaylist />} />
+        <Route path="/account" element={<Account />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="/admin" element={<Admin />} />
         <Route path="/downloads" element={<Downloads />} />

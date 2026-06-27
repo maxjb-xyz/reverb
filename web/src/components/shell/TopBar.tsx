@@ -186,6 +186,18 @@ export function TopBar() {
               <button
                 role="menuitem"
                 type="button"
+                onClick={() => { setMenuOpen(false); navigate('/account') }}
+                className={[
+                  'w-full text-left px-4 py-2 text-sm text-text-primary',
+                  'hover:bg-raised-hover transition-colors',
+                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-inset',
+                ].join(' ')}
+              >
+                Account
+              </button>
+              <button
+                role="menuitem"
+                type="button"
                 onClick={() => { setMenuOpen(false); navigate('/settings') }}
                 className={[
                   'w-full text-left px-4 py-2 text-sm text-text-primary',
