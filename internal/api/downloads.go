@@ -38,6 +38,7 @@ func (s *Server) handleCreateDownload(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "externalId is required"})
 		return
 	}
+	cu, _ := currentUser(r)
 	job, err := dl.Enqueue(r.Context(), core.DownloadRequest{
 		Source:          body.Source,
 		ExternalID:      body.ExternalID,
@@ -49,6 +50,7 @@ func (s *Server) handleCreateDownload(w http.ResponseWriter, r *http.Request) {
 		Downloader:      body.Downloader,
 		PlayWhenReady:   body.PlayWhenReady,
 		AddToPlaylistID: body.AddToPlaylistID,
+		InitiatedBy:     cu.ID,
 	})
 	if err != nil {
 		writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": err.Error()})

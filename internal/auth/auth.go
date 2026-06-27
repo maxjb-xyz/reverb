@@ -71,6 +71,8 @@ type Querier interface {
 	UpdateRole(ctx context.Context, arg db.UpdateRoleParams) error
 	DeleteRole(ctx context.Context, id string) error
 	CountUsersWithRole(ctx context.Context, roleID string) (int64, error)
+	// synced playlists (legacy back-fill only)
+	BackfillSyncedPlaylistOwners(ctx context.Context, ownerUserID sql.NullString) error
 	// invites
 	CreateInvite(ctx context.Context, arg db.CreateInviteParams) error
 	GetInviteByCode(ctx context.Context, code string) (db.Invite, error)
@@ -286,6 +288,12 @@ func (s *Service) EnsureSeed(ctx context.Context) error {
 				return err
 			}
 			if err := s.q.BackfillSessionUser(ctx, sql.NullString{String: id, Valid: true}); err != nil {
+				return err
+			}
+			// Back-fill any pre-existing (legacy) playlists to the new owner so the
+			// owner-scoped API list includes them. Only touches NULL owners, so it's
+			// idempotent and safe even if some rows already carry an owner.
+			if err := s.q.BackfillSyncedPlaylistOwners(ctx, sql.NullString{String: id, Valid: true}); err != nil {
 				return err
 			}
 		}

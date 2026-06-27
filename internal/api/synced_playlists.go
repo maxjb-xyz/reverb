@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"io"
@@ -13,8 +14,10 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/maxjb-xyz/reverb/internal/auth"
 	"github.com/maxjb-xyz/reverb/internal/core"
 	"github.com/maxjb-xyz/reverb/internal/playlistsync"
+	"github.com/maxjb-xyz/reverb/internal/store/db"
 )
 
 var validIDRe = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
@@ -50,6 +53,50 @@ func (s *Server) sync() SyncService {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.live.sync
+}
+
+// playlistAccessAllowed reports whether the current user may read or mutate the
+// playlist identified by id. Admins bypass ownership (may act on any playlist).
+// When no PlaylistOwner store is configured, scoping is disabled and access is
+// allowed (handler tests authenticate as the admin owner). A non-admin, non-owner
+// caller is denied so the handler can 404 without leaking the playlist's existence.
+func (s *Server) playlistAccessAllowed(r *http.Request, id string) bool {
+	store := s.deps.PlaylistOwner
+	if store == nil {
+		return true
+	}
+	cu, ok := currentUser(r)
+	if !ok {
+		return false
+	}
+	if cu.Has(auth.CapAdmin) {
+		return true
+	}
+	owner, err := store.GetSyncedPlaylistOwner(r.Context(), id)
+	if err != nil {
+		// Unknown playlist (or read error) → treat as no access; caller 404s.
+		return false
+	}
+	return owner.Valid && owner.String == cu.ID
+}
+
+// stampPlaylistOwner assigns the current user as the owner of a freshly created
+// playlist. A no-op when no PlaylistOwner store is configured or no user is in
+// context. Errors are non-fatal: ownership is best-effort attribution at create
+// time and must not fail an otherwise-successful create.
+func (s *Server) stampPlaylistOwner(r *http.Request, id string) {
+	store := s.deps.PlaylistOwner
+	if store == nil || id == "" {
+		return
+	}
+	cu, ok := currentUser(r)
+	if !ok || cu.ID == "" {
+		return
+	}
+	_ = store.SetSyncedPlaylistOwner(r.Context(), db.SetSyncedPlaylistOwnerParams{
+		OwnerUserID: sql.NullString{String: cu.ID, Valid: true},
+		ID:          id,
+	})
 }
 
 // importSyncedBody is the POST /synced-playlists request DTO.
@@ -88,6 +135,7 @@ func (s *Server) handleImportPlaylistOnce(w http.ResponseWriter, r *http.Request
 		writeJSON(w, status, map[string]string{"error": err.Error()})
 		return
 	}
+	s.stampPlaylistOwner(r, det.ID)
 	writeJSON(w, http.StatusOK, det)
 }
 
@@ -115,6 +163,7 @@ func (s *Server) handleImportSyncedPlaylist(w http.ResponseWriter, r *http.Reque
 		writeJSON(w, status, map[string]string{"error": err.Error()})
 		return
 	}
+	s.stampPlaylistOwner(r, det.ID)
 	writeJSON(w, http.StatusOK, det)
 }
 
@@ -122,6 +171,30 @@ func (s *Server) handleListSyncedPlaylists(w http.ResponseWriter, r *http.Reques
 	svc := s.sync()
 	if svc == nil {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "playlist sync unavailable"})
+		return
+	}
+	// Owner-scoped listing: GET /playlists returns ONLY the caller's own
+	// playlists — including for admins (admin bypass applies to detail/mutations,
+	// not to the list view). The nil-store fallback returns the full list.
+	cu, _ := currentUser(r)
+	if s.deps.PlaylistOwner != nil {
+		rows, err := s.deps.PlaylistOwner.ListSyncedPlaylistsCountForOwner(
+			r.Context(), sql.NullString{String: cu.ID, Valid: cu.ID != ""})
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not list synced playlists"})
+			return
+		}
+		list := make([]core.SyncedPlaylist, 0, len(rows))
+		for _, row := range rows {
+			list = append(list, core.SyncedPlaylist{
+				ID: row.ID, Source: row.Source, ExternalID: row.ExternalID,
+				Name: row.Name, CoverURL: row.CoverUrl, Mode: row.Mode,
+				SyncEnabled: row.SyncEnabled != 0, SyncIntervalSec: int(row.SyncIntervalSec),
+				AutoDownload: row.AutoDownload != 0, LastSyncedAt: row.LastSyncedAt,
+				TrackCount: int(row.TrackCount),
+			})
+		}
+		writeJSON(w, http.StatusOK, list)
 		return
 	}
 	list, err := svc.List(r.Context())
@@ -141,6 +214,10 @@ func (s *Server) handleSyncedPlaylistDetail(w http.ResponseWriter, r *http.Reque
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "playlist sync unavailable"})
 		return
 	}
+	if !s.playlistAccessAllowed(r, chi.URLParam(r, "id")) {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "playlist not found"})
+		return
+	}
 	det, err := svc.Detail(r.Context(), chi.URLParam(r, "id"))
 	if err != nil {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
@@ -153,6 +230,10 @@ func (s *Server) handleSyncNow(w http.ResponseWriter, r *http.Request) {
 	svc := s.sync()
 	if svc == nil {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "playlist sync unavailable"})
+		return
+	}
+	if !s.playlistAccessAllowed(r, chi.URLParam(r, "id")) {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "playlist not found"})
 		return
 	}
 	det, err := svc.Sync(r.Context(), chi.URLParam(r, "id"))
@@ -171,6 +252,10 @@ func (s *Server) handleSyncedDownloadMissing(w http.ResponseWriter, r *http.Requ
 	svc := s.sync()
 	if svc == nil {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "playlist sync unavailable"})
+		return
+	}
+	if !s.playlistAccessAllowed(r, chi.URLParam(r, "id")) {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "playlist not found"})
 		return
 	}
 	jobs, err := svc.DownloadMissing(r.Context(), chi.URLParam(r, "id"))
@@ -197,6 +282,10 @@ func (s *Server) handleSyncedSettings(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "playlist sync unavailable"})
 		return
 	}
+	if !s.playlistAccessAllowed(r, chi.URLParam(r, "id")) {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "playlist not found"})
+		return
+	}
 	var body syncedSettingsBody
 	if err := decode(r, &body); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "bad request"})
@@ -216,6 +305,10 @@ func (s *Server) handleDeleteSyncedPlaylist(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	id := chi.URLParam(r, "id")
+	if !s.playlistAccessAllowed(r, id) {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "playlist not found"})
+		return
+	}
 	if err := svc.Delete(r.Context(), id); err != nil {
 		writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": err.Error()})
 		return
@@ -246,6 +339,10 @@ func (s *Server) handleAddSyncedTrack(w http.ResponseWriter, r *http.Request) {
 	svc := s.sync()
 	if svc == nil {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "playlist sync unavailable"})
+		return
+	}
+	if !s.playlistAccessAllowed(r, chi.URLParam(r, "id")) {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "playlist not found"})
 		return
 	}
 	var body addSyncedTrackBody
@@ -280,6 +377,10 @@ func (s *Server) handleRemoveSyncedTrack(w http.ResponseWriter, r *http.Request)
 	svc := s.sync()
 	if svc == nil {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "playlist sync unavailable"})
+		return
+	}
+	if !s.playlistAccessAllowed(r, chi.URLParam(r, "id")) {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "playlist not found"})
 		return
 	}
 	source := r.URL.Query().Get("source")
@@ -330,6 +431,10 @@ func (s *Server) handleUploadPlaylistCover(w http.ResponseWriter, r *http.Reques
 	// Validate id format: must be alphanumeric + hyphens/underscores only.
 	if !validPlaylistID(id) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid playlist id"})
+		return
+	}
+	if !s.playlistAccessAllowed(r, id) {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "playlist not found"})
 		return
 	}
 
@@ -474,6 +579,10 @@ func (s *Server) handleReorderSyncedTracks(w http.ResponseWriter, r *http.Reques
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "playlist sync unavailable"})
 		return
 	}
+	if !s.playlistAccessAllowed(r, chi.URLParam(r, "id")) {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "playlist not found"})
+		return
+	}
 	var body reorderBody
 	if err := decode(r, &body); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "bad request"})
@@ -502,6 +611,10 @@ func (s *Server) handleRenameSyncedPlaylist(w http.ResponseWriter, r *http.Reque
 	svc := s.sync()
 	if svc == nil {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "playlist sync unavailable"})
+		return
+	}
+	if !s.playlistAccessAllowed(r, chi.URLParam(r, "id")) {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "playlist not found"})
 		return
 	}
 	var body renameSyncedBody

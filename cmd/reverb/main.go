@@ -132,18 +132,19 @@ func main() {
 	}
 
 	deps := api.Deps{
-		Auth:        authSvc,
-		Library:     bundle.Library,
-		Lib:         libraryReg,
-		Search:      searchReg,
-		Downloader:  downloaderReg,
-		Adapters:    st.Q(),
-		Events:      bus,
-		ConfigDirty: dirty,
-		Reload:      &serviceReloader{builder: builder},
-		Dev:         cfg.Dev,
-		Version:     version,
-		DataDir:     filepath.Dir(cfg.DBPath),
+		Auth:          authSvc,
+		Library:       bundle.Library,
+		Lib:           libraryReg,
+		Search:        searchReg,
+		Downloader:    downloaderReg,
+		Adapters:      st.Q(),
+		PlaylistOwner: st.Q(),
+		Events:        bus,
+		ConfigDirty:   dirty,
+		Reload:        &serviceReloader{builder: builder},
+		Dev:           cfg.Dev,
+		Version:       version,
+		DataDir:       filepath.Dir(cfg.DBPath),
 	}
 	// Guard against the "non-nil interface wrapping a nil pointer" trap: only set
 	// the interface fields when the concrete service is actually present.

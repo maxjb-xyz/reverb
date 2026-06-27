@@ -36,6 +36,10 @@ type DownloadRequest struct {
 	// the track is matched in the library. Used by the one-time import path so
 	// missing tracks are appended to the target playlist as each finishes.
 	AddToPlaylistID string `json:"addToPlaylistId,omitempty"`
+	// InitiatedBy is the id of the user who initiated this download. It is set
+	// server-side from the request context (never from the client body, hence
+	// json:"-") and persisted on the job as download_jobs.initiated_by.
+	InitiatedBy string `json:"-"`
 }
 
 // DownloadJob is the persisted state of one download. Progress is 0-100, or -1

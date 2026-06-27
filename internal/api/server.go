@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"database/sql"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -45,6 +46,17 @@ type DownloadManager interface {
 	Stop()
 }
 
+// PlaylistOwnerStore is the persistence slice the playlist-ownership checks need.
+// *db.Queries (from store.Store.Q()) satisfies it directly. It is intentionally
+// separate from the playlistsync.Service (which the background scheduler also
+// drives, and which must stay owner-agnostic): owner scoping lives ONLY in the
+// API handlers. When nil, ownership scoping is disabled (legacy/test fallback).
+type PlaylistOwnerStore interface {
+	ListSyncedPlaylistsCountForOwner(ctx context.Context, ownerUserID sql.NullString) ([]db.ListSyncedPlaylistsCountForOwnerRow, error)
+	GetSyncedPlaylistOwner(ctx context.Context, id string) (sql.NullString, error)
+	SetSyncedPlaylistOwner(ctx context.Context, arg db.SetSyncedPlaylistOwnerParams) error
+}
+
 // AdapterStore is the persistence slice the adapter + settings handlers need.
 // *db.Queries (from store.Store.Q()) satisfies it directly.
 type AdapterStore interface {
@@ -85,10 +97,14 @@ type Deps struct {
 	Sync             SyncService
 	Events           EventSubscriber
 	Adapters         AdapterStore
-	ConfigDirty      ConfigDirty
-	Reload           ServiceReloader
-	Dev              bool
-	Version          string
+	// PlaylistOwner backs the playlist-ownership checks in the API handlers.
+	// When nil, ownership scoping is disabled (handlers fall back to unscoped
+	// behavior) — used by handler tests that authenticate as the admin owner.
+	PlaylistOwner PlaylistOwnerStore
+	ConfigDirty   ConfigDirty
+	Reload        ServiceReloader
+	Dev           bool
+	Version       string
 	// DataDir is the directory where Reverb persists app data (same dir as the
 	// SQLite DB). Used by the playlist-cover upload handler. When empty, cover
 	// uploads are unavailable.
@@ -199,14 +215,6 @@ func (s *Server) routes() {
 			pr.Post("/account/password", s.handleChangePassword)
 			pr.Post("/account/logout-all", s.handleLogoutAll)
 			pr.Get("/me", s.handleMe)
-			pr.Get("/adapters/available", s.handleAdaptersAvailable)
-			pr.Get("/adapters", s.handleListAdapters)
-			pr.Post("/adapters", s.handleCreateAdapter)
-			pr.Put("/adapters/{id}", s.handleUpdateAdapter)
-			pr.Delete("/adapters/{id}", s.handleDeleteAdapter)
-			pr.Post("/adapters/test", s.handleTestAdapter)
-			pr.Get("/settings", s.handleGetSettings)
-			pr.Put("/settings", s.handlePutSettings)
 			pr.Get("/config/pending-restart", s.handlePendingRestart)
 			pr.Get("/library/status", s.handleLibraryStatus)
 			pr.Get("/library/search", s.handleLibrarySearch)
@@ -221,32 +229,57 @@ func (s *Server) routes() {
 			pr.Get("/artist/{source}/{id}/profile", s.handleArtistProfile)
 			pr.Get("/artist/{source}/{id}/coverage", s.handleArtistCoverage)
 			pr.Get("/album/{source}/{id}", s.handleAlbumDetail)
-			pr.Post("/playlists/import", s.handleImportPlaylistOnce)
-			pr.Post("/playlists/import-synced", s.handleImportSyncedPlaylist)
+			// playlist READS stay on plain auth (ownership is enforced in-handler).
 			pr.Get("/playlists", s.handleListSyncedPlaylists)
-			pr.Post("/playlists", s.handleCreatePlaylist)
 			pr.Get("/playlists/{id}", s.handleSyncedPlaylistDetail)
-			pr.Put("/playlists/{id}", s.handleRenameSyncedPlaylist)
-			pr.Post("/playlists/{id}/sync", s.handleSyncNow)
-			pr.Post("/playlists/{id}/download-missing", s.handleSyncedDownloadMissing)
-			pr.Put("/playlists/{id}/settings", s.handleSyncedSettings)
-			pr.Delete("/playlists/{id}", s.handleDeleteSyncedPlaylist)
-			pr.Post("/playlists/{id}/tracks", s.handleAddSyncedTrack)
-			pr.Delete("/playlists/{id}/tracks", s.handleRemoveSyncedTrack)
-			pr.Post("/playlists/{id}/cover", s.handleUploadPlaylistCover)
 			pr.Get("/playlists/{id}/cover", s.handleServePlaylistCover)
-			pr.Put("/playlists/{id}/tracks/order", s.handleReorderSyncedTracks)
+			// download queue controls + reads stay on plain auth.
 			pr.Post("/downloads/pause", s.handlePauseQueue)
 			pr.Post("/downloads/resume", s.handleResumeQueue)
 			pr.Get("/downloads/queue", s.handleQueueState)
 			pr.Post("/downloads/clear", s.handleClearDownloads)
 			pr.Post("/downloads/{id}/clear", s.handleClearDownload)
-			pr.Post("/downloads/batch", s.handleBatchDownload)
-			pr.Post("/downloads", s.handleCreateDownload)
 			pr.Get("/downloads", s.handleListDownloads)
 			pr.Post("/downloads/{id}/cancel", s.handleCancelDownload)
 			pr.Post("/downloads/{id}/retry", s.handleRetryDownload)
 			pr.Get("/ws", s.handleWS)
+
+			// manage library & integrations: adapter CRUD + server settings.
+			pr.Group(func(mr chi.Router) {
+				mr.Use(s.requireCapability(auth.CapManageLibrary))
+				mr.Get("/adapters/available", s.handleAdaptersAvailable)
+				mr.Get("/adapters", s.handleListAdapters)
+				mr.Post("/adapters", s.handleCreateAdapter)
+				mr.Put("/adapters/{id}", s.handleUpdateAdapter)
+				mr.Delete("/adapters/{id}", s.handleDeleteAdapter)
+				mr.Post("/adapters/test", s.handleTestAdapter)
+				mr.Get("/settings", s.handleGetSettings)
+				mr.Put("/settings", s.handlePutSettings)
+			})
+
+			// download tracks: enqueue create + batch.
+			pr.Group(func(dr chi.Router) {
+				dr.Use(s.requireCapability(auth.CapDownload))
+				dr.Post("/downloads/batch", s.handleBatchDownload)
+				dr.Post("/downloads", s.handleCreateDownload)
+			})
+
+			// create playlists: every playlist WRITE (create/import/mutate).
+			pr.Group(func(cr chi.Router) {
+				cr.Use(s.requireCapability(auth.CapCreatePlaylists))
+				cr.Post("/playlists/import", s.handleImportPlaylistOnce)
+				cr.Post("/playlists/import-synced", s.handleImportSyncedPlaylist)
+				cr.Post("/playlists", s.handleCreatePlaylist)
+				cr.Put("/playlists/{id}", s.handleRenameSyncedPlaylist)
+				cr.Post("/playlists/{id}/sync", s.handleSyncNow)
+				cr.Post("/playlists/{id}/download-missing", s.handleSyncedDownloadMissing)
+				cr.Put("/playlists/{id}/settings", s.handleSyncedSettings)
+				cr.Delete("/playlists/{id}", s.handleDeleteSyncedPlaylist)
+				cr.Post("/playlists/{id}/tracks", s.handleAddSyncedTrack)
+				cr.Delete("/playlists/{id}/tracks", s.handleRemoveSyncedTrack)
+				cr.Post("/playlists/{id}/cover", s.handleUploadPlaylistCover)
+				cr.Put("/playlists/{id}/tracks/order", s.handleReorderSyncedTracks)
+			})
 
 			// admin-only: user management
 			pr.Group(func(ar chi.Router) {

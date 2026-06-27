@@ -27,5 +27,6 @@ func (s *Server) handleCreatePlaylist(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
+	s.stampPlaylistOwner(r, det.ID)
 	writeJSON(w, http.StatusCreated, det)
 }

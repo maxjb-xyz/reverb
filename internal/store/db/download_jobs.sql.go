@@ -168,8 +168,8 @@ const insertDownloadJob = `-- name: InsertDownloadJob :exec
 INSERT INTO download_jobs (
     id, dedup_key, request_json, downloader_name, status, progress, error,
     output_path, library_track_id, priority, requested_by, attempts, downloader_ref,
-    created_at, started_at, finished_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, unixepoch(), NULL, NULL)
+    initiated_by, created_at, started_at, finished_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, unixepoch(), NULL, NULL)
 `
 
 type InsertDownloadJobParams struct {
@@ -186,6 +186,7 @@ type InsertDownloadJobParams struct {
 	RequestedBy    sql.NullString `json:"requested_by"`
 	Attempts       int64          `json:"attempts"`
 	DownloaderRef  string         `json:"downloader_ref"`
+	InitiatedBy    sql.NullString `json:"initiated_by"`
 }
 
 func (q *Queries) InsertDownloadJob(ctx context.Context, arg InsertDownloadJobParams) error {
@@ -203,6 +204,7 @@ func (q *Queries) InsertDownloadJob(ctx context.Context, arg InsertDownloadJobPa
 		arg.RequestedBy,
 		arg.Attempts,
 		arg.DownloaderRef,
+		arg.InitiatedBy,
 	)
 	return err
 }

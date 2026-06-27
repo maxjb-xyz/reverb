@@ -2,8 +2,8 @@
 INSERT INTO download_jobs (
     id, dedup_key, request_json, downloader_name, status, progress, error,
     output_path, library_track_id, priority, requested_by, attempts, downloader_ref,
-    created_at, started_at, finished_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, unixepoch(), NULL, NULL);
+    initiated_by, created_at, started_at, finished_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, unixepoch(), NULL, NULL);
 
 -- name: GetDownloadJob :one
 SELECT id, dedup_key, request_json, downloader_name, status, progress, error,

@@ -141,6 +141,7 @@ func (s *sqlStore) Insert(ctx context.Context, j core.DownloadJob, req core.Down
 		RequestedBy:    sql.NullString{},
 		Attempts:       int64(j.Attempts),
 		DownloaderRef:  j.DownloaderRef,
+		InitiatedBy:    nullString(req.InitiatedBy),
 	})
 }
 

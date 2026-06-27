@@ -7,7 +7,19 @@ package db
 
 import (
 	"context"
+	"database/sql"
 )
+
+const backfillSyncedPlaylistOwners = `-- name: BackfillSyncedPlaylistOwners :exec
+UPDATE synced_playlists SET owner_user_id = ? WHERE owner_user_id IS NULL
+`
+
+// Assigns the given owner to every playlist that has no owner yet. Used by the
+// legacy single-admin migration in EnsureSeed (idempotent: only touches NULLs).
+func (q *Queries) BackfillSyncedPlaylistOwners(ctx context.Context, ownerUserID sql.NullString) error {
+	_, err := q.db.ExecContext(ctx, backfillSyncedPlaylistOwners, ownerUserID)
+	return err
+}
 
 const deleteSyncedPlaylist = `-- name: DeleteSyncedPlaylist :exec
 DELETE FROM synced_playlists WHERE id = ?
@@ -71,6 +83,19 @@ func (q *Queries) GetSyncedPlaylistBySource(ctx context.Context, arg GetSyncedPl
 		&i.OwnerUserID,
 	)
 	return i, err
+}
+
+const getSyncedPlaylistOwner = `-- name: GetSyncedPlaylistOwner :one
+SELECT owner_user_id FROM synced_playlists WHERE id = ?
+`
+
+// Returns the owner_user_id for a playlist id (NULL when unowned/legacy). Used by
+// the API mutation/detail handlers to enforce ownership (admins bypass).
+func (q *Queries) GetSyncedPlaylistOwner(ctx context.Context, id string) (sql.NullString, error) {
+	row := q.db.QueryRowContext(ctx, getSyncedPlaylistOwner, id)
+	var owner_user_id sql.NullString
+	err := row.Scan(&owner_user_id)
+	return owner_user_id, err
 }
 
 const listDueSyncedPlaylists = `-- name: ListDueSyncedPlaylists :many
@@ -215,6 +240,84 @@ func (q *Queries) ListSyncedPlaylistsCount(ctx context.Context) ([]ListSyncedPla
 		return nil, err
 	}
 	return items, nil
+}
+
+const listSyncedPlaylistsCountForOwner = `-- name: ListSyncedPlaylistsCountForOwner :many
+SELECT id, source, external_id, name, cover_url, mode,
+       sync_enabled, sync_interval_sec, auto_download,
+       last_synced_at, created_at,
+       CAST(json_array_length(tracks_json) AS INTEGER) AS track_count
+FROM synced_playlists WHERE owner_user_id = ? ORDER BY created_at DESC
+`
+
+type ListSyncedPlaylistsCountForOwnerRow struct {
+	ID              string `json:"id"`
+	Source          string `json:"source"`
+	ExternalID      string `json:"external_id"`
+	Name            string `json:"name"`
+	CoverUrl        string `json:"cover_url"`
+	Mode            string `json:"mode"`
+	SyncEnabled     int64  `json:"sync_enabled"`
+	SyncIntervalSec int64  `json:"sync_interval_sec"`
+	AutoDownload    int64  `json:"auto_download"`
+	LastSyncedAt    int64  `json:"last_synced_at"`
+	CreatedAt       int64  `json:"created_at"`
+	TrackCount      int64  `json:"track_count"`
+}
+
+// Owner-scoped variant of ListSyncedPlaylistsCount for the API list view:
+// returns only playlists owned by the given user. Used by the API list handler
+// for non-admin callers so the list is scoped to the caller's own playlists.
+func (q *Queries) ListSyncedPlaylistsCountForOwner(ctx context.Context, ownerUserID sql.NullString) ([]ListSyncedPlaylistsCountForOwnerRow, error) {
+	rows, err := q.db.QueryContext(ctx, listSyncedPlaylistsCountForOwner, ownerUserID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListSyncedPlaylistsCountForOwnerRow
+	for rows.Next() {
+		var i ListSyncedPlaylistsCountForOwnerRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Source,
+			&i.ExternalID,
+			&i.Name,
+			&i.CoverUrl,
+			&i.Mode,
+			&i.SyncEnabled,
+			&i.SyncIntervalSec,
+			&i.AutoDownload,
+			&i.LastSyncedAt,
+			&i.CreatedAt,
+			&i.TrackCount,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const setSyncedPlaylistOwner = `-- name: SetSyncedPlaylistOwner :exec
+UPDATE synced_playlists SET owner_user_id = ? WHERE id = ?
+`
+
+type SetSyncedPlaylistOwnerParams struct {
+	OwnerUserID sql.NullString `json:"owner_user_id"`
+	ID          string         `json:"id"`
+}
+
+// Stamps the owner on a freshly created playlist. Called by the API create/import
+// handlers immediately after the playlist row is created.
+func (q *Queries) SetSyncedPlaylistOwner(ctx context.Context, arg SetSyncedPlaylistOwnerParams) error {
+	_, err := q.db.ExecContext(ctx, setSyncedPlaylistOwner, arg.OwnerUserID, arg.ID)
+	return err
 }
 
 const updateSyncedPlaylistSettings = `-- name: UpdateSyncedPlaylistSettings :exec

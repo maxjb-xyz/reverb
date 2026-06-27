@@ -2,11 +2,13 @@ package download
 
 import (
 	"context"
+	"database/sql"
 	"sort"
 	"testing"
 
 	"github.com/maxjb-xyz/reverb/internal/core"
 	"github.com/maxjb-xyz/reverb/internal/store"
+	_ "modernc.org/sqlite"
 )
 
 func newSQLStore(t *testing.T) JobStore {
@@ -96,6 +98,61 @@ func TestSQLStoreInsertGetUpdate(t *testing.T) {
 	list, err := s.List(ctx)
 	if err != nil || len(list) != 1 {
 		t.Fatalf("list: %v len=%d", err, len(list))
+	}
+}
+
+// mustSeedUser inserts a minimal role + user row (raw SQL on a second connection)
+// so a download_jobs.initiated_by FK reference to userID is satisfiable.
+func mustSeedUser(t *testing.T, dbPath, userID string) {
+	t.Helper()
+	raw, err := sql.Open("sqlite", dbPath+"?_pragma=foreign_keys(1)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer raw.Close()
+	if _, err := raw.Exec(`INSERT OR IGNORE INTO roles (id, name, is_system, capabilities) VALUES ('role-test', 'Test', 0, '[]')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := raw.Exec(`INSERT INTO users (id, username, password_hash, role_id, is_owner) VALUES (?, ?, 'x', 'role-test', 0)`, userID, "u-"+userID); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestSQLStoreInsertPersistsInitiatedBy verifies the request's InitiatedBy is
+// written to download_jobs.initiated_by (the attribution column). The column is
+// write-only (not read back into core.DownloadJob), so this asserts on the raw row.
+func TestSQLStoreInsertPersistsInitiatedBy(t *testing.T) {
+	path := t.TempDir() + "/attr.db"
+	st, err := store.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { st.Close() })
+	if err := st.Migrate(); err != nil {
+		t.Fatal(err)
+	}
+	s := NewSQLStore(st.Q())
+	ctx := context.Background()
+	// initiated_by is a FK → users(id); seed a real user (matches production, where
+	// the id comes from the resolved session) so the attribution insert satisfies it.
+	mustSeedUser(t, path, "user-123")
+	job := core.DownloadJob{ID: "j-attr", DedupKey: "dk-attr", Status: core.DownloadQueued, DownloaderName: "spotdl", Source: "spotify", ExternalID: "e-attr"}
+	req := core.DownloadRequest{Source: "spotify", ExternalID: "e-attr", InitiatedBy: "user-123"}
+	if err := s.Insert(ctx, job, req); err != nil {
+		t.Fatal(err)
+	}
+	// Read the raw column via a second connection to the same DB file.
+	raw, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer raw.Close()
+	var initiatedBy sql.NullString
+	if err := raw.QueryRowContext(ctx, "SELECT initiated_by FROM download_jobs WHERE id = ?", "j-attr").Scan(&initiatedBy); err != nil {
+		t.Fatal(err)
+	}
+	if !initiatedBy.Valid || initiatedBy.String != "user-123" {
+		t.Fatalf("initiated_by = %+v, want valid 'user-123'", initiatedBy)
 	}
 }
 

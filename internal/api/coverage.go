@@ -127,11 +127,13 @@ func (s *Server) handleBatchDownload(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "too many tracks"})
 		return
 	}
+	cu, _ := currentUser(r)
 	jobs := []core.DownloadJob{}
 	for _, t := range body.Tracks {
 		job, err := dl.Enqueue(r.Context(), core.DownloadRequest{
 			Source: t.Source, ExternalID: t.ExternalID, Artist: t.Artist,
 			Title: t.Title, Album: t.Album, ISRC: t.ISRC, DurationMs: t.DurationMs,
+			InitiatedBy: cu.ID,
 		})
 		if err != nil {
 			continue // dedup-join / per-item failure shouldn't abort the batch
