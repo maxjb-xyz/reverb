@@ -298,6 +298,45 @@ func (s *Service) EnsureSeed(ctx context.Context) error {
 			}
 		}
 	}
+	// Idempotent capability remap for installs seeded before the Seerr-style
+	// rename. Rewrites old keys and brings role-requester to its new definition.
+	roles, err := s.q.ListRoles(ctx)
+	if err != nil {
+		return err
+	}
+	for _, r := range roles {
+		var caps []string
+		if err := json.Unmarshal([]byte(r.Capabilities), &caps); err != nil {
+			continue
+		}
+		changed := false
+		for i, c := range caps {
+			switch c {
+			case "can_download":
+				caps[i], changed = CapAutoApprove, true
+			case "can_request":
+				caps[i], changed = CapRequest, true
+			}
+		}
+		// role-requester gains create_playlists (its old def lacked it)
+		if r.ID == "role-requester" {
+			has := false
+			for _, c := range caps {
+				if c == CapCreatePlaylists {
+					has = true
+				}
+			}
+			if !has {
+				caps, changed = append(caps, CapCreatePlaylists), true
+			}
+		}
+		if changed {
+			b, _ := json.Marshal(caps)
+			if err := s.q.UpdateRole(ctx, db.UpdateRoleParams{Name: r.Name, Capabilities: string(b), ID: r.ID}); err != nil {
+				return err
+			}
+		}
+	}
 	return nil
 }
 
