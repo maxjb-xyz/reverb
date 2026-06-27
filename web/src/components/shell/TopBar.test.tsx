@@ -11,7 +11,7 @@ import type { DownloadJob } from '../../lib/types'
 function setMe(capabilities: string[]) {
   useAuthStore.setState({
     me: {
-      id: 'u1', username: 'u', roleId: 'r', roleName: 'R', isOwner: false, capabilities,
+      id: 'u1', username: 'u', roleId: 'r', roleName: 'R', isOwner: false, capabilities, createdAt: 1700000000,
     },
     loading: false,
   })

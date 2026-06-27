@@ -7,7 +7,7 @@ import type { ExternalResult, DownloadJob } from '../../lib/types'
 
 function setCaps(capabilities: string[]) {
   useAuthStore.setState({
-    me: { id: 'u', username: 'u', roleId: 'r', roleName: 'R', isOwner: false, capabilities },
+    me: { id: 'u', username: 'u', roleId: 'r', roleName: 'R', isOwner: false, capabilities, createdAt: 1700000000 },
     loading: false,
   })
 }

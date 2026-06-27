@@ -71,6 +71,16 @@ export default function Account() {
               <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-accent text-on-accent">
                 {me.roleName}
               </span>
+              {!!me.createdAt && (
+                <span className="text-xs text-text-secondary">
+                  Member since{' '}
+                  {new Date(me.createdAt * 1000).toLocaleDateString(undefined, {
+                    year: 'numeric',
+                    month: 'long',
+                    day: 'numeric',
+                  })}
+                </span>
+              )}
             </div>
           </div>
         </div>

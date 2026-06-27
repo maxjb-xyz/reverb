@@ -8,6 +8,7 @@ export type Me = {
   roleName: string
   isOwner: boolean
   capabilities: string[]
+  createdAt: number
 }
 
 /** GET /api/v1/me — returns null on 401 (not logged in), throws on other errors. */

@@ -12,6 +12,7 @@ const mockMe = {
   roleName: 'Admin',
   isOwner: true,
   capabilities: ['library:read', 'library:write', 'admin:users'],
+  createdAt: 1700000000,
 }
 
 vi.mock('../lib/authStore', () => ({
@@ -58,6 +59,16 @@ describe('Account page', () => {
     expect(screen.getByText('library:read')).toBeInTheDocument()
     expect(screen.getByText('library:write')).toBeInTheDocument()
     expect(screen.getByText('admin:users')).toBeInTheDocument()
+  })
+
+  it('renders "Member since" with the formatted join date', () => {
+    wrap(<Account />)
+    const expectedDate = new Date(mockMe.createdAt * 1000).toLocaleDateString(undefined, {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    })
+    expect(screen.getByText(new RegExp(`Member since ${expectedDate}`))).toBeInTheDocument()
   })
 
   // ── Security: inline validation (new ≠ confirm) ───────────────────────────

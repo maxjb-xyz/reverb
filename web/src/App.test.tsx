@@ -27,7 +27,7 @@ const AUTHED: SessionStatus = { loading: false, setupRequired: false, authentica
 // refresh() so the boot-hydrate call is a no-op (no network in routing tests).
 function seedMe(capabilities: string[]) {
   useAuthStore.setState({
-    me: { id: 'u', username: 'u', roleId: 'r', roleName: 'R', isOwner: false, capabilities },
+    me: { id: 'u', username: 'u', roleId: 'r', roleName: 'R', isOwner: false, capabilities, createdAt: 1700000000 },
     loading: false,
     refresh: async () => {},
   })

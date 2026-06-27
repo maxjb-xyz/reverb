@@ -69,6 +69,7 @@ export const ownerMe = {
     'request',
     'can_create_playlists',
   ],
+  createdAt: 1700000000,
 }
 
 // installApiMocks intercepts every /api/v1/* HTTP call. `authed` is a mutable box
