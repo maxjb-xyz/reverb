@@ -9,7 +9,9 @@ import (
 	"github.com/maxjb-xyz/reverb/internal/store/db"
 )
 
-func newTestService(t *testing.T) *Service {
+// newTestServiceNoSeed opens a migrated store WITHOUT seeding roles, exposing the
+// underlying *db.Queries so seed tests can inspect/manipulate raw rows.
+func newTestServiceNoSeed(t *testing.T) (*Service, *db.Queries) {
 	t.Helper()
 	st, err := store.Open(t.TempDir() + "/a.db")
 	if err != nil {
@@ -19,7 +21,18 @@ func newTestService(t *testing.T) *Service {
 	if err := st.Migrate(); err != nil {
 		t.Fatal(err)
 	}
-	return NewService(st.Q(), time.Now)
+	return NewService(st.Q(), time.Now), st.Q()
+}
+
+// newTestService opens a migrated store and seeds the system roles + registration
+// policy defaults, so SetupOwner/Login/ResolveSession work end to end.
+func newTestService(t *testing.T) (*Service, *db.Queries) {
+	t.Helper()
+	s, q := newTestServiceNoSeed(t)
+	if err := s.EnsureSeed(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	return s, q
 }
 
 func TestPasswordHashVerify(t *testing.T) {
@@ -33,81 +46,102 @@ func TestPasswordHashVerify(t *testing.T) {
 }
 
 func TestSetupRequiredLifecycle(t *testing.T) {
-	s := newTestService(t)
+	s, _ := newTestService(t)
 	ctx := context.Background()
 	req, _ := s.IsSetupRequired(ctx)
 	if !req {
 		t.Fatal("fresh DB should require setup")
 	}
-	if err := s.SetAdminPassword(ctx, "pw"); err != nil {
+	if _, err := s.SetupOwner(ctx, "owner", "pw12345"); err != nil {
 		t.Fatal(err)
 	}
 	req, _ = s.IsSetupRequired(ctx)
 	if req {
-		t.Fatal("setup should be complete after password set")
+		t.Fatal("setup should be complete after owner created")
 	}
 }
 
-func TestLoginAndSession(t *testing.T) {
-	s := newTestService(t)
+func TestSetupOwnerThenLogin(t *testing.T) {
+	s, _ := newTestService(t) // helper that wires a migrated store + seeded system roles
 	ctx := context.Background()
-	_ = s.SetAdminPassword(ctx, "pw")
-
-	ok, _ := s.CheckLogin(ctx, "pw")
-	if !ok {
-		t.Fatal("login should succeed")
-	}
-	if bad, _ := s.CheckLogin(ctx, "nope"); bad {
-		t.Fatal("login should fail")
-	}
-
-	tok, err := s.CreateSession(ctx)
+	uid, err := s.SetupOwner(ctx, "owner", "pw12345")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if valid, _ := s.ValidateToken(ctx, tok); !valid {
-		t.Fatal("token should validate")
+	if req, _ := s.IsSetupRequired(ctx); req {
+		t.Fatal("setup should no longer be required")
 	}
-	if err := s.Logout(ctx, tok); err != nil {
+	got, err := s.Login(ctx, "OWNER", "pw12345") // username is case-insensitive
+	if err != nil || got != uid {
+		t.Fatalf("login failed: %v %s", err, got)
+	}
+	if _, err := s.Login(ctx, "owner", "wrong"); err != ErrInvalidCreds {
+		t.Fatalf("want ErrInvalidCreds, got %v", err)
+	}
+}
+
+func TestResolveSessionCarriesCaps(t *testing.T) {
+	s, _ := newTestService(t)
+	ctx := context.Background()
+	uid, _ := s.SetupOwner(ctx, "owner", "pw12345")
+	tok, err := s.CreateSession(ctx, uid)
+	if err != nil {
 		t.Fatal(err)
 	}
-	if valid, _ := s.ValidateToken(ctx, tok); valid {
-		t.Fatal("token should be invalid after logout")
+	cu, err := s.ResolveSession(ctx, tok)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cu.ID != uid || !cu.IsOwner || !cu.Has(CapAdmin) {
+		t.Fatalf("owner session wrong: %+v", cu)
+	}
+	if _, err := s.ResolveSession(ctx, "garbage"); err == nil {
+		t.Fatal("expected error for invalid token")
 	}
 }
 
 func TestSessionExpires(t *testing.T) {
-	st, err := store.Open(t.TempDir() + "/exp.db")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { st.Close() })
-	if err := st.Migrate(); err != nil {
-		t.Fatal(err)
-	}
-
-	current := time.Unix(1_000_000, 0)
-	s := NewService(st.Q(), func() time.Time { return current })
+	s, _ := newTestServiceNoSeed(t)
 	ctx := context.Background()
+	current := time.Unix(1_000_000, 0)
+	s.now = func() time.Time { return current }
+	if err := s.EnsureSeed(ctx); err != nil {
+		t.Fatal(err)
+	}
 
-	tok, err := s.CreateSession(ctx)
+	uid, err := s.SetupOwner(ctx, "owner", "pw12345")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if ok, _ := s.ValidateToken(ctx, tok); !ok {
-		t.Fatal("token should be valid before expiry")
+	tok, err := s.CreateSession(ctx, uid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.ResolveSession(ctx, tok); err != nil {
+		t.Fatalf("token should be valid before expiry: %v", err)
 	}
 	current = current.Add(sessionTTL + time.Hour)
-	if ok, _ := s.ValidateToken(ctx, tok); ok {
+	if _, err := s.ResolveSession(ctx, tok); err == nil {
 		t.Fatal("token should be invalid after expiry")
 	}
 }
 
-func TestCheckLoginNoPasswordSet(t *testing.T) {
-	s := newTestService(t)
+func TestLogoutInvalidatesSession(t *testing.T) {
+	s, _ := newTestService(t)
 	ctx := context.Background()
-	if ok, err := s.CheckLogin(ctx, "anything"); ok || err == nil {
-		t.Fatalf("CheckLogin with no admin password: want (false, error), got (%v, %v)", ok, err)
+	uid, _ := s.SetupOwner(ctx, "owner", "pw12345")
+	tok, err := s.CreateSession(ctx, uid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.ResolveSession(ctx, tok); err != nil {
+		t.Fatalf("token should validate: %v", err)
+	}
+	if err := s.Logout(ctx, tok); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.ResolveSession(ctx, tok); err == nil {
+		t.Fatal("token should be invalid after logout")
 	}
 }
 

@@ -25,6 +25,7 @@ import (
 	"github.com/maxjb-xyz/reverb/internal/registry"
 	"github.com/maxjb-xyz/reverb/internal/search/spotify"
 	"github.com/maxjb-xyz/reverb/internal/store"
+	"github.com/maxjb-xyz/reverb/internal/store/db"
 	"github.com/maxjb-xyz/reverb/internal/wiring"
 )
 
@@ -51,15 +52,23 @@ func main() {
 	}
 
 	authSvc := auth.NewService(st.Q(), time.Now)
-	// Seed admin password from env if provided and not yet set.
+	// Bootstrap an owner from REVERB_ADMIN_PASSWORD when no users exist yet: stash
+	// the hash in the legacy admin_password_hash setting so EnsureSeed below migrates
+	// it into the "admin" owner account (single, idempotent code path).
 	if cfg.AdminPassword != "" {
 		if req, _ := authSvc.IsSetupRequired(context.Background()); req {
-			_ = authSvc.SetAdminPassword(context.Background(), cfg.AdminPassword)
+			if h, err := auth.HashPassword(cfg.AdminPassword); err == nil {
+				_ = st.Q().UpsertSetting(context.Background(), db.UpsertSettingParams{Key: "admin_password_hash", Value: h})
+			}
 		}
 	}
 	if cfg.AuthDisabled {
-		_ = authSvc.SetAuthDisabled(context.Background(), true)
-		log.Printf("WARNING: auth is DISABLED (REVERB_AUTH_DISABLED) — all routes are unauthenticated; use only on a trusted LAN")
+		log.Printf("WARNING: REVERB_AUTH_DISABLED is no longer supported — auth is always enforced; ignoring")
+	}
+	// Seed system roles + registration-policy defaults, and migrate a legacy
+	// single-admin install into an owner account. Idempotent; fail loudly on error.
+	if err := authSvc.EnsureSeed(context.Background()); err != nil {
+		log.Fatalf("seed identity defaults: %v", err)
 	}
 
 	// spotDL is bundled with the image, so present it as a configured downloader
