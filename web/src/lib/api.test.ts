@@ -3,7 +3,7 @@ import { ApiError, loginErrorMessage } from './api'
 
 describe('loginErrorMessage', () => {
   it('maps a 401 to an incorrect-password message', () => {
-    expect(loginErrorMessage(new ApiError('POST', '/auth/login', 401))).toBe('Incorrect password')
+    expect(loginErrorMessage(new ApiError('POST', '/auth/login', 401))).toBe('Incorrect username or password')
   })
   it('maps a 500 to a server-unreachable message', () => {
     expect(loginErrorMessage(new ApiError('POST', '/auth/login', 500))).toMatch(/server/i)
