@@ -194,6 +194,9 @@ func (s *Server) routes() {
 		// protected
 		r.Group(func(pr chi.Router) {
 			pr.Use(s.requireAuth)
+			pr.Get("/account", s.handleAccount)
+			pr.Post("/account/password", s.handleChangePassword)
+			pr.Post("/account/logout-all", s.handleLogoutAll)
 			pr.Get("/me", s.handleMe)
 			pr.Get("/adapters/available", s.handleAdaptersAvailable)
 			pr.Get("/adapters", s.handleListAdapters)

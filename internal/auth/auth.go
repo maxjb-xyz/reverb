@@ -44,6 +44,7 @@ type Querier interface {
 	CreateSession(ctx context.Context, arg db.CreateSessionParams) error
 	GetSession(ctx context.Context, tokenHash string) (db.Session, error)
 	DeleteSession(ctx context.Context, tokenHash string) error
+	DeleteSessionsForUserExcept(ctx context.Context, arg db.DeleteSessionsForUserExceptParams) error
 	BackfillSessionUser(ctx context.Context, userID sql.NullString) error
 	// users
 	CountUsers(ctx context.Context) (int64, error)
@@ -51,6 +52,7 @@ type Querier interface {
 	GetUserByID(ctx context.Context, id string) (db.User, error)
 	GetUserByUsername(ctx context.Context, username string) (db.User, error)
 	TouchUserLastSeen(ctx context.Context, id string) error
+	SetUserPassword(ctx context.Context, arg db.SetUserPasswordParams) error
 	// roles
 	GetRole(ctx context.Context, id string) (db.Role, error)
 	CreateRole(ctx context.Context, arg db.CreateRoleParams) error
@@ -197,6 +199,31 @@ func (s *Service) resolveCaps(ctx context.Context, roleID string) (map[string]bo
 
 func (s *Service) Logout(ctx context.Context, tok string) error {
 	return s.q.DeleteSession(ctx, hashToken(tok))
+}
+
+// ChangeOwnPassword verifies the current password then replaces it with next.
+// Returns ErrInvalidCreds when current is wrong.
+func (s *Service) ChangeOwnPassword(ctx context.Context, userID, current, next string) error {
+	u, err := s.q.GetUserByID(ctx, userID)
+	if err != nil {
+		return ErrInvalidCreds
+	}
+	if !VerifyPassword(u.PasswordHash, current) {
+		return ErrInvalidCreds
+	}
+	h, err := HashPassword(next)
+	if err != nil {
+		return err
+	}
+	return s.q.SetUserPassword(ctx, db.SetUserPasswordParams{PasswordHash: h, ID: userID})
+}
+
+// LogoutAll deletes all sessions for userID except the one identified by exceptToken.
+func (s *Service) LogoutAll(ctx context.Context, userID, exceptToken string) error {
+	return s.q.DeleteSessionsForUserExcept(ctx, db.DeleteSessionsForUserExceptParams{
+		UserID:    sql.NullString{String: userID, Valid: true},
+		TokenHash: hashToken(exceptToken),
+	})
 }
 
 // EnsureSeed is idempotent. It seeds the system roles and registration-policy
