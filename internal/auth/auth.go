@@ -27,8 +27,9 @@ var (
 	ErrUsernameTaken  = errors.New("username taken")
 	ErrOwnerProtected = errors.New("owner account is protected")
 	ErrRoleNotFound   = errors.New("role not found")
-	ErrSystemRole     = errors.New("system role is protected")
 	ErrRoleInUse      = errors.New("role is assigned to users")
+	ErrLastAdmin      = errors.New("would leave no administrator")
+	ErrRoleIsDefault  = errors.New("role is the registration default")
 	ErrSignupDisabled = errors.New("signup disabled")
 	ErrInviteInvalid  = errors.New("invite invalid")
 )
@@ -402,7 +403,8 @@ func (s *Service) CreateUser(ctx context.Context, username, password, roleID str
 }
 
 // UpdateUserRole changes a user's role. Returns ErrOwnerProtected if trying to
-// demote the owner to a non-admin role, and ErrRoleNotFound for unknown roleID or userID.
+// demote the owner to a non-admin role, ErrRoleNotFound for unknown roleID or
+// userID, and ErrLastAdmin if the change would leave no enabled administrator.
 func (s *Service) UpdateUserRole(ctx context.Context, id, roleID string) error {
 	u, err := s.q.GetUserByID(ctx, id)
 	if err != nil {
@@ -411,14 +413,33 @@ func (s *Service) UpdateUserRole(ctx context.Context, id, roleID string) error {
 	if u.IsOwner == 1 && roleID != "role-admin" {
 		return ErrOwnerProtected
 	}
-	if _, err := s.q.GetRole(ctx, roleID); err != nil {
+	r, err := s.q.GetRole(ctx, roleID)
+	if err != nil {
 		return ErrRoleNotFound
+	}
+	newHasAdmin := false
+	var caps []string
+	_ = json.Unmarshal([]byte(r.Capabilities), &caps)
+	for _, c := range caps {
+		if c == CapAdmin {
+			newHasAdmin = true
+		}
+	}
+	if !newHasAdmin {
+		admins, err := s.enabledAdminUserIDs(ctx)
+		if err != nil {
+			return err
+		}
+		if _, isAdmin := admins[id]; isAdmin && len(admins) == 1 {
+			return ErrLastAdmin
+		}
 	}
 	return s.q.UpdateUserRole(ctx, db.UpdateUserRoleParams{RoleID: roleID, ID: id})
 }
 
 // SetUserDisabled enables or disables a user account. Returns ErrOwnerProtected
-// if the target is the owner.
+// if the target is the owner, and ErrLastAdmin if disabling would leave no
+// enabled administrator.
 func (s *Service) SetUserDisabled(ctx context.Context, id string, disabled bool) error {
 	u, err := s.q.GetUserByID(ctx, id)
 	if err != nil {
@@ -426,6 +447,15 @@ func (s *Service) SetUserDisabled(ctx context.Context, id string, disabled bool)
 	}
 	if u.IsOwner == 1 {
 		return ErrOwnerProtected
+	}
+	if disabled {
+		admins, err := s.enabledAdminUserIDs(ctx)
+		if err != nil {
+			return err
+		}
+		if _, isAdmin := admins[id]; isAdmin && len(admins) == 1 {
+			return ErrLastAdmin
+		}
 	}
 	v := int64(0)
 	if disabled {
@@ -443,7 +473,8 @@ func (s *Service) AdminSetPassword(ctx context.Context, id, password string) err
 	return s.q.SetUserPassword(ctx, db.SetUserPasswordParams{PasswordHash: h, ID: id})
 }
 
-// DeleteUser removes a user. Returns ErrOwnerProtected if the target is the owner.
+// DeleteUser removes a user. Returns ErrOwnerProtected if the target is the
+// owner, and ErrLastAdmin if deletion would leave no enabled administrator.
 func (s *Service) DeleteUser(ctx context.Context, id string) error {
 	u, err := s.q.GetUserByID(ctx, id)
 	if err != nil {
@@ -451,6 +482,13 @@ func (s *Service) DeleteUser(ctx context.Context, id string) error {
 	}
 	if u.IsOwner == 1 {
 		return ErrOwnerProtected
+	}
+	admins, err := s.enabledAdminUserIDs(ctx)
+	if err != nil {
+		return err
+	}
+	if _, isAdmin := admins[id]; isAdmin && len(admins) == 1 {
+		return ErrLastAdmin
 	}
 	return s.q.DeleteUser(ctx, id)
 }
@@ -485,45 +523,112 @@ func (s *Service) ListRoles(ctx context.Context) ([]RoleView, error) {
 	return out, nil
 }
 
+// enabledAdminUserIDs returns userID->roleID for every ENABLED user whose role grants is_admin.
+func (s *Service) enabledAdminUserIDs(ctx context.Context) (map[string]string, error) {
+	roles, err := s.q.ListRoles(ctx)
+	if err != nil {
+		return nil, err
+	}
+	adminRole := map[string]bool{}
+	for _, r := range roles {
+		var caps []string
+		_ = json.Unmarshal([]byte(r.Capabilities), &caps)
+		for _, c := range caps {
+			if c == CapAdmin {
+				adminRole[r.ID] = true
+				break
+			}
+		}
+	}
+	users, err := s.q.ListUsers(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := map[string]string{}
+	for _, u := range users {
+		if u.Disabled == 0 && adminRole[u.RoleID] {
+			out[u.ID] = u.RoleID
+		}
+	}
+	return out, nil
+}
+
+// normalizeCaps appends request when auto_approve is present (auto_approve implies request).
+func normalizeCaps(caps []string) []string {
+	hasAuto, hasReq := false, false
+	for _, c := range caps {
+		if c == CapAutoApprove {
+			hasAuto = true
+		}
+		if c == CapRequest {
+			hasReq = true
+		}
+	}
+	if hasAuto && !hasReq {
+		caps = append(caps, CapRequest)
+	}
+	return caps
+}
+
 // CreateRole creates a new custom role. Returns ErrInvalidCapability for unknown caps.
 func (s *Service) CreateRole(ctx context.Context, name string, caps []string) (string, error) {
 	if err := ValidateCapabilities(caps); err != nil {
 		return "", err
 	}
+	caps = normalizeCaps(caps)
 	b, _ := json.Marshal(caps)
 	id := "role-" + uuid.NewString()
 	return id, s.q.CreateRole(ctx, db.CreateRoleParams{ID: id, Name: name, IsSystem: 0, Capabilities: string(b)})
 }
 
-// UpdateRole updates name and capabilities of a non-system role.
-// Returns ErrSystemRole if the role is a system role, ErrInvalidCapability for unknown caps.
+// UpdateRole updates name and capabilities of any role (including default roles).
+// Returns ErrInvalidCapability for unknown caps, ErrLastAdmin if the edit would
+// leave no enabled administrator.
 func (s *Service) UpdateRole(ctx context.Context, id, name string, caps []string) error {
-	r, err := s.q.GetRole(ctx, id)
-	if err != nil {
+	if _, err := s.q.GetRole(ctx, id); err != nil {
 		return ErrRoleNotFound
-	}
-	if r.IsSystem == 1 {
-		return ErrSystemRole
 	}
 	if err := ValidateCapabilities(caps); err != nil {
 		return err
+	}
+	caps = normalizeCaps(caps)
+	// anti-lockout: if this edit removes is_admin and would leave no admins, reject
+	newHasAdmin := false
+	for _, c := range caps {
+		if c == CapAdmin {
+			newHasAdmin = true
+		}
+	}
+	if !newHasAdmin {
+		admins, err := s.enabledAdminUserIDs(ctx)
+		if err != nil {
+			return err
+		}
+		remaining := 0
+		for _, roleID := range admins {
+			if roleID != id {
+				remaining++
+			}
+		}
+		if len(admins) > 0 && remaining == 0 {
+			return ErrLastAdmin
+		}
 	}
 	b, _ := json.Marshal(caps)
 	return s.q.UpdateRole(ctx, db.UpdateRoleParams{Name: name, Capabilities: string(b), ID: id})
 }
 
-// DeleteRole removes a custom role. Returns ErrSystemRole if protected, ErrRoleInUse if
-// any user is assigned to it.
+// DeleteRole removes a role. Returns ErrRoleInUse if any user is assigned to it,
+// ErrRoleIsDefault if the role is the current registration default.
 func (s *Service) DeleteRole(ctx context.Context, id string) error {
-	r, err := s.q.GetRole(ctx, id)
-	if err != nil {
+	if _, err := s.q.GetRole(ctx, id); err != nil {
 		return nil // not found; no-op
-	}
-	if r.IsSystem == 1 {
-		return ErrSystemRole
 	}
 	if n, _ := s.q.CountUsersWithRole(ctx, id); n > 0 {
 		return ErrRoleInUse
+	}
+	if pol, err := s.GetRegPolicy(ctx); err == nil && pol.DefaultRoleID == id {
+		return ErrRoleIsDefault
 	}
 	return s.q.DeleteRole(ctx, id)
 }

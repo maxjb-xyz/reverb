@@ -51,8 +51,8 @@ func (s *Server) handleUpdateRole(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := s.deps.Auth.UpdateRole(r.Context(), id, b.Name, b.Capabilities); err != nil {
 		switch {
-		case errors.Is(err, auth.ErrSystemRole):
-			writeJSON(w, http.StatusConflict, map[string]string{"error": "system role is protected"})
+		case errors.Is(err, auth.ErrLastAdmin):
+			writeJSON(w, http.StatusConflict, map[string]string{"error": "would leave no administrator"})
 		case errors.Is(err, auth.ErrInvalidCapability):
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "unknown capability"})
 		case errors.Is(err, auth.ErrRoleNotFound):
@@ -69,10 +69,12 @@ func (s *Server) handleDeleteRole(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if err := s.deps.Auth.DeleteRole(r.Context(), id); err != nil {
 		switch {
-		case errors.Is(err, auth.ErrSystemRole):
-			writeJSON(w, http.StatusConflict, map[string]string{"error": "system role is protected"})
 		case errors.Is(err, auth.ErrRoleInUse):
 			writeJSON(w, http.StatusConflict, map[string]string{"error": "role is assigned to users"})
+		case errors.Is(err, auth.ErrRoleIsDefault):
+			writeJSON(w, http.StatusConflict, map[string]string{"error": "role is the registration default"})
+		case errors.Is(err, auth.ErrLastAdmin):
+			writeJSON(w, http.StatusConflict, map[string]string{"error": "would leave no administrator"})
 		default:
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not delete role"})
 		}

@@ -57,6 +57,8 @@ func (s *Server) handleUpdateUser(w http.ResponseWriter, r *http.Request) {
 			switch {
 			case errors.Is(err, auth.ErrOwnerProtected):
 				writeJSON(w, http.StatusConflict, map[string]string{"error": "owner account is protected"})
+			case errors.Is(err, auth.ErrLastAdmin):
+				writeJSON(w, http.StatusConflict, map[string]string{"error": "would leave no administrator"})
 			case errors.Is(err, auth.ErrRoleNotFound):
 				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "role not found"})
 			default:
@@ -70,6 +72,8 @@ func (s *Server) handleUpdateUser(w http.ResponseWriter, r *http.Request) {
 			switch {
 			case errors.Is(err, auth.ErrOwnerProtected):
 				writeJSON(w, http.StatusConflict, map[string]string{"error": "owner account is protected"})
+			case errors.Is(err, auth.ErrLastAdmin):
+				writeJSON(w, http.StatusConflict, map[string]string{"error": "would leave no administrator"})
 			default:
 				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not update user"})
 			}
@@ -85,6 +89,8 @@ func (s *Server) handleDeleteUser(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case errors.Is(err, auth.ErrOwnerProtected):
 			writeJSON(w, http.StatusConflict, map[string]string{"error": "owner account is protected"})
+		case errors.Is(err, auth.ErrLastAdmin):
+			writeJSON(w, http.StatusConflict, map[string]string{"error": "would leave no administrator"})
 		default:
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not delete user"})
 		}
