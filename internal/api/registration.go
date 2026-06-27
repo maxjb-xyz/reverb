@@ -99,8 +99,10 @@ func (s *Server) handleCreateInvite(w http.ResponseWriter, r *http.Request) {
 		RoleID    *string `json:"roleId"`
 		ExpiresAt *int64  `json:"expiresAt"`
 	}
-	// ignore decode error — body is optional
-	_ = decode(r, &body)
+	if err := decode(r, &body); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "bad request"})
+		return
+	}
 
 	cu, _ := currentUser(r)
 	code, err := s.deps.Auth.CreateInvite(r.Context(), body.RoleID, body.ExpiresAt, cu.ID)

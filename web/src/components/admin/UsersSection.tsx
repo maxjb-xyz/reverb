@@ -14,9 +14,9 @@ import {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function formatDate(iso: string | null): string {
-  if (!iso) return '—'
-  return new Date(iso).toLocaleDateString(undefined, {
+function formatDate(unixSec: number | null): string {
+  if (unixSec == null) return '—'
+  return new Date(unixSec * 1000).toLocaleDateString(undefined, {
     year: 'numeric',
     month: 'short',
     day: 'numeric',

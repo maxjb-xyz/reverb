@@ -51,10 +51,10 @@ const INVITE = {
   id: 'inv-1',
   code: 'ABC123',
   roleId: 'r-2',
-  roleName: 'User',
+  roleName: 'User', // backend now resolves & returns role name for invites with a roleId
   expiresAt: null,
   usedAt: null,
-  createdAt: '2026-01-01T00:00:00Z',
+  createdAt: 1767225600, // 2026-01-01 UTC (Unix seconds — the real backend contract)
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────

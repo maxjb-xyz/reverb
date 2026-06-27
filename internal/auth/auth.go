@@ -588,6 +588,7 @@ type InviteView struct {
 	ID        string  `json:"id"`
 	Code      string  `json:"code"`
 	RoleID    *string `json:"roleId"`
+	RoleName  *string `json:"roleName"`
 	CreatedBy *string `json:"createdBy"`
 	ExpiresAt *int64  `json:"expiresAt"`
 	UsedBy    *string `json:"usedBy"`
@@ -643,8 +644,13 @@ func (s *Service) ListInvites(ctx context.Context) ([]InviteView, error) {
 			CreatedAt: r.CreatedAt,
 		}
 		if r.RoleID.Valid {
-			s := r.RoleID.String
-			v.RoleID = &s
+			roleIDStr := r.RoleID.String
+			v.RoleID = &roleIDStr
+			// Resolve role name the same way ListUsers does.
+			if role, err := s.q.GetRole(ctx, roleIDStr); err == nil {
+				n := role.Name
+				v.RoleName = &n
+			}
 		}
 		if r.CreatedBy.Valid {
 			s := r.CreatedBy.String

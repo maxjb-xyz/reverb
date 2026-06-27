@@ -36,8 +36,8 @@ const OWNER = {
   roleName: 'Owner',
   isOwner: true,
   disabled: false,
-  createdAt: '2025-01-01T00:00:00Z',
-  lastSeen: '2025-06-01T10:00:00Z',
+  createdAt: 1735689600, // 2025-01-01 UTC (Unix seconds — the real backend contract)
+  lastSeen: 1748772000,  // 2025-06-01T10:00:00Z UTC
 }
 
 const BOB = {
@@ -47,7 +47,7 @@ const BOB = {
   roleName: 'User',
   isOwner: false,
   disabled: false,
-  createdAt: '2025-02-01T00:00:00Z',
+  createdAt: 1738368000, // 2025-02-01 UTC
   lastSeen: null,
 }
 

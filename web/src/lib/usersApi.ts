@@ -8,8 +8,8 @@ export interface User {
   roleName: string
   isOwner: boolean
   disabled: boolean
-  createdAt: string
-  lastSeen: string | null
+  createdAt: number
+  lastSeen: number | null
 }
 
 export interface Role {
@@ -45,14 +45,14 @@ export interface Invite {
   code: string
   roleId: string | null
   roleName: string | null
-  expiresAt: string | null
-  usedAt: string | null
-  createdAt: string
+  expiresAt: number | null
+  usedAt: number | null
+  createdAt: number
 }
 
 export interface CreateInviteReq {
   roleId?: string
-  expiresAt?: string
+  expiresAt?: number
 }
 
 export interface CreateUserReq {

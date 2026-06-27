@@ -15,9 +15,9 @@ import {
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
-function formatDate(iso: string | null): string {
-  if (!iso) return '—'
-  return new Date(iso).toLocaleDateString(undefined, {
+function formatDate(unixSec: number | null): string {
+  if (unixSec == null) return '—'
+  return new Date(unixSec * 1000).toLocaleDateString(undefined, {
     year: 'numeric',
     month: 'short',
     day: 'numeric',
@@ -110,7 +110,7 @@ function GenerateInviteForm({ roles, defaultRoleId, onGenerated }: GenerateInvit
     setError(null)
     const body: CreateInviteReq = {}
     if (roleId) body.roleId = roleId
-    if (expiresAt) body.expiresAt = new Date(expiresAt).toISOString()
+    if (expiresAt) body.expiresAt = Math.floor(new Date(expiresAt).getTime() / 1000)
     try {
       const result = await createInvite(body)
       onGenerated(result.code)
