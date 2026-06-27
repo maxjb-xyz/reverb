@@ -8,9 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
-	"time"
 
-	"github.com/maxjb-xyz/reverb/internal/auth"
 	"github.com/maxjb-xyz/reverb/internal/core"
 	"github.com/maxjb-xyz/reverb/internal/registry"
 	"github.com/maxjb-xyz/reverb/internal/store"
@@ -20,14 +18,14 @@ var errActiveClear = errors.New("cannot clear active job")
 
 // fakeManager is an in-memory DownloadManager.
 type fakeManager struct {
-	jobs           map[string]core.DownloadJob
-	lastReq        core.DownloadRequest
-	canceled       []string
-	retried        []string
-	lastRetryURL   string // manualURL from the most recent Retry call
-	paused         bool
-	cleared        []string
-	clearedFinish  int
+	jobs          map[string]core.DownloadJob
+	lastReq       core.DownloadRequest
+	canceled      []string
+	retried       []string
+	lastRetryURL  string // manualURL from the most recent Retry call
+	paused        bool
+	cleared       []string
+	clearedFinish int
 }
 
 func newFakeManager() *fakeManager { return &fakeManager{jobs: map[string]core.DownloadJob{}} }
@@ -54,7 +52,7 @@ func (m *fakeManager) Retry(_ context.Context, id string, manualURL string) (cor
 	m.lastRetryURL = manualURL
 	return core.DownloadJob{ID: id, Status: core.DownloadQueued, Attempts: 1}, nil
 }
-func (m *fakeManager) Stop() {}
+func (m *fakeManager) Stop()          {}
 func (m *fakeManager) Pause()         { m.paused = true }
 func (m *fakeManager) Resume()        { m.paused = false }
 func (m *fakeManager) IsPaused() bool { return m.paused }
@@ -88,11 +86,7 @@ func downloadTestServer(t *testing.T, mgr DownloadManager) (*Server, *http.Cooki
 	if err := st.Migrate(); err != nil {
 		t.Fatal(err)
 	}
-	authSvc := auth.NewService(st.Q(), time.Now)
-	if err := authSvc.SetAdminPassword(context.Background(), "pw"); err != nil {
-		t.Fatal(err)
-	}
-	tok, _ := authSvc.CreateSession(context.Background())
+	authSvc, tok := seededAuthToken(t, st)
 	srv := NewServer(Deps{
 		Auth:       authSvc,
 		Downloads:  mgr,

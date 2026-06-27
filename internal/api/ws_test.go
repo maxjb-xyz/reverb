@@ -10,7 +10,6 @@ import (
 
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
-	"github.com/maxjb-xyz/reverb/internal/auth"
 	"github.com/maxjb-xyz/reverb/internal/core"
 	"github.com/maxjb-xyz/reverb/internal/download"
 	"github.com/maxjb-xyz/reverb/internal/events"
@@ -28,11 +27,7 @@ func wsTestServer(t *testing.T) (*httptest.Server, *events.Bus, string) {
 	if err := st.Migrate(); err != nil {
 		t.Fatal(err)
 	}
-	authSvc := auth.NewService(st.Q(), time.Now)
-	if err := authSvc.SetAdminPassword(context.Background(), "pw"); err != nil {
-		t.Fatal(err)
-	}
-	tok, _ := authSvc.CreateSession(context.Background())
+	authSvc, tok := seededAuthToken(t, st)
 	bus := events.New()
 	srv := NewServer(Deps{
 		Auth:       authSvc,

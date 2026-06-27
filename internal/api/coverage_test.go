@@ -10,9 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
-	"time"
 
-	"github.com/maxjb-xyz/reverb/internal/auth"
 	"github.com/maxjb-xyz/reverb/internal/core"
 	"github.com/maxjb-xyz/reverb/internal/registry"
 	"github.com/maxjb-xyz/reverb/internal/store"
@@ -73,11 +71,7 @@ func coverageTestServer(t *testing.T, cov CoverageService, mgr DownloadManager) 
 	if err := st.Migrate(); err != nil {
 		t.Fatal(err)
 	}
-	authSvc := auth.NewService(st.Q(), time.Now)
-	if err := authSvc.SetAdminPassword(context.Background(), "pw"); err != nil {
-		t.Fatal(err)
-	}
-	tok, _ := authSvc.CreateSession(context.Background())
+	authSvc, tok := seededAuthToken(t, st)
 	srv := NewServer(Deps{
 		Auth:       authSvc,
 		Coverage:   cov,

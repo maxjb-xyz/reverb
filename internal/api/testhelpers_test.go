@@ -3,6 +3,7 @@ package api
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"sync/atomic"
@@ -55,11 +56,7 @@ func adapterTestServer(t *testing.T, opts adapterServerOpts) (*Server, *http.Coo
 	if err := st.Migrate(); err != nil {
 		t.Fatal(err)
 	}
-	authSvc := auth.NewService(st.Q(), time.Now)
-	if err := authSvc.SetAdminPassword(context.Background(), "pw"); err != nil {
-		t.Fatal(err)
-	}
-	tok, _ := authSvc.CreateSession(context.Background())
+	authSvc, tok := seededAuthToken(t, st)
 
 	searchReg := registry.NewRegistry("search")
 	searchReg.Register("fake", func() registry.Plugin {
@@ -75,6 +72,102 @@ func adapterTestServer(t *testing.T, opts adapterServerOpts) (*Server, *http.Coo
 		ConfigDirty: opts.dirty,
 	})
 	return srv, &http.Cookie{Name: sessionCookie, Value: tok}
+}
+
+// seededAuthToken seeds the system roles, creates the owner account, and returns
+// the auth service plus a valid session token. It is the canonical way for api
+// tests to obtain an authenticated session now that auth is user-based.
+func seededAuthToken(t *testing.T, st *store.Store) (*auth.Service, string) {
+	t.Helper()
+	authSvc := auth.NewService(st.Q(), time.Now)
+	ctx := context.Background()
+	if err := authSvc.EnsureSeed(ctx); err != nil {
+		t.Fatal(err)
+	}
+	uid, err := authSvc.SetupOwner(ctx, "owner", "pw")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tok, err := authSvc.CreateSession(ctx, uid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return authSvc, tok
+}
+
+// newTestServer builds a minimal Server backed by a fresh migrated+seeded store.
+// Setup is NOT performed (no owner yet) so first-run flows can be exercised.
+func newTestServer(t *testing.T) *Server {
+	t.Helper()
+	st, err := store.Open(t.TempDir() + "/api.db")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { st.Close() })
+	if err := st.Migrate(); err != nil {
+		t.Fatal(err)
+	}
+	authSvc := auth.NewService(st.Q(), time.Now)
+	if err := authSvc.EnsureSeed(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	return NewServer(Deps{
+		Auth:       authSvc,
+		Search:     registry.NewRegistry("search"),
+		Downloader: registry.NewRegistry("downloader"),
+	})
+}
+
+// mustSetupOwner completes first-run setup via POST /setup/admin with {username,password}.
+func mustSetupOwner(t *testing.T, srv *Server, username, password string) {
+	t.Helper()
+	rec := httptest.NewRecorder()
+	body := fmt.Sprintf(`{"username":%q,"password":%q}`, username, password)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/setup/admin", bytes.NewBufferString(body))
+	srv.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("setup/admin = %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+// mustLogin POSTs /auth/login with {username,password} and returns the session cookie token.
+func mustLogin(t *testing.T, srv *Server, username, password string) string {
+	t.Helper()
+	rec := httptest.NewRecorder()
+	body := fmt.Sprintf(`{"username":%q,"password":%q}`, username, password)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", bytes.NewBufferString(body))
+	srv.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("auth/login = %d %s", rec.Code, rec.Body.String())
+	}
+	for _, c := range rec.Result().Cookies() {
+		if c.Name == sessionCookie {
+			return c.Value
+		}
+	}
+	t.Fatal("no session cookie set by login")
+	return ""
+}
+
+// doGET issues a GET with the given session token (empty token → no auth cookie).
+func doGET(t *testing.T, srv *Server, path, token string) *httptest.ResponseRecorder {
+	t.Helper()
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, path, nil)
+	if token != "" {
+		req.AddCookie(&http.Cookie{Name: sessionCookie, Value: token})
+	}
+	srv.Handler().ServeHTTP(rec, req)
+	return rec
+}
+
+func contains(s []string, v string) bool {
+	for _, x := range s {
+		if x == v {
+			return true
+		}
+	}
+	return false
 }
 
 // do fires an authenticated HTTP request against the server and returns the recorder.

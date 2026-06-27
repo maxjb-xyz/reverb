@@ -3,6 +3,7 @@ package api
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -23,8 +24,12 @@ func testServer(t *testing.T) *Server {
 	if err := st.Migrate(); err != nil {
 		t.Fatal(err)
 	}
+	authSvc := auth.NewService(st.Q(), time.Now)
+	if err := authSvc.EnsureSeed(context.Background()); err != nil {
+		t.Fatal(err)
+	}
 	return NewServer(Deps{
-		Auth:       auth.NewService(st.Q(), time.Now),
+		Auth:       authSvc,
 		Search:     registry.NewRegistry("search"),
 		Downloader: registry.NewRegistry("downloader"),
 	})
@@ -50,7 +55,7 @@ func TestSetupThenProtectedAccess(t *testing.T) {
 
 	// complete setup → expect a session cookie
 	rec = httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/setup/admin", bytes.NewBufferString(`{"password":"pw"}`))
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/setup/admin", bytes.NewBufferString(`{"username":"owner","password":"pw"}`))
 	h.ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("setup admin = %d %s", rec.Code, rec.Body.String())
@@ -74,23 +79,39 @@ func TestSetupThenProtectedAccess(t *testing.T) {
 		t.Fatal("session cookie should be HttpOnly")
 	}
 
-	// a second setup/admin must be rejected (can't reset password after setup)
+	// a second setup/admin must be rejected (can't reset after setup)
 	rec = httptest.NewRecorder()
-	req = httptest.NewRequest(http.MethodPost, "/api/v1/setup/admin", bytes.NewBufferString(`{"password":"pw2"}`))
+	req = httptest.NewRequest(http.MethodPost, "/api/v1/setup/admin", bytes.NewBufferString(`{"username":"owner2","password":"pw2"}`))
 	h.ServeHTTP(rec, req)
 	if rec.Code != http.StatusConflict {
 		t.Fatalf("second setup/admin = %d, want 409", rec.Code)
 	}
 }
 
-func TestAuthDisabledAllowsProtectedRoutes(t *testing.T) {
-	srv := testServer(t)
-	if err := srv.deps.Auth.SetAuthDisabled(context.Background(), true); err != nil {
-		t.Fatal(err)
+func TestLoginWithUsernameAndMe(t *testing.T) {
+	srv := newTestServer(t) // existing helper; ensure its store is seeded (EnsureSeed)
+	mustSetupOwner(t, srv, "owner", "pw12345")
+	tok := mustLogin(t, srv, "owner", "pw12345")
+	rr := doGET(t, srv, "/api/v1/me", tok)
+	if rr.Code != 200 {
+		t.Fatalf("me = %d", rr.Code)
 	}
-	rec := httptest.NewRecorder()
-	srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/me", nil))
-	if rec.Code != http.StatusOK {
-		t.Fatalf("/me with auth disabled = %d, want 200", rec.Code)
+	var me struct {
+		Username     string   `json:"username"`
+		IsOwner      bool     `json:"isOwner"`
+		Capabilities []string `json:"capabilities"`
+	}
+	json.Unmarshal(rr.Body.Bytes(), &me)
+	if me.Username != "owner" || !me.IsOwner || !contains(me.Capabilities, "is_admin") {
+		t.Fatalf("me payload wrong: %+v", me)
+	}
+}
+
+func TestProtectedRouteRejectsNoSession(t *testing.T) {
+	srv := newTestServer(t)
+	mustSetupOwner(t, srv, "owner", "pw12345")
+	rr := doGET(t, srv, "/api/v1/me", "")
+	if rr.Code != 401 {
+		t.Fatalf("want 401, got %d", rr.Code)
 	}
 }

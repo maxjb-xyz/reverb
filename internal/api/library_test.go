@@ -8,9 +8,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
-	"time"
 
-	"github.com/maxjb-xyz/reverb/internal/auth"
 	"github.com/maxjb-xyz/reverb/internal/core"
 	"github.com/maxjb-xyz/reverb/internal/registry"
 	"github.com/maxjb-xyz/reverb/internal/store"
@@ -92,14 +90,7 @@ func libTestServer(t *testing.T, lib *fakeLibrary) (*Server, *http.Cookie) {
 	if err := st.Migrate(); err != nil {
 		t.Fatal(err)
 	}
-	authSvc := auth.NewService(st.Q(), time.Now)
-	if err := authSvc.SetAdminPassword(context.Background(), "pw"); err != nil {
-		t.Fatal(err)
-	}
-	tok, err := authSvc.CreateSession(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
+	authSvc, tok := seededAuthToken(t, st)
 	srv := NewServer(Deps{
 		Auth:       authSvc,
 		Library:    lib,
@@ -224,11 +215,7 @@ func TestCreatePlaylistHandlerNoSyncService(t *testing.T) {
 	if err := st.Migrate(); err != nil {
 		t.Fatal(err)
 	}
-	authSvc := auth.NewService(st.Q(), time.Now)
-	if err := authSvc.SetAdminPassword(context.Background(), "pw"); err != nil {
-		t.Fatal(err)
-	}
-	tok, _ := authSvc.CreateSession(context.Background())
+	authSvc, tok := seededAuthToken(t, st)
 	srv := NewServer(Deps{
 		Auth:       authSvc,
 		Search:     registry.NewRegistry("search"),
@@ -246,9 +233,7 @@ func TestPlaylistMutationsReturn503WhenNoLibrary(t *testing.T) {
 	st, _ := store.Open(t.TempDir() + "/np.db")
 	t.Cleanup(func() { st.Close() })
 	_ = st.Migrate()
-	authSvc := auth.NewService(st.Q(), time.Now)
-	_ = authSvc.SetAdminPassword(context.Background(), "pw")
-	tok, _ := authSvc.CreateSession(context.Background())
+	authSvc, tok := seededAuthToken(t, st)
 	// No sync service — POST /playlists returns 503 (sync unavailable).
 	srv := NewServer(Deps{Auth: authSvc, Library: nil,
 		Search: registry.NewRegistry("search"), Downloader: registry.NewRegistry("downloader")})
@@ -264,9 +249,7 @@ func TestLibraryNilAdapterReturns503(t *testing.T) {
 	st, _ := store.Open(t.TempDir() + "/n.db")
 	t.Cleanup(func() { st.Close() })
 	_ = st.Migrate()
-	authSvc := auth.NewService(st.Q(), time.Now)
-	_ = authSvc.SetAdminPassword(context.Background(), "pw")
-	tok, _ := authSvc.CreateSession(context.Background())
+	authSvc, tok := seededAuthToken(t, st)
 	srv := NewServer(Deps{Auth: authSvc, Library: nil,
 		Search: registry.NewRegistry("search"), Downloader: registry.NewRegistry("downloader")})
 	rec := doAuthed(t, srv, http.MethodGet, "/api/v1/library/search?q=x", &http.Cookie{Name: sessionCookie, Value: tok})

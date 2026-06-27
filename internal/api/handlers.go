@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"github.com/maxjb-xyz/reverb/internal/auth"
 	"github.com/maxjb-xyz/reverb/internal/registry"
 )
 
@@ -28,7 +29,8 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
-type passwordBody struct {
+type credsBody struct {
+	Username string `json:"username"`
 	Password string `json:"password"`
 }
 
@@ -42,39 +44,39 @@ func (s *Server) handleSetupStatus(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleSetupAdmin(w http.ResponseWriter, r *http.Request) {
-	req, _ := s.deps.Auth.IsSetupRequired(r.Context())
-	if !req {
+	if req, _ := s.deps.Auth.IsSetupRequired(r.Context()); !req {
 		writeJSON(w, http.StatusConflict, map[string]string{"error": "setup already complete"})
 		return
 	}
-	var body passwordBody
-	if err := decode(r, &body); err != nil || body.Password == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "password required"})
+	var b credsBody
+	if err := decode(r, &b); err != nil || b.Username == "" || b.Password == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "username and password required"})
 		return
 	}
-	if err := s.deps.Auth.SetAdminPassword(r.Context(), body.Password); err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not set password"})
+	uid, err := s.deps.Auth.SetupOwner(r.Context(), b.Username, b.Password)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not create owner"})
 		return
 	}
-	s.issueSession(w, r)
+	s.issueSession(w, r, uid)
 }
 
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
-	var body passwordBody
-	if err := decode(r, &body); err != nil {
+	var b credsBody
+	if err := decode(r, &b); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "bad request"})
 		return
 	}
-	ok, _ := s.deps.Auth.CheckLogin(r.Context(), body.Password)
-	if !ok {
+	uid, err := s.deps.Auth.Login(r.Context(), b.Username, b.Password)
+	if err != nil {
 		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid credentials"})
 		return
 	}
-	s.issueSession(w, r)
+	s.issueSession(w, r, uid)
 }
 
-func (s *Server) issueSession(w http.ResponseWriter, r *http.Request) {
-	tok, err := s.deps.Auth.CreateSession(r.Context())
+func (s *Server) issueSession(w http.ResponseWriter, r *http.Request, userID string) {
+	tok, err := s.deps.Auth.CreateSession(r.Context(), userID)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "session error"})
 		return
@@ -90,7 +92,17 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]bool{"authenticated": true})
+	cu, _ := currentUser(r)
+	caps := make([]string, 0, len(cu.Caps))
+	for _, c := range auth.AllCapabilities() {
+		if cu.Caps[c.Key] {
+			caps = append(caps, c.Key)
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"id": cu.ID, "username": cu.Username, "roleId": cu.RoleID,
+		"roleName": cu.RoleName, "isOwner": cu.IsOwner, "capabilities": caps,
+	})
 }
 
 type adapterInfo struct {

@@ -1,14 +1,11 @@
 package api
 
 import (
-	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
-	"time"
 
-	"github.com/maxjb-xyz/reverb/internal/auth"
 	"github.com/maxjb-xyz/reverb/internal/registry"
 	"github.com/maxjb-xyz/reverb/internal/store"
 )
@@ -63,14 +60,7 @@ func TestLibraryStatus_FallbackNoLibrary(t *testing.T) {
 	if err := st.Migrate(); err != nil {
 		t.Fatal(err)
 	}
-	authSvc := auth.NewService(st.Q(), time.Now)
-	if err := authSvc.SetAdminPassword(context.Background(), "pw"); err != nil {
-		t.Fatal(err)
-	}
-	tok, err := authSvc.CreateSession(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
+	authSvc, tok := seededAuthToken(t, st)
 	srv := NewServer(Deps{
 		Auth:       authSvc,
 		Library:    nil,

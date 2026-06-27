@@ -2,14 +2,11 @@ package api
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
-	"time"
 
-	"github.com/maxjb-xyz/reverb/internal/auth"
 	"github.com/maxjb-xyz/reverb/internal/registry"
 	"github.com/maxjb-xyz/reverb/internal/store"
 )
@@ -112,9 +109,7 @@ func TestDefaultDownloaderSetting(t *testing.T) {
 	if err := st.Migrate(); err != nil {
 		t.Fatal(err)
 	}
-	authSvc := auth.NewService(st.Q(), time.Now)
-	_ = authSvc.SetAdminPassword(context.Background(), "pw")
-	tok, _ := authSvc.CreateSession(context.Background())
+	authSvc, tok := seededAuthToken(t, st)
 	reg := registry.NewRegistry("downloader")
 	reg.Register("spotdl", func() registry.Plugin { return nil })
 	reg.Register("lidarr", func() registry.Plugin { return nil })
@@ -163,9 +158,7 @@ func TestLibraryBackendModeSetting(t *testing.T) {
 	if err := st.Migrate(); err != nil {
 		t.Fatal(err)
 	}
-	authSvc := auth.NewService(st.Q(), time.Now)
-	_ = authSvc.SetAdminPassword(context.Background(), "pw")
-	tok, _ := authSvc.CreateSession(context.Background())
+	authSvc, tok := seededAuthToken(t, st)
 	srv := NewServer(Deps{Auth: authSvc, Adapters: st.Q()})
 	cookie := &http.Cookie{Name: sessionCookie, Value: tok}
 
