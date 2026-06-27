@@ -188,6 +188,7 @@ func (s *Server) routes() {
 		r.Post("/setup/admin", s.handleSetupAdmin)
 		r.Post("/auth/login", s.handleLogin)
 		r.Post("/auth/logout", s.handleLogout)
+		r.Post("/auth/signup", s.handleSignup)
 		r.Get("/openapi.yaml", s.handleOpenAPI)
 		r.Get("/version", s.handleVersion)
 
@@ -265,6 +266,12 @@ func (s *Server) routes() {
 				ar.Patch("/roles/{id}", s.handleUpdateRole)
 				ar.Delete("/roles/{id}", s.handleDeleteRole)
 				ar.Get("/capabilities", s.handleCapabilities)
+				// registration policy + invites
+				ar.Get("/settings/registration", s.handleGetRegistration)
+				ar.Patch("/settings/registration", s.handlePatchRegistration)
+				ar.Get("/invites", s.handleListInvites)
+				ar.Post("/invites", s.handleCreateInvite)
+				ar.Delete("/invites/{id}", s.handleDeleteInvite)
 			})
 		})
 	})

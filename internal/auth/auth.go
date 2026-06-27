@@ -29,6 +29,8 @@ var (
 	ErrRoleNotFound   = errors.New("role not found")
 	ErrSystemRole     = errors.New("system role is protected")
 	ErrRoleInUse      = errors.New("role is assigned to users")
+	ErrSignupDisabled = errors.New("signup disabled")
+	ErrInviteInvalid  = errors.New("invite invalid")
 )
 
 func HashPassword(pw string) (string, error) {
@@ -69,6 +71,12 @@ type Querier interface {
 	UpdateRole(ctx context.Context, arg db.UpdateRoleParams) error
 	DeleteRole(ctx context.Context, id string) error
 	CountUsersWithRole(ctx context.Context, roleID string) (int64, error)
+	// invites
+	CreateInvite(ctx context.Context, arg db.CreateInviteParams) error
+	GetInviteByCode(ctx context.Context, code string) (db.Invite, error)
+	ListInvites(ctx context.Context) ([]db.Invite, error)
+	MarkInviteUsed(ctx context.Context, arg db.MarkInviteUsedParams) error
+	DeleteInvite(ctx context.Context, id string) error
 }
 
 type Service struct {
@@ -471,4 +479,185 @@ func (s *Service) DeleteRole(ctx context.Context, id string) error {
 		return ErrRoleInUse
 	}
 	return s.q.DeleteRole(ctx, id)
+}
+
+// RegPolicy holds the current registration policy settings.
+type RegPolicy struct {
+	SignupEnabled  bool   `json:"signupEnabled"`
+	InvitesEnabled bool   `json:"invitesEnabled"`
+	DefaultRoleID  string `json:"defaultRoleId"`
+}
+
+// GetRegPolicy reads the three registration policy settings.
+func (s *Service) GetRegPolicy(ctx context.Context) (RegPolicy, error) {
+	seStr, err := s.q.GetSetting(ctx, "signup_enabled")
+	if err != nil {
+		return RegPolicy{}, err
+	}
+	invStr, err := s.q.GetSetting(ctx, "invites_enabled")
+	if err != nil {
+		return RegPolicy{}, err
+	}
+	roleID, err := s.q.GetSetting(ctx, "default_role_id")
+	if err != nil {
+		return RegPolicy{}, err
+	}
+	return RegPolicy{
+		SignupEnabled:  seStr == "true",
+		InvitesEnabled: invStr == "true",
+		DefaultRoleID:  roleID,
+	}, nil
+}
+
+// SetRegPolicy persists the three registration policy settings.
+func (s *Service) SetRegPolicy(ctx context.Context, pol RegPolicy) error {
+	se := "false"
+	if pol.SignupEnabled {
+		se = "true"
+	}
+	inv := "false"
+	if pol.InvitesEnabled {
+		inv = "true"
+	}
+	for k, v := range map[string]string{
+		"signup_enabled":  se,
+		"invites_enabled": inv,
+		"default_role_id": pol.DefaultRoleID,
+	} {
+		if err := s.q.UpsertSetting(ctx, db.UpsertSettingParams{Key: k, Value: v}); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// Signup registers a new user according to the current registration policy.
+// It returns ErrSignupDisabled or ErrInviteInvalid when policy gates are not met,
+// and ErrUsernameTaken when the username is already taken.
+func (s *Service) Signup(ctx context.Context, username, password, inviteCode string) (string, error) {
+	pol, err := s.GetRegPolicy(ctx)
+	if err != nil {
+		return "", err
+	}
+	roleID := pol.DefaultRoleID
+	var inviteID string
+	if inviteCode != "" {
+		if !pol.InvitesEnabled {
+			return "", ErrInviteInvalid
+		}
+		inv, err := s.q.GetInviteByCode(ctx, inviteCode)
+		if err != nil || inv.UsedAt.Valid || (inv.ExpiresAt.Valid && inv.ExpiresAt.Int64 < s.now().Unix()) {
+			return "", ErrInviteInvalid
+		}
+		inviteID = inv.ID
+		if inv.RoleID.Valid {
+			roleID = inv.RoleID.String
+		}
+	} else if !pol.SignupEnabled {
+		return "", ErrSignupDisabled
+	}
+	if _, err := s.q.GetUserByUsername(ctx, username); err == nil {
+		return "", ErrUsernameTaken
+	}
+	h, err := HashPassword(password)
+	if err != nil {
+		return "", err
+	}
+	id := uuid.NewString()
+	if err := s.q.CreateUser(ctx, db.CreateUserParams{ID: id, Username: username, PasswordHash: h, RoleID: roleID, IsOwner: 0}); err != nil {
+		return "", err
+	}
+	if inviteID != "" {
+		_ = s.q.MarkInviteUsed(ctx, db.MarkInviteUsedParams{UsedBy: sql.NullString{String: id, Valid: true}, ID: inviteID})
+	}
+	return id, nil
+}
+
+// InviteView is the admin-safe projection of an invite row.
+type InviteView struct {
+	ID        string  `json:"id"`
+	Code      string  `json:"code"`
+	RoleID    *string `json:"roleId"`
+	CreatedBy *string `json:"createdBy"`
+	ExpiresAt *int64  `json:"expiresAt"`
+	UsedBy    *string `json:"usedBy"`
+	UsedAt    *int64  `json:"usedAt"`
+	CreatedAt int64   `json:"createdAt"`
+}
+
+// CreateInvite generates a random invite code and inserts it into the database.
+func (s *Service) CreateInvite(ctx context.Context, roleID *string, expiresAt *int64, createdBy string) (string, error) {
+	raw := make([]byte, 12)
+	if _, err := rand.Read(raw); err != nil {
+		return "", err
+	}
+	code := base64.RawURLEncoding.EncodeToString(raw)
+	id := uuid.NewString()
+
+	var dbRoleID sql.NullString
+	if roleID != nil {
+		dbRoleID = sql.NullString{String: *roleID, Valid: true}
+	}
+	var dbExpiresAt sql.NullInt64
+	if expiresAt != nil {
+		dbExpiresAt = sql.NullInt64{Int64: *expiresAt, Valid: true}
+	}
+	var dbCreatedBy sql.NullString
+	if createdBy != "" {
+		dbCreatedBy = sql.NullString{String: createdBy, Valid: true}
+	}
+
+	if err := s.q.CreateInvite(ctx, db.CreateInviteParams{
+		ID:        id,
+		Code:      code,
+		RoleID:    dbRoleID,
+		CreatedBy: dbCreatedBy,
+		ExpiresAt: dbExpiresAt,
+	}); err != nil {
+		return "", err
+	}
+	return code, nil
+}
+
+// ListInvites returns all invite rows as views.
+func (s *Service) ListInvites(ctx context.Context) ([]InviteView, error) {
+	rows, err := s.q.ListInvites(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]InviteView, 0, len(rows))
+	for _, r := range rows {
+		v := InviteView{
+			ID:        r.ID,
+			Code:      r.Code,
+			CreatedAt: r.CreatedAt,
+		}
+		if r.RoleID.Valid {
+			s := r.RoleID.String
+			v.RoleID = &s
+		}
+		if r.CreatedBy.Valid {
+			s := r.CreatedBy.String
+			v.CreatedBy = &s
+		}
+		if r.ExpiresAt.Valid {
+			x := r.ExpiresAt.Int64
+			v.ExpiresAt = &x
+		}
+		if r.UsedBy.Valid {
+			s := r.UsedBy.String
+			v.UsedBy = &s
+		}
+		if r.UsedAt.Valid {
+			x := r.UsedAt.Int64
+			v.UsedAt = &x
+		}
+		out = append(out, v)
+	}
+	return out, nil
+}
+
+// DeleteInviteByID removes an invite by its ID.
+func (s *Service) DeleteInviteByID(ctx context.Context, id string) error {
+	return s.q.DeleteInvite(ctx, id)
 }
