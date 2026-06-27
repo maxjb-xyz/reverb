@@ -51,24 +51,69 @@ function completedJob() {
 // back out of the library mid-test. Mutated by POST /downloads and by ws.complete().
 const downloadState: { jobs: ReturnType<typeof queuedJob>[] } = { jobs: [] }
 
+// The full owner/admin `/me` payload (the shape App.tsx + the capability gates
+// expect: { id, username, roleId, roleName, isOwner, capabilities[] }). The mocked
+// authenticated session is a full-capability owner so every existing affordance
+// (download buttons, Admin nav) renders exactly as before the auth gating landed.
+export const ownerMe = {
+  id: 'user-owner',
+  username: 'owner',
+  roleId: 'role-admin',
+  roleName: 'Admin',
+  isOwner: true,
+  capabilities: [
+    'is_admin',
+    'can_manage_users',
+    'can_manage_library',
+    'can_download',
+    'can_request',
+    'can_create_playlists',
+  ],
+}
+
 // installApiMocks intercepts every /api/v1/* HTTP call. `authed` is a mutable box
-// so the session flips to authenticated after login (the app calls
-// /setup/status then /me on load, and reloads after POST /auth/login).
-export async function installApiMocks(page: Page, authed: { value: boolean }) {
+// so the session flips to authenticated after login (the app probes /setup/status
+// then /me on load; after POST /auth/login the spec re-navigates so the next probe
+// sees the authed session). `me` overrides the authenticated /me payload (defaults
+// to the full owner) — the multi-user spec passes a non-admin / no-download user.
+export async function installApiMocks(
+  page: Page,
+  authed: { value: boolean },
+  opts: { me?: typeof ownerMe; setupRequired?: boolean } = {},
+) {
   downloadState.jobs = [] // reset per test
+  const me = opts.me ?? ownerMe
+  const setupRequired = opts.setupRequired ?? false
   await page.route('**/api/v1/setup/status', (route: Route) =>
-    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ setupRequired: false }) }),
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ setupRequired }) }),
   )
 
+  // /me — the full Me shape when authed (App.tsx gates the shell on it being set
+  // and the capability gates read its `capabilities`), else a 401.
   await page.route('**/api/v1/me', (route: Route) =>
     authed.value
-      ? route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ authenticated: true }) })
+      ? route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(me) })
       : route.fulfill({ status: 401, contentType: 'application/json', body: JSON.stringify({ error: 'unauthorized' }) }),
+  )
+
+  // Login screen probes this on mount to decide whether to show the "Create an
+  // account" link. The existing specs don't exercise signup, so disable both.
+  await page.route('**/api/v1/auth/registration-status', (route: Route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ signupEnabled: false, invitesEnabled: false }),
+    }),
   )
 
   await page.route('**/api/v1/auth/login', (route: Route) => {
     authed.value = true
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true }) })
+  })
+
+  await page.route('**/api/v1/auth/logout', (route: Route) => {
+    authed.value = false
+    return route.fulfill({ status: 200, contentType: 'application/json', body: '' })
   })
 
   // Everywhere search SSE. A finite text/event-stream body delivers the data: frame

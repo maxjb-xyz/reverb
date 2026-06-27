@@ -22,15 +22,20 @@ test('completeness: artist coverage -> partial album -> download missing -> flip
   await page.goto('/')
   await expect(page.getByRole('heading', { name: 'Welcome back' })).toBeVisible()
 
-  // 2) Log in. The app reloads; /me now returns authed. After the reload the realtime
-  //    socket opens and resyncs the download list once (GET /downloads). Wait for that
-  //    initial resync to settle BEFORE we enqueue so its (empty) result can't land late
-  //    and clobber the completed job (mock-only race; mirrors core-loop).
+  // 2) Log in (username + password). On success the app re-navigates to the shell;
+  //    the realtime socket opens and resyncs the download list once (GET /downloads).
+  //    Wait for that initial resync to settle BEFORE we enqueue so its (empty) result
+  //    can't land late and clobber the completed job (mock-only race; mirrors core-loop).
   const initialResync = page
     .waitForResponse((r) => r.url().includes('/api/v1/downloads') && r.request().method() === 'GET')
     .catch(() => undefined)
-  await page.getByPlaceholder('Admin password').fill('correct horse')
+  await page.getByLabel('Username').fill('owner')
+  await page.getByLabel('Password').fill('correct horse')
   await page.getByRole('button', { name: 'Log in' }).click()
+  // useSessionStatus probes once on mount and a client-side navigate doesn't
+  // re-run it; re-load so the now-authed session resolves into the shell.
+  await page.goto('/')
+  await expect(page.getByTestId('app-shell-root')).toBeVisible()
   await initialResync
 
   // 3) Artist page. The album card renders AND the partial coverage chip ("1/2")
