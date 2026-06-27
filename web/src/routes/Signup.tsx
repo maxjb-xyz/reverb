@@ -1,7 +1,6 @@
 import { useState } from 'react'
-import { useNavigate, useSearchParams, Link } from 'react-router-dom'
+import { useSearchParams, Link } from 'react-router-dom'
 import { signup } from '../lib/session'
-import { useAuthStore } from '../lib/authStore'
 import { ApiError } from '../lib/api'
 import { Button } from '../components/ui/Button'
 import { Icon } from '../components/ui/Icon'
@@ -16,7 +15,6 @@ function signupErrorMessage(e: unknown): string {
 }
 
 export default function Signup() {
-  const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const invite = searchParams.get('invite') ?? undefined
 
@@ -31,8 +29,7 @@ export default function Signup() {
     setLoading(true)
     try {
       await signup(username, pw, invite)
-      await useAuthStore.getState().refresh()
-      navigate('/')
+      window.location.assign('/')
     } catch (e) {
       setErr(signupErrorMessage(e))
     } finally {

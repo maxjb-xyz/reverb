@@ -25,17 +25,16 @@ async function searchEverywhere(page: Page) {
   await expect(page.getByText(externalTrack.title, { exact: true })).toBeVisible()
 }
 
-// Log in through the real form, then re-load so the (now-authed) session resolves
-// into the shell. useSessionStatus probes once on mount and a client-side navigate
-// doesn't re-run it, so the explicit second goto is required (mirrors the helper in
-// mocks.ts / the other specs' login blocks).
+// Log in through the real form. On success the form does window.location.assign('/')
+// which triggers a full page reload — wait for the navigation to settle, then verify
+// the app shell is visible (the re-mounted App re-probes the session and finds it authed).
 async function loginAndLand(page: Page) {
   await page.goto('/')
   await expect(page.getByRole('heading', { name: 'Welcome back' })).toBeVisible()
   await page.getByLabel('Username').fill('user')
   await page.getByLabel('Password').fill('pw123456')
   await page.getByRole('button', { name: 'Log in' }).click()
-  await page.goto('/')
+  await page.waitForURL('/')
   await expect(page.getByTestId('app-shell-root')).toBeVisible()
 }
 

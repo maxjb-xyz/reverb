@@ -1,14 +1,12 @@
 import { useEffect, useState } from 'react'
-import { useNavigate, Link } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { loginErrorMessage, api } from '../lib/api'
 import { login } from '../lib/session'
-import { useAuthStore } from '../lib/authStore'
 import { Button } from '../components/ui/Button'
 import { Icon } from '../components/ui/Icon'
 import { Logo } from '../components/ui/Logo'
 
 export default function Login() {
-  const navigate = useNavigate()
   const [username, setUsername] = useState('')
   const [pw, setPw] = useState('')
   const [err, setErr] = useState('')
@@ -27,8 +25,7 @@ export default function Login() {
     setLoading(true)
     try {
       await login(username, pw)
-      await useAuthStore.getState().refresh()
-      navigate('/')
+      window.location.assign('/')
     } catch (err) {
       setErr(loginErrorMessage(err))
     } finally {
