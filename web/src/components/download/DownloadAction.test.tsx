@@ -2,7 +2,15 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { DownloadAction } from './DownloadAction'
 import { useDownloads } from '../../lib/downloadStore'
+import { useAuthStore } from '../../lib/authStore'
 import type { ExternalResult, DownloadJob } from '../../lib/types'
+
+function setCaps(capabilities: string[]) {
+  useAuthStore.setState({
+    me: { id: 'u', username: 'u', roleId: 'r', roleName: 'R', isOwner: false, capabilities },
+    loading: false,
+  })
+}
 
 // ── mocks ────────────────────────────────────────────────────────────────────
 
@@ -112,10 +120,39 @@ describe('DownloadAction', () => {
   beforeEach(() => {
     useDownloads.setState({ jobs: {} })
     vi.clearAllMocks()
-    // default: 1 enabled downloader
+    // default: user can download, 1 enabled downloader
+    setCaps(['can_download'])
     useAdaptersMock = vi.fn(() => ({
       data: [{ id: 'a1', type: 'downloader', name: 'spotDL', enabled: true, priority: 1, config: {} }],
     }))
+  })
+
+  // ── capability gating ────────────────────────────────────────────────────────
+  it('without can_download → does NOT render the Download button for a not-in-library result', () => {
+    setCaps([]) // user lacks can_download
+    render(<DownloadAction result={makeResult()} onPlay={onPlay} />)
+
+    expect(screen.queryByRole('button', { name: /download/i })).not.toBeInTheDocument()
+    expect(screen.queryByText(/no downloader/i)).not.toBeInTheDocument()
+  })
+
+  it('without can_download → still renders the in-library Play affordance', () => {
+    setCaps([]) // user lacks can_download
+    const result = makeResult({
+      match: { status: 'in_library', libraryTrackId: 'lib-t3', method: 'isrc', confidence: 1 },
+    })
+    render(<DownloadAction result={result} onPlay={onPlay} />)
+
+    expect(screen.getByText('In Library')).toBeInTheDocument()
+    const btn = screen.getByRole('button', { name: /play/i })
+    fireEvent.click(btn)
+    expect(onPlay).toHaveBeenCalledWith('lib-t3')
+  })
+
+  it('with can_download → renders the Download button for a not-in-library result', () => {
+    setCaps(['can_download'])
+    render(<DownloadAction result={makeResult()} onPlay={onPlay} />)
+    expect(screen.getByRole('button', { name: /download song/i })).toBeInTheDocument()
   })
 
   // ── 1. in_library ──────────────────────────────────────────────────────────

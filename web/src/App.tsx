@@ -1,8 +1,10 @@
+import { useEffect } from 'react'
 import { Navigate, Route, Routes, useParams } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { AppShell } from './components/AppShell'
 import { ApiError } from './lib/api'
 import { useSessionStatus } from './lib/session'
+import { useAuthStore, isManagerCaps } from './lib/authStore'
 import Search from './routes/Search'
 import Library from './routes/Library'
 import Settings from './routes/Settings'
@@ -31,6 +33,14 @@ function RedirectToPlaylist() {
   return <Navigate to={`/playlist/${id}`} replace />
 }
 
+/** Route guard: renders children only for a "manager" (any management capability),
+ *  otherwise redirects to Home. Defense-in-depth — the backend enforces this too. */
+function RequireManager({ children }: { children: React.ReactNode }) {
+  const isManager = useAuthStore((s) => isManagerCaps(s.me?.capabilities))
+  if (!isManager) return <Navigate to="/" replace />
+  return <>{children}</>
+}
+
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
@@ -50,6 +60,17 @@ const queryClient = new QueryClient({
 
 function Routed() {
   const s = useSessionStatus()
+  const me = useAuthStore((st) => st.me)
+  const refresh = useAuthStore((st) => st.refresh)
+
+  // Boot-hydrate the auth store once we know the session is authenticated, so
+  // `can()` is populated app-wide. useSessionStatus remains the top-level
+  // routing decision (it correctly handles the 5xx-vs-401 distinction); this
+  // only fills in the capability detail for gating.
+  useEffect(() => {
+    if (s.authenticated && !me) void refresh()
+  }, [s.authenticated, me, refresh])
+
   if (s.loading) return <div className="p-6 text-text-muted">Loading…</div>
   if (s.error)
     return (
@@ -68,6 +89,9 @@ function Routed() {
         <Route path="*" element={<Login />} />
       </Routes>
     )
+  // Authenticated, but capabilities not yet loaded — render a brief loading
+  // state rather than flashing an ungated shell (the gates depend on `me`).
+  if (!me) return <div className="p-6 text-text-muted">Loading…</div>
   return (
     <Routes>
       <Route element={<AppShell />}>
@@ -82,7 +106,14 @@ function Routed() {
         <Route path="/synced-playlist/:id" element={<RedirectToPlaylist />} />
         <Route path="/account" element={<Account />} />
         <Route path="/settings" element={<Settings />} />
-        <Route path="/admin" element={<Admin />} />
+        <Route
+          path="/admin"
+          element={
+            <RequireManager>
+              <Admin />
+            </RequireManager>
+          }
+        />
         <Route path="/downloads" element={<Downloads />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>

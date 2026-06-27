@@ -6,6 +6,7 @@ import { useDownloads } from '../../lib/downloadStore'
 import { postDownload, retryDownload, reqFromResult } from '../../lib/downloadApi'
 import { useAdapters } from '../../lib/adaptersApi'
 import { useSettings } from '../../lib/settingsApi'
+import { useAuthStore } from '../../lib/authStore'
 import type { ExternalResult } from '../../lib/types'
 
 interface Props {
@@ -42,6 +43,12 @@ export function DownloadAction({ result, onPlay }: Props) {
 
   const job = useDownloads((s) => s.byExternal(result.source, result.externalId))
   const downloaders = useDownloaders()
+
+  // Defense-in-depth: a user without `can_download` never sees the download
+  // affordance (the backend enforces this regardless). The in-library Play
+  // affordance below is unaffected. The "Request" fallback is a future
+  // sub-project — for now we simply omit the control.
+  const canDownload = useAuthStore((s) => s.can('can_download'))
 
   // A completed job that matched a library track is treated as in-library.
   const inLibraryTrackId =
@@ -154,6 +161,12 @@ export function DownloadAction({ result, onPlay }: Props) {
       </button>
     )
   }
+
+  // ── Capability gate ───────────────────────────────────────────────────────
+  // Past the in-library Play branch, everything below is a download affordance
+  // (queue/progress/retry/the Download button). Users without `can_download`
+  // get nothing here.
+  if (!canDownload) return null
 
   // ── 2a. Queued (incl. optimistic post-click) ─────────────────────────────
   // A worker hasn't picked it up yet — show "Queued" with an indeterminate ring,

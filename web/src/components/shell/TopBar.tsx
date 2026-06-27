@@ -5,6 +5,7 @@ import { SearchSuggest } from '../search/SearchSuggest'
 import { useUI } from '../../lib/uiStore'
 import { useDownloads } from '../../lib/downloadStore'
 import { useSearch } from '../../lib/searchStore'
+import { useAuthStore, isManagerCaps } from '../../lib/authStore'
 
 export function TopBar() {
   const navigate = useNavigate()
@@ -13,6 +14,11 @@ export function TopBar() {
   const query = useSearch((s) => s.query)
   const setQuery = useSearch((s) => s.setQuery)
   const setMode = useSearch((s) => s.setMode)
+
+  // Defense-in-depth: hide the Admin entry for users without a management
+  // capability (the backend enforces this regardless). Account/Settings stay
+  // available to every authenticated user.
+  const isManager = useAuthStore((s) => isManagerCaps(s.me?.capabilities))
 
   // Typeahead dropdown — typing only updates the shared query; submitting
   // (Enter) navigates to the full /search results page.
@@ -207,18 +213,20 @@ export function TopBar() {
               >
                 Settings
               </button>
-              <button
-                role="menuitem"
-                type="button"
-                onClick={() => { setMenuOpen(false); navigate('/admin') }}
-                className={[
-                  'w-full text-left px-4 py-2 text-sm text-text-primary',
-                  'hover:bg-raised-hover transition-colors',
-                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-inset',
-                ].join(' ')}
-              >
-                Admin
-              </button>
+              {isManager && (
+                <button
+                  role="menuitem"
+                  type="button"
+                  onClick={() => { setMenuOpen(false); navigate('/admin') }}
+                  className={[
+                    'w-full text-left px-4 py-2 text-sm text-text-primary',
+                    'hover:bg-raised-hover transition-colors',
+                    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-inset',
+                  ].join(' ')}
+                >
+                  Admin
+                </button>
+              )}
               <button
                 role="menuitem"
                 type="button"

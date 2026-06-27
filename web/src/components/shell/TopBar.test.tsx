@@ -5,7 +5,17 @@ import { TopBar } from './TopBar'
 import { useUI } from '../../lib/uiStore'
 import { useDownloads } from '../../lib/downloadStore'
 import { useSearch } from '../../lib/searchStore'
+import { useAuthStore } from '../../lib/authStore'
 import type { DownloadJob } from '../../lib/types'
+
+function setMe(capabilities: string[]) {
+  useAuthStore.setState({
+    me: {
+      id: 'u1', username: 'u', roleId: 'r', roleName: 'R', isOwner: false, capabilities,
+    },
+    loading: false,
+  })
+}
 
 // Mock useNavigate so we can assert navigation
 const mockNavigate = vi.fn()
@@ -41,6 +51,7 @@ describe('TopBar', () => {
     useUI.setState({ rightPanel: null })
     useDownloads.setState({ jobs: {} })
     useSearch.setState({ query: '', mode: 'library' })
+    useAuthStore.setState({ me: null, loading: false })
   })
 
   it('renders all required accessible controls', () => {
@@ -100,6 +111,42 @@ describe('TopBar', () => {
     renderBar()
     fireEvent.click(screen.getByRole('button', { name: /account|user|avatar|menu/i }))
     expect(screen.getByRole('menuitem', { name: /logout/i })).toBeInTheDocument()
+  })
+
+  it('Account and Settings menu items are available to all authenticated users', () => {
+    setMe([]) // no manager caps
+    renderBar()
+    fireEvent.click(screen.getByRole('button', { name: /account|user|avatar|menu/i }))
+    expect(screen.getByRole('menuitem', { name: /account/i })).toBeInTheDocument()
+    expect(screen.getByRole('menuitem', { name: /settings/i })).toBeInTheDocument()
+  })
+
+  it('Admin menu item is hidden when the user lacks all manager capabilities', () => {
+    setMe(['can_download', 'can_request', 'can_create_playlists'])
+    renderBar()
+    fireEvent.click(screen.getByRole('button', { name: /account|user|avatar|menu/i }))
+    expect(screen.queryByRole('menuitem', { name: /admin/i })).not.toBeInTheDocument()
+  })
+
+  it('Admin menu item is shown when the user is an admin', () => {
+    setMe(['is_admin'])
+    renderBar()
+    fireEvent.click(screen.getByRole('button', { name: /account|user|avatar|menu/i }))
+    expect(screen.getByRole('menuitem', { name: /admin/i })).toBeInTheDocument()
+  })
+
+  it('Admin menu item is shown when the user can manage the library', () => {
+    setMe(['can_manage_library'])
+    renderBar()
+    fireEvent.click(screen.getByRole('button', { name: /account|user|avatar|menu/i }))
+    expect(screen.getByRole('menuitem', { name: /admin/i })).toBeInTheDocument()
+  })
+
+  it('Admin menu item is shown when the user can manage users', () => {
+    setMe(['can_manage_users'])
+    renderBar()
+    fireEvent.click(screen.getByRole('button', { name: /account|user|avatar|menu/i }))
+    expect(screen.getByRole('menuitem', { name: /admin/i })).toBeInTheDocument()
   })
 
   it('logout POSTs to /api/v1/auth/logout', async () => {
