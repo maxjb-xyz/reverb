@@ -256,6 +256,16 @@ func (s *Server) routes() {
 				ar.Delete("/users/{id}", s.handleDeleteUser)
 				ar.Post("/users/{id}/password", s.handleAdminResetPassword)
 			})
+
+			// admin-only: role management + capability registry
+			pr.Group(func(ar chi.Router) {
+				ar.Use(s.requireAdmin)
+				ar.Get("/roles", s.handleListRoles)
+				ar.Post("/roles", s.handleCreateRole)
+				ar.Patch("/roles/{id}", s.handleUpdateRole)
+				ar.Delete("/roles/{id}", s.handleDeleteRole)
+				ar.Get("/capabilities", s.handleCapabilities)
+			})
 		})
 	})
 

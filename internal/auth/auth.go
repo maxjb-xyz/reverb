@@ -27,6 +27,8 @@ var (
 	ErrUsernameTaken  = errors.New("username taken")
 	ErrOwnerProtected = errors.New("owner account is protected")
 	ErrRoleNotFound   = errors.New("role not found")
+	ErrSystemRole     = errors.New("system role is protected")
+	ErrRoleInUse      = errors.New("role is assigned to users")
 )
 
 func HashPassword(pw string) (string, error) {
@@ -62,7 +64,11 @@ type Querier interface {
 	SetUserPassword(ctx context.Context, arg db.SetUserPasswordParams) error
 	// roles
 	GetRole(ctx context.Context, id string) (db.Role, error)
+	ListRoles(ctx context.Context) ([]db.Role, error)
 	CreateRole(ctx context.Context, arg db.CreateRoleParams) error
+	UpdateRole(ctx context.Context, arg db.UpdateRoleParams) error
+	DeleteRole(ctx context.Context, id string) error
+	CountUsersWithRole(ctx context.Context, roleID string) (int64, error)
 }
 
 type Service struct {
@@ -392,4 +398,77 @@ func (s *Service) DeleteUser(ctx context.Context, id string) error {
 		return ErrOwnerProtected
 	}
 	return s.q.DeleteUser(ctx, id)
+}
+
+// RoleView is the admin-safe projection of a role row.
+type RoleView struct {
+	ID           string   `json:"id"`
+	Name         string   `json:"name"`
+	IsSystem     bool     `json:"isSystem"`
+	Capabilities []string `json:"capabilities"`
+}
+
+// ListRoles returns all roles with decoded capability slices.
+func (s *Service) ListRoles(ctx context.Context) ([]RoleView, error) {
+	rows, err := s.q.ListRoles(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]RoleView, 0, len(rows))
+	for _, r := range rows {
+		var caps []string
+		if err := json.Unmarshal([]byte(r.Capabilities), &caps); err != nil {
+			caps = []string{}
+		}
+		out = append(out, RoleView{
+			ID:           r.ID,
+			Name:         r.Name,
+			IsSystem:     r.IsSystem == 1,
+			Capabilities: caps,
+		})
+	}
+	return out, nil
+}
+
+// CreateRole creates a new custom role. Returns ErrInvalidCapability for unknown caps.
+func (s *Service) CreateRole(ctx context.Context, name string, caps []string) (string, error) {
+	if err := ValidateCapabilities(caps); err != nil {
+		return "", err
+	}
+	b, _ := json.Marshal(caps)
+	id := "role-" + uuid.NewString()
+	return id, s.q.CreateRole(ctx, db.CreateRoleParams{ID: id, Name: name, IsSystem: 0, Capabilities: string(b)})
+}
+
+// UpdateRole updates name and capabilities of a non-system role.
+// Returns ErrSystemRole if the role is a system role, ErrInvalidCapability for unknown caps.
+func (s *Service) UpdateRole(ctx context.Context, id, name string, caps []string) error {
+	r, err := s.q.GetRole(ctx, id)
+	if err != nil {
+		return ErrRoleNotFound
+	}
+	if r.IsSystem == 1 {
+		return ErrSystemRole
+	}
+	if err := ValidateCapabilities(caps); err != nil {
+		return err
+	}
+	b, _ := json.Marshal(caps)
+	return s.q.UpdateRole(ctx, db.UpdateRoleParams{Name: name, Capabilities: string(b), ID: id})
+}
+
+// DeleteRole removes a custom role. Returns ErrSystemRole if protected, ErrRoleInUse if
+// any user is assigned to it.
+func (s *Service) DeleteRole(ctx context.Context, id string) error {
+	r, err := s.q.GetRole(ctx, id)
+	if err != nil {
+		return nil // not found; no-op
+	}
+	if r.IsSystem == 1 {
+		return ErrSystemRole
+	}
+	if n, _ := s.q.CountUsersWithRole(ctx, id); n > 0 {
+		return ErrRoleInUse
+	}
+	return s.q.DeleteRole(ctx, id)
 }
