@@ -2,7 +2,7 @@ import { useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import type { Track } from '../../lib/types'
 import { formatDuration } from '../../lib/types'
-import { coverUrl } from '../../lib/libraryApi'
+import { trackCoverUrl } from '../../lib/libraryApi'
 import { AddToPlaylistMenu } from '../AddToPlaylistMenu'
 import { Cover } from './Cover'
 import { Equalizer } from './Equalizer'
@@ -34,12 +34,9 @@ interface TrackRowProps {
 }
 
 export function TrackRow({ track, index, active = false, playing, onPlay, right, coverSrc, rightWidth = 'auto', artistNode, albumNode, artistTo, albumTo }: TrackRowProps) {
-  const src = coverSrc ?? (track.coverArtId ? coverUrl(track.coverArtId, 80) : undefined)
-  // Library per-song artwork is often missing (no embedded art); the album cover
-  // reliably resolves, so use it as a fallback. Only for library covers, not when
-  // an external image URL was supplied.
-  const fallbackSrc =
-    !coverSrc && track.coverArtId && track.albumId ? coverUrl(track.albumId, 80) : undefined
+  // coverSrc overrides (external Spotify images); otherwise use album cover directly
+  // (album art reliably resolves; per-song embedded art is usually absent).
+  const src = coverSrc ?? trackCoverUrl(track, 80)
   const [menuOpen, setMenuOpen] = useState(false)
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
@@ -75,7 +72,7 @@ export function TrackRow({ track, index, active = false, playing, onPlay, right,
 
       {/* Cover — with hover play button overlaid */}
       <div className="relative flex-none">
-        <Cover src={src} fallbackSrc={fallbackSrc} alt={track.title} size={40} rounded="md" />
+        <Cover src={src} alt={track.title} size={40} rounded="md" />
         {/* Hover play button: hidden by default, revealed on row hover */}
         <button
           type="button"

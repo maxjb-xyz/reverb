@@ -16,6 +16,10 @@ vi.mock('react-router-dom', async (importOriginal) => {
 vi.mock('../../lib/libraryApi', () => ({
   streamUrl: vi.fn((id: string) => `/stream/${id}`),
   coverUrl: vi.fn((id: string) => `/covers/${id}`),
+  trackCoverUrl: vi.fn((track: { albumId?: string; coverArtId?: string }) => {
+    const id = track.albumId || track.coverArtId || ''
+    return id ? `/covers/${id}` : ''
+  }),
   useArtist: vi.fn(() => ({ data: undefined })),
 }))
 import { useArtist } from '../../lib/libraryApi'

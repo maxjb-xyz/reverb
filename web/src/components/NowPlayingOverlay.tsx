@@ -1,6 +1,6 @@
 import { usePlayer } from '../lib/playerStore'
 import { useUI } from '../lib/uiStore'
-import { coverUrl } from '../lib/libraryApi'
+import { trackCoverUrl } from '../lib/libraryApi'
 import { formatDuration } from '../lib/types'
 import { useAlbumPalette } from '../lib/useAlbumPalette'
 import { rgbToCss } from '../lib/palette'
@@ -19,7 +19,7 @@ export function NowPlayingOverlay() {
   const prev = usePlayer((s) => s.prev)
   const currentTimeMs = usePlayer((s) => s.currentTimeMs)
   const durationMs = usePlayer((s) => s.durationMs)
-  const palette = useAlbumPalette(current?.coverArtId ? coverUrl(current.coverArtId, 80) : undefined)
+  const palette = useAlbumPalette(current ? trackCoverUrl(current, 80) : undefined)
 
   if (!open) return null
 
@@ -59,7 +59,7 @@ export function NowPlayingOverlay() {
       <div className="flex flex-1 flex-col items-center justify-center gap-6">
         <div className="w-full max-w-xs">
           <Cover
-            src={current?.coverArtId ? coverUrl(current.coverArtId, 600) : undefined}
+            src={current ? trackCoverUrl(current, 600) || undefined : undefined}
             alt={current?.title ?? 'Nothing playing'}
             size="full"
             rounded="md"

@@ -13,7 +13,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { usePlayer } from '../../lib/playerStore'
 import { useUI } from '../../lib/uiStore'
-import { coverUrl, useArtist } from '../../lib/libraryApi'
+import { coverUrl, trackCoverUrl, useArtist } from '../../lib/libraryApi'
 import { useArtistProfile } from '../../lib/coverageApi'
 import { Cover } from '../ui/Cover'
 import { IconButton } from '../ui/IconButton'
@@ -94,7 +94,7 @@ export function NowPlayingPanel() {
     .filter(({ i }) => i > index)
     .slice(0, 5) // show at most 5 upcoming tracks
 
-  const coverSrc = current?.coverArtId ? coverUrl(current.coverArtId, 300) : undefined
+  const coverSrc = current ? trackCoverUrl(current, 300) || undefined : undefined
 
   const artistRoute = current?.artistExternalId
     ? `/artist/spotify/${current.artistExternalId}`
@@ -208,7 +208,7 @@ export function NowPlayingPanel() {
                   ].join(' ')}
                 >
                   <Cover
-                    src={t.coverArtId ? coverUrl(t.coverArtId, 48) : undefined}
+                    src={trackCoverUrl(t, 48) || undefined}
                     alt={t.title}
                     size={40}
                     rounded="md"

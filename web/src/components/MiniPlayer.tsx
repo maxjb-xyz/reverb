@@ -1,6 +1,6 @@
 import { usePlayer } from '../lib/playerStore'
 import { useUI } from '../lib/uiStore'
-import { coverUrl } from '../lib/libraryApi'
+import { trackCoverUrl } from '../lib/libraryApi'
 import { useAlbumPalette } from '../lib/useAlbumPalette'
 import { rgbToCss } from '../lib/palette'
 import { Cover } from './ui/Cover'
@@ -14,7 +14,7 @@ export function MiniPlayer() {
   const playing = usePlayer((s) => s.playing)
   const toggle = usePlayer((s) => s.toggle)
   const openNowPlaying = useUI((s) => s.openNowPlaying)
-  const palette = useAlbumPalette(current?.coverArtId ? coverUrl(current.coverArtId, 80) : undefined)
+  const palette = useAlbumPalette(current ? trackCoverUrl(current, 80) : undefined)
 
   if (!current) return null
 
@@ -32,7 +32,7 @@ export function MiniPlayer() {
         className="flex min-w-0 flex-1 items-center gap-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded"
       >
         <Cover
-          src={current.coverArtId ? coverUrl(current.coverArtId, 80) : undefined}
+          src={trackCoverUrl(current, 80) || undefined}
           alt={current.title}
           size={40}
           rounded="md"

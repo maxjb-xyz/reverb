@@ -28,6 +28,14 @@ export function coverUrl(id: string, size = 300): string {
   return `/api/v1/cover/${encodeURIComponent(id)}?size=${size}`
 }
 
+// A track's display cover is its album's cover — per-song artwork is usually
+// absent (Navidrome 404s it), while the album cover reliably resolves. Prefer
+// albumId; fall back to the song's own coverArtId only when there's no album.
+export function trackCoverUrl(track: { albumId?: string; coverArtId?: string }, size = 300): string {
+  const id = track.albumId || track.coverArtId || ''
+  return id ? coverUrl(id, size) : ''
+}
+
 export function useLibrarySearch(q: string) {
   return useQuery({
     queryKey: ['library', 'search', q],

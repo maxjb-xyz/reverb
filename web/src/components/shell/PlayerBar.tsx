@@ -14,7 +14,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { usePlayer } from '../../lib/playerStore'
 import { useUI } from '../../lib/uiStore'
-import { coverUrl } from '../../lib/libraryApi'
+import { trackCoverUrl } from '../../lib/libraryApi'
 import { formatDuration } from '../../lib/types'
 import { useAlbumPalette } from '../../lib/useAlbumPalette'
 import { rgbToCss } from '../../lib/palette'
@@ -103,7 +103,7 @@ export function PlayerBar() {
   const navigate = useNavigate()
   const [addMenuOpen, setAddMenuOpen] = useState(false)
 
-  const palette = useAlbumPalette(current?.coverArtId ? coverUrl(current.coverArtId, 80) : undefined)
+  const palette = useAlbumPalette(current ? trackCoverUrl(current, 80) : undefined)
 
   // Global keyboard shortcuts. Ignore when typing in an input/textarea.
   useEffect(() => {
@@ -131,7 +131,7 @@ export function PlayerBar() {
     return () => window.removeEventListener('keydown', onKey)
   }, [toggle, next, prev, seekMs, currentTimeMs])
 
-  const coverSrc = current?.coverArtId ? coverUrl(current.coverArtId, 80) : undefined
+  const coverSrc = current ? trackCoverUrl(current, 80) || undefined : undefined
 
   return (
     <div
