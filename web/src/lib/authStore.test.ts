@@ -3,7 +3,7 @@ import { useAuthStore, fetchMe } from './authStore'
 
 const ME = {
   id: 'u1', username: 'owner', roleId: 'role-admin', roleName: 'Admin', isOwner: true,
-  capabilities: ['is_admin', 'can_download'],
+  capabilities: ['is_admin', 'auto_approve'],
 }
 
 beforeEach(() => {
@@ -14,11 +14,11 @@ beforeEach(() => {
 it('can() reflects capabilities from /me', async () => {
   vi.spyOn(global, 'fetch').mockResolvedValue(new Response(JSON.stringify({
     id: 'u1', username: 'owner', roleId: 'role-admin', roleName: 'Admin', isOwner: true,
-    capabilities: ['is_admin', 'can_download'],
+    capabilities: ['is_admin', 'auto_approve'],
   }), { status: 200 }))
   await useAuthStore.getState().refresh()
   expect(useAuthStore.getState().can('is_admin')).toBe(true)
-  expect(useAuthStore.getState().can('can_request')).toBe(false)
+  expect(useAuthStore.getState().can('request')).toBe(false)
 })
 
 describe('refresh()', () => {
@@ -58,7 +58,7 @@ describe('fetchMe', () => {
   it('returns the Me object on success', async () => {
     const payload = {
       id: 'u2', username: 'alice', roleId: 'role-user', roleName: 'User', isOwner: false,
-      capabilities: ['can_request'],
+      capabilities: ['request'],
     }
     vi.spyOn(global, 'fetch').mockResolvedValue(new Response(JSON.stringify(payload), { status: 200 }))
     const result = await fetchMe()

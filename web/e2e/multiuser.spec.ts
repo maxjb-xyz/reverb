@@ -99,7 +99,7 @@ test('admin gating: a non-admin user has no Admin entry and is redirected away f
     roleId: 'role-user',
     roleName: 'User',
     isOwner: false,
-    capabilities: ['can_request'],
+    capabilities: ['request'],
   }
   await installApiMocks(page, authed, { me: requester })
 
@@ -119,9 +119,9 @@ test('admin gating: a non-admin user has no Admin entry and is redirected away f
 
 // ── 3) Download control is capability-gated ──────────────────────────────────
 
-test('download gating: a user without can_download sees no download control on a not-in-library result', async ({ page }) => {
+test('download gating: a user without auto_approve sees no download control on a not-in-library result', async ({ page }) => {
   const authed = { value: false }
-  // A requester WITHOUT can_download (can browse + request, but not download).
+  // A requester WITHOUT auto_approve (can browse + request, but not download).
   const requester = {
     ...ownerMe,
     id: 'user-bob',
@@ -129,7 +129,7 @@ test('download gating: a user without can_download sees no download control on a
     roleId: 'role-user',
     roleName: 'User',
     isOwner: false,
-    capabilities: ['can_request'],
+    capabilities: ['request'],
   }
   await installApiMocks(page, authed, { me: requester })
 
@@ -141,9 +141,9 @@ test('download gating: a user without can_download sees no download control on a
   await expect(page.getByRole('button', { name: `Download ${externalTrack.title}`, exact: true })).toHaveCount(0)
 })
 
-test('download gating: a user WITH can_download sees the download control on the same result', async ({ page }) => {
+test('download gating: a user WITH auto_approve sees the download control on the same result', async ({ page }) => {
   const authed = { value: false }
-  // A downloader: same plain user but WITH can_download.
+  // A downloader: same plain user but WITH auto_approve.
   const downloader = {
     ...ownerMe,
     id: 'user-dave',
@@ -151,7 +151,7 @@ test('download gating: a user WITH can_download sees the download control on the
     roleId: 'role-user',
     roleName: 'User',
     isOwner: false,
-    capabilities: ['can_request', 'can_download'],
+    capabilities: ['request', 'auto_approve'],
   }
   await installApiMocks(page, authed, { me: downloader })
 

@@ -44,11 +44,11 @@ export function DownloadAction({ result, onPlay }: Props) {
   const job = useDownloads((s) => s.byExternal(result.source, result.externalId))
   const downloaders = useDownloaders()
 
-  // Defense-in-depth: a user without `can_download` never sees the download
+  // Defense-in-depth: a user without `auto_approve` never sees the download
   // affordance (the backend enforces this regardless). The in-library Play
   // affordance below is unaffected. The "Request" fallback is a future
   // sub-project — for now we simply omit the control.
-  const canDownload = useAuthStore((s) => s.can('can_download'))
+  const canDownload = useAuthStore((s) => s.can('auto_approve'))
 
   // A completed job that matched a library track is treated as in-library.
   const inLibraryTrackId =
@@ -164,7 +164,7 @@ export function DownloadAction({ result, onPlay }: Props) {
 
   // ── Capability gate ───────────────────────────────────────────────────────
   // Past the in-library Play branch, everything below is a download affordance
-  // (queue/progress/retry/the Download button). Users without `can_download`
+  // (queue/progress/retry/the Download button). Users without `auto_approve`
   // get nothing here.
   if (!canDownload) return null
 

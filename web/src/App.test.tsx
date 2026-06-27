@@ -151,7 +151,7 @@ test('/admin is rendered for a manager (is_admin)', () => {
 
 test('/admin redirects a non-manager to Home', () => {
   mockStatus(AUTHED)
-  seedMe(['can_download', 'can_request']) // no manager caps
+  seedMe(['auto_approve', 'request']) // no manager caps
   render(
     <MemoryRouter initialEntries={['/admin']}>
       <App />

@@ -65,8 +65,8 @@ export const ownerMe = {
     'is_admin',
     'can_manage_users',
     'can_manage_library',
-    'can_download',
-    'can_request',
+    'auto_approve',
+    'request',
     'can_create_playlists',
   ],
 }

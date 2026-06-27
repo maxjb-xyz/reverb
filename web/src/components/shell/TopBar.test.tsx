@@ -122,7 +122,7 @@ describe('TopBar', () => {
   })
 
   it('Admin menu item is hidden when the user lacks all manager capabilities', () => {
-    setMe(['can_download', 'can_request', 'can_create_playlists'])
+    setMe(['auto_approve', 'request', 'can_create_playlists'])
     renderBar()
     fireEvent.click(screen.getByRole('button', { name: /account|user|avatar|menu/i }))
     expect(screen.queryByRole('menuitem', { name: /admin/i })).not.toBeInTheDocument()

@@ -121,23 +121,23 @@ describe('DownloadAction', () => {
     useDownloads.setState({ jobs: {} })
     vi.clearAllMocks()
     // default: user can download, 1 enabled downloader
-    setCaps(['can_download'])
+    setCaps(['auto_approve'])
     useAdaptersMock = vi.fn(() => ({
       data: [{ id: 'a1', type: 'downloader', name: 'spotDL', enabled: true, priority: 1, config: {} }],
     }))
   })
 
   // ── capability gating ────────────────────────────────────────────────────────
-  it('without can_download → does NOT render the Download button for a not-in-library result', () => {
-    setCaps([]) // user lacks can_download
+  it('without auto_approve → does NOT render the Download button for a not-in-library result', () => {
+    setCaps([]) // user lacks auto_approve
     render(<DownloadAction result={makeResult()} onPlay={onPlay} />)
 
     expect(screen.queryByRole('button', { name: /download/i })).not.toBeInTheDocument()
     expect(screen.queryByText(/no downloader/i)).not.toBeInTheDocument()
   })
 
-  it('without can_download → still renders the in-library Play affordance', () => {
-    setCaps([]) // user lacks can_download
+  it('without auto_approve → still renders the in-library Play affordance', () => {
+    setCaps([]) // user lacks auto_approve
     const result = makeResult({
       match: { status: 'in_library', libraryTrackId: 'lib-t3', method: 'isrc', confidence: 1 },
     })
@@ -149,8 +149,8 @@ describe('DownloadAction', () => {
     expect(onPlay).toHaveBeenCalledWith('lib-t3')
   })
 
-  it('with can_download → renders the Download button for a not-in-library result', () => {
-    setCaps(['can_download'])
+  it('with auto_approve → renders the Download button for a not-in-library result', () => {
+    setCaps(['auto_approve'])
     render(<DownloadAction result={makeResult()} onPlay={onPlay} />)
     expect(screen.getByRole('button', { name: /download song/i })).toBeInTheDocument()
   })
