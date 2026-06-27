@@ -22,6 +22,26 @@ func openMigrated(t *testing.T) *Store {
 	return st
 }
 
+func TestUsersRolesRoundTrip(t *testing.T) {
+	st := openMigrated(t) // existing helper in this file
+	ctx := context.Background()
+	q := st.Q()
+	if err := q.CreateRole(ctx, db.CreateRoleParams{ID: "role-user", Name: "User", IsSystem: 1, Capabilities: `["can_request"]`}); err != nil {
+		t.Fatal(err)
+	}
+	if err := q.CreateUser(ctx, db.CreateUserParams{ID: "u1", Username: "alice", PasswordHash: "h", RoleID: "role-user", IsOwner: 0}); err != nil {
+		t.Fatal(err)
+	}
+	u, err := q.GetUserByUsername(ctx, "ALICE") // NOCASE
+	if err != nil || u.ID != "u1" {
+		t.Fatalf("case-insensitive lookup failed: %v %+v", err, u)
+	}
+	n, _ := q.CountUsers(ctx)
+	if n != 1 {
+		t.Fatalf("want 1 user, got %d", n)
+	}
+}
+
 func TestLibraryVersionDefaultsToOne(t *testing.T) {
 	st := openMigrated(t)
 	v, err := st.LibraryVersion(context.Background())

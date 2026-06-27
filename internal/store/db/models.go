@@ -69,6 +69,18 @@ type DownloadJob struct {
 	FinishedAt     sql.NullInt64  `json:"finished_at"`
 	CoverArtID     sql.NullString `json:"cover_art_id"`
 	DownloaderRef  string         `json:"downloader_ref"`
+	InitiatedBy    sql.NullString `json:"initiated_by"`
+}
+
+type Invite struct {
+	ID        string         `json:"id"`
+	Code      string         `json:"code"`
+	RoleID    sql.NullString `json:"role_id"`
+	CreatedBy sql.NullString `json:"created_by"`
+	ExpiresAt sql.NullInt64  `json:"expires_at"`
+	UsedBy    sql.NullString `json:"used_by"`
+	UsedAt    sql.NullInt64  `json:"used_at"`
+	CreatedAt int64          `json:"created_at"`
 }
 
 type MatchCache struct {
@@ -87,12 +99,22 @@ type MatchCache struct {
 	CoverArtID     string         `json:"cover_art_id"`
 }
 
+type Role struct {
+	ID           string `json:"id"`
+	Name         string `json:"name"`
+	IsSystem     int64  `json:"is_system"`
+	Capabilities string `json:"capabilities"`
+	CreatedAt    int64  `json:"created_at"`
+	UpdatedAt    int64  `json:"updated_at"`
+}
+
 type Session struct {
-	ID        string `json:"id"`
-	TokenHash string `json:"token_hash"`
-	CreatedAt int64  `json:"created_at"`
-	ExpiresAt int64  `json:"expires_at"`
-	LastSeen  int64  `json:"last_seen"`
+	ID        string         `json:"id"`
+	TokenHash string         `json:"token_hash"`
+	CreatedAt int64          `json:"created_at"`
+	ExpiresAt int64          `json:"expires_at"`
+	LastSeen  int64          `json:"last_seen"`
+	UserID    sql.NullString `json:"user_id"`
 }
 
 type Setting struct {
@@ -101,16 +123,29 @@ type Setting struct {
 }
 
 type SyncedPlaylist struct {
-	ID              string `json:"id"`
-	Source          string `json:"source"`
-	ExternalID      string `json:"external_id"`
-	Name            string `json:"name"`
-	CoverUrl        string `json:"cover_url"`
-	TracksJson      string `json:"tracks_json"`
-	SyncEnabled     int64  `json:"sync_enabled"`
-	SyncIntervalSec int64  `json:"sync_interval_sec"`
-	AutoDownload    int64  `json:"auto_download"`
-	LastSyncedAt    int64  `json:"last_synced_at"`
-	CreatedAt       int64  `json:"created_at"`
-	Mode            string `json:"mode"`
+	ID              string         `json:"id"`
+	Source          string         `json:"source"`
+	ExternalID      string         `json:"external_id"`
+	Name            string         `json:"name"`
+	CoverUrl        string         `json:"cover_url"`
+	TracksJson      string         `json:"tracks_json"`
+	SyncEnabled     int64          `json:"sync_enabled"`
+	SyncIntervalSec int64          `json:"sync_interval_sec"`
+	AutoDownload    int64          `json:"auto_download"`
+	LastSyncedAt    int64          `json:"last_synced_at"`
+	CreatedAt       int64          `json:"created_at"`
+	Mode            string         `json:"mode"`
+	OwnerUserID     sql.NullString `json:"owner_user_id"`
+}
+
+type User struct {
+	ID           string        `json:"id"`
+	Username     string        `json:"username"`
+	PasswordHash string        `json:"password_hash"`
+	RoleID       string        `json:"role_id"`
+	IsOwner      int64         `json:"is_owner"`
+	Disabled     int64         `json:"disabled"`
+	CreatedAt    int64         `json:"created_at"`
+	UpdatedAt    int64         `json:"updated_at"`
+	LastSeen     sql.NullInt64 `json:"last_seen"`
 }

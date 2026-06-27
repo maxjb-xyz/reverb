@@ -7,20 +7,36 @@ package db
 
 import (
 	"context"
+	"database/sql"
 )
 
+const backfillSessionUser = `-- name: BackfillSessionUser :exec
+UPDATE sessions SET user_id = ? WHERE user_id IS NULL
+`
+
+func (q *Queries) BackfillSessionUser(ctx context.Context, userID sql.NullString) error {
+	_, err := q.db.ExecContext(ctx, backfillSessionUser, userID)
+	return err
+}
+
 const createSession = `-- name: CreateSession :exec
-INSERT INTO sessions (id, token_hash, expires_at) VALUES (?, ?, ?)
+INSERT INTO sessions (id, token_hash, user_id, expires_at) VALUES (?, ?, ?, ?)
 `
 
 type CreateSessionParams struct {
-	ID        string `json:"id"`
-	TokenHash string `json:"token_hash"`
-	ExpiresAt int64  `json:"expires_at"`
+	ID        string         `json:"id"`
+	TokenHash string         `json:"token_hash"`
+	UserID    sql.NullString `json:"user_id"`
+	ExpiresAt int64          `json:"expires_at"`
 }
 
 func (q *Queries) CreateSession(ctx context.Context, arg CreateSessionParams) error {
-	_, err := q.db.ExecContext(ctx, createSession, arg.ID, arg.TokenHash, arg.ExpiresAt)
+	_, err := q.db.ExecContext(ctx, createSession,
+		arg.ID,
+		arg.TokenHash,
+		arg.UserID,
+		arg.ExpiresAt,
+	)
 	return err
 }
 
@@ -42,8 +58,22 @@ func (q *Queries) DeleteSession(ctx context.Context, tokenHash string) error {
 	return err
 }
 
+const deleteSessionsForUserExcept = `-- name: DeleteSessionsForUserExcept :exec
+DELETE FROM sessions WHERE user_id = ? AND token_hash <> ?
+`
+
+type DeleteSessionsForUserExceptParams struct {
+	UserID    sql.NullString `json:"user_id"`
+	TokenHash string         `json:"token_hash"`
+}
+
+func (q *Queries) DeleteSessionsForUserExcept(ctx context.Context, arg DeleteSessionsForUserExceptParams) error {
+	_, err := q.db.ExecContext(ctx, deleteSessionsForUserExcept, arg.UserID, arg.TokenHash)
+	return err
+}
+
 const getSession = `-- name: GetSession :one
-SELECT id, token_hash, created_at, expires_at, last_seen FROM sessions WHERE token_hash = ?
+SELECT id, token_hash, created_at, expires_at, last_seen, user_id FROM sessions WHERE token_hash = ?
 `
 
 func (q *Queries) GetSession(ctx context.Context, tokenHash string) (Session, error) {
@@ -55,6 +85,7 @@ func (q *Queries) GetSession(ctx context.Context, tokenHash string) (Session, er
 		&i.CreatedAt,
 		&i.ExpiresAt,
 		&i.LastSeen,
+		&i.UserID,
 	)
 	return i, err
 }
