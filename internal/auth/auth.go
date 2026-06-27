@@ -568,7 +568,9 @@ func (s *Service) Signup(ctx context.Context, username, password, inviteCode str
 		return "", err
 	}
 	if inviteID != "" {
-		_ = s.q.MarkInviteUsed(ctx, db.MarkInviteUsedParams{UsedBy: sql.NullString{String: id, Valid: true}, ID: inviteID})
+		if err := s.q.MarkInviteUsed(ctx, db.MarkInviteUsedParams{UsedBy: sql.NullString{String: id, Valid: true}, ID: inviteID}); err != nil {
+			return "", err
+		}
 	}
 	return id, nil
 }
