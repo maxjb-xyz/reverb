@@ -11,6 +11,7 @@ vi.mock('../lib/authStore', () => ({
 }))
 vi.mock('../lib/api', () => ({
   loginErrorMessage: vi.fn(() => 'Incorrect username or password'),
+  api: { get: vi.fn(() => Promise.resolve({ signupEnabled: false, invitesEnabled: false })) },
 }))
 // react-router-dom navigate mock
 const mockNavigate = vi.fn()

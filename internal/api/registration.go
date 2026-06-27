@@ -8,6 +8,21 @@ import (
 	"github.com/maxjb-xyz/reverb/internal/auth"
 )
 
+// handleRegistrationStatus is a public endpoint — GET /auth/registration-status.
+// It returns {signupEnabled, invitesEnabled} so the frontend can decide whether
+// to show the "Create account" link / signup page without requiring a session.
+func (s *Server) handleRegistrationStatus(w http.ResponseWriter, r *http.Request) {
+	pol, err := s.deps.Auth.GetRegPolicy(r.Context())
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not load policy"})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{
+		"signupEnabled":  pol.SignupEnabled,
+		"invitesEnabled": pol.InvitesEnabled,
+	})
+}
+
 // handleSignup is a public endpoint — POST /auth/signup.
 // It respects the registration policy: open signup or invite-based only.
 func (s *Server) handleSignup(w http.ResponseWriter, r *http.Request) {

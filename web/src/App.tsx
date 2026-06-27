@@ -14,6 +14,7 @@ import Home from './routes/Home'
 import Admin from './routes/Admin'
 import Downloads from './routes/Downloads'
 import SyncedPlaylist from './routes/SyncedPlaylist'
+import Signup from './routes/Signup'
 
 /** Redirect bare `/album/:id` or `/artist/:id` URLs to the source-qualified form
  *  `/album/library/:id` / `/artist/library/:id`. These old URLs may exist in
@@ -59,7 +60,13 @@ function Routed() {
       </div>
     )
   if (s.setupRequired) return <Setup />
-  if (!s.authenticated) return <Login />
+  if (!s.authenticated)
+    return (
+      <Routes>
+        <Route path="/signup" element={<Signup />} />
+        <Route path="*" element={<Login />} />
+      </Routes>
+    )
   return (
     <Routes>
       <Route element={<AppShell />}>

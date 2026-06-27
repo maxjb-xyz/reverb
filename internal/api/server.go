@@ -205,6 +205,7 @@ func (s *Server) routes() {
 		r.Post("/auth/login", s.handleLogin)
 		r.Post("/auth/logout", s.handleLogout)
 		r.Post("/auth/signup", s.handleSignup)
+		r.Get("/auth/registration-status", s.handleRegistrationStatus)
 		r.Get("/openapi.yaml", s.handleOpenAPI)
 		r.Get("/version", s.handleVersion)
 

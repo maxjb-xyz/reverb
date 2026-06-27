@@ -88,3 +88,34 @@ func TestDeleteInvite(t *testing.T) {
 		t.Fatalf("delete invite = %d %s", rec.Code, rec.Body)
 	}
 }
+
+// TestRegistrationStatus verifies that GET /auth/registration-status is
+// reachable WITHOUT a session and returns the expected JSON shape.
+func TestRegistrationStatus(t *testing.T) {
+	srv := newTestServer(t)
+	mustSetupOwner(t, srv, "owner", "pw12345")
+
+	// Must be accessible without any auth cookie.
+	rr := doGET(t, srv, "/api/v1/auth/registration-status", "")
+	if rr.Code != 200 {
+		t.Fatalf("registration-status without auth = %d %s", rr.Code, rr.Body)
+	}
+	var got map[string]any
+	if err := json.Unmarshal(rr.Body.Bytes(), &got); err != nil {
+		t.Fatalf("non-JSON body: %v / %s", err, rr.Body)
+	}
+	// Both fields must be present in the response (default: false).
+	if _, ok := got["signupEnabled"]; !ok {
+		t.Fatal("signupEnabled missing from registration-status response")
+	}
+	if _, ok := got["invitesEnabled"]; !ok {
+		t.Fatal("invitesEnabled missing from registration-status response")
+	}
+	// Defaults must be false.
+	if got["signupEnabled"] != false {
+		t.Fatalf("expected signupEnabled=false, got %v", got["signupEnabled"])
+	}
+	if got["invitesEnabled"] != false {
+		t.Fatalf("expected invitesEnabled=false, got %v", got["invitesEnabled"])
+	}
+}
