@@ -55,9 +55,39 @@ func TestEnsureSeedRemapsLegacyCapabilities(t *testing.T) {
 	if !contains(caps("role-requester"), "can_create_playlists") {
 		t.Errorf("requester did not gain create_playlists: %v", caps("role-requester"))
 	}
-	// idempotent: a second run is a no-op, not an error
+	// idempotent: a second run must be a no-op — capabilities must not drift or
+	// accumulate duplicates.  Capture role-requester's caps after the FIRST seed
+	// run, re-seed, then assert exact equality.
+	capsBefore := caps("role-requester")
 	if err := s.EnsureSeed(ctx); err != nil {
 		t.Fatalf("second EnsureSeed failed: %v", err)
+	}
+	capsAfter := caps("role-requester")
+	if len(capsBefore) != len(capsAfter) {
+		t.Errorf("role-requester caps changed after second seed: before=%v after=%v", capsBefore, capsAfter)
+	} else {
+		set := make(map[string]int, len(capsBefore))
+		for _, c := range capsBefore {
+			set[c]++
+		}
+		for _, c := range capsAfter {
+			set[c]--
+		}
+		for k, v := range set {
+			if v != 0 {
+				t.Errorf("role-requester cap drift after second seed: %q count diff=%d (before=%v after=%v)", k, v, capsBefore, capsAfter)
+			}
+		}
+	}
+	// Specifically: no duplicate can_create_playlists
+	count := 0
+	for _, c := range capsAfter {
+		if c == "can_create_playlists" {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Errorf("role-requester has %d can_create_playlists entries after second seed (want 1): %v", count, capsAfter)
 	}
 }
 
