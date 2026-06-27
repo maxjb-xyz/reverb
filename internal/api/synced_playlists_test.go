@@ -146,11 +146,12 @@ func syncTestServerWithDataDir(t *testing.T, svc SyncService, dataDir string) (*
 	}
 	authSvc, tok := seededAuthToken(t, st)
 	srv := NewServer(Deps{
-		Auth:       authSvc,
-		Sync:       svc,
-		Search:     registry.NewRegistry("search"),
-		Downloader: registry.NewRegistry("downloader"),
-		DataDir:    dataDir,
+		Auth:          authSvc,
+		Sync:          svc,
+		PlaylistOwner: st.Q(),
+		Search:        registry.NewRegistry("search"),
+		Downloader:    registry.NewRegistry("downloader"),
+		DataDir:       dataDir,
 	})
 	return srv, &http.Cookie{Name: sessionCookie, Value: tok}
 }
@@ -228,23 +229,49 @@ func TestSyncedImportFetchErrorReturns422(t *testing.T) {
 }
 
 func TestSyncedListReturns(t *testing.T) {
-	svc := &fakeSync{list: []core.SyncedPlaylist{
-		{ID: "p1", Name: "A"}, {ID: "p2", Name: "B"},
-	}}
-	srv, cookie := syncTestServer(t, svc)
-	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/playlists", nil)
-	req.AddCookie(cookie)
-	srv.Handler().ServeHTTP(rec, req)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status = %d", rec.Code)
+	// Use a real sync server so that created playlists are persisted to the DB
+	// and owner-scoped listing works correctly.
+	srv := realSyncServer(t)
+	mustSetupOwner(t, srv, "owner", "pw12345")
+	otok := mustLogin(t, srv, "owner", "pw12345")
+
+	// Fresh DB: list must be empty.
+	rr := doGET(t, srv, "/api/v1/playlists", otok)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("initial list status = %d: %s", rr.Code, rr.Body.String())
 	}
 	var list []core.SyncedPlaylist
-	if err := json.Unmarshal(rec.Body.Bytes(), &list); err != nil {
+	if err := json.Unmarshal(rr.Body.Bytes(), &list); err != nil {
 		t.Fatal(err)
 	}
-	if len(list) != 2 || list[1].ID != "p2" {
-		t.Fatalf("list = %+v", list)
+	if len(list) != 0 {
+		t.Fatalf("expected 0 playlists initially, got %d", len(list))
+	}
+
+	// Create two playlists and confirm they appear in the list.
+	rec1 := doPOST(t, srv, "/api/v1/playlists", otok, `{"name":"A"}`)
+	if rec1.Code != http.StatusCreated {
+		t.Fatalf("create A = %d: %s", rec1.Code, rec1.Body.String())
+	}
+	rec2 := doPOST(t, srv, "/api/v1/playlists", otok, `{"name":"B"}`)
+	if rec2.Code != http.StatusCreated {
+		t.Fatalf("create B = %d: %s", rec2.Code, rec2.Body.String())
+	}
+
+	rr2 := doGET(t, srv, "/api/v1/playlists", otok)
+	if rr2.Code != http.StatusOK {
+		t.Fatalf("list after creates status = %d: %s", rr2.Code, rr2.Body.String())
+	}
+	var list2 []core.SyncedPlaylist
+	if err := json.Unmarshal(rr2.Body.Bytes(), &list2); err != nil {
+		t.Fatal(err)
+	}
+	if len(list2) != 2 {
+		t.Fatalf("expected 2 playlists, got %d: %+v", len(list2), list2)
+	}
+	names := []string{list2[0].Name, list2[1].Name}
+	if !contains(names, "A") || !contains(names, "B") {
+		t.Fatalf("list names = %v, want [A B]", names)
 	}
 }
 

@@ -57,13 +57,14 @@ func (s *Server) sync() SyncService {
 
 // playlistAccessAllowed reports whether the current user may read or mutate the
 // playlist identified by id. Admins bypass ownership (may act on any playlist).
-// When no PlaylistOwner store is configured, scoping is disabled and access is
-// allowed (handler tests authenticate as the admin owner). A non-admin, non-owner
-// caller is denied so the handler can 404 without leaking the playlist's existence.
+// When no PlaylistOwner store is configured, access is denied (fail-closed) to
+// prevent a wiring slip from silently disabling playlist isolation. A non-admin,
+// non-owner caller is denied so the handler can 404 without leaking the playlist's
+// existence.
 func (s *Server) playlistAccessAllowed(r *http.Request, id string) bool {
 	store := s.deps.PlaylistOwner
 	if store == nil {
-		return true
+		return false
 	}
 	cu, ok := currentUser(r)
 	if !ok {
@@ -175,7 +176,7 @@ func (s *Server) handleListSyncedPlaylists(w http.ResponseWriter, r *http.Reques
 	}
 	// Owner-scoped listing: GET /playlists returns ONLY the caller's own
 	// playlists — including for admins (admin bypass applies to detail/mutations,
-	// not to the list view). The nil-store fallback returns the full list.
+	// not to the list view).
 	cu, _ := currentUser(r)
 	if s.deps.PlaylistOwner != nil {
 		rows, err := s.deps.PlaylistOwner.ListSyncedPlaylistsCountForOwner(
@@ -197,15 +198,10 @@ func (s *Server) handleListSyncedPlaylists(w http.ResponseWriter, r *http.Reques
 		writeJSON(w, http.StatusOK, list)
 		return
 	}
-	list, err := svc.List(r.Context())
-	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not list synced playlists"})
-		return
-	}
-	if list == nil {
-		list = []core.SyncedPlaylist{}
-	}
-	writeJSON(w, http.StatusOK, list)
+	// PlaylistOwner is always expected to be wired in production. When it is nil
+	// (wiring slip or test misconfiguration), return an empty list rather than
+	// bypassing ownership scoping and exposing all playlists.
+	writeJSON(w, http.StatusOK, []core.SyncedPlaylist{})
 }
 
 func (s *Server) handleSyncedPlaylistDetail(w http.ResponseWriter, r *http.Request) {
