@@ -11,7 +11,7 @@ import { useRealtime } from '../lib/realtimeWiring'
 import { usePlayer } from '../lib/playerStore'
 import { useUI } from '../lib/uiStore'
 import { useAlbumPalette } from '../lib/useAlbumPalette'
-import { coverUrl } from '../lib/libraryApi'
+import { trackCoverUrl } from '../lib/libraryApi'
 import { rgbToCss } from '../lib/palette'
 
 export function AppShell() {
@@ -21,7 +21,7 @@ export function AppShell() {
 
   const current = usePlayer((s) => s.current)
   const rightPanel = useUI((s) => s.rightPanel)
-  const palette = useAlbumPalette(current?.coverArtId ? coverUrl(current.coverArtId, 80) : undefined)
+  const palette = useAlbumPalette(current ? trackCoverUrl(current, 80) : undefined)
 
   // Ambient dynamic background: a subtle gradient from the dominant color into
   // the token base. When no palette, leave the static dark base. NOT blur-over-art.

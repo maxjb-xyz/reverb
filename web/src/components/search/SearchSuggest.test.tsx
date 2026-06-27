@@ -24,7 +24,7 @@ vi.mock('../../lib/playerStore', () => ({
 }))
 
 const data = {
-  tracks: [{ id: 't1', title: 'Found Song', artist: 'A', coverArtId: '' }],
+  tracks: [{ id: 't1', title: 'Found Song', artist: 'A', albumId: 'al1', coverArtId: 'song-cover' }],
   albums: [{ id: 'al1', name: 'Found Album', artist: 'A', coverArtId: '' }],
   artists: [{ id: 'ar1', name: 'Found Artist', coverArtId: '' }],
 }
@@ -87,6 +87,17 @@ describe('SearchSuggest', () => {
     render(wrap(<SearchSuggest query="found" onNavigateAll={vi.fn()} onClose={onClose} />))
     fireEvent.keyDown(document, { key: 'Escape' })
     expect(onClose).toHaveBeenCalled()
+  })
+
+  it('song row cover uses albumId (album-primary), not the per-song coverArtId', async () => {
+    render(wrap(<SearchSuggest query="found" onNavigateAll={vi.fn()} onClose={vi.fn()} />))
+    await waitFor(() => expect(screen.getByText('Found Song')).toBeInTheDocument())
+    const imgs = screen.getAllByRole('img')
+    const songImg = imgs.find((img) => img.getAttribute('src')?.includes('al1'))
+    expect(songImg).toBeDefined()
+    // The per-song coverArtId ('song-cover') must NOT be used
+    const wrongImg = imgs.find((img) => img.getAttribute('src')?.includes('song-cover'))
+    expect(wrongImg).toBeUndefined()
   })
 
   it('shows the empty-library hint when there are no matches', async () => {

@@ -98,7 +98,7 @@ export function SearchSuggest({ query, onNavigateAll, onClose, onEmptyChange }: 
               {tracks.map((t) => (
                 <SuggestRow
                   key={t.id}
-                  coverId={t.coverArtId}
+                  coverId={t.albumId || t.coverArtId}
                   rounded="md"
                   title={t.title}
                   subtitle={t.artist}
