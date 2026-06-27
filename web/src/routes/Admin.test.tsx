@@ -36,16 +36,28 @@ vi.mock('../lib/libraryApi', () => ({
   useLibraryStatus: () => mockUseLibraryStatus(),
 }))
 
-// ── Mock usersApi (used by UsersSection rendered on the Users tab) ────────────
+// ── Mock usersApi (used by UsersSection / RolesSection / RegistrationSection) ─
 const mockUseUsers = vi.fn()
 const mockUseRoles = vi.fn()
+const mockUseCapabilities = vi.fn()
+const mockUseRegistration = vi.fn()
+const mockUseInvites = vi.fn()
 vi.mock('../lib/usersApi', () => ({
   useUsers: () => mockUseUsers(),
   useRoles: () => mockUseRoles(),
+  useCapabilities: () => mockUseCapabilities(),
+  useRegistration: () => mockUseRegistration(),
+  useInvites: () => mockUseInvites(),
   createUser: vi.fn(),
   updateUser: vi.fn(),
   deleteUser: vi.fn(),
   resetPassword: vi.fn(),
+  createRole: vi.fn(),
+  updateRole: vi.fn(),
+  deleteRole: vi.fn(),
+  setRegistration: vi.fn(),
+  createInvite: vi.fn(),
+  deleteInvite: vi.fn(),
 }))
 
 const settingsData = (libraryBackendMode: string) => ({
@@ -91,6 +103,12 @@ function setupDefaultMocks() {
   mockUseLibraryStatus.mockReturnValue({ data: { mode: 'built-in', state: 'ready' } })
   mockUseUsers.mockReturnValue({ data: [], isLoading: false })
   mockUseRoles.mockReturnValue({ data: [], isLoading: false })
+  mockUseCapabilities.mockReturnValue({ data: [], isLoading: false })
+  mockUseRegistration.mockReturnValue({
+    data: { signupEnabled: false, invitesEnabled: false, defaultRoleId: '' },
+    isLoading: false,
+  })
+  mockUseInvites.mockReturnValue({ data: [], isLoading: false })
 }
 
 function wrap(ui: ReactElement) {

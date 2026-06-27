@@ -10,6 +10,8 @@ import {
 } from '../lib/adaptersApi'
 import { AdapterSection } from '../components/admin/AdapterSection'
 import { UsersSection } from '../components/admin/UsersSection'
+import { RolesSection } from '../components/admin/RolesSection'
+import { RegistrationSection } from '../components/admin/RegistrationSection'
 import { AdapterForm } from '../components/AdapterForm'
 import { Chip, Skeleton, Select, Button } from '../components/ui'
 import { useSettings, useUpdateSettings } from '../lib/settingsApi'
@@ -293,7 +295,13 @@ export default function Admin() {
       )}
 
       {/* ── Users tab ── */}
-      {tab === 'users' && <UsersSection />}
+      {tab === 'users' && (
+        <div className="space-y-10">
+          <UsersSection />
+          <RolesSection />
+          <RegistrationSection />
+        </div>
+      )}
     </div>
   )
 }
