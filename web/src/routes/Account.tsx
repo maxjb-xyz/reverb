@@ -160,13 +160,13 @@ export default function Account() {
             </div>
 
             {pwError && (
-              <p className="text-xs font-medium text-red-400" role="alert">
+              <p className="text-xs font-medium text-error" role="alert">
                 {pwError}
               </p>
             )}
 
             {pwSuccess && (
-              <p className="text-xs font-medium text-green-400">
+              <p className="text-xs font-medium text-success">
                 Password changed successfully.
               </p>
             )}
