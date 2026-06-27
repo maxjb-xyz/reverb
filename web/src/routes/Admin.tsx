@@ -9,8 +9,9 @@ import {
   type AdapterInstance,
 } from '../lib/adaptersApi'
 import { AdapterSection } from '../components/admin/AdapterSection'
+import { UsersSection } from '../components/admin/UsersSection'
 import { AdapterForm } from '../components/AdapterForm'
-import { Chip, Skeleton, EmptyState, Select, Button } from '../components/ui'
+import { Chip, Skeleton, Select, Button } from '../components/ui'
 import { useSettings, useUpdateSettings } from '../lib/settingsApi'
 import { useLibraryStatus } from '../lib/libraryApi'
 
@@ -292,13 +293,7 @@ export default function Admin() {
       )}
 
       {/* ── Users tab ── */}
-      {tab === 'users' && (
-        <EmptyState
-          icon="browse"
-          title="Single-admin for now"
-          hint="Multi-user support is on the roadmap — for now Reverb has one admin account."
-        />
-      )}
+      {tab === 'users' && <UsersSection />}
     </div>
   )
 }
