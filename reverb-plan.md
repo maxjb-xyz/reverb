@@ -330,6 +330,7 @@ ui:
 - Device control: control devices logged into your account
 - Search feature searches spotify playlists
 - Listening Parties with other users
+- Federated features
 
 ---
 
