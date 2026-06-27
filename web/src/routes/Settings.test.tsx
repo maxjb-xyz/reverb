@@ -14,8 +14,7 @@ vi.mock('../lib/settingsApi', () => ({
 }))
 
 // AccentSwatches is rendered inside Settings — we need settingsApi mocked above and
-// the component itself to render (not stub it out), so we only stub the api module
-// to prevent real fetch calls from the logout button.
+// the component itself to render (not stub it out).
 vi.mock('../lib/adaptersApi', () => ({
   useAdapters: () => ({
     data: [
@@ -25,25 +24,6 @@ vi.mock('../lib/adaptersApi', () => ({
   }),
 }))
 
-vi.mock('../lib/api', () => ({
-  api: {
-    get: vi.fn(() => Promise.resolve({})),
-    post: vi.fn(() => Promise.resolve({})),
-    put: vi.fn(() => Promise.resolve({})),
-    del: vi.fn(() => Promise.resolve({})),
-  },
-  ApiError: class ApiError extends Error {
-    status: number
-    constructor(method: string, path: string, status: number) {
-      super(`${method} ${path} -> ${status}`)
-      this.name = 'ApiError'
-      this.status = status
-    }
-  },
-}))
-
-import { api } from '../lib/api'
-
 function wrap(ui: ReactElement) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(<QueryClientProvider client={qc}>{ui}</QueryClientProvider>)
@@ -52,11 +32,6 @@ function wrap(ui: ReactElement) {
 describe('Settings', () => {
   beforeEach(() => {
     mockMutate.mockClear()
-    // Stub window.location.reload so tests don't actually reload
-    Object.defineProperty(window, 'location', {
-      value: { ...window.location, reload: vi.fn() },
-      writable: true,
-    })
   })
   afterEach(() => vi.clearAllMocks())
 
@@ -65,10 +40,10 @@ describe('Settings', () => {
     expect(screen.getByRole('heading', { name: /settings/i })).toBeInTheDocument()
   })
 
-  it('shows Appearance and Account tabs', () => {
+  it('shows Appearance tab only', () => {
     wrap(<Settings />)
     expect(screen.getByRole('button', { name: /appearance/i })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /account/i })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^account$/i })).toBeNull()
   })
 
   it('shows the accent swatches on the Appearance tab', () => {
@@ -89,19 +64,6 @@ describe('Settings', () => {
     await waitFor(() =>
       expect(mockMutate).toHaveBeenCalledWith({ dynamicBackground: false })
     )
-  })
-
-  it('shows the Account tab content on click', () => {
-    wrap(<Settings />)
-    fireEvent.click(screen.getByRole('button', { name: /account/i }))
-    expect(screen.getByRole('button', { name: /log out/i })).toBeInTheDocument()
-  })
-
-  it('Log out calls POST /auth/logout', async () => {
-    wrap(<Settings />)
-    fireEvent.click(screen.getByRole('button', { name: /account/i }))
-    fireEvent.click(screen.getByRole('button', { name: /log out/i }))
-    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/auth/logout'))
   })
 
   it('NO adapter UI present — no Add library button', () => {

@@ -1,12 +1,10 @@
 import { useState } from 'react'
 import { Chip, Toggle, Select } from '../components/ui'
-import { Button } from '../components/ui'
 import { AccentSwatches } from '../components/AccentSwatches'
 import { useSettings, useUpdateSettings } from '../lib/settingsApi'
 import { useAdapters } from '../lib/adaptersApi'
-import { api } from '../lib/api'
 
-type Tab = 'appearance' | 'account'
+type Tab = 'appearance'
 
 export default function Settings() {
   const [tab, setTab] = useState<Tab>('appearance')
@@ -21,11 +19,6 @@ export default function Settings() {
     ...downloaders.map((d) => ({ value: d.name, label: d.name })),
   ]
 
-  async function handleLogout() {
-    await api.post('/auth/logout')
-    window.location.reload()
-  }
-
   return (
     <div className="max-w-4xl space-y-6 pb-8">
       {/* Header */}
@@ -35,9 +28,6 @@ export default function Settings() {
       <div className="flex gap-2 border-b border-border-subtle pb-0">
         <Chip selected={tab === 'appearance'} onClick={() => setTab('appearance')}>
           Appearance
-        </Chip>
-        <Chip selected={tab === 'account'} onClick={() => setTab('account')}>
-          Account
         </Chip>
       </div>
 
@@ -109,30 +99,6 @@ export default function Settings() {
         </div>
       )}
 
-      {/* Account tab */}
-      {tab === 'account' && (
-        <div className="space-y-6">
-          <div className="flex items-center gap-5 py-5 border-b border-border-subtle">
-            <div className="w-12 h-12 rounded-full bg-accent flex items-center justify-center text-on-accent font-extrabold text-lg flex-none">
-              R
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="text-sm font-bold text-text-primary">Reverb</div>
-              <div className="text-xs text-text-secondary mt-0.5">Logged in</div>
-            </div>
-          </div>
-
-          <div>
-            <Button
-              variant="secondary"
-              onClick={() => void handleLogout()}
-              aria-label="Log out"
-            >
-              Log out
-            </Button>
-          </div>
-        </div>
-      )}
     </div>
   )
 }

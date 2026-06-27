@@ -8,8 +8,8 @@ import { usePlayer } from './playerStore'
 import type { DownloadEvent, DownloadRemovedEvent, LibraryUpdatedEvent, QueueStateEvent, RealtimeEvent, Track } from './types'
 
 // trackFromJob synthesizes a minimal library Track for play-when-ready auto-play,
-// using the re-matched libraryTrackId (mirrors ExternalRow.trackFromMatch). The
-// stream proxy plays by id; the rest is best-effort display metadata.
+// using the re-matched libraryTrackId. The stream proxy plays by id; the rest is
+// best-effort display metadata.
 function trackFromJob(libraryTrackId: string, meta: { title?: string; album?: string; artist?: string; durationMs?: number; isrc?: string }): Track {
   return {
     id: libraryTrackId,
