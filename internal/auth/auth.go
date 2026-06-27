@@ -22,8 +22,11 @@ const (
 )
 
 var (
-	ErrInvalidCreds = errors.New("invalid credentials")
-	ErrUserDisabled = errors.New("user disabled")
+	ErrInvalidCreds   = errors.New("invalid credentials")
+	ErrUserDisabled   = errors.New("user disabled")
+	ErrUsernameTaken  = errors.New("username taken")
+	ErrOwnerProtected = errors.New("owner account is protected")
+	ErrRoleNotFound   = errors.New("role not found")
 )
 
 func HashPassword(pw string) (string, error) {
@@ -51,6 +54,10 @@ type Querier interface {
 	CreateUser(ctx context.Context, arg db.CreateUserParams) error
 	GetUserByID(ctx context.Context, id string) (db.User, error)
 	GetUserByUsername(ctx context.Context, username string) (db.User, error)
+	ListUsers(ctx context.Context) ([]db.User, error)
+	UpdateUserRole(ctx context.Context, arg db.UpdateUserRoleParams) error
+	SetUserDisabled(ctx context.Context, arg db.SetUserDisabledParams) error
+	DeleteUser(ctx context.Context, id string) error
 	TouchUserLastSeen(ctx context.Context, id string) error
 	SetUserPassword(ctx context.Context, arg db.SetUserPasswordParams) error
 	// roles
@@ -270,4 +277,119 @@ func (s *Service) EnsureSeed(ctx context.Context) error {
 		}
 	}
 	return nil
+}
+
+// UserView is the admin-safe projection of a user row (no password hash).
+type UserView struct {
+	ID        string  `json:"id"`
+	Username  string  `json:"username"`
+	RoleID    string  `json:"roleId"`
+	RoleName  string  `json:"roleName"`
+	IsOwner   bool    `json:"isOwner"`
+	Disabled  bool    `json:"disabled"`
+	CreatedAt int64   `json:"createdAt"`
+	LastSeen  *int64  `json:"lastSeen"`
+}
+
+// ListUsers returns all users with resolved role names.
+func (s *Service) ListUsers(ctx context.Context) ([]UserView, error) {
+	rows, err := s.q.ListUsers(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]UserView, 0, len(rows))
+	for _, u := range rows {
+		r, err := s.q.GetRole(ctx, u.RoleID)
+		roleName := u.RoleID
+		if err == nil {
+			roleName = r.Name
+		}
+		var lastSeen *int64
+		if u.LastSeen.Valid {
+			v := u.LastSeen.Int64
+			lastSeen = &v
+		}
+		out = append(out, UserView{
+			ID:        u.ID,
+			Username:  u.Username,
+			RoleID:    u.RoleID,
+			RoleName:  roleName,
+			IsOwner:   u.IsOwner == 1,
+			Disabled:  u.Disabled == 1,
+			CreatedAt: u.CreatedAt,
+			LastSeen:  lastSeen,
+		})
+	}
+	return out, nil
+}
+
+// CreateUser creates a new non-owner user with the given role.
+// Returns ErrRoleNotFound if roleID doesn't exist, ErrUsernameTaken if taken.
+func (s *Service) CreateUser(ctx context.Context, username, password, roleID string) (string, error) {
+	if _, err := s.q.GetRole(ctx, roleID); err != nil {
+		return "", ErrRoleNotFound
+	}
+	if _, err := s.q.GetUserByUsername(ctx, username); err == nil {
+		return "", ErrUsernameTaken
+	}
+	h, err := HashPassword(password)
+	if err != nil {
+		return "", err
+	}
+	id := uuid.NewString()
+	return id, s.q.CreateUser(ctx, db.CreateUserParams{ID: id, Username: username, PasswordHash: h, RoleID: roleID, IsOwner: 0})
+}
+
+// UpdateUserRole changes a user's role. Returns ErrOwnerProtected if trying to
+// demote the owner to a non-admin role, and ErrRoleNotFound for unknown roleID or userID.
+func (s *Service) UpdateUserRole(ctx context.Context, id, roleID string) error {
+	u, err := s.q.GetUserByID(ctx, id)
+	if err != nil {
+		return ErrRoleNotFound
+	}
+	if u.IsOwner == 1 && roleID != "role-admin" {
+		return ErrOwnerProtected
+	}
+	if _, err := s.q.GetRole(ctx, roleID); err != nil {
+		return ErrRoleNotFound
+	}
+	return s.q.UpdateUserRole(ctx, db.UpdateUserRoleParams{RoleID: roleID, ID: id})
+}
+
+// SetUserDisabled enables or disables a user account. Returns ErrOwnerProtected
+// if the target is the owner.
+func (s *Service) SetUserDisabled(ctx context.Context, id string, disabled bool) error {
+	u, err := s.q.GetUserByID(ctx, id)
+	if err != nil {
+		return nil // user not found; no-op
+	}
+	if u.IsOwner == 1 {
+		return ErrOwnerProtected
+	}
+	v := int64(0)
+	if disabled {
+		v = 1
+	}
+	return s.q.SetUserDisabled(ctx, db.SetUserDisabledParams{Disabled: v, ID: id})
+}
+
+// AdminSetPassword resets a user's password without requiring the current one.
+func (s *Service) AdminSetPassword(ctx context.Context, id, password string) error {
+	h, err := HashPassword(password)
+	if err != nil {
+		return err
+	}
+	return s.q.SetUserPassword(ctx, db.SetUserPasswordParams{PasswordHash: h, ID: id})
+}
+
+// DeleteUser removes a user. Returns ErrOwnerProtected if the target is the owner.
+func (s *Service) DeleteUser(ctx context.Context, id string) error {
+	u, err := s.q.GetUserByID(ctx, id)
+	if err != nil {
+		return nil // user not found; no-op
+	}
+	if u.IsOwner == 1 {
+		return ErrOwnerProtected
+	}
+	return s.q.DeleteUser(ctx, id)
 }

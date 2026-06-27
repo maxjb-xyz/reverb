@@ -246,6 +246,16 @@ func (s *Server) routes() {
 			pr.Post("/downloads/{id}/cancel", s.handleCancelDownload)
 			pr.Post("/downloads/{id}/retry", s.handleRetryDownload)
 			pr.Get("/ws", s.handleWS)
+
+			// admin-only: user management
+			pr.Group(func(ar chi.Router) {
+				ar.Use(s.requireCapability(auth.CapManageUsers))
+				ar.Get("/users", s.handleListUsers)
+				ar.Post("/users", s.handleCreateUser)
+				ar.Patch("/users/{id}", s.handleUpdateUser)
+				ar.Delete("/users/{id}", s.handleDeleteUser)
+				ar.Post("/users/{id}/password", s.handleAdminResetPassword)
+			})
 		})
 	})
 

@@ -3,6 +3,7 @@ package api
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -118,8 +119,9 @@ func newTestServer(t *testing.T) *Server {
 	})
 }
 
-// mustSetupOwner completes first-run setup via POST /setup/admin with {username,password}.
-func mustSetupOwner(t *testing.T, srv *Server, username, password string) {
+// mustSetupOwner completes first-run setup via POST /setup/admin with {username,password}
+// and returns the owner's user ID extracted from the response body.
+func mustSetupOwner(t *testing.T, srv *Server, username, password string) string {
 	t.Helper()
 	rec := httptest.NewRecorder()
 	body := fmt.Sprintf(`{"username":%q,"password":%q}`, username, password)
@@ -128,6 +130,13 @@ func mustSetupOwner(t *testing.T, srv *Server, username, password string) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("setup/admin = %d %s", rec.Code, rec.Body.String())
 	}
+	var resp struct {
+		ID string `json:"id"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil || resp.ID == "" {
+		t.Fatalf("setup/admin response missing id: %v / body=%s", err, rec.Body.String())
+	}
+	return resp.ID
 }
 
 // mustLogin POSTs /auth/login with {username,password} and returns the session cookie token.
@@ -154,6 +163,30 @@ func doGET(t *testing.T, srv *Server, path, token string) *httptest.ResponseReco
 	t.Helper()
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, path, nil)
+	if token != "" {
+		req.AddCookie(&http.Cookie{Name: sessionCookie, Value: token})
+	}
+	srv.Handler().ServeHTTP(rec, req)
+	return rec
+}
+
+// doPATCH issues a PATCH with an optional session token and a JSON body.
+func doPATCH(t *testing.T, srv *Server, path, token, body string) *httptest.ResponseRecorder {
+	t.Helper()
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPatch, path, bytes.NewBufferString(body))
+	if token != "" {
+		req.AddCookie(&http.Cookie{Name: sessionCookie, Value: token})
+	}
+	srv.Handler().ServeHTTP(rec, req)
+	return rec
+}
+
+// doDELETE issues a DELETE with an optional session token.
+func doDELETE(t *testing.T, srv *Server, path, token string) *httptest.ResponseRecorder {
+	t.Helper()
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodDelete, path, nil)
 	if token != "" {
 		req.AddCookie(&http.Cookie{Name: sessionCookie, Value: token})
 	}

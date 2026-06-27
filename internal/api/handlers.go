@@ -82,7 +82,7 @@ func (s *Server) issueSession(w http.ResponseWriter, r *http.Request, userID str
 		return
 	}
 	s.setSessionCookie(w, r, tok)
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "id": userID})
 }
 
 func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
