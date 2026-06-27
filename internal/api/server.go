@@ -260,7 +260,7 @@ func (s *Server) routes() {
 
 			// download tracks: enqueue create + batch.
 			pr.Group(func(dr chi.Router) {
-				dr.Use(s.requireCapability(auth.CapDownload))
+				dr.Use(s.requireCapability(auth.CapAutoApprove))
 				dr.Post("/downloads/batch", s.handleBatchDownload)
 				dr.Post("/downloads", s.handleCreateDownload)
 			})
