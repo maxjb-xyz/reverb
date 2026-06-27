@@ -36,6 +36,18 @@ vi.mock('../lib/libraryApi', () => ({
   useLibraryStatus: () => mockUseLibraryStatus(),
 }))
 
+// ── Mock usersApi (used by UsersSection rendered on the Users tab) ────────────
+const mockUseUsers = vi.fn()
+const mockUseRoles = vi.fn()
+vi.mock('../lib/usersApi', () => ({
+  useUsers: () => mockUseUsers(),
+  useRoles: () => mockUseRoles(),
+  createUser: vi.fn(),
+  updateUser: vi.fn(),
+  deleteUser: vi.fn(),
+  resetPassword: vi.fn(),
+}))
+
 const settingsData = (libraryBackendMode: string) => ({
   data: { accentColor: '#F0354B', dynamicBackground: true, defaultDownloader: '', libraryBackendMode },
 })
@@ -77,6 +89,8 @@ function setupDefaultMocks() {
   mockUseAvailableAdapters.mockReturnValue({ data: [], isLoading: false })
   mockUseSettings.mockReturnValue(settingsData('built-in'))
   mockUseLibraryStatus.mockReturnValue({ data: { mode: 'built-in', state: 'ready' } })
+  mockUseUsers.mockReturnValue({ data: [], isLoading: false })
+  mockUseRoles.mockReturnValue({ data: [], isLoading: false })
 }
 
 function wrap(ui: ReactElement) {
@@ -274,14 +288,12 @@ describe('Admin', () => {
     expect(screen.getByText(/no restart required/i)).toBeInTheDocument()
   })
 
-  // ── Users tab — honest EmptyState ────────────────────────────────────────────
-  it('Users tab shows the honest EmptyState (no fake table)', () => {
+  // ── Users tab — real UsersSection ────────────────────────────────────────────
+  it('Users tab renders the real UsersSection with Users heading and Create user button', () => {
     wrap(<Admin />)
     fireEvent.click(screen.getByRole('button', { name: /users/i }))
-    expect(screen.getByText(/single-admin for now/i)).toBeInTheDocument()
-    expect(screen.getByText(/multi-user/i)).toBeInTheDocument()
-    // No table or fake user rows
-    expect(screen.queryByRole('table')).toBeNull()
+    expect(screen.getByRole('heading', { name: /^users$/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /create user/i })).toBeInTheDocument()
   })
 
   // ── Adapter instances render (search/downloader are multi-instance lists) ─────
