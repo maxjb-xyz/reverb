@@ -11,7 +11,7 @@ export class ApiError extends Error {
 
 /** Human, specific copy for a failed login attempt. */
 export function loginErrorMessage(e: unknown): string {
-  if (e instanceof ApiError && e.status === 401) return 'Incorrect password'
+  if (e instanceof ApiError && e.status === 401) return 'Incorrect username or password'
   return 'Can\'t reach the server — try again'
 }
 

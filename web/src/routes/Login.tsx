@@ -1,10 +1,15 @@
 import { useState } from 'react'
-import { api, loginErrorMessage } from '../lib/api'
+import { useNavigate } from 'react-router-dom'
+import { loginErrorMessage } from '../lib/api'
+import { login } from '../lib/session'
+import { useAuthStore } from '../lib/authStore'
 import { Button } from '../components/ui/Button'
 import { Icon } from '../components/ui/Icon'
 import { Logo } from '../components/ui/Logo'
 
 export default function Login() {
+  const navigate = useNavigate()
+  const [username, setUsername] = useState('')
   const [pw, setPw] = useState('')
   const [err, setErr] = useState('')
   const [loading, setLoading] = useState(false)
@@ -14,8 +19,9 @@ export default function Login() {
     setErr('')
     setLoading(true)
     try {
-      await api.post('/auth/login', { password: pw })
-      window.location.reload()
+      await login(username, pw)
+      await useAuthStore.getState().refresh()
+      navigate('/')
     } catch (err) {
       setErr(loginErrorMessage(err))
     } finally {
@@ -42,10 +48,25 @@ export default function Login() {
         <div className="rounded-2xl bg-surface shadow-pop border border-border-subtle p-8 space-y-5">
           <div className="space-y-1">
             <h1 className="text-xl font-bold text-text-primary">Welcome back</h1>
-            <p className="text-sm text-text-secondary">Sign in with your admin password.</p>
+            <p className="text-sm text-text-secondary">Sign in with your username and password.</p>
           </div>
 
           <form onSubmit={submit} className="space-y-4">
+            <div className="space-y-1">
+              <label htmlFor="login-username" className="block text-sm font-medium text-text-secondary">
+                Username
+              </label>
+              <input
+                id="login-username"
+                type="text"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                placeholder="Username"
+                autoComplete="username"
+                className="w-full rounded-lg bg-input border border-border-subtle px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+              />
+            </div>
+
             <div className="space-y-1">
               <label htmlFor="login-pw" className="block text-sm font-medium text-text-secondary">
                 Password
@@ -55,7 +76,7 @@ export default function Login() {
                 type="password"
                 value={pw}
                 onChange={(e) => setPw(e.target.value)}
-                placeholder="Admin password"
+                placeholder="Password"
                 autoComplete="current-password"
                 className="w-full rounded-lg bg-input border border-border-subtle px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
               />

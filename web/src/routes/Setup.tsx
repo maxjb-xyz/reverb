@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { api } from '../lib/api'
+import { setupOwner } from '../lib/session'
+import { useAuthStore } from '../lib/authStore'
 import { useAvailableAdapters, createAdapter, type AvailableAdapter } from '../lib/adaptersApi'
 import { AdapterForm } from '../components/AdapterForm'
 import { Button } from '../components/ui/Button'
@@ -78,6 +80,7 @@ function StepProgress({ current }: { current: Step }) {
 export default function Setup() {
   const qc = useQueryClient()
   const [step, setStep] = useState<Step>('password')
+  const [username, setUsername] = useState('')
   const [pw, setPw] = useState('')
   const [err, setErr] = useState('')
   const available = useAvailableAdapters()
@@ -87,10 +90,11 @@ export default function Setup() {
     e.preventDefault()
     setErr('')
     try {
-      await api.post('/setup/admin', { password: pw })
+      await setupOwner(username, pw)
       // The catalog query first ran pre-auth (401). Now that /setup/admin issued a
       // session, refetch it so the library/search/downloader steps show their adapters.
       await qc.invalidateQueries({ queryKey: ['adapters', 'available'] })
+      await useAuthStore.getState().refresh()
       setStep('library')
     } catch {
       setErr('Could not complete setup. Please try again.')
@@ -108,9 +112,23 @@ export default function Setup() {
         <StepProgress current="password" />
         <div className="space-y-1">
           <h1 className="text-xl font-bold text-text-primary">Welcome to Reverb</h1>
-          <p className="text-sm text-text-secondary">Set an admin password to get started.</p>
+          <p className="text-sm text-text-secondary">Create your admin account to get started.</p>
         </div>
         <form onSubmit={submitPassword} className="space-y-4">
+          <div className="space-y-1">
+            <label htmlFor="setup-username" className="block text-sm font-medium text-text-secondary">
+              Username
+            </label>
+            <input
+              id="setup-username"
+              type="text"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              placeholder="Choose a username"
+              autoComplete="username"
+              className="w-full rounded-lg bg-input border border-border-subtle px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+            />
+          </div>
           <div className="space-y-1">
             <label htmlFor="setup-pw" className="block text-sm font-medium text-text-secondary">
               Admin password
