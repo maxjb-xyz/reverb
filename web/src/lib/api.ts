@@ -2,10 +2,12 @@ const BASE = '/api/v1'
 
 export class ApiError extends Error {
   status: number
-  constructor(method: string, path: string, status: number) {
+  body: Record<string, unknown> | null
+  constructor(method: string, path: string, status: number, body: Record<string, unknown> | null = null) {
     super(`${method} ${path} -> ${status}`)
     this.name = 'ApiError'
     this.status = status
+    this.body = body
   }
 }
 
@@ -22,7 +24,12 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
     headers: body ? { 'Content-Type': 'application/json' } : undefined,
     body: body ? JSON.stringify(body) : undefined,
   })
-  if (!res.ok) throw new ApiError(method, path, res.status)
+  if (!res.ok) {
+    const text = await res.text().catch(() => '')
+    let errBody: Record<string, unknown> | null = null
+    try { errBody = text ? (JSON.parse(text) as Record<string, unknown>) : null } catch { /* ignore */ }
+    throw new ApiError(method, path, res.status, errBody)
+  }
   const text = await res.text()
   return (text ? JSON.parse(text) : null) as T
 }

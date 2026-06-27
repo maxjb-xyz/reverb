@@ -11,6 +11,22 @@ import {
   type Capability,
 } from '../../lib/usersApi'
 
+// ── 409 error message helpers ─────────────────────────────────────────────────
+
+function map409Message(errBody: Record<string, unknown> | null | undefined): string {
+  const msg = typeof errBody?.error === 'string' ? errBody.error.toLowerCase() : ''
+  if (msg.includes('no administrator') || msg.includes('last admin')) {
+    return 'This would leave Reverb with no administrator.'
+  }
+  if (msg.includes('registration default')) {
+    return 'This role is the registration default — pick another default first.'
+  }
+  if (msg.includes('in use')) {
+    return "Reassign this role's users first."
+  }
+  return "Reassign this role's users first."
+}
+
 // ── Capability checklist ───────────────────────────────────────────────────────
 
 interface CapabilityChecklistProps {
@@ -31,16 +47,21 @@ function CapabilityChecklist({ capabilities, selected, onChange }: CapabilityChe
   return (
     <div className="space-y-2">
       {capabilities.map((cap) => (
-        <label key={cap.key} className="flex items-center gap-2 cursor-pointer select-none">
-          <input
-            type="checkbox"
-            aria-label={cap.label}
-            checked={selected.includes(cap.key)}
-            onChange={() => toggle(cap.key)}
-            className="rounded border-border-subtle bg-input accent-accent w-4 h-4"
-          />
-          <span className="text-sm text-text-primary">{cap.label}</span>
-        </label>
+        <div key={cap.key} className="space-y-0.5">
+          <label className="flex items-center gap-2 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              aria-label={cap.label}
+              checked={selected.includes(cap.key)}
+              onChange={() => toggle(cap.key)}
+              className="rounded border-border-subtle bg-input accent-accent w-4 h-4"
+            />
+            <span className="text-sm text-text-primary">{cap.label}</span>
+          </label>
+          {cap.description && (
+            <p className="text-xs text-text-muted pl-6">{cap.description}</p>
+          )}
+        </div>
       ))}
     </div>
   )
@@ -68,7 +89,12 @@ function RoleForm({ initial, capabilities, onSave, onCancel }: RoleFormProps) {
     try {
       await onSave(name.trim(), selected)
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to save role')
+      const err = e as { status?: number; body?: Record<string, unknown> | null; message?: string }
+      if (err.status === 409) {
+        setError(map409Message(err.body))
+      } else {
+        setError(e instanceof Error ? e.message : 'Failed to save role')
+      }
       setBusy(false)
     }
   }
@@ -140,9 +166,9 @@ function RoleRow({ role, capabilities, onRefresh }: RoleRowProps) {
       await deleteRole(role.id)
       onRefresh()
     } catch (e) {
-      const err = e as { status?: number; message?: string }
+      const err = e as { status?: number; body?: Record<string, unknown> | null; message?: string }
       if (err.status === 409) {
-        setDeleteError('This role is in use and cannot be deleted.')
+        setDeleteError(map409Message(err.body))
       } else {
         setDeleteError(e instanceof Error ? e.message : 'Failed to delete role')
       }
@@ -163,13 +189,13 @@ function RoleRow({ role, capabilities, onRefresh }: RoleRowProps) {
   return (
     <div className="space-y-1">
       <div className="flex items-start gap-3 py-2.5 border-b border-border-subtle last:border-0">
-        {/* Name + system badge */}
+        {/* Name + default badge */}
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
             <span className="text-sm font-semibold text-text-primary">{role.name}</span>
             {role.isSystem && (
               <span className="text-xs font-bold uppercase tracking-wide text-text-muted bg-raised-hover rounded px-1.5 py-0.5">
-                System
+                Default
               </span>
             )}
           </div>
@@ -188,22 +214,20 @@ function RoleRow({ role, capabilities, onRefresh }: RoleRowProps) {
           )}
         </div>
 
-        {/* Actions — only for custom roles */}
-        {!role.isSystem && (
-          <div className="flex items-center gap-2 flex-none">
-            <Button size="sm" variant="ghost" onClick={() => setEditing(!editing)}>
-              Edit
-            </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              aria-label="Delete"
-              onClick={() => void handleDelete()}
-            >
-              <span className="text-error">Delete</span>
-            </Button>
-          </div>
-        )}
+        {/* Actions — all roles are editable */}
+        <div className="flex items-center gap-2 flex-none">
+          <Button size="sm" variant="ghost" onClick={() => setEditing(!editing)}>
+            Edit
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            aria-label="Delete"
+            onClick={() => void handleDelete()}
+          >
+            <span className="text-error">Delete</span>
+          </Button>
+        </div>
       </div>
 
       {deleteError && (

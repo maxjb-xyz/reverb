@@ -22,6 +22,7 @@ export interface Role {
 export interface Capability {
   key: string
   label: string
+  description: string
 }
 
 export interface CreateRoleReq {
