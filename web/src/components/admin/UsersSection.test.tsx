@@ -168,4 +168,42 @@ describe('UsersSection', () => {
       expect(createUser).not.toHaveBeenCalled()
     })
   })
+
+  describe('Delete user modal', () => {
+    it('clicking Delete opens a confirmation modal showing the username', () => {
+      render(wrap(<UsersSection />))
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+
+      fireEvent.click(screen.getByRole('button', { name: /^delete$/i }))
+
+      const dialog = screen.getByRole('dialog')
+      expect(dialog).toBeInTheDocument()
+      expect(dialog).toHaveTextContent('bob')
+    })
+
+    it('Cancel closes the modal without calling deleteUser', () => {
+      render(wrap(<UsersSection />))
+      fireEvent.click(screen.getByRole('button', { name: /^delete$/i }))
+      expect(screen.getByRole('dialog')).toBeInTheDocument()
+
+      fireEvent.click(screen.getByRole('button', { name: /^cancel$/i }))
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+      expect(deleteUser).not.toHaveBeenCalled()
+    })
+
+    it('confirming Delete calls deleteUser with the correct user id', async () => {
+      render(wrap(<UsersSection />))
+      fireEvent.click(screen.getByRole('button', { name: /^delete$/i }))
+      expect(screen.getByRole('dialog')).toBeInTheDocument()
+
+      // Click the modal's Delete button
+      const dialog = screen.getByRole('dialog')
+      const confirmBtn = dialog.querySelector('button[aria-label="Delete"]') as HTMLButtonElement
+      fireEvent.click(confirmBtn)
+
+      await waitFor(() => {
+        expect(deleteUser).toHaveBeenCalledWith('u-2')
+      })
+    })
+  })
 })

@@ -225,6 +225,50 @@ function CreateUserModal({ roles, onClose, onCreated }: CreateUserModalProps) {
   )
 }
 
+// ── Delete User Modal ─────────────────────────────────────────────────────────
+
+interface DeleteUserModalProps {
+  user: User
+  onClose: () => void
+  onConfirm: () => void
+}
+
+function DeleteUserModal({ user, onClose, onConfirm }: DeleteUserModalProps) {
+  return (
+    <>
+      <div className="fixed inset-0 z-40 bg-canvas/80 backdrop-blur-sm" aria-hidden="true" onClick={onClose} />
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="delete-user-title"
+        className="fixed inset-0 z-50 flex items-center justify-center p-4"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="w-full max-w-sm rounded-xl border border-border-subtle bg-raised shadow-pop animate-scale-in">
+          <div className="space-y-5 p-6">
+            <h2 id="delete-user-title" className="text-lg font-extrabold tracking-tight text-text-primary">
+              Delete user — {user.username}
+            </h2>
+            <p className="text-sm text-text-secondary">
+              Are you sure you want to delete <span className="font-semibold text-text-primary">{user.username}</span>? This cannot be undone.
+            </p>
+            <div className="flex items-center justify-end gap-3 pt-1">
+              <Button variant="ghost" onClick={onClose}>Cancel</Button>
+              <Button
+                variant="ghost"
+                onClick={onConfirm}
+                aria-label="Delete"
+              >
+                <span className="text-error">Delete</span>
+              </Button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </>
+  )
+}
+
 // ── Reset Password Modal ──────────────────────────────────────────────────────
 
 interface ResetPasswordModalProps {
@@ -310,6 +354,7 @@ interface UserRowProps {
 
 function UserRow({ user, roles, onRefresh }: UserRowProps) {
   const [resetTarget, setResetTarget] = useState(false)
+  const [deleteTarget, setDeleteTarget] = useState(false)
 
   async function handleRoleChange(roleId: string) {
     await updateUser(user.id, { roleId })
@@ -321,8 +366,8 @@ function UserRow({ user, roles, onRefresh }: UserRowProps) {
     onRefresh()
   }
 
-  async function handleDelete() {
-    if (!confirm(`Delete user "${user.username}"? This cannot be undone.`)) return
+  async function handleDeleteConfirm() {
+    setDeleteTarget(false)
     await deleteUser(user.id)
     onRefresh()
   }
@@ -394,7 +439,7 @@ function UserRow({ user, roles, onRefresh }: UserRowProps) {
                   size="sm"
                   variant="ghost"
                   aria-label="Delete"
-                  onClick={() => void handleDelete()}
+                  onClick={() => setDeleteTarget(true)}
                 >
                   <span className="text-error">Delete</span>
                 </Button>
@@ -412,6 +457,14 @@ function UserRow({ user, roles, onRefresh }: UserRowProps) {
             setResetTarget(false)
             onRefresh()
           }}
+        />
+      )}
+
+      {deleteTarget && (
+        <DeleteUserModal
+          user={user}
+          onClose={() => setDeleteTarget(false)}
+          onConfirm={() => void handleDeleteConfirm()}
         />
       )}
     </>
