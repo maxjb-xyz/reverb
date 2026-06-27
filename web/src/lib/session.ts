@@ -1,6 +1,21 @@
 import { useEffect, useState } from 'react'
 import { api, ApiError } from './api'
 
+/** POST /auth/login — throws ApiError on failure (caller checks .status). */
+export async function login(username: string, password: string): Promise<void> {
+  await api.post('/auth/login', { username, password })
+}
+
+/** POST /auth/signup — throws ApiError on failure. */
+export async function signup(username: string, password: string, invite?: string): Promise<void> {
+  await api.post('/auth/signup', { username, password, ...(invite ? { invite } : {}) })
+}
+
+/** POST /setup/admin — throws ApiError on failure. */
+export async function setupOwner(username: string, password: string): Promise<void> {
+  await api.post('/setup/admin', { username, password })
+}
+
 export type SessionKind = 'setup' | 'authenticated' | 'unauthenticated' | 'error'
 
 export interface SessionStatus {
