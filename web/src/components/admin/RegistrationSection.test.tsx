@@ -76,7 +76,7 @@ describe('RegistrationSection', () => {
     vi.mocked(setRegistration).mockReset()
     vi.mocked(setRegistration).mockResolvedValue(undefined as never)
     vi.mocked(createInvite).mockReset()
-    vi.mocked(createInvite).mockResolvedValue({ code: 'NEW456', id: 'inv-new' } as never)
+    vi.mocked(createInvite).mockResolvedValue({ code: 'NEW456', id: 'inv-new' })
     vi.mocked(deleteInvite).mockReset()
     vi.mocked(deleteInvite).mockResolvedValue(undefined as never)
   })

@@ -127,8 +127,8 @@ export function listInvites(): Promise<Invite[]> {
   return api.get<Invite[]>('/invites')
 }
 
-export function createInvite(body?: CreateInviteReq): Promise<Invite & { code: string }> {
-  return api.post<Invite & { code: string }>('/invites', body ?? {})
+export function createInvite(body?: CreateInviteReq): Promise<{ id: string; code: string }> {
+  return api.post<{ id: string; code: string }>('/invites', body ?? {})
 }
 
 export function deleteInvite(id: string): Promise<void> {
