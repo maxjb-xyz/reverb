@@ -83,9 +83,23 @@ describe('useRequestStore', () => {
     expect(useRequestStore.getState().byId['r1']).toEqual(req)
   })
 
-  it('setMine replaces all entries from a list', () => {
+  it('setMine merges entries without removing unrelated ids', () => {
+    useRequestStore.getState().upsert(mkRequest('r0', 'pending', 'u0'))
     useRequestStore.getState().setMine([mkRequest('r1', 'pending'), mkRequest('r2', 'approved')])
-    expect(Object.keys(useRequestStore.getState().byId)).toHaveLength(2)
+    expect(Object.keys(useRequestStore.getState().byId)).toHaveLength(3)
+    expect(useRequestStore.getState().byId['r0']).toBeDefined()
+  })
+
+  it('setQueue then setMine — pending() still returns queue entries (no-clobber regression)', () => {
+    const reqA = mkRequest('rA', 'pending', 'other')
+    const reqB = mkRequest('rB', 'pending', 'other')
+    const reqC = mkRequest('rC', 'pending', 'me')
+    useRequestStore.getState().setQueue([reqA, reqB])
+    useRequestStore.getState().setMine([reqC])
+    const pendingIds = useRequestStore.getState().pending().map((r) => r.id).sort()
+    expect(pendingIds).toEqual(['rA', 'rB', 'rC'])
+    const mineIds = useRequestStore.getState().mine('me').map((r) => r.id)
+    expect(mineIds).toEqual(['rC'])
   })
 
   it('setQueue merges entries without removing unrelated ids', () => {

@@ -85,10 +85,10 @@ export const useRequestStore = create<RequestStore>((set, get) => ({
     set((s) => ({ byId: { ...s.byId, [req.id]: req } })),
 
   setMine: (reqs) =>
-    set(() => {
-      const map: Record<string, Request> = {}
-      for (const r of reqs) map[r.id] = r
-      return { byId: map }
+    set((s) => {
+      const byId = { ...s.byId }
+      for (const r of reqs) byId[r.id] = r
+      return { byId }
     }),
 
   setQueue: (reqs) =>
