@@ -105,6 +105,50 @@ func TestTrackerFailedFailsRequest(t *testing.T) {
 	}
 }
 
+// TestTrackerAlbumRequestCompleteFulfills verifies that the tracker is kind-agnostic:
+// an album-kind request linked to a job transitions to "fulfilled" on download.complete.
+func TestTrackerAlbumRequestCompleteFulfills(t *testing.T) {
+	svc, userID := newTrackerTestService(t)
+	ctx := context.Background()
+
+	albumItem := core.RequestItem{
+		Source:     "lidarr",
+		ExternalID: "album-xyz",
+		Title:      "Dark Side of the Moon",
+		Artist:     "Pink Floyd",
+		Album:      "Dark Side of the Moon",
+		Kind:       "album",
+	}
+
+	req, _, err := svc.Create(ctx, userID, albumItem)
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	_, err = svc.MarkApproved(ctx, req.ID, "manager-1", "j-album-1")
+	if err != nil {
+		t.Fatalf("MarkApproved: %v", err)
+	}
+
+	bus := events.New()
+	tracker := request.NewTracker(svc, bus)
+	tracker.Start(context.Background())
+	defer tracker.Stop()
+
+	bus.Publish(events.Event{
+		Topic:   download.TopicComplete,
+		Payload: core.DownloadEvent{JobID: "j-album-1", Status: core.DownloadCompleted},
+	})
+
+	ok := pollUntil(t, 500*time.Millisecond, func() bool {
+		r, err := svc.Get(ctx, req.ID)
+		return err == nil && r.Status == core.RequestFulfilled
+	})
+	if !ok {
+		r, _ := svc.Get(ctx, req.ID)
+		t.Fatalf("album request: want status=%q, got %q after download.complete", core.RequestFulfilled, r.Status)
+	}
+}
+
 // TestTrackerUnknownJobIgnored verifies that an event for a job not linked to any
 // request is silently ignored — no panic, no state change on other requests.
 func TestTrackerUnknownJobIgnored(t *testing.T) {

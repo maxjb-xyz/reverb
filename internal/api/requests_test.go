@@ -471,6 +471,104 @@ func TestDownloadReqFromRequestAlbumKind(t *testing.T) {
 	}
 }
 
+// ─── Album end-to-end handler tests ────────────────────────────────────────────
+
+const albumReqItem = `{"source":"lidarr","externalId":"album-123","title":"Dark Side of the Moon","artist":"Pink Floyd","album":"Dark Side of the Moon","kind":"album"}`
+
+// TestAlbumRequestAutoApproveEnqueuesWithAlbumGranularity: an auto_approve user
+// POSTing an album request gets a job enqueued whose Granularity==album.
+func TestAlbumRequestAutoApproveEnqueuesWithAlbumGranularity(t *testing.T) {
+	mgr := newFakeManager()
+	_, srv, ownerCookie := requestTestServer(t, mgr)
+
+	rec := doReq(t, srv, ownerCookie, http.MethodPost, "/api/v1/requests", albumReqItem)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("POST /requests (album) = %d: %s", rec.Code, rec.Body.String())
+	}
+	var req core.Request
+	if err := json.NewDecoder(rec.Body).Decode(&req); err != nil {
+		t.Fatal(err)
+	}
+	if req.Status != core.RequestApproved {
+		t.Fatalf("want status=approved, got %q", req.Status)
+	}
+	if mgr.enqueueCalls != 1 {
+		t.Fatalf("Enqueue called %d times, want 1", mgr.enqueueCalls)
+	}
+	if mgr.lastReq.Granularity != core.GranularityAlbum {
+		t.Fatalf("enqueued request Granularity = %q, want %q", mgr.lastReq.Granularity, core.GranularityAlbum)
+	}
+	if mgr.lastReq.ExternalID != "album-123" {
+		t.Fatalf("enqueued request ExternalID = %q, want album-123", mgr.lastReq.ExternalID)
+	}
+}
+
+// TestAlbumRequestPendingNoEnqueue: a request-only user POSTing an album request
+// gets a pending request and Enqueue is NOT called.
+func TestAlbumRequestPendingNoEnqueue(t *testing.T) {
+	mgr := newFakeManager()
+	_, srv, ownerCookie := requestTestServer(t, mgr)
+
+	// Create a requester user.
+	rec := doReq(t, srv, ownerCookie, http.MethodPost, "/api/v1/users",
+		`{"username":"albreq1","password":"pw","roleId":"role-requester"}`)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create user = %d: %s", rec.Code, rec.Body.String())
+	}
+	requesterTok := mustLogin(t, srv, "albreq1", "pw")
+	requesterCookie := &http.Cookie{Name: sessionCookie, Value: requesterTok}
+
+	rec = doReq(t, srv, requesterCookie, http.MethodPost, "/api/v1/requests", albumReqItem)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("POST /requests (album, requester) = %d: %s", rec.Code, rec.Body.String())
+	}
+	var req core.Request
+	if err := json.NewDecoder(rec.Body).Decode(&req); err != nil {
+		t.Fatal(err)
+	}
+	if req.Status != core.RequestPending {
+		t.Fatalf("want status=pending, got %q", req.Status)
+	}
+	if mgr.enqueueCalls != 0 {
+		t.Fatalf("Enqueue called %d times for pending album request, want 0", mgr.enqueueCalls)
+	}
+}
+
+// TestAlbumRequestDedup: a second identical album request returns the existing one
+// with no additional Enqueue call.
+func TestAlbumRequestDedup(t *testing.T) {
+	mgr := newFakeManager()
+	_, srv, ownerCookie := requestTestServer(t, mgr)
+
+	rec := doReq(t, srv, ownerCookie, http.MethodPost, "/api/v1/requests", albumReqItem)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("first album POST = %d: %s", rec.Code, rec.Body.String())
+	}
+	var r1 core.Request
+	if err := json.NewDecoder(rec.Body).Decode(&r1); err != nil {
+		t.Fatal(err)
+	}
+	callsAfterFirst := mgr.enqueueCalls
+
+	rec = doReq(t, srv, ownerCookie, http.MethodPost, "/api/v1/requests", albumReqItem)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("second album POST = %d: %s", rec.Code, rec.Body.String())
+	}
+	var r2 core.Request
+	if err := json.NewDecoder(rec.Body).Decode(&r2); err != nil {
+		t.Fatal(err)
+	}
+	if r1.ID != r2.ID {
+		t.Fatalf("album dedup: got two different IDs: %s vs %s", r1.ID, r2.ID)
+	}
+	if mgr.enqueueCalls != callsAfterFirst {
+		t.Fatalf("Enqueue called %d extra times on dup album request, want 0",
+			mgr.enqueueCalls-callsAfterFirst)
+	}
+}
+
+// ─── End album handler tests ────────────────────────────────────────────────────
+
 // TestDownloadReqFromItemTrackKind verifies that a track/empty Kind yields GranularityTrack.
 func TestDownloadReqFromItemTrackKind(t *testing.T) {
 	item := core.RequestItem{
