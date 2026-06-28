@@ -15,6 +15,7 @@ import Artist from './routes/Artist'
 import Home from './routes/Home'
 import Admin from './routes/Admin'
 import Downloads from './routes/Downloads'
+import Requests from './routes/Requests'
 import SyncedPlaylist from './routes/SyncedPlaylist'
 import Signup from './routes/Signup'
 import Account from './routes/Account'
@@ -115,6 +116,7 @@ function Routed() {
           }
         />
         <Route path="/downloads" element={<Downloads />} />
+        <Route path="/requests" element={<Requests />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>

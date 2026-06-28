@@ -6,6 +6,7 @@ import { useUI } from '../../lib/uiStore'
 import { useDownloads } from '../../lib/downloadStore'
 import { useSearch } from '../../lib/searchStore'
 import { useAuthStore, isManagerCaps } from '../../lib/authStore'
+import { useRequestStore } from '../../lib/requestApi'
 
 export function TopBar() {
   const navigate = useNavigate()
@@ -19,6 +20,9 @@ export function TopBar() {
   // capability (the backend enforces this regardless). Account/Settings stay
   // available to every authenticated user.
   const isManager = useAuthStore((s) => isManagerCaps(s.me?.capabilities))
+  const canRequest = useAuthStore((s) => s.can('request'))
+  const canManageRequests = useAuthStore((s) => s.can('manage_requests'))
+  const pendingRequestCount = useRequestStore((s) => s.pending().length)
 
   // Typeahead dropdown — typing only updates the shared query; submitting
   // (Enter) navigates to the full /search results page.
@@ -162,6 +166,31 @@ export function TopBar() {
             </span>
           )}
         </div>
+
+        {/* Requests button with pending-count badge for managers (desktop only) */}
+        {canRequest && (
+          <div className="relative hidden md:block">
+            <Button
+              variant="ghost"
+              size="sm"
+              aria-label="Requests"
+              onClick={() => navigate('/requests')}
+            >
+              <span className="flex items-center gap-1.5">
+                <Icon name="music" className="w-4 h-4" />
+                <span>Requests</span>
+              </span>
+            </Button>
+            {canManageRequests && pendingRequestCount > 0 && (
+              <span
+                data-testid="requests-badge"
+                className="absolute -top-1 -right-1 min-w-4 h-4 px-1 rounded-full bg-accent text-on-accent text-xs font-extrabold grid place-items-center pointer-events-none"
+              >
+                {pendingRequestCount}
+              </span>
+            )}
+          </div>
+        )}
 
         {/* Avatar / account menu */}
         <div ref={menuRef} className="relative">
