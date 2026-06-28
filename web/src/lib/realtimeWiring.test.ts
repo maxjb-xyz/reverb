@@ -5,6 +5,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { useRealtime } from './realtimeWiring'
 import { useDownloads } from './downloadStore'
 import { useLibraryRevision } from './libraryRevisionStore'
+import { useRequestStore } from './requestApi'
+import { useToastStore } from './toastStore'
 import type { WebSocketLike } from './realtime'
 
 // Player spy: usePlayer((s) => s.playTrackList) must return our spy.
@@ -51,6 +53,8 @@ describe('useRealtime', () => {
     playTrackList.mockClear()
     useDownloads.setState({ jobs: {} })
     useLibraryRevision.setState({ revision: 0 })
+    useRequestStore.setState({ byId: {} })
+    useToastStore.setState({ toasts: [] })
     qc = new QueryClient()
     invalidateSpy = vi.spyOn(qc, 'invalidateQueries')
   })
@@ -162,5 +166,76 @@ describe('useRealtime', () => {
 
     s.onmessage?.(frame('download.removed', { jobIds: ['x'] }))
     expect(useDownloads.getState().jobs['x']).toBeUndefined()
+  })
+
+  it('request.created upserts into the request store and emits no toast', () => {
+    renderHook(() => useRealtime((url) => new StubSocket(url)), { wrapper })
+    const s = sockets[0]
+
+    s.onmessage?.(frame('request.created', {
+      request: { id: 'r1', requestedBy: 'u1', source: 'spotify', externalId: 'e1', title: 'Bones', artist: 'Imagine Dragons', status: 'pending', createdAt: 1 },
+    }))
+
+    expect(useRequestStore.getState().byId['r1']).toBeDefined()
+    expect(useRequestStore.getState().byId['r1'].title).toBe('Bones')
+    expect(useToastStore.getState().toasts).toHaveLength(0)
+  })
+
+  it('request.updated with status fulfilled upserts store and shows a success toast mentioning the title', () => {
+    renderHook(() => useRealtime((url) => new StubSocket(url)), { wrapper })
+    const s = sockets[0]
+
+    s.onmessage?.(frame('request.updated', {
+      request: { id: 'r2', requestedBy: 'u1', source: 'spotify', externalId: 'e2', title: 'Bones', artist: 'Imagine Dragons', status: 'fulfilled', createdAt: 1 },
+    }))
+
+    expect(useRequestStore.getState().byId['r2']).toBeDefined()
+    const toasts = useToastStore.getState().toasts
+    expect(toasts).toHaveLength(1)
+    expect(toasts[0].kind).toBe('success')
+    expect(toasts[0].message).toContain('Bones')
+    expect(toasts[0].message).toContain('added')
+  })
+
+  it('request.updated with status denied shows an error toast', () => {
+    renderHook(() => useRealtime((url) => new StubSocket(url)), { wrapper })
+    const s = sockets[0]
+
+    s.onmessage?.(frame('request.updated', {
+      request: { id: 'r3', requestedBy: 'u1', source: 'spotify', externalId: 'e3', title: 'Bones', artist: 'Imagine Dragons', status: 'denied', createdAt: 1 },
+    }))
+
+    const toasts = useToastStore.getState().toasts
+    expect(toasts).toHaveLength(1)
+    expect(toasts[0].kind).toBe('error')
+    expect(toasts[0].message).toContain('denied')
+  })
+
+  it('request.updated with status failed shows an error toast', () => {
+    renderHook(() => useRealtime((url) => new StubSocket(url)), { wrapper })
+    const s = sockets[0]
+
+    s.onmessage?.(frame('request.updated', {
+      request: { id: 'r4', requestedBy: 'u1', source: 'spotify', externalId: 'e4', title: 'Bones', artist: 'Imagine Dragons', status: 'failed', createdAt: 1 },
+    }))
+
+    const toasts = useToastStore.getState().toasts
+    expect(toasts).toHaveLength(1)
+    expect(toasts[0].kind).toBe('error')
+    expect(toasts[0].message).toContain('failed')
+  })
+
+  it('request.updated with status pending or approved emits no toast', () => {
+    renderHook(() => useRealtime((url) => new StubSocket(url)), { wrapper })
+    const s = sockets[0]
+
+    s.onmessage?.(frame('request.updated', {
+      request: { id: 'r5', requestedBy: 'u1', source: 'spotify', externalId: 'e5', title: 'Bones', artist: 'Imagine Dragons', status: 'pending', createdAt: 1 },
+    }))
+    s.onmessage?.(frame('request.updated', {
+      request: { id: 'r6', requestedBy: 'u1', source: 'spotify', externalId: 'e6', title: 'Bones', artist: 'Imagine Dragons', status: 'approved', createdAt: 1 },
+    }))
+
+    expect(useToastStore.getState().toasts).toHaveLength(0)
   })
 })

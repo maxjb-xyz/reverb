@@ -5,6 +5,8 @@ import { useDownloads } from './downloadStore'
 import { useLibraryRevision } from './libraryRevisionStore'
 import { getDownloads, getQueueState } from './downloadApi'
 import { usePlayer } from './playerStore'
+import { useRequestStore, type RequestEventPayload } from './requestApi'
+import { useToastStore } from './toastStore'
 import type { DownloadEvent, DownloadRemovedEvent, LibraryUpdatedEvent, QueueStateEvent, RealtimeEvent, Track } from './types'
 
 // trackFromJob synthesizes a minimal library Track for play-when-ready auto-play,
@@ -95,6 +97,23 @@ export function useRealtime(makeSocket?: (url: string) => WebSocketLike): void {
         }
         case 'download.removed': {
           useDownloads.getState().remove((frame.payload as DownloadRemovedEvent).jobIds)
+          break
+        }
+        case 'request.created': {
+          useRequestStore.getState().applyRequestEvent(frame.payload as RequestEventPayload)
+          break
+        }
+        case 'request.updated': {
+          const payload = frame.payload as RequestEventPayload
+          useRequestStore.getState().applyRequestEvent(payload)
+          const { status, title } = payload.request
+          if (status === 'fulfilled') {
+            useToastStore.getState().push(`Your request for "${title}" was added`, 'success')
+          } else if (status === 'denied') {
+            useToastStore.getState().push(`Your request for "${title}" was denied`, 'error')
+          } else if (status === 'failed') {
+            useToastStore.getState().push(`Your request for "${title}" failed`, 'error')
+          }
           break
         }
         default:

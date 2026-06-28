@@ -7,6 +7,7 @@ import { DownloadTray } from './DownloadTray'
 import { MobileTabNav } from './MobileTabNav'
 import { MiniPlayer } from './MiniPlayer'
 import { NowPlayingOverlay } from './NowPlayingOverlay'
+import { Toaster } from './ui/Toaster'
 import { useRealtime } from '../lib/realtimeWiring'
 import { usePlayer } from '../lib/playerStore'
 import { useUI } from '../lib/uiStore'
@@ -93,6 +94,7 @@ export function AppShell() {
       <MiniPlayer />
       <MobileTabNav />
       <NowPlayingOverlay />
+      <Toaster />
     </div>
   )
 }
