@@ -96,8 +96,8 @@ func TestCapabilitiesMetadata(t *testing.T) {
 	rr := doGET(t, srv, "/api/v1/capabilities", tok)
 	var caps []struct{ Key, Label string }
 	json.Unmarshal(rr.Body.Bytes(), &caps)
-	if len(caps) != 6 {
-		t.Fatalf("want 6 capabilities, got %d", len(caps))
+	if len(caps) != 7 {
+		t.Fatalf("want 7 capabilities, got %d", len(caps))
 	}
 }
 
