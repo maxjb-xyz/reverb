@@ -37,6 +37,14 @@ function sortInstances(type: string, instances: AdapterInstance[]): AdapterInsta
   return instances
 }
 
+/**
+ * Downloader chain order is controlled by granularity settings in
+ * Settings → Downloaders. The Admin priority reorder has no effect on
+ * downloaders when granularities are configured (which they are after any
+ * Settings edit). Only library and search adapters use priority for ordering.
+ */
+const REORDER_DISABLED_TYPES = new Set(['downloader'])
+
 export function AdapterSection({
   title,
   subtitle,
@@ -51,6 +59,9 @@ export function AdapterSection({
 }: AdapterSectionProps) {
   const ordered = sortInstances(type, instances)
   const showOrder = type === 'search' || type === 'downloader'
+  // Downloaders are ordered via granularity settings in Settings → Downloaders,
+  // not by Admin priority arrows. Suppress reorder controls for downloader type.
+  const reorderDisabled = REORDER_DISABLED_TYPES.has(type)
   const emptyMessage = EMPTY_MESSAGES[type] ?? 'No providers configured'
   const typeLabel = TYPE_LABEL[type] ?? type
   const addLabel = `Add ${typeLabel}`
@@ -94,6 +105,9 @@ export function AdapterSection({
         <h2 className="text-lg font-extrabold tracking-tight text-text-primary">{title}</h2>
         <span className="text-xs font-bold text-text-muted">{instances.length}</span>
         {subtitle && <span className="text-xs text-text-muted">{subtitle}</span>}
+        {reorderDisabled && instances.length > 0 && (
+          <span className="text-xs text-text-muted italic">Order in Settings → Downloaders.</span>
+        )}
         <div className="ml-auto">
           <Button
             size="sm"
@@ -198,7 +212,7 @@ export function AdapterSection({
                 onEdit={startEdit}
                 onToggle={onToggle}
                 onRemove={onRemove}
-                onReorder={onReorder}
+                onReorder={reorderDisabled ? undefined : onReorder}
               />
             </li>
           ))}

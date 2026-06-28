@@ -13,8 +13,9 @@ import (
 )
 
 // Adapter implements download.Downloader and download.AsyncDownloader for Lidarr.
-// Granularity() returns GranularityAlbum, which keeps Lidarr out of the per-track
-// fallback chain. CanDownload is a per-request filter only (always true).
+// SupportedGranularities() returns [GranularityAlbum], so Lidarr's granularity-order
+// key only appears in the album chain — it is excluded from the per-track chain by
+// ResolveGranularityOrder. CanDownload is a per-request filter only (always true).
 type Adapter struct {
 	url               string
 	apiKey            string
@@ -88,8 +89,9 @@ func (a *Adapter) TestConnection(ctx context.Context) error {
 	return a.client.SystemStatus(ctx)
 }
 
-// CanDownload returns true. Granularity() == GranularityAlbum is what keeps Lidarr
-// out of the per-track fallback chain; CanDownload is a per-request filter only.
+// CanDownload returns true. SupportedGranularities() returning only GranularityAlbum
+// is what keeps Lidarr out of the per-track fallback chain (via ResolveGranularityOrder);
+// CanDownload is a per-request filter only.
 func (a *Adapter) CanDownload(ctx context.Context, req core.DownloadRequest) (bool, error) {
 	return true, nil
 }

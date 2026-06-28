@@ -90,4 +90,65 @@ describe('AdapterSection', () => {
     expect(cards[0]).toHaveTextContent('First')
     expect(cards[1]).toHaveTextContent('Second')
   })
+
+  it('search adapter rows render priority reorder arrows', () => {
+    const onReorder = vi.fn()
+    const instances = [makeInstance({ id: 'a', name: 'Spotify', type: 'search' })]
+    render(
+      <AdapterSection
+        title="Search providers"
+        type="search"
+        instances={instances}
+        available={[makeAvailable()]}
+        onReorder={onReorder}
+        {...handlers}
+      />,
+    )
+    expect(screen.getByRole('button', { name: /move spotify up/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /move spotify down/i })).toBeInTheDocument()
+  })
+
+  it('downloader adapter rows do NOT render priority reorder arrows', () => {
+    const onReorder = vi.fn()
+    const instances = [makeInstance({ id: 'dl-1', name: 'spotdl', type: 'downloader' })]
+    render(
+      <AdapterSection
+        title="Downloaders"
+        type="downloader"
+        instances={instances}
+        available={[makeAvailable({ type: 'downloader', name: 'spotdl' })]}
+        onReorder={onReorder}
+        {...handlers}
+      />,
+    )
+    expect(screen.queryByRole('button', { name: /move spotdl up/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /move spotdl down/i })).not.toBeInTheDocument()
+  })
+
+  it('downloader section shows "Order in Settings → Downloaders." hint when instances exist', () => {
+    const instances = [makeInstance({ id: 'dl-1', name: 'spotdl', type: 'downloader' })]
+    render(
+      <AdapterSection
+        title="Downloaders"
+        type="downloader"
+        instances={instances}
+        available={[makeAvailable({ type: 'downloader', name: 'spotdl' })]}
+        {...handlers}
+      />,
+    )
+    expect(screen.getByText(/order in settings/i)).toBeInTheDocument()
+  })
+
+  it('downloader section does NOT show the hint when there are no instances', () => {
+    render(
+      <AdapterSection
+        title="Downloaders"
+        type="downloader"
+        instances={[]}
+        available={[makeAvailable({ type: 'downloader', name: 'spotdl' })]}
+        {...handlers}
+      />,
+    )
+    expect(screen.queryByText(/order in settings/i)).not.toBeInTheDocument()
+  })
 })

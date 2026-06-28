@@ -665,9 +665,12 @@ func (m *Manager) process(id string) {
 	// Use !haveReq as the sole sentinel: a map hit is always valid even when
 	// ExternalID=="" (non-Spotify jobs have a real request with an empty ExternalID).
 	if !haveReq {
-		// Granularity is intentionally omitted (defaults to track): only track (sync)
-		// jobs reach process() — async (album) jobs run on the reconciler lane and
-		// never hit the worker, so the track default is always correct here.
+		// Granularity defaults to track here. On the normal enqueue path m.reqs always
+		// has the full request (including Granularity), so this branch is only reached
+		// on cross-restart recovery — deferred via SeedRequest (not yet wired). At that
+		// point only track-granularity sync jobs are persisted; album sync jobs (e.g.
+		// spotDL album) run on the reconciler lane and are re-enqueued fresh, so the
+		// track default is correct for the !haveReq path until SeedRequest is wired.
 		req = core.DownloadRequest{
 			Source: job.Source, ExternalID: job.ExternalID, Artist: job.Artist,
 			Title: job.Title, Album: job.Album, ISRC: job.ISRC,
@@ -1203,9 +1206,10 @@ func (m *Manager) publishQueueState(paused bool) {
 	m.bus.Publish(events.Event{Topic: TopicQueueState, Payload: core.QueueStateEvent{Paused: paused}})
 }
 
-// SeedRequest rehydrates the originating request for a job (used after restart or
-// to retry a job whose in-memory request was cleared on completion). The
-// composition root rehydrates queued jobs from request_json at startup.
+// SeedRequest is the seam for cross-restart request recovery: it rehydrates the
+// originating request (including Granularity) for a job whose in-memory entry was
+// lost across a process restart. Not yet wired to a production caller — deferred
+// until the composition root drives restart rehydration from request_json.
 func (m *Manager) SeedRequest(jobID string, req core.DownloadRequest) {
 	m.mu.Lock()
 	m.reqs[jobID] = req
