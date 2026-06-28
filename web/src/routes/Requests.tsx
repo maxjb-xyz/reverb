@@ -101,7 +101,14 @@ function MyRequestRow({ req, userId }: { req: MusicRequest; userId: string }) {
       <Cover src={coverSrc} alt={req.title} size={40} />
       <div className="min-w-0 flex-1">
         <div className="truncate text-sm font-semibold text-text-primary">{req.title}</div>
-        <div className="truncate text-xs text-text-secondary">{req.artist}</div>
+        <div className="flex items-center gap-1 truncate text-xs text-text-secondary">
+          {req.artist}
+          {req.kind === 'album' && (
+            <span className="ml-1 rounded px-1 py-px text-[10px] font-semibold uppercase tracking-wide bg-surface-raised text-text-muted">
+              Album
+            </span>
+          )}
+        </div>
       </div>
       <div className="flex-none">
         <StatusChip req={req} />
@@ -168,8 +175,14 @@ function ApprovalRow({ req }: { req: MusicRequest }) {
         <Cover src={coverSrc} alt={req.title} size={40} />
         <div className="min-w-0 flex-1">
           <div className="truncate text-sm font-semibold text-text-primary">{req.title}</div>
-          <div className="truncate text-xs text-text-secondary">
-            {req.artist} · <span className="text-text-muted">by {req.requestedBy}</span>
+          <div className="flex items-center gap-1 truncate text-xs text-text-secondary">
+            {req.artist}
+            {req.kind === 'album' && (
+              <span className="rounded px-1 py-px text-[10px] font-semibold uppercase tracking-wide bg-surface-raised text-text-muted">
+                Album
+              </span>
+            )}
+            {' · '}<span className="text-text-muted">by {req.requestedBy}</span>
           </div>
         </div>
         <div className="flex flex-none items-center gap-2">

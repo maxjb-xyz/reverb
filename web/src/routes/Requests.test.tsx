@@ -254,6 +254,70 @@ describe('Requests page — cover art rendering', () => {
   })
 })
 
+describe('Requests page — album kind cue', () => {
+  beforeEach(() => {
+    useRequestStore.setState({ byId: {} })
+    useAuthStore.setState({ me: null, loading: false })
+    mockNavigate.mockReset()
+  })
+
+  it('MyRequestRow shows "Album" cue when kind is "album"', async () => {
+    setMe('u1', ['request'])
+    useRequestStore.setState({
+      byId: { r1: makeRequest({ requestedBy: 'u1', status: 'pending', kind: 'album' }) },
+    })
+    renderRequests()
+    await waitFor(() => expect(screen.getByText('Test Song')).toBeInTheDocument())
+    expect(screen.getByText('Album')).toBeInTheDocument()
+  })
+
+  it('MyRequestRow shows NO "Album" cue when kind is "track"', async () => {
+    setMe('u1', ['request'])
+    useRequestStore.setState({
+      byId: { r1: makeRequest({ requestedBy: 'u1', status: 'pending', kind: 'track' }) },
+    })
+    renderRequests()
+    await waitFor(() => expect(screen.getByText('Test Song')).toBeInTheDocument())
+    expect(screen.queryByText('Album')).not.toBeInTheDocument()
+  })
+
+  it('MyRequestRow shows NO "Album" cue when kind is undefined', async () => {
+    setMe('u1', ['request'])
+    useRequestStore.setState({
+      byId: { r1: makeRequest({ requestedBy: 'u1', status: 'pending' }) },
+    })
+    renderRequests()
+    await waitFor(() => expect(screen.getByText('Test Song')).toBeInTheDocument())
+    expect(screen.queryByText('Album')).not.toBeInTheDocument()
+  })
+
+  it('ApprovalRow shows "Album" cue when kind is "album"', async () => {
+    setMe('u2', ['request', 'manage_requests'])
+    useRequestStore.setState({
+      byId: {
+        r2: makeRequest({ id: 'r2', requestedBy: 'u3', status: 'pending', title: 'Queue Album', kind: 'album' }),
+      },
+    })
+    renderRequests()
+    fireEvent.click(screen.getByRole('tab', { name: /approval/i }))
+    await waitFor(() => expect(screen.getByText('Queue Album')).toBeInTheDocument())
+    expect(screen.getByText('Album')).toBeInTheDocument()
+  })
+
+  it('ApprovalRow shows NO "Album" cue when kind is "track"', async () => {
+    setMe('u2', ['request', 'manage_requests'])
+    useRequestStore.setState({
+      byId: {
+        r2: makeRequest({ id: 'r2', requestedBy: 'u3', status: 'pending', title: 'Queue Track', kind: 'track' }),
+      },
+    })
+    renderRequests()
+    fireEvent.click(screen.getByRole('tab', { name: /approval/i }))
+    await waitFor(() => expect(screen.getByText('Queue Track')).toBeInTheDocument())
+    expect(screen.queryByText('Album')).not.toBeInTheDocument()
+  })
+})
+
 describe('TopBar — Requests nav entry', () => {
   beforeEach(() => {
     useAuthStore.setState({ me: null, loading: false })
