@@ -830,36 +830,60 @@ export type DownloadersMocksControl = {
   getLastPutBody: (id: string) => Record<string, unknown> | null
 }
 
+// Default adapter seed (spotDL supports track+album; Lidarr supports album only).
+const defaultAdapterSeed: DownloaderAdapterInstance[] = [
+  {
+    id: 'spotdl-1',
+    type: 'downloader',
+    name: 'spotdl',
+    enabled: true,
+    priority: 0,
+    config: { granularities: { track: 0, album: 0 } },
+    capabilities: [],
+    supportedGranularities: ['track', 'album'],
+    granularities: { track: 0, album: 0 },
+  },
+  {
+    id: 'lidarr-1',
+    type: 'downloader',
+    name: 'lidarr',
+    enabled: true,
+    priority: 1,
+    config: { granularities: { album: 1 } },
+    capabilities: [],
+    supportedGranularities: ['album'],
+    granularities: { album: 1 },
+  },
+]
+
+// installDownloadersMocksWithSeed lets tests supply a custom initial adapter list.
+// Useful for seeding specific granularities states (e.g. spotDL with album disabled).
+export async function installDownloadersMocksWithSeed(
+  page: Page,
+  seed: DownloaderAdapterInstance[],
+): Promise<DownloadersMocksControl> {
+  return _installDownloadersMocksImpl(page, seed)
+}
+
 export async function installDownloadersMocks(page: Page): Promise<DownloadersMocksControl> {
+  return _installDownloadersMocksImpl(page, defaultAdapterSeed)
+}
+
+async function _installDownloadersMocksImpl(
+  page: Page,
+  initialAdapters: DownloaderAdapterInstance[],
+): Promise<DownloadersMocksControl> {
   // Mutable state: per-adapter granularities maps, updated by PUT /adapters/:id.
   const state: {
     adapters: DownloaderAdapterInstance[]
     lastPutBodies: Record<string, Record<string, unknown> | null>
   } = {
-    adapters: [
-      {
-        id: 'spotdl-1',
-        type: 'downloader',
-        name: 'spotdl',
-        enabled: true,
-        priority: 0,
-        config: { granularities: { track: 0, album: 0 } },
-        capabilities: [],
-        supportedGranularities: ['track', 'album'],
-        granularities: { track: 0, album: 0 },
-      },
-      {
-        id: 'lidarr-1',
-        type: 'downloader',
-        name: 'lidarr',
-        enabled: true,
-        priority: 1,
-        config: { granularities: { album: 1 } },
-        capabilities: [],
-        supportedGranularities: ['album'],
-        granularities: { album: 1 },
-      },
-    ],
+    // Deep-clone so each test has isolated mutable state.
+    adapters: initialAdapters.map((a) => ({
+      ...a,
+      config: { ...a.config, granularities: { ...a.config.granularities } },
+      granularities: { ...a.granularities },
+    })),
     lastPutBodies: {},
   }
 

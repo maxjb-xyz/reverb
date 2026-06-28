@@ -1,5 +1,11 @@
 import { test, expect } from '@playwright/test'
-import { installApiMocks, installDownloadersMocks, ownerMe } from './mocks'
+import {
+  installApiMocks,
+  installDownloadersMocks,
+  installDownloadersMocksWithSeed,
+  ownerMe,
+  type DownloaderAdapterInstance,
+} from './mocks'
 
 // Hermetic e2e for the two-column Downloaders Settings section.
 //
@@ -17,13 +23,8 @@ import { installApiMocks, installDownloadersMocks, ownerMe } from './mocks'
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
-/** Land on the Settings page as an authenticated owner. */
-async function goToSettings(page: import('@playwright/test').Page) {
-  const authed = { value: true }
-  await installApiMocks(page, authed, { me: ownerMe })
-  const dl = await installDownloadersMocks(page)
-
-  // The Settings page calls GET /settings; stub it with minimal valid data.
+/** Stub the /settings GET+PUT routes (needed by the Settings page). */
+async function stubSettingsRoute(page: import('@playwright/test').Page) {
   await page.route('**/api/v1/settings', (route) => {
     if (route.request().method() === 'GET') {
       return route.fulfill({
@@ -41,6 +42,34 @@ async function goToSettings(page: import('@playwright/test').Page) {
     }
     return route.continue()
   })
+}
+
+/** Land on the Settings page as an authenticated owner. */
+async function goToSettings(page: import('@playwright/test').Page) {
+  const authed = { value: true }
+  await installApiMocks(page, authed, { me: ownerMe })
+  const dl = await installDownloadersMocks(page)
+
+  // The Settings page calls GET /settings; stub it with minimal valid data.
+  await stubSettingsRoute(page)
+
+  await page.goto('/settings')
+  await expect(page.getByTestId('app-shell-root')).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Settings' })).toBeVisible()
+
+  return dl
+}
+
+/** Land on the Settings page with a custom adapter seed. */
+async function goToSettingsWithSeed(
+  page: import('@playwright/test').Page,
+  seed: DownloaderAdapterInstance[],
+) {
+  const authed = { value: true }
+  await installApiMocks(page, authed, { me: ownerMe })
+  const dl = await installDownloadersMocksWithSeed(page, seed)
+
+  await stubSettingsRoute(page)
 
   await page.goto('/settings')
   await expect(page.getByTestId('app-shell-root')).toBeVisible()
@@ -127,15 +156,17 @@ test('downloaders: clicking Move down on spotDL in Album column issues PUT with 
   // The button is the second button in the row's flex gap (Move up, Move down).
   const firstRowMoveDown = albumCol.getByRole('button', { name: 'Move down' }).first()
   await expect(firstRowMoveDown).toBeEnabled()
-  await firstRowMoveDown.click()
 
-  // Wait for both PUTs to have been captured (moveInColumn fires two concurrent PUTs).
-  await page.waitForFunction(() => {
-    // The page itself doesn't expose putBodies, so we wait for network idle instead.
-    return true
-  })
-  // Give the network a moment for both PUTs to fire and the mock to handle them.
-  await page.waitForTimeout(300)
+  // Await both PUTs deterministically: moveInColumn fires two concurrent PUTs.
+  // We start listening before the click and resolve once both have responded.
+  const put1 = page.waitForResponse(
+    (r) => /\/api\/v1\/adapters\//.test(r.url()) && r.request().method() === 'PUT',
+  )
+  const put2 = page.waitForResponse(
+    (r) => /\/api\/v1\/adapters\//.test(r.url()) && r.request().method() === 'PUT',
+  )
+  await firstRowMoveDown.click()
+  await Promise.all([put1, put2])
 
   // Both PUTs should have been issued.
   expect(putBodies.length).toBeGreaterThanOrEqual(2)
@@ -163,12 +194,72 @@ test('downloaders: clicking Move down on spotDL in Album column issues PUT with 
   expect(spotdlState.granularities.album).toBe(1)
   expect(lidarrState.granularities.album).toBe(0)
 
-  // The Song column is independent: spotDL's track order is still 0.
+  // The Song column is independent: spotDL's track order is still 0 (mock-state check).
   expect(spotdlState.granularities.track).toBe(0)
   // No track order should appear in the Lidarr PUT (lidarr doesn't support track).
   expect(lidarrGranularities.track).toBeUndefined()
 
-  // The Song column in the UI still lists spotDL (unchanged).
+  // UI-level independence: the Song column still renders exactly 1 row, still spotDL.
+  // This proves the Album reorder did NOT add/remove/resort the Song column at the
+  // rendered-DOM level — not just that mock state is unchanged.
   const songCol = page.getByTestId('downloaders-song-col')
-  await expect(songCol.getByTestId('downloader-name').first()).toHaveText('spotdl')
+  const songNames = songCol.getByTestId('downloader-name')
+  await expect(songNames).toHaveCount(1)
+  await expect(songNames.first()).toHaveText('spotdl')
+})
+
+// ── 4) Toggle-off: spotDL with album granularity disabled is absent from Album column ──
+//
+// Brief requirement: "toggle album off spotDL removes it from the Album column."
+// Driving the Admin AdapterForm cross-page is impractical in this hermetic harness
+// (the form is unit-tested in Task 6). Instead we seed spotDL with
+// granularities:{track:0} (no album key) — the state that would result AFTER saving
+// the form with Album unchecked — and assert the rendered columns derive correctly.
+// This is a column-derivation assertion, not a form-drive. (Note: form checkbox
+// behaviour is covered by unit tests in Task 6.)
+
+test('downloaders: when spotDL has no album granularity, Album column shows only Lidarr and Song column still shows spotDL', async ({ page }) => {
+  // Seed: spotDL supports track+album but only has track granularity active (album
+  // checkbox was unchecked and saved, so config.granularities has no album key).
+  // Lidarr has album only (unchanged).
+  const seed: DownloaderAdapterInstance[] = [
+    {
+      id: 'spotdl-1',
+      type: 'downloader',
+      name: 'spotdl',
+      enabled: true,
+      priority: 0,
+      config: { granularities: { track: 0 } },
+      capabilities: [],
+      supportedGranularities: ['track', 'album'],
+      granularities: { track: 0 },
+    },
+    {
+      id: 'lidarr-1',
+      type: 'downloader',
+      name: 'lidarr',
+      enabled: true,
+      priority: 1,
+      config: { granularities: { album: 0 } },
+      capabilities: [],
+      supportedGranularities: ['album'],
+      granularities: { album: 0 },
+    },
+  ]
+
+  await goToSettingsWithSeed(page, seed)
+
+  // Album column: only Lidarr (spotDL has no album granularity entry).
+  const albumCol = page.getByTestId('downloaders-album-col')
+  await expect(albumCol).toBeVisible()
+  const albumNames = albumCol.getByTestId('downloader-name')
+  await expect(albumNames).toHaveCount(1)
+  await expect(albumNames.first()).toHaveText('lidarr')
+
+  // Song column: still spotDL (its track granularity is unaffected).
+  const songCol = page.getByTestId('downloaders-song-col')
+  await expect(songCol).toBeVisible()
+  const songNames = songCol.getByTestId('downloader-name')
+  await expect(songNames).toHaveCount(1)
+  await expect(songNames.first()).toHaveText('spotdl')
 })
