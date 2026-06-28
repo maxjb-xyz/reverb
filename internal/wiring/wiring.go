@@ -259,6 +259,7 @@ type VersionStore interface {
 }
 
 const settingLibraryIdentity = "library_identity"
+const settingDownloadJobIdentity = "download_jobs_library_identity"
 
 // libraryIdentity returns a stable fingerprint of the active library backend.
 // Different backends (bundled vs a given external server) assign different track
@@ -296,6 +297,21 @@ func (b *Builder) reconcileLibraryIdentity(ctx context.Context, identity string)
 		return err
 	}
 	return b.queries.UpsertSetting(ctx, db.UpsertSettingParams{Key: settingLibraryIdentity, Value: identity})
+}
+
+// reconcileDownloadJobIdentity clears library_track_id and cover_art_id on all
+// completed download jobs when the active library backend's identity differs from
+// the last boot, so the existing re-match passes (backfillUnlinked + runScan)
+// can re-resolve the stale refs against the live backend. No-op when the identity
+// is unchanged (idempotent after the first post-deploy boot).
+func (b *Builder) reconcileDownloadJobIdentity(ctx context.Context, identity string) error {
+	if stored, err := b.queries.GetSetting(ctx, settingDownloadJobIdentity); err == nil && stored == identity {
+		return nil
+	}
+	if err := b.queries.ClearMatchedDownloadJobLibraryRefs(ctx); err != nil {
+		return err
+	}
+	return b.queries.UpsertSetting(ctx, db.UpsertSettingParams{Key: settingDownloadJobIdentity, Value: identity})
 }
 
 // Builder captures everything needed to (re)build a ServiceBundle from the
@@ -389,6 +405,12 @@ func (b *Builder) Build(ctx context.Context) (ServiceBundle, error) {
 	// re-match against the new library — otherwise playback/links use dead IDs.
 	if err := b.reconcileLibraryIdentity(ctx, libraryIdentity(mode, instances)); err != nil {
 		log.Printf("WARNING: library identity reconcile: %v", err)
+	}
+	// Clear stale library_track_id + cover_art_id on download jobs so the
+	// existing re-match passes (backfillUnlinked + runScan) can re-resolve them
+	// against the live backend's new track IDs.
+	if err := b.reconcileDownloadJobIdentity(ctx, libraryIdentity(mode, instances)); err != nil {
+		log.Printf("WARNING: download job identity reconcile: %v", err)
 	}
 
 	var creds embedded.Credentials

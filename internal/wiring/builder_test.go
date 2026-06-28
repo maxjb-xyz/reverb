@@ -2,6 +2,7 @@ package wiring
 
 import (
 	"context"
+	"database/sql"
 	"testing"
 
 	"github.com/google/uuid"
@@ -167,6 +168,80 @@ func TestBuilderSyncServiceNilWithoutLibrary(t *testing.T) {
 	}
 	if bundle.Sync != nil {
 		t.Fatal("expected nil sync service without a library adapter")
+	}
+}
+
+func TestReconcileDownloadJobIdentity_ClearsRefsOnIdentityChange(t *testing.T) {
+	st, err := store.Open(t.TempDir() + "/s.db")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { st.Close() })
+	if err := st.Migrate(); err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	b := &Builder{queries: st.Q(), version: st}
+
+	// Seed a completed download job with stale library refs (old backend IDs).
+	if err := st.Q().InsertDownloadJob(ctx, db.InsertDownloadJobParams{
+		ID:             "job-1",
+		DedupKey:       "dedup-1",
+		RequestJson:    "{}",
+		DownloaderName: "spotdl",
+		Status:         "completed",
+		LibraryTrackID: sql.NullString{String: "old-track-id", Valid: true},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Q().UpdateDownloadJobCoverArtID(ctx, db.UpdateDownloadJobCoverArtIDParams{
+		CoverArtID: sql.NullString{String: "old-cover-id", Valid: true},
+		ID:         "job-1",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	// First call with new identity (setting unset) → refs must be cleared.
+	if err := b.reconcileDownloadJobIdentity(ctx, "builtin"); err != nil {
+		t.Fatal(err)
+	}
+	job, err := st.Q().GetDownloadJob(ctx, "job-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if job.LibraryTrackID.String != "" {
+		t.Fatalf("LibraryTrackID = %q, want empty (cleared on identity change)", job.LibraryTrackID.String)
+	}
+	if job.CoverArtID.String != "" {
+		t.Fatalf("CoverArtID = %q, want empty (cleared on identity change)", job.CoverArtID.String)
+	}
+	// Setting must be stored.
+	if id, _ := st.Q().GetSetting(ctx, settingDownloadJobIdentity); id != "builtin" {
+		t.Fatalf("download_jobs_library_identity = %q, want builtin", id)
+	}
+
+	// Insert a second job with refs (simulates a freshly linked job after the identity was stored).
+	if err := st.Q().InsertDownloadJob(ctx, db.InsertDownloadJobParams{
+		ID:             "job-2",
+		DedupKey:       "dedup-2",
+		RequestJson:    "{}",
+		DownloaderName: "spotdl",
+		Status:         "completed",
+		LibraryTrackID: sql.NullString{String: "new-track-id", Valid: true},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	// Second call with SAME identity → no-op; job-2's refs must be preserved.
+	if err := b.reconcileDownloadJobIdentity(ctx, "builtin"); err != nil {
+		t.Fatal(err)
+	}
+	job2, err := st.Q().GetDownloadJob(ctx, "job-2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if job2.LibraryTrackID.String != "new-track-id" {
+		t.Fatalf("LibraryTrackID = %q, want new-track-id (no-op on same identity)", job2.LibraryTrackID.String)
 	}
 }
 

@@ -10,6 +10,15 @@ import (
 	"database/sql"
 )
 
+const clearMatchedDownloadJobLibraryRefs = `-- name: ClearMatchedDownloadJobLibraryRefs :exec
+UPDATE download_jobs SET library_track_id = '', cover_art_id = '' WHERE library_track_id != ''
+`
+
+func (q *Queries) ClearMatchedDownloadJobLibraryRefs(ctx context.Context) error {
+	_, err := q.db.ExecContext(ctx, clearMatchedDownloadJobLibraryRefs)
+	return err
+}
+
 const deleteDownloadJob = `-- name: DeleteDownloadJob :exec
 DELETE FROM download_jobs WHERE id = ?
 `

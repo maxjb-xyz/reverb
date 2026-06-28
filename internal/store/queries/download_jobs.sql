@@ -73,3 +73,6 @@ DELETE FROM download_jobs WHERE id = ?;
 DELETE FROM download_jobs
 WHERE status IN ('completed', 'failed', 'canceled')
 RETURNING id;
+
+-- name: ClearMatchedDownloadJobLibraryRefs :exec
+UPDATE download_jobs SET library_track_id = '', cover_art_id = '' WHERE library_track_id != '';
