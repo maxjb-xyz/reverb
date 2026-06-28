@@ -192,13 +192,10 @@ func BuildDownloaders(reg *registry.Registry, instances []db.AdapterInstance, ge
 			log.Printf("WARNING: downloader %q init failed: %v — skipping", inst.Name, err)
 			continue
 		}
-		// DEFAULT order: each supported granularity gets order = inst.Priority.
-		// Task 2 will add per-granularity config overrides on top of this.
-		order := make(map[core.DownloadGranularity]int, len(dl.SupportedGranularities()))
-		for _, g := range dl.SupportedGranularities() {
-			order[g] = int(inst.Priority)
-		}
-		out = append(out, download.DownloaderEntry{Downloader: dl, Order: order})
+		out = append(out, download.DownloaderEntry{
+			Downloader: dl,
+			Order:      resolveGranularityOrder(cfg, dl.SupportedGranularities(), int(inst.Priority)),
+		})
 	}
 
 	// Bundled default: the image ships spotDL + ffmpeg, so when the user has not
