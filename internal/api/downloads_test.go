@@ -20,6 +20,7 @@ var errActiveClear = errors.New("cannot clear active job")
 type fakeManager struct {
 	jobs          map[string]core.DownloadJob
 	lastReq       core.DownloadRequest
+	enqueueCalls  int // incremented on every Enqueue call
 	canceled      []string
 	retried       []string
 	lastRetryURL  string // manualURL from the most recent Retry call
@@ -31,6 +32,7 @@ type fakeManager struct {
 func newFakeManager() *fakeManager { return &fakeManager{jobs: map[string]core.DownloadJob{}} }
 
 func (m *fakeManager) Enqueue(_ context.Context, req core.DownloadRequest) (core.DownloadJob, error) {
+	m.enqueueCalls++
 	m.lastReq = req
 	j := core.DownloadJob{ID: "job-" + req.ExternalID, DedupKey: "dk", Status: core.DownloadQueued, Source: req.Source, ExternalID: req.ExternalID, PlayWhenReady: req.PlayWhenReady}
 	m.jobs[j.ID] = j

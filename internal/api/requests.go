@@ -89,6 +89,12 @@ func (s *Server) handleApproveRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Guard: reject non-pending requests before enqueuing a download job.
+	if req.Status != core.RequestPending {
+		writeJSON(w, http.StatusConflict, map[string]string{"error": "request is not pending"})
+		return
+	}
+
 	dl := s.downloads()
 	if dl == nil {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "no downloader configured"})

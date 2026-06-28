@@ -265,12 +265,13 @@ func TestApproveRequest(t *testing.T) {
 	}
 }
 
-// TestApproveAlreadyApproved: approving an already-approved request → 409.
+// TestApproveAlreadyApproved: approving an already-approved request → 409 and NO
+// extra Enqueue call (the stray-download guard fires before the download manager).
 func TestApproveAlreadyApproved(t *testing.T) {
 	mgr := newFakeManager()
 	_, srv, ownerCookie := requestTestServer(t, mgr)
 
-	// Owner (auto_approve) posts → immediately approved.
+	// Owner (auto_approve) posts → immediately approved (Enqueue called once via auto_approve path).
 	rec := doReq(t, srv, ownerCookie, http.MethodPost, "/api/v1/requests", reqItem)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("POST /requests = %d: %s", rec.Code, rec.Body.String())
@@ -283,10 +284,16 @@ func TestApproveAlreadyApproved(t *testing.T) {
 		t.Fatalf("want approved, got %q", req.Status)
 	}
 
-	// Attempt to approve again → 409.
+	callsAfterFirst := mgr.enqueueCalls // should be 1 from the auto-approve path
+
+	// Attempt to approve again → 409 and Enqueue must NOT be called again.
 	rec = doReq(t, srv, ownerCookie, http.MethodPost, "/api/v1/requests/"+req.ID+"/approve", "")
 	if rec.Code != http.StatusConflict {
 		t.Fatalf("double-approve = %d, want 409", rec.Code)
+	}
+	if mgr.enqueueCalls != callsAfterFirst {
+		t.Fatalf("Enqueue called %d time(s) on double-approve, want 0 extra calls (stray download guard missing)",
+			mgr.enqueueCalls-callsAfterFirst)
 	}
 }
 
