@@ -117,6 +117,7 @@ type Request struct {
 	DownloadJobID sql.NullString `json:"download_job_id"`
 	DenyReason    sql.NullString `json:"deny_reason"`
 	CoverUrl      sql.NullString `json:"cover_url"`
+	Kind          string         `json:"kind"`
 }
 
 type Role struct {

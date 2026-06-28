@@ -8,6 +8,7 @@ export interface Request {
   requestedBy: string
   source: string
   externalId: string
+  kind?: 'track' | 'album'
   title: string
   artist: string
   album?: string
@@ -26,6 +27,7 @@ export interface Request {
 export interface CreateRequestItem {
   source: string
   externalId: string
+  kind?: 'track' | 'album'
   title: string
   artist: string
   album?: string

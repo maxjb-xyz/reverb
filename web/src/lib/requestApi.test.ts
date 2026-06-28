@@ -33,6 +33,13 @@ describe('requestApi HTTP calls', () => {
     expect(JSON.parse((call[1] as RequestInit).body as string)).toEqual(item)
   })
 
+  it('postRequest includes kind in the body when provided', async () => {
+    const item = { source: 'spotify', externalId: 'al1', title: 'Kid A', artist: 'Radiohead', kind: 'album' as const }
+    await postRequest(item)
+    const call = (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls.at(-1)!
+    expect(JSON.parse((call[1] as RequestInit).body as string)).toMatchObject({ kind: 'album' })
+  })
+
   it('getMyRequests GETs /api/v1/requests/mine', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify([mkRequest('r1', 'pending')]), { status: 200 })))
     await getMyRequests()

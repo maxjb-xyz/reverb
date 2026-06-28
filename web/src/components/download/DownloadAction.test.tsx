@@ -579,8 +579,8 @@ describe('DownloadAction', () => {
     expect(screen.queryByRole('button', { name: /download/i })).not.toBeInTheDocument()
   })
 
-  // ── 20. lidarr as first-priority → Download shows album disclosure → confirm enqueues lidarr
-  it('lidarr as highest-priority downloader → Download click shows album disclosure → confirm enqueues lidarr', () => {
+  // ── 20. lidarr as first-priority → Download enqueues directly (NO album disclosure)
+  it('lidarr as highest-priority downloader → Download click enqueues directly without showing album disclosure', async () => {
     useAdaptersMock = vi.fn(() => ({
       data: [
         { id: 'a1', type: 'downloader', name: 'lidarr', enabled: true, priority: 1, config: {} },
@@ -591,12 +591,10 @@ describe('DownloadAction', () => {
     // No picker caret
     expect(screen.queryByRole('button', { name: /choose downloader/i })).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Download T2' }))
-    // Lidarr routes through the album disclosure — NOT enqueued yet.
-    expect(screen.getByText(/whole album/i)).toBeInTheDocument()
-    expect(screen.getByText(/Discovery/)).toBeInTheDocument()
-    expect(postDownloadMock).not.toHaveBeenCalledWith(expect.objectContaining({ downloader: 'lidarr' }))
-    // Confirm → enqueues via lidarr.
-    fireEvent.click(screen.getByRole('button', { name: 'Confirm Lidarr album download' }))
+    // The album disclosure must NOT appear — enqueues directly.
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(screen.queryByText(/whole album/i)).not.toBeInTheDocument()
+    await waitFor(() => expect(postDownloadMock).toHaveBeenCalledTimes(1))
     expect(postDownloadMock).toHaveBeenCalledWith(expect.objectContaining({ downloader: 'lidarr' }))
   })
 })

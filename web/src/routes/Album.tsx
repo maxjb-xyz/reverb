@@ -1,12 +1,16 @@
+import { useState } from 'react'
+import { createPortal } from 'react-dom'
 import { Link, useParams } from 'react-router-dom'
 import { useAlbumDetail } from '../lib/coverageApi'
 import { coverUrl } from '../lib/libraryApi'
 import { TrackRow } from '../components/ui/TrackRow'
 import { DownloadAction } from '../components/download/DownloadAction'
 import { postBatchDownload } from '../lib/downloadApi'
+import { postRequest, useRequestStore } from '../lib/requestApi'
 import { formatDuration } from '../lib/types'
 import type { AlbumDetailTrack, ExternalResult, ExternalTrackRef, Track } from '../lib/types'
 import { usePlayer } from '../lib/playerStore'
+import { useAuthStore } from '../lib/authStore'
 import { Button, IconButton, Cover, Skeleton, EmptyState, Badge, Icon } from '../components/ui'
 import { useAlbumPalette } from '../lib/useAlbumPalette'
 import { rgbToCss } from '../lib/palette'
@@ -60,6 +64,8 @@ export default function Album() {
   const currentTrack = usePlayer((s) => s.current)
   const isPlaying = usePlayer((s) => s.playing)
   const palette = useAlbumPalette(album?.coverArtId ? coverUrl(album.coverArtId, 300) : album?.coverUrl)
+  const canRequest = useAuthStore((s) => s.can('request'))
+  const [requestDisclosureOpen, setRequestDisclosureOpen] = useState(false)
 
   if (isLoading) {
     return (
@@ -115,6 +121,9 @@ export default function Album() {
 
   // Cover source: prefer coverArtId proxy, fall back to direct coverUrl
   const coverSrc = album.coverArtId ? coverUrl(album.coverArtId, 300) : album.coverUrl
+
+  // Album artist: the album-level artist field (may differ from track-level artists)
+  const albumArtist = album.artist
 
   // Total duration: sum across all tracks (owned + missing)
   const totalDurationMs = album.tracks.reduce((acc, t) => acc + t.durationMs, 0)
@@ -190,10 +199,78 @@ export default function Album() {
                 </Button>
               )}
               <IconButton name="heart" label={`Like ${album.name}`} />
+              {canRequest && (
+                <Button
+                  variant="secondary"
+                  size="md"
+                  aria-label="Request album"
+                  onClick={() => setRequestDisclosureOpen(true)}
+                >
+                  Request album
+                </Button>
+              )}
             </div>
           </div>
         </header>
       </div>
+
+      {/* Request album disclosure modal */}
+      {requestDisclosureOpen &&
+        createPortal(
+          <>
+            <div
+              className="fixed inset-0 z-40"
+              aria-hidden="true"
+              onClick={() => setRequestDisclosureOpen(false)}
+            />
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-label="Request album"
+              className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-80 max-w-[calc(100vw-2rem)] rounded-xl border border-border-subtle bg-raised p-4 shadow-pop"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <p className="text-sm font-bold text-text-primary">Request the whole album?</p>
+              <p className="mt-1 text-xs text-text-secondary">
+                This fetches the full album via the album downloader
+                {album.name ? ` — "${album.name}"` : ''}.
+              </p>
+              <div className="mt-3 flex justify-end gap-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  aria-label="Cancel"
+                  onClick={() => setRequestDisclosureOpen(false)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  aria-label="Confirm request album"
+                  onClick={() => {
+                    setRequestDisclosureOpen(false)
+                    postRequest({
+                      kind: 'album',
+                      source,
+                      externalId: id,
+                      title: album.name,
+                      artist: albumArtist,
+                      album: album.name,
+                      coverArtId: album.coverArtId,
+                      coverUrl: album.coverUrl,
+                    })
+                      .then((req) => useRequestStore.getState().upsert(req))
+                      .catch((err) => console.error('[Album] postRequest failed:', err))
+                  }}
+                >
+                  Confirm
+                </Button>
+              </div>
+            </div>
+          </>,
+          document.body,
+        )}
 
       {/* Track list */}
       <div className="space-y-0.5">

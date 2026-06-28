@@ -6,6 +6,7 @@ import Album from './Album'
 import { makeTrack } from '../test/factories'
 import type { AlbumDetail, ExternalTrackRef } from '../lib/types'
 import { useAlbumPalette } from '../lib/useAlbumPalette'
+import { useAuthStore } from '../lib/authStore'
 
 // ── useAlbumPalette mock ───────────────────────────────────────────────────────
 vi.mock('../lib/useAlbumPalette', () => ({ useAlbumPalette: vi.fn(() => null) }))
@@ -40,6 +41,13 @@ vi.mock('../lib/downloadApi', () => ({
   postDownload: vi.fn().mockResolvedValue({}),
   retryDownload: vi.fn().mockResolvedValue({}),
   reqFromResult: vi.fn(),
+}))
+
+// ── postRequest mock ─────────────────────────────────────────────────────────
+const mockPostRequest = vi.fn().mockResolvedValue({ id: 'req-1', status: 'pending' })
+vi.mock('../lib/requestApi', () => ({
+  postRequest: (...args: unknown[]) => mockPostRequest(...args),
+  useRequestStore: { getState: () => ({ upsert: vi.fn() }) },
 }))
 
 // ── DownloadAction stub ───────────────────────────────────────────────────────
@@ -420,6 +428,66 @@ describe('Album page', () => {
     expect(mockPlayTrackList).toHaveBeenCalledOnce()
     const [tracks] = mockPlayTrackList.mock.calls[0] as [import('../lib/types').Track[], number]
     expect(tracks[0]).toMatchObject({ artistExternalId: 'sp-artist-77' })
+  })
+
+  describe('"Request album" action', () => {
+    function setCaps(caps: string[]) {
+      useAuthStore.setState({
+        me: { id: 'u1', username: 'u1', roleId: 'r', roleName: 'R', isOwner: false, capabilities: caps, createdAt: 0 },
+        loading: false,
+      })
+    }
+
+    afterEach(() => {
+      useAuthStore.setState({ me: null, loading: false })
+    })
+
+    it('renders "Request album" button for a user with the request capability', async () => {
+      setCaps(['request'])
+      await renderLoaded()
+      expect(screen.getByRole('button', { name: /request album/i })).toBeInTheDocument()
+    })
+
+    it('does NOT render "Request album" button for a user without request capability', async () => {
+      setCaps([])
+      await renderLoaded()
+      expect(screen.queryByRole('button', { name: /request album/i })).not.toBeInTheDocument()
+    })
+
+    it('clicking "Request album" opens the whole-album disclosure', async () => {
+      setCaps(['request'])
+      await renderLoaded()
+      fireEvent.click(screen.getByRole('button', { name: /request album/i }))
+      expect(screen.getByRole('dialog', { name: /request album/i })).toBeInTheDocument()
+      expect(screen.getByText(/album downloader/i)).toBeInTheDocument()
+    })
+
+    it('confirming the disclosure calls postRequest with kind:album and album metadata', async () => {
+      setCaps(['request'])
+      await renderLoaded()
+      fireEvent.click(screen.getByRole('button', { name: /request album/i }))
+      const confirmBtn = screen.getByRole('button', { name: /confirm/i })
+      fireEvent.click(confirmBtn)
+      await waitFor(() => expect(mockPostRequest).toHaveBeenCalledTimes(1))
+      expect(mockPostRequest).toHaveBeenCalledWith(
+        expect.objectContaining({
+          kind: 'album',
+          source: 'spotify',
+          externalId: 'AL',
+          title: 'Kid A',
+          artist: 'Radiohead',
+        }),
+      )
+    })
+
+    it('cancelling the disclosure does NOT call postRequest', async () => {
+      setCaps(['request'])
+      await renderLoaded()
+      fireEvent.click(screen.getByRole('button', { name: /request album/i }))
+      fireEvent.click(screen.getByRole('button', { name: /cancel/i }))
+      expect(mockPostRequest).not.toHaveBeenCalled()
+      expect(screen.queryByRole('dialog', { name: /request album/i })).not.toBeInTheDocument()
+    })
   })
 
   describe('library-source album (all tracks owned — unchanged behavior)', () => {

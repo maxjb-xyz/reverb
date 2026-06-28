@@ -33,9 +33,6 @@ export function DownloadAction({ result, onPlay }: Props) {
   const [urlError, setUrlError] = useState<string | null>(null)
   const modalPanelRef = useRef<HTMLDivElement>(null)
 
-  // Lidarr album disclosure — holds the downloader name awaiting user confirm
-  const [pendingLidarr, setPendingLidarr] = useState<string | null>(null)
-
   const job = useDownloads((s) => s.byExternal(result.source, result.externalId))
   const downloaders = useDownloaders()
 
@@ -112,18 +109,10 @@ export function DownloadAction({ result, onPlay }: Props) {
       .catch(() => setOptimistic(false))
   }
 
-  function chooseDownloader(name: string) {
-    if (name === 'lidarr') {
-      setPendingLidarr(name)
-      return
-    }
-    enqueue(name)
-  }
-
   function handleDownloadClick(e: React.MouseEvent) {
     e.stopPropagation()
     // Always use the highest-priority (first) downloader — chains decide the rest.
-    chooseDownloader(downloaders[0].name)
+    enqueue(downloaders[0].name)
   }
 
   // ── 1. In library ─────────────────────────────────────────────────────────
@@ -382,39 +371,6 @@ export function DownloadAction({ result, onPlay }: Props) {
       >
         Download
       </Button>
-
-      {pendingLidarr &&
-        createPortal(
-          <>
-            <div className="fixed inset-0 z-40" aria-hidden="true" onClick={() => setPendingLidarr(null)} />
-            <div
-              role="dialog"
-              aria-modal="true"
-              aria-label="Confirm Lidarr download"
-              className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-80 max-w-[calc(100vw-2rem)] rounded-xl border border-border-subtle bg-raised p-4 shadow-pop"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <p className="text-sm font-bold text-text-primary">Download the whole album?</p>
-              <p className="mt-1 text-xs text-text-secondary">
-                Lidarr fetches the full album{result.album ? ` "${result.album}"` : ''}, not just "{result.title}".
-              </p>
-              <div className="mt-3 flex justify-end gap-2">
-                <Button variant="ghost" size="sm" aria-label="Cancel" onClick={() => setPendingLidarr(null)}>
-                  Cancel
-                </Button>
-                <Button
-                  variant="primary"
-                  size="sm"
-                  aria-label="Confirm Lidarr album download"
-                  onClick={() => { const n = pendingLidarr; setPendingLidarr(null); enqueue(n!) }}
-                >
-                  Download album
-                </Button>
-              </div>
-            </div>
-          </>,
-          document.body,
-        )}
     </span>
   )
 }
