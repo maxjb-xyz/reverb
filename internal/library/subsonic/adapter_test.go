@@ -2,6 +2,7 @@ package subsonic
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -239,6 +240,104 @@ func TestStream_RejectsJSONErrorResponse(t *testing.T) {
 	}
 	if _, err := a.Stream(context.Background(), "stale-id", core.StreamOpts{}, ""); err == nil {
 		t.Fatal("expected an error for a JSON (non-audio) stream response, got nil")
+	}
+}
+
+func TestCoverArt_NonImageWrapsErrLibraryItemNotFound(t *testing.T) {
+	// A non-image (JSON "failed") response means the item is not available in the
+	// library. The error must wrap core.ErrLibraryItemNotFound so handlers can
+	// serve a 404 instead of a 502.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"subsonic-response":{"status":"failed","error":{"code":70,"message":"Artwork not found"}}}`))
+	}))
+	t.Cleanup(srv.Close)
+	a := New().WithHTTPClient(srv.Client())
+	if err := a.Init(map[string]any{"url": srv.URL, "username": "u", "password": "p"}); err != nil {
+		t.Fatal(err)
+	}
+	_, err := a.CoverArt(context.Background(), "mf-123", 80)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !errors.Is(err, core.ErrLibraryItemNotFound) {
+		t.Fatalf("expected errors.Is(err, core.ErrLibraryItemNotFound) true, got err=%v", err)
+	}
+}
+
+func TestCoverArt_NonOKStatusWrapsErrLibraryItemNotFound(t *testing.T) {
+	// A non-2xx HTTP response from the backend means the item is unavailable.
+	// The error must wrap core.ErrLibraryItemNotFound.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "not found", http.StatusNotFound)
+	}))
+	t.Cleanup(srv.Close)
+	a := New().WithHTTPClient(srv.Client())
+	if err := a.Init(map[string]any{"url": srv.URL, "username": "u", "password": "p"}); err != nil {
+		t.Fatal(err)
+	}
+	_, err := a.CoverArt(context.Background(), "mf-dead", 80)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !errors.Is(err, core.ErrLibraryItemNotFound) {
+		t.Fatalf("expected errors.Is(err, core.ErrLibraryItemNotFound) true, got err=%v", err)
+	}
+}
+
+func TestStream_JSONErrorBodyWrapsErrLibraryItemNotFound(t *testing.T) {
+	// Navidrome returns 200 + JSON "failed" body for a stale track ID. The adapter
+	// must wrap core.ErrLibraryItemNotFound so handlers can serve 404.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"subsonic-response":{"status":"failed","error":{"code":70,"message":"data not found"}}}`))
+	}))
+	t.Cleanup(srv.Close)
+	a := New().WithHTTPClient(srv.Client())
+	if err := a.Init(map[string]any{"url": srv.URL, "username": "u", "password": "p"}); err != nil {
+		t.Fatal(err)
+	}
+	_, err := a.Stream(context.Background(), "stale-id", core.StreamOpts{}, "")
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !errors.Is(err, core.ErrLibraryItemNotFound) {
+		t.Fatalf("expected errors.Is(err, core.ErrLibraryItemNotFound) true, got err=%v", err)
+	}
+}
+
+func TestCoverArt_TransportErrorDoesNotWrapErrLibraryItemNotFound(t *testing.T) {
+	// A real transport error (backend unreachable) must NOT wrap the sentinel
+	// so the handler keeps returning 502 Bad Gateway.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {}))
+	srv.Close() // close immediately so the client can't connect
+	a := New().WithHTTPClient(srv.Client())
+	if err := a.Init(map[string]any{"url": srv.URL, "username": "u", "password": "p"}); err != nil {
+		t.Fatal(err)
+	}
+	_, err := a.CoverArt(context.Background(), "any", 80)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if errors.Is(err, core.ErrLibraryItemNotFound) {
+		t.Fatal("transport error must NOT wrap ErrLibraryItemNotFound (stays 502)")
+	}
+}
+
+func TestStream_TransportErrorDoesNotWrapErrLibraryItemNotFound(t *testing.T) {
+	// A real transport error (backend unreachable) must NOT wrap the sentinel.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {}))
+	srv.Close() // close immediately
+	a := New().WithHTTPClient(srv.Client())
+	if err := a.Init(map[string]any{"url": srv.URL, "username": "u", "password": "p"}); err != nil {
+		t.Fatal(err)
+	}
+	_, err := a.Stream(context.Background(), "any", core.StreamOpts{}, "")
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if errors.Is(err, core.ErrLibraryItemNotFound) {
+		t.Fatal("transport error must NOT wrap ErrLibraryItemNotFound (stays 502)")
 	}
 }
 

@@ -1,6 +1,7 @@
 package api
 
 import (
+	"errors"
 	"io"
 	"net/http"
 	"strconv"
@@ -21,6 +22,10 @@ func (s *Server) handleStream(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	handle, err := lib.Stream(r.Context(), id, core.StreamOpts{}, r.Header.Get("Range"))
 	if err != nil {
+		if errors.Is(err, core.ErrLibraryItemNotFound) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
+			return
+		}
 		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
 		return
 	}
@@ -57,6 +62,10 @@ func (s *Server) handleCover(w http.ResponseWriter, r *http.Request) {
 	size, _ := strconv.Atoi(r.URL.Query().Get("size"))
 	cover, err := lib.CoverArt(r.Context(), id, size)
 	if err != nil {
+		if errors.Is(err, core.ErrLibraryItemNotFound) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
+			return
+		}
 		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
 		return
 	}

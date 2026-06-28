@@ -261,6 +261,7 @@ func (a *Adapter) Stream(ctx context.Context, trackID string, opts core.StreamOp
 	}
 	resp, err := a.client.RawGet(ctx, "stream", params, rangeHeader)
 	if err != nil {
+		// Transport error: backend unreachable — leave unwrapped so caller returns 502.
 		return core.StreamHandle{}, err
 	}
 	// Navidrome returns 200 + application/json (a Subsonic "failed" body) when the
@@ -269,7 +270,7 @@ func (a *Adapter) Stream(ctx context.Context, trackID string, opts core.StreamOp
 	// otherwise report "no supported source").
 	if ct := resp.Header.Get("Content-Type"); strings.Contains(ct, "json") {
 		resp.Body.Close()
-		return core.StreamHandle{}, fmt.Errorf("subsonic stream %q: error response (%s)", trackID, ct)
+		return core.StreamHandle{}, fmt.Errorf("subsonic stream %q: error response (%s): %w", trackID, ct, core.ErrLibraryItemNotFound)
 	}
 	return core.StreamHandle{
 		Body:          resp.Body,
@@ -289,11 +290,12 @@ func (a *Adapter) CoverArt(ctx context.Context, id string, size int) (core.Cover
 	}
 	resp, err := a.client.RawGet(ctx, "getCoverArt", params, "")
 	if err != nil {
+		// Transport error: backend unreachable — leave unwrapped so caller returns 502.
 		return core.CoverArt{}, err
 	}
 	if resp.StatusCode != http.StatusOK {
 		resp.Body.Close()
-		return core.CoverArt{}, fmt.Errorf("subsonic getCoverArt %q: HTTP %d", id, resp.StatusCode)
+		return core.CoverArt{}, fmt.Errorf("subsonic getCoverArt %q: HTTP %d: %w", id, resp.StatusCode, core.ErrLibraryItemNotFound)
 	}
 	// Navidrome returns HTTP 200 with an application/json Subsonic "failed" body
 	// (not image bytes) when a file has no embedded artwork. Only stream genuine
@@ -302,7 +304,7 @@ func (a *Adapter) CoverArt(ctx context.Context, id string, size int) (core.Cover
 	ct := resp.Header.Get("Content-Type")
 	if !strings.HasPrefix(ct, "image/") {
 		resp.Body.Close()
-		return core.CoverArt{}, fmt.Errorf("subsonic getCoverArt %q: non-image response (%s)", id, ct)
+		return core.CoverArt{}, fmt.Errorf("subsonic getCoverArt %q: non-image response (%s): %w", id, ct, core.ErrLibraryItemNotFound)
 	}
 	return core.CoverArt{Body: resp.Body, ContentType: ct}, nil
 }
