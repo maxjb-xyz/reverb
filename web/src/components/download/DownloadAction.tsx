@@ -1,12 +1,10 @@
 import { useState, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { Badge, ProgressRing, Icon, Button } from '../ui'
-import { DownloadPopover } from './DownloadPopover'
 import { useDownloads } from '../../lib/downloadStore'
 import { postDownload, retryDownload, reqFromResult } from '../../lib/downloadApi'
 import { postRequest, useRequestStore } from '../../lib/requestApi'
 import { useAdapters } from '../../lib/adaptersApi'
-import { useSettings } from '../../lib/settingsApi'
 import { useAuthStore } from '../../lib/authStore'
 import type { ExternalResult } from '../../lib/types'
 
@@ -25,7 +23,6 @@ function useDownloaders() {
 }
 
 export function DownloadAction({ result, onPlay }: Props) {
-  const [popoverOpen, setPopoverOpen] = useState(false)
   // Optimistic: flip to "Downloading" the instant the user clicks, before the
   // POST round-trips. The real job (from the store) takes over once it lands.
   const [optimistic, setOptimistic] = useState(false)
@@ -38,9 +35,6 @@ export function DownloadAction({ result, onPlay }: Props) {
 
   // Lidarr album disclosure — holds the downloader name awaiting user confirm
   const [pendingLidarr, setPendingLidarr] = useState<string | null>(null)
-
-  const settings = useSettings()
-  const defaultDownloader = settings.data?.defaultDownloader ?? ''
 
   const job = useDownloads((s) => s.byExternal(result.source, result.externalId))
   const downloaders = useDownloaders()
@@ -128,22 +122,8 @@ export function DownloadAction({ result, onPlay }: Props) {
 
   function handleDownloadClick(e: React.MouseEvent) {
     e.stopPropagation()
-    if (downloaders.length === 1) {
-      chooseDownloader(downloaders[0].name)
-      return
-    }
-    // ≥2 downloaders: use the default if it's set AND still enabled, else ask.
-    const def = downloaders.find((d) => d.name === defaultDownloader)
-    if (def) {
-      chooseDownloader(def.name)
-    } else {
-      setPopoverOpen(true)
-    }
-  }
-
-  function handlePick(name: string) {
-    setPopoverOpen(false)
-    chooseDownloader(name)
+    // Always use the highest-priority (first) downloader — chains decide the rest.
+    chooseDownloader(downloaders[0].name)
   }
 
   // ── 1. In library ─────────────────────────────────────────────────────────
@@ -390,9 +370,8 @@ export function DownloadAction({ result, onPlay }: Props) {
   }
 
   // ── 6. Available (≥1 downloader, no active job) ───────────────────────────
-  // Just the Download button — the redundant "Available" badge only widened the
-  // row's right slot (and shifted the album column as the state changed).
-  const hasActiveDefault = downloaders.length > 1 && downloaders.some((d) => d.name === defaultDownloader)
+  // Single Download button — no picker caret. The granularity chains decide
+  // which downloader runs; the frontend always picks the highest-priority one.
   return (
     <span className="relative inline-flex items-center justify-end gap-1">
       <Button
@@ -403,26 +382,6 @@ export function DownloadAction({ result, onPlay }: Props) {
       >
         Download
       </Button>
-
-      {hasActiveDefault && (
-        <button
-          type="button"
-          aria-label="Choose downloader"
-          onClick={(e) => { e.stopPropagation(); setPopoverOpen(true) }}
-          className="inline-grid h-7 w-6 place-items-center rounded-full border border-border-subtle text-text-secondary transition-colors hover:bg-raised-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-        >
-          <Icon name="dl" className="text-xs" />
-        </button>
-      )}
-
-      {popoverOpen && (
-        <DownloadPopover
-          downloaders={downloaders.map((d) => ({ id: d.id, name: d.name }))}
-          trackTitle={result.title}
-          onPick={handlePick}
-          onClose={() => setPopoverOpen(false)}
-        />
-      )}
 
       {pendingLidarr &&
         createPortal(

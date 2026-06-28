@@ -4,7 +4,6 @@ import { api } from './api'
 export interface AppSettings {
   accentColor: string
   dynamicBackground: boolean
-  defaultDownloader: string
   libraryBackendMode: string // 'built-in' | 'external'
 }
 

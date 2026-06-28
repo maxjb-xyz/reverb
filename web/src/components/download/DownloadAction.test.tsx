@@ -93,7 +93,7 @@ vi.mock('../../lib/downloadApi', () => ({
 }))
 
 vi.mock('../../lib/settingsApi', () => ({
-  useSettings: () => ({ data: { accentColor: '#F0354B', dynamicBackground: true, defaultDownloader: 'spotdl' } }),
+  useSettings: () => ({ data: { accentColor: '#F0354B', dynamicBackground: true } }),
 }))
 
 // Mock adaptersApi — controlled per test via useAdaptersMock
@@ -289,8 +289,8 @@ describe('DownloadAction', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 
-  // ── 8. no job, 2 downloaders → opens popover (no immediate post) ──────────
-  it('2 downloaders → Download click opens popover without calling postDownload', () => {
+  // ── 8. no job, 2 downloaders → single button, no popover ────────────────────
+  it('2 downloaders → Download click calls postDownload immediately with highest-priority downloader (no popover, no caret)', async () => {
     useAdaptersMock = vi.fn(() => ({
       data: [
         { id: 'a1', type: 'downloader', name: 'spotDL', enabled: true, priority: 1, config: {} },
@@ -300,11 +300,15 @@ describe('DownloadAction', () => {
 
     render(<DownloadAction result={makeResult()} onPlay={onPlay} />)
 
+    // No caret/picker button alongside the Download button
+    expect(screen.queryByRole('button', { name: /choose downloader/i })).not.toBeInTheDocument()
+
     const btn = screen.getByRole('button', { name: /download song/i })
     fireEvent.click(btn)
 
-    expect(postDownloadMock).not.toHaveBeenCalled()
-    expect(screen.getByRole('dialog')).toBeInTheDocument()
+    await waitFor(() => expect(postDownloadMock).toHaveBeenCalledTimes(1))
+    // No picker dialog should appear
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 
   // ── 9. no job, 0 downloaders → disabled ───────────────────────────────────
@@ -477,8 +481,8 @@ describe('DownloadAction', () => {
     expect(retryDownloadMock).toHaveBeenCalledWith('job-1', 'https://youtube.com/watch?v=ok')
   })
 
-  // ── 19. default downloader: normal click enqueues spotdl directly ──────────
-  it('default downloader: a normal click enqueues spotdl directly (no popover)', () => {
+  // ── 19. multiple downloaders → first by priority is picked, no popover ──────
+  it('multiple downloaders: Download click enqueues the highest-priority downloader (no popover)', () => {
     useAdaptersMock = vi.fn(() => ({
       data: [
         { id: 'a1', type: 'downloader', name: 'spotdl', enabled: true, priority: 1, config: {} },
@@ -487,6 +491,8 @@ describe('DownloadAction', () => {
     }))
     const result = { source: 'spotify', externalId: 'e1', title: 'T', artist: 'A', album: 'Al' } as never
     render(<DownloadAction result={result} />)
+    // No picker caret
+    expect(screen.queryByRole('button', { name: /choose downloader/i })).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Download T' }))
     expect(postDownloadMock).toHaveBeenCalledWith(expect.objectContaining({ downloader: 'spotdl' }))
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
@@ -573,19 +579,18 @@ describe('DownloadAction', () => {
     expect(screen.queryByRole('button', { name: /download/i })).not.toBeInTheDocument()
   })
 
-  // ── 20. override caret → pick Lidarr → album disclosure → confirm enqueues lidarr
-  it('override caret → pick Lidarr → album disclosure → confirm enqueues lidarr', () => {
+  // ── 20. lidarr as first-priority → Download shows album disclosure → confirm enqueues lidarr
+  it('lidarr as highest-priority downloader → Download click shows album disclosure → confirm enqueues lidarr', () => {
     useAdaptersMock = vi.fn(() => ({
       data: [
-        { id: 'a1', type: 'downloader', name: 'spotdl', enabled: true, priority: 1, config: {} },
-        { id: 'a2', type: 'downloader', name: 'lidarr', enabled: true, priority: 2, config: {} },
+        { id: 'a1', type: 'downloader', name: 'lidarr', enabled: true, priority: 1, config: {} },
       ],
     }))
     const result = { source: 'spotify', externalId: 'e2', title: 'T2', artist: 'A', album: 'Discovery' } as never
     render(<DownloadAction result={result} />)
-    // The split-button caret opens the picker even though a default is set.
-    fireEvent.click(screen.getByRole('button', { name: 'Choose downloader' }))
-    fireEvent.click(screen.getByRole('button', { name: 'lidarr' }))
+    // No picker caret
+    expect(screen.queryByRole('button', { name: /choose downloader/i })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Download T2' }))
     // Lidarr routes through the album disclosure — NOT enqueued yet.
     expect(screen.getByText(/whole album/i)).toBeInTheDocument()
     expect(screen.getByText(/Discovery/)).toBeInTheDocument()

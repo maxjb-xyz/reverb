@@ -13,16 +13,6 @@ vi.mock('../lib/settingsApi', () => ({
   applyAccent: vi.fn(),
 }))
 
-// AccentSwatches is rendered inside Settings — we need settingsApi mocked above and
-// the component itself to render (not stub it out).
-vi.mock('../lib/adaptersApi', () => ({
-  useAdapters: () => ({
-    data: [
-      { id: 'a1', type: 'downloader', name: 'spotdl', enabled: true, priority: 1, config: {} },
-      { id: 'a2', type: 'downloader', name: 'lidarr', enabled: true, priority: 2, config: {} },
-    ],
-  }),
-}))
 
 function wrap(ui: ReactElement) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -84,10 +74,9 @@ describe('Settings', () => {
 
 describe('Settings default downloader', () => {
   beforeEach(() => mockMutate.mockClear())
-  it('shows a Default downloader select and saves the choice', () => {
+  it('does NOT render a "Default downloader" control (removed in downloader-chains)', () => {
     wrap(<Settings />)
-    const select = screen.getByLabelText('Default downloader')
-    fireEvent.change(select, { target: { value: 'lidarr' } })
-    expect(mockMutate).toHaveBeenCalledWith({ defaultDownloader: 'lidarr' })
+    expect(screen.queryByLabelText('Default downloader')).not.toBeInTheDocument()
+    expect(screen.queryByText(/default downloader/i)).not.toBeInTheDocument()
   })
 })
