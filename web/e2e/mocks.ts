@@ -168,6 +168,7 @@ export async function installApiMocks(
           enabled: true,
           priority: 0,
           config: {},
+          capabilities: [],
         },
       ]
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(adapters) })

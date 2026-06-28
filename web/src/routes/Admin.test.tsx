@@ -61,7 +61,7 @@ vi.mock('../lib/usersApi', () => ({
 }))
 
 const settingsData = (libraryBackendMode: string) => ({
-  data: { accentColor: '#F0354B', dynamicBackground: true, defaultDownloader: '', libraryBackendMode },
+  data: { accentColor: '#F0354B', dynamicBackground: true, libraryBackendMode },
 })
 
 // ── Default mock return values ────────────────────────────────────────────────

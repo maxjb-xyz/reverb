@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -413,21 +414,9 @@ func TestPickGranularityNoMatchReturnsError(t *testing.T) {
 		t.Fatal("expected error when no album downloader is registered")
 	}
 	const want = "no album downloader"
-	if !contains(err.Error(), want) {
+	if !strings.Contains(err.Error(), want) {
 		t.Fatalf("error %q should contain %q", err.Error(), want)
 	}
-}
-
-func contains(s, sub string) bool {
-	return len(s) >= len(sub) && (s == sub || len(sub) == 0 ||
-		func() bool {
-			for i := 0; i <= len(s)-len(sub); i++ {
-				if s[i:i+len(sub)] == sub {
-					return true
-				}
-			}
-			return false
-		}())
 }
 
 func TestDedupJoinWhileInFlight(t *testing.T) {

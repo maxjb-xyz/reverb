@@ -466,6 +466,8 @@ func (m *Manager) pickAfter(ctx context.Context, req core.DownloadRequest, after
 			}
 			continue
 		}
+		// Intentionally uses the background ctx (not jctx) so a fallback candidate
+		// isn't pre-poisoned by the prior attempt's timeout or cancellation.
 		ok, err := d.CanDownload(ctx, req)
 		if err != nil {
 			continue
@@ -632,6 +634,9 @@ func (m *Manager) process(id string) {
 	// Use !haveReq as the sole sentinel: a map hit is always valid even when
 	// ExternalID=="" (non-Spotify jobs have a real request with an empty ExternalID).
 	if !haveReq {
+		// Granularity is intentionally omitted (defaults to track): only track (sync)
+		// jobs reach process() — async (album) jobs run on the reconciler lane and
+		// never hit the worker, so the track default is always correct here.
 		req = core.DownloadRequest{
 			Source: job.Source, ExternalID: job.ExternalID, Artist: job.Artist,
 			Title: job.Title, Album: job.Album, ISRC: job.ISRC,

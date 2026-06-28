@@ -27,6 +27,9 @@ export default function Settings() {
     const swapIndex = direction === 'up' ? index - 1 : index + 1
     const a = downloaders[index]
     const b = downloaders[swapIndex]
+    // These two updateAdapter calls are non-atomic; a partial failure leaves a
+    // duplicate priority — acceptable for an admin-only, low-concurrency reorder
+    // (DB ordering stays stable on reload).
     await Promise.all([
       updateAdapter(a.id, {
         name: a.name,

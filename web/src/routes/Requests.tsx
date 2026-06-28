@@ -102,7 +102,7 @@ function MyRequestRow({ req, userId }: { req: MusicRequest; userId: string }) {
       <div className="min-w-0 flex-1">
         <div className="truncate text-sm font-semibold text-text-primary">{req.title}</div>
         <div className="flex items-center gap-1 truncate text-xs text-text-secondary">
-          {req.artist}
+          <span className="truncate min-w-0">{req.artist}</span>
           {req.kind === 'album' && (
             <span className="ml-1 rounded px-1 py-px text-[10px] font-semibold uppercase tracking-wide bg-surface-raised text-text-muted">
               Album
@@ -176,7 +176,7 @@ function ApprovalRow({ req }: { req: MusicRequest }) {
         <div className="min-w-0 flex-1">
           <div className="truncate text-sm font-semibold text-text-primary">{req.title}</div>
           <div className="flex items-center gap-1 truncate text-xs text-text-secondary">
-            {req.artist}
+            <span className="truncate min-w-0">{req.artist}</span>
             {req.kind === 'album' && (
               <span className="rounded px-1 py-px text-[10px] font-semibold uppercase tracking-wide bg-surface-raised text-text-muted">
                 Album
