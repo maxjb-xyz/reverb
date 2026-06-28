@@ -800,6 +800,121 @@ export async function installPlaylistSyncWsMock(page: Page): Promise<WsTrigger> 
 // WsTrigger lets the spec fire the completion frame at the right moment.
 export type WsTrigger = { complete: () => Promise<void> }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Request flow mocks (Task 11): request-only user submits a request → Pending;
+// manager sees the Approval tab + Approve button. A mocked `request.updated` WS
+// frame flips the row to "Added" and fires a toast.
+//
+// FULLY ISOLATED state: private closure `state`. Does NOT touch the core-loop
+// `downloadState` nor any other spec's state. installRequestMocks is registered
+// AFTER installApiMocks so its `**/api/v1/requests*` handler wins for this spec
+// (Playwright matches most-recently-registered-first).
+// ─────────────────────────────────────────────────────────────────────────────
+
+// The canonical pending request that POST /requests returns.
+export function pendingRequest() {
+  return {
+    id: 'req-1',
+    requestedBy: 'user-requester',
+    source: externalTrack.source,
+    externalId: externalTrack.externalId,
+    title: externalTrack.title,
+    artist: externalTrack.artist,
+    album: externalTrack.album,
+    isrc: externalTrack.isrc,
+    durationMs: externalTrack.durationMs,
+    status: 'pending' as const,
+    createdAt: 1700000001,
+  }
+}
+
+// The fulfilled version of the same request (for the WS frame).
+export function fulfilledRequest() {
+  return { ...pendingRequest(), status: 'fulfilled' as const }
+}
+
+type RequestState = { requests: ReturnType<typeof pendingRequest>[] }
+
+// Module-level ref so the WS trigger can access the mutable request state.
+let requestStateRef: RequestState | null = null
+
+export async function installRequestMocks(page: Page): Promise<void> {
+  const state: RequestState = { requests: [] }
+  requestStateRef = state
+
+  // POST /requests → enqueue a pending request; GET /requests/mine → the list.
+  await page.route('**/api/v1/requests/mine', (route: Route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(state.requests) }),
+  )
+
+  await page.route('**/api/v1/requests', (route: Route) => {
+    if (route.request().method() === 'POST') {
+      const req = pendingRequest()
+      state.requests = [req]
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(req) })
+    }
+    // GET /requests?status=pending → the approval queue.
+    return route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(state.requests.filter((r) => r.status === 'pending')),
+    })
+  })
+
+  // POST /requests/{id}/approve → approved version.
+  await page.route('**/api/v1/requests/*/approve', (route: Route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ ...pendingRequest(), status: 'approved' }),
+    }),
+  )
+}
+
+// RequestWsTrigger lets the spec fire the request.updated WS frame.
+export type RequestWsTrigger = { fulfill: () => Promise<void> }
+
+// installRequestWsMock intercepts the WS and returns a trigger that sends a
+// `request.updated` frame (status → fulfilled). Mirrors the shape of installWsMock.
+export async function installRequestWsMock(page: Page): Promise<RequestWsTrigger> {
+  let capturedWs: WebSocketRoute | null = null
+
+  await page.routeWebSocket('**/api/v1/ws', (ws: WebSocketRoute) => {
+    capturedWs = ws
+  })
+
+  return {
+    fulfill: () =>
+      new Promise<void>((resolve, reject) => {
+        const deadline = Date.now() + 5000
+        const poll = () => {
+          if (capturedWs) {
+            // Reflect the fulfillment in the request state so any subsequent
+            // GET /requests/mine returns the fulfilled request.
+            if (requestStateRef) {
+              requestStateRef.requests = [fulfilledRequest()]
+            }
+            const frame = {
+              type: 'request.updated',
+              payload: {
+                request: fulfilledRequest(),
+                targetUserId: 'user-requester',
+                forManagers: false,
+              },
+            }
+            capturedWs.send(JSON.stringify(frame))
+            resolve()
+          } else if (Date.now() > deadline) {
+            reject(new Error('installRequestWsMock: WebSocket never opened within 5 s'))
+          } else {
+            setTimeout(poll, 20)
+          }
+        }
+        poll()
+      }),
+  }
+}
+
 // installWsMock intercepts the realtime WebSocket. On connect it does NOT send any
 // frame; instead it captures the WebSocketRoute and returns a WsTrigger. The spec
 // calls await ws.complete() ONLY AFTER clicking the Download button (which fires
