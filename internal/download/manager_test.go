@@ -2139,3 +2139,41 @@ func TestFallbackSingleDownloaderFailedReachesDownloadFailed(t *testing.T) {
 		t.Fatalf("retried job should be DownloadQueued, got %q", retried.Status)
 	}
 }
+
+// ---- album-job timeout tests ----
+
+// TestAlbumJobTimeoutDefault asserts that withDefaults sets AlbumJobTimeout to 2h.
+func TestAlbumJobTimeoutDefault(t *testing.T) {
+	cfg := Config{}.withDefaults()
+	if cfg.AlbumJobTimeout != 2*time.Hour {
+		t.Fatalf("AlbumJobTimeout default: want 2h, got %v", cfg.AlbumJobTimeout)
+	}
+}
+
+// TestJobTimeoutByGranularity uses the jobTimeout helper seam to verify that the
+// manager selects AlbumJobTimeout for album-granularity requests and JobTimeout for
+// track-granularity (or empty granularity) requests.
+func TestJobTimeoutByGranularity(t *testing.T) {
+	cfg := Config{
+		JobTimeout:      50 * time.Millisecond,
+		AlbumJobTimeout: 300 * time.Millisecond,
+	}
+	m := &Manager{cfg: cfg.withDefaults()}
+	// withDefaults must NOT overwrite explicitly set positive values.
+	m.cfg.JobTimeout = cfg.JobTimeout
+	m.cfg.AlbumJobTimeout = cfg.AlbumJobTimeout
+
+	trackReq := core.DownloadRequest{Granularity: core.GranularityTrack}
+	albumReq := core.DownloadRequest{Granularity: core.GranularityAlbum}
+	emptyReq := core.DownloadRequest{}
+
+	if got := m.jobTimeout(trackReq); got != 50*time.Millisecond {
+		t.Fatalf("track granularity: want 50ms, got %v", got)
+	}
+	if got := m.jobTimeout(emptyReq); got != 50*time.Millisecond {
+		t.Fatalf("empty granularity: want 50ms (JobTimeout), got %v", got)
+	}
+	if got := m.jobTimeout(albumReq); got != 300*time.Millisecond {
+		t.Fatalf("album granularity: want 300ms, got %v", got)
+	}
+}

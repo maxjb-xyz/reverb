@@ -101,10 +101,16 @@ type Config struct {
 	// the freshly-downloaded file was never found and library_track_id stayed empty
 	// forever. A short settle window lets the scan engage before we wait for it to end.
 	ScanSettleMax time.Duration
-	// JobTimeout caps how long a single download may run before it is killed and
-	// marked failed — so a stuck/rate-limited downloader (e.g. spotDL backing off
-	// for 24h) can't pin a worker forever.
+	// JobTimeout caps how long a single track-granularity download may run before
+	// it is killed and marked failed — so a stuck/rate-limited downloader (e.g.
+	// spotDL backing off for 24h) can't pin a worker forever.
 	JobTimeout time.Duration
+	// AlbumJobTimeout caps how long an album-granularity sync download may run.
+	// Album downloads (e.g. spotDL fetching a full album) are expected to take
+	// significantly longer than a single track, so they get a separate, larger
+	// timeout. Async/Lidarr jobs run on the reconciler lane (bounded by AsyncMaxAge)
+	// and are NOT affected by this setting.
+	AlbumJobTimeout time.Duration
 	// ReconcileEvery is the poll cadence for async (e.g. Lidarr) jobs.
 	ReconcileEvery time.Duration
 	// AsyncMaxAge bounds how long an async job may stay in-flight before it's
@@ -130,6 +136,9 @@ func (c Config) withDefaults() Config {
 	}
 	if c.JobTimeout <= 0 {
 		c.JobTimeout = 15 * time.Minute
+	}
+	if c.AlbumJobTimeout <= 0 {
+		c.AlbumJobTimeout = 2 * time.Hour
 	}
 	if c.ReconcileEvery <= 0 {
 		c.ReconcileEvery = 10 * time.Second
@@ -166,6 +175,17 @@ type Manager struct {
 	wg       sync.WaitGroup
 	stopOnce sync.Once
 	stopCh   chan struct{}
+}
+
+// jobTimeout returns the per-job context timeout for the given request.
+// Album-granularity sync jobs use AlbumJobTimeout (default 2h) so that a full
+// album download is not prematurely killed by the much-shorter track JobTimeout.
+// All other (track / empty) granularities use JobTimeout.
+func (m *Manager) jobTimeout(req core.DownloadRequest) time.Duration {
+	if req.Granularity == core.GranularityAlbum {
+		return m.cfg.AlbumJobTimeout
+	}
+	return m.cfg.JobTimeout
 }
 
 // NewManager constructs the Manager. Call Start() to launch workers.
@@ -656,7 +676,8 @@ func (m *Manager) process(id string) {
 		}
 	}
 	m.mu.Lock()
-	jctx, cancel := context.WithTimeout(ctx, m.cfg.JobTimeout)
+	jobTmo := m.jobTimeout(req)
+	jctx, cancel := context.WithTimeout(ctx, jobTmo)
 	m.cancels[id] = cancel
 	m.mu.Unlock()
 	defer func() {
@@ -748,11 +769,11 @@ func (m *Manager) process(id string) {
 			// Hit the per-job timeout — terminal, no fallback.
 			cur, _, _ := m.store.Get(ctx, id)
 			cur.Status = core.DownloadFailed
-			cur.Error = fmt.Sprintf("timed out after %s", m.cfg.JobTimeout)
+			cur.Error = fmt.Sprintf("timed out after %s", jobTmo)
 			cur.FinishedAt = m.clock.Now().Unix()
 			_ = m.store.Update(ctx, cur)
 			m.publishEvent(TopicFailed, cur, cur.Error)
-			log.Printf("download timed out: %q (job %s) after %s", cur.Title, shortID(id), m.cfg.JobTimeout)
+			log.Printf("download timed out: %q (job %s) after %s", cur.Title, shortID(id), jobTmo)
 			m.mu.Lock()
 			delete(m.reqs, id)
 			m.mu.Unlock()
