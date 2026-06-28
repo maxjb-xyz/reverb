@@ -1875,3 +1875,145 @@ func TestAsyncCapabilityProbe(t *testing.T) {
 		}
 	}
 }
+
+// -- Task 3: on-failure fallback through the sync downloader chain --
+
+// TestFallbackToNextDownloaderOnStartError asserts that when the first (picked)
+// sync downloader's Start returns an error, the worker tries the next downloader in
+// the same-granularity chain rather than failing the job immediately.  The job must
+// reach DownloadCompleted and its final DownloaderName must be the second downloader.
+func TestFallbackToNextDownloaderOnStartError(t *testing.T) {
+	d1 := &fakeDL{name: "d1", canDownload: true, errOnStart: errors.New("d1 lookup failed")}
+	d2 := &fakeDL{name: "d2", canDownload: true}
+	store := newMemStore()
+	m, _ := testManager(t, []Downloader{d1, d2}, store, nil, nil, nil)
+
+	job, err := m.Enqueue(context.Background(), core.DownloadRequest{
+		Source: "spotify", ExternalID: "fb1", Artist: "A", Title: "T", Album: "Al",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Wait for the job to reach a terminal state.
+	deadline := time.After(3 * time.Second)
+	for {
+		cur, _, _ := store.Get(context.Background(), job.ID)
+		if cur.Status == core.DownloadCompleted || cur.Status == core.DownloadFailed {
+			if cur.Status != core.DownloadCompleted {
+				t.Fatalf("job should complete via d2 fallback, got status=%q error=%q", cur.Status, cur.Error)
+			}
+			if cur.DownloaderName != "d2" {
+				t.Fatalf("final DownloaderName should be %q (fallback), got %q", "d2", cur.DownloaderName)
+			}
+			break
+		}
+		select {
+		case <-deadline:
+			cur2, _, _ := store.Get(context.Background(), job.ID)
+			t.Fatalf("job did not reach terminal state (status=%q)", cur2.Status)
+		default:
+			time.Sleep(time.Millisecond)
+		}
+	}
+
+	if d1.starts() != 1 {
+		t.Fatalf("d1 should have been attempted exactly once, got %d", d1.starts())
+	}
+	if d2.starts() != 1 {
+		t.Fatalf("d2 should have been attempted exactly once (as fallback), got %d", d2.starts())
+	}
+}
+
+// TestFallbackChainExhaustedReachesDownloadFailed asserts that when all sync
+// downloaders in the chain fail on Start, the job ends up DownloadFailed
+// (not stuck or panicking).
+func TestFallbackChainExhaustedReachesDownloadFailed(t *testing.T) {
+	d1 := &fakeDL{name: "d1", canDownload: true, errOnStart: errors.New("d1 error")}
+	d2 := &fakeDL{name: "d2", canDownload: true, errOnStart: errors.New("d2 error")}
+	store := newMemStore()
+	m, _ := testManager(t, []Downloader{d1, d2}, store, nil, nil, nil)
+
+	job, err := m.Enqueue(context.Background(), core.DownloadRequest{
+		Source: "spotify", ExternalID: "fb2", Artist: "A", Title: "T", Album: "Al",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	deadline := time.After(3 * time.Second)
+	for {
+		cur, _, _ := store.Get(context.Background(), job.ID)
+		if cur.Status == core.DownloadCompleted || cur.Status == core.DownloadFailed {
+			if cur.Status != core.DownloadFailed {
+				t.Fatalf("chain-exhausted job should be DownloadFailed, got %q", cur.Status)
+			}
+			break
+		}
+		select {
+		case <-deadline:
+			cur2, _, _ := store.Get(context.Background(), job.ID)
+			t.Fatalf("job did not reach DownloadFailed (status=%q)", cur2.Status)
+		default:
+			time.Sleep(time.Millisecond)
+		}
+	}
+
+	if d1.starts() != 1 {
+		t.Fatalf("d1 should have been attempted once, got %d", d1.starts())
+	}
+	if d2.starts() != 1 {
+		t.Fatalf("d2 should have been attempted once (after d1 failed), got %d", d2.starts())
+	}
+}
+
+// TestFallbackSingleDownloaderFailedReachesDownloadFailed asserts that with a
+// single-downloader chain (the common today case), a Start error still reaches
+// DownloadFailed — i.e., the fallback path does not break the no-fallback scenario.
+// The ManualURL last-resort path (Retry with a URL) must remain reachable after this.
+func TestFallbackSingleDownloaderFailedReachesDownloadFailed(t *testing.T) {
+	dl := &fakeDL{name: "only", canDownload: true, errOnStart: errors.New("no match")}
+	store := newMemStore()
+	m, _ := testManager(t, []Downloader{dl}, store, nil, nil, nil)
+
+	job, err := m.Enqueue(context.Background(), core.DownloadRequest{
+		Source: "spotify", ExternalID: "fb3", Artist: "A", Title: "T", Album: "Al",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	deadline := time.After(3 * time.Second)
+	for {
+		cur, _, _ := store.Get(context.Background(), job.ID)
+		if cur.Status == core.DownloadCompleted || cur.Status == core.DownloadFailed {
+			if cur.Status != core.DownloadFailed {
+				t.Fatalf("single-downloader failure should reach DownloadFailed, got %q", cur.Status)
+			}
+			break
+		}
+		select {
+		case <-deadline:
+			cur2, _, _ := store.Get(context.Background(), job.ID)
+			t.Fatalf("job did not reach DownloadFailed (status=%q)", cur2.Status)
+		default:
+			time.Sleep(time.Millisecond)
+		}
+	}
+
+	// After failing, the ManualURL last-resort must be reachable: Retry(id, url)
+	// should re-queue the job so a human-supplied link can be used.
+	m.SeedRequest(job.ID, core.DownloadRequest{
+		Source: "spotify", ExternalID: "fb3", Artist: "A", Title: "T", Album: "Al",
+	})
+	// Swap out the erroring downloader so the retry can succeed (simulates the user
+	// providing a direct URL that the downloader can use — not testing the full
+	// ManualURL flow here, just that Retry is still callable after the fallback path).
+	retried, err := m.Retry(context.Background(), job.ID, "https://example.com/manual.mp3")
+	if err != nil {
+		t.Fatalf("Retry after fallback-exhaustion should succeed: %v", err)
+	}
+	if retried.Status != core.DownloadQueued {
+		t.Fatalf("retried job should be DownloadQueued, got %q", retried.Status)
+	}
+}

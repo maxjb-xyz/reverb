@@ -443,6 +443,40 @@ func (m *Manager) pick(ctx context.Context, req core.DownloadRequest) (Downloade
 	return nil, fmt.Errorf("no %s downloader can fetch %q by %q", g, req.Title, req.Artist)
 }
 
+// pickAfter returns the first downloader in the same granularity chain that comes
+// AFTER the one named afterName and whose CanDownload accepts req.  It is used by
+// the sync worker to fall back through the chain when a downloader's Start fails.
+//
+// Note: fallback is intentionally limited to the sync (track) lane.  Async
+// downloaders (e.g. Lidarr) run on their own reconciler lane and are not subject
+// to this retry logic.
+func (m *Manager) pickAfter(ctx context.Context, req core.DownloadRequest, afterName string) (Downloader, error) {
+	g := req.Granularity
+	if g == "" {
+		g = core.GranularityTrack
+	}
+	skip := true
+	for _, d := range m.downloaders {
+		if d.Granularity() != g {
+			continue
+		}
+		if skip {
+			if d.Name() == afterName {
+				skip = false
+			}
+			continue
+		}
+		ok, err := d.CanDownload(ctx, req)
+		if err != nil {
+			continue
+		}
+		if ok {
+			return d, nil
+		}
+	}
+	return nil, fmt.Errorf("no further %s downloader after %q for %q", g, afterName, req.Title)
+}
+
 // Enqueue persists a new job (or JOINS an active one with the same dedup key) and
 // pushes it to the worker pool. Concurrency-safe: simultaneous same-key enqueues
 // return the single existing job.
@@ -647,38 +681,56 @@ func (m *Manager) process(id string) {
 	m.publishEvent(TopicProgress, job, "")
 	log.Printf("download running: %q (job %s via %s)", job.Title, shortID(id), dl.Name())
 
-	// Heartbeat: while the download runs, log every 30s so a long-running or stuck
-	// job is visibly alive (with elapsed time). Stops as soon as Start returns.
-	hbStop := make(chan struct{})
-	go func() {
-		start := time.Now()
-		tk := time.NewTicker(30 * time.Second)
-		defer tk.Stop()
-		for {
-			select {
-			case <-hbStop:
-				return
-			case <-tk.C:
-				log.Printf("download still running: %q (job %s, %s elapsed)", job.Title, shortID(id), time.Since(start).Round(time.Second))
+	// Fallback loop: try the current downloader; on a genuine "couldn't produce"
+	// error (not timeout, not cancel) fall through to the next downloader in the same
+	// granularity chain via pickAfter.  Only when the chain is exhausted does the job
+	// reach DownloadFailed.  Timeout and cancel remain terminal — no fallback.
+	//
+	// Note: this fallback is the sync (track) lane only.  Async downloaders (e.g.
+	// Lidarr) run on their own reconciler lane and are not subject to this loop.
+	var outPath string
+	var lastErr error
+	for {
+		log.Printf("download attempting: %q (job %s via %s)", job.Title, shortID(id), dl.Name())
+
+		// Heartbeat: while the download runs, log every 30s so a long-running or stuck
+		// job is visibly alive (with elapsed time). Stops as soon as Start returns.
+		hbStop := make(chan struct{})
+		go func() {
+			start := time.Now()
+			tk := time.NewTicker(30 * time.Second)
+			defer tk.Stop()
+			for {
+				select {
+				case <-hbStop:
+					return
+				case <-tk.C:
+					log.Printf("download still running: %q (job %s, %s elapsed)", job.Title, shortID(id), time.Since(start).Round(time.Second))
+				}
 			}
+		}()
+
+		var serr error
+		outPath, serr = dl.Start(jctx, req, func(p int) {
+			m.mu.Lock()
+			cur, _, _ := m.store.Get(ctx, id)
+			cur.Progress = p
+			_ = m.store.Update(ctx, cur)
+			m.mu.Unlock()
+			m.publishEvent(TopicProgress, cur, "")
+		})
+		close(hbStop)
+
+		if serr == nil {
+			// Success — break out of the loop to the completion path below.
+			lastErr = nil
+			break
 		}
-	}()
 
-	outPath, serr := dl.Start(jctx, req, func(p int) {
-		m.mu.Lock()
-		cur, _, _ := m.store.Get(ctx, id)
-		cur.Progress = p
-		_ = m.store.Update(ctx, cur)
-		m.mu.Unlock()
-		m.publishEvent(TopicProgress, cur, "")
-	})
-	close(hbStop)
-
-	cur, _, _ := m.store.Get(ctx, id)
-	if serr != nil {
 		switch {
 		case errors.Is(jctx.Err(), context.DeadlineExceeded):
-			// Hit the per-job timeout (e.g. a downloader backing off for hours).
+			// Hit the per-job timeout — terminal, no fallback.
+			cur, _, _ := m.store.Get(ctx, id)
 			cur.Status = core.DownloadFailed
 			cur.Error = fmt.Sprintf("timed out after %s", m.cfg.JobTimeout)
 			cur.FinishedAt = m.clock.Now().Unix()
@@ -690,6 +742,8 @@ func (m *Manager) process(id string) {
 			m.mu.Unlock()
 			return
 		case jctx.Err() == context.Canceled:
+			// Explicitly canceled — terminal, no fallback.
+			cur, _, _ := m.store.Get(ctx, id)
 			cur.Status = core.DownloadCanceled
 			cur.FinishedAt = m.clock.Now().Unix()
 			_ = m.store.Update(ctx, cur)
@@ -700,26 +754,45 @@ func (m *Manager) process(id string) {
 			return
 		default:
 			// The chosen downloader couldn't produce the file (e.g. spotDL
-			// LookupError). FUTURE: when more than one downloader is configured,
-			// try the next downloader whose CanDownload accepts this request HERE,
-			// before marking the job failed — only when every auto-downloader is
-			// exhausted should the job reach DownloadFailed. The manual
-			// "download from a link" fallback (DownloadRequest.ManualURL, surfaced
-			// only on the failed state) is deliberately the LAST resort, so it must
-			// stay gated behind that all-providers-failed condition.
-			cur.Status = core.DownloadFailed
-			cur.Error = serr.Error()
-			cur.FinishedAt = m.clock.Now().Unix()
+			// LookupError).  Try the next downloader in the same granularity
+			// chain before giving up.  The manual "download from a link" fallback
+			// (DownloadRequest.ManualURL, surfaced on the failed state) remains the
+			// last resort and is only reachable once every auto-downloader is exhausted.
+			log.Printf("download: %q (job %s) downloader %q failed (%v), trying next in chain", job.Title, shortID(id), dl.Name(), serr)
+			next, nerr := m.pickAfter(ctx, req, dl.Name())
+			if nerr != nil {
+				// Chain exhausted — fall through to DownloadFailed.
+				lastErr = serr
+				break
+			}
+			// Persist the new downloader name so the job is recoverable after restart.
+			cur, _, _ := m.store.Get(ctx, id)
+			cur.DownloaderName = next.Name()
 			_ = m.store.Update(ctx, cur)
-			m.publishEvent(TopicFailed, cur, serr.Error())
-			log.Printf("download failed: %q (job %s) — %v", cur.Title, shortID(id), serr)
-			m.mu.Lock()
-			delete(m.reqs, id)
-			m.mu.Unlock()
-			return
+			dl = next
+			continue
 		}
+		// Reached only when default: breaks (chain exhausted).
+		break
 	}
 
+	if lastErr != nil {
+		// All downloaders in the chain failed — mark the job failed.
+		// The ManualURL last-resort (Retry with a URL) is still available to the user.
+		cur, _, _ := m.store.Get(ctx, id)
+		cur.Status = core.DownloadFailed
+		cur.Error = lastErr.Error()
+		cur.FinishedAt = m.clock.Now().Unix()
+		_ = m.store.Update(ctx, cur)
+		m.publishEvent(TopicFailed, cur, lastErr.Error())
+		log.Printf("download failed (chain exhausted): %q (job %s) — %v", cur.Title, shortID(id), lastErr)
+		m.mu.Lock()
+		delete(m.reqs, id)
+		m.mu.Unlock()
+		return
+	}
+
+	cur, _, _ := m.store.Get(ctx, id)
 	cur.Status = core.DownloadCompleted
 	cur.Progress = 100
 	cur.OutputPath = outPath
