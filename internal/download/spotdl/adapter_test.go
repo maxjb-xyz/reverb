@@ -446,10 +446,25 @@ func TestStartManualURLWithPipeCharIsStripped(t *testing.T) {
 	}
 }
 
-func TestGranularityIsTrack(t *testing.T) {
+func TestSupportedGranularitiesTrackAndAlbum(t *testing.T) {
 	a := New()
-	if got := a.Granularity(); got != core.GranularityTrack {
-		t.Fatalf("Granularity() = %q, want %q", got, core.GranularityTrack)
+	gs := a.SupportedGranularities()
+	if len(gs) != 2 {
+		t.Fatalf("SupportedGranularities() = %v, want [track album]", gs)
+	}
+	has := func(want core.DownloadGranularity) bool {
+		for _, g := range gs {
+			if g == want {
+				return true
+			}
+		}
+		return false
+	}
+	if !has(core.GranularityTrack) {
+		t.Fatalf("SupportedGranularities() missing track, got %v", gs)
+	}
+	if !has(core.GranularityAlbum) {
+		t.Fatalf("SupportedGranularities() missing album, got %v", gs)
 	}
 }
 

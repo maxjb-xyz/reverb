@@ -26,12 +26,12 @@ const (
 type Downloader interface {
 	registry.Plugin
 
-	// Granularity declares whether this downloader operates at track or album
-	// granularity. Track downloaders (e.g. spotDL) are used by the per-song
-	// fallback chain. Album downloaders (e.g. Lidarr) are excluded from that
-	// chain and used only when the request explicitly targets them or the caller
-	// builds an album-granularity chain.
-	Granularity() core.DownloadGranularity
+	// SupportedGranularities returns the SET of granularities this downloader is
+	// capable of operating at. spotDL supports {track, album}; Lidarr supports
+	// {album}. The returned slice must be non-empty and contain only valid constants.
+	// Whether a particular granularity is ACTIVE for a given instance is controlled
+	// by the Order map on DownloaderEntry — this method declares capability only.
+	SupportedGranularities() []core.DownloadGranularity
 
 	// CanDownload is a cheap capability heuristic (no network download).
 	CanDownload(ctx context.Context, req core.DownloadRequest) (bool, error)
@@ -40,6 +40,16 @@ type Downloader interface {
 	// (0-100, or -1 when unknown) and returns the output path on success. ctx is
 	// cancelable: when canceled, an in-flight download must abort promptly.
 	Start(ctx context.Context, req core.DownloadRequest, onProgress func(int)) (outputPath string, err error)
+}
+
+// DownloaderEntry pairs a Downloader with a per-instance enabled-granularity→order
+// map. Only granularities present as keys in Order are active for this instance;
+// the value is the sort key used by pick/pickAfter (ascending = higher priority).
+// The default resolution (Task 2: config parsing) sets Order[g] = int(inst.Priority)
+// for every g in plugin.SupportedGranularities().
+type DownloaderEntry struct {
+	Downloader Downloader
+	Order      map[core.DownloadGranularity]int
 }
 
 // AsyncDownloader is an OPTIONAL capability. An adapter implementing it hands the

@@ -11,6 +11,7 @@ import (
 	"log"
 	"time"
 
+	"github.com/maxjb-xyz/reverb/internal/core"
 	"github.com/maxjb-xyz/reverb/internal/coverage"
 	"github.com/maxjb-xyz/reverb/internal/download"
 	"github.com/maxjb-xyz/reverb/internal/library"
@@ -136,9 +137,12 @@ func BuildSearchSources(reg *registry.Registry, instances []db.AdapterInstance, 
 // "downloader" from the registry, applying env overrides (REVERB_SPOTDL_PATH →
 // binary_path, REVERB_DOWNLOAD_DIR → output_dir) just before Init. instances are
 // ordered by (type, priority) from ListAdapterInstances, so the returned slice is
-// already in fallback-chain order. Per-source failures warn-and-skip.
-func BuildDownloaders(reg *registry.Registry, instances []db.AdapterInstance, getenv func(string) string) []download.Downloader {
-	out := []download.Downloader{}
+// already in fallback-chain order. Each downloader is wrapped into a
+// DownloaderEntry whose Order map contains {g: int(inst.Priority)} for every g in
+// plugin.SupportedGranularities() — the DEFAULT resolution; Task 2 adds config
+// parsing for per-granularity overrides. Per-source failures warn-and-skip.
+func BuildDownloaders(reg *registry.Registry, instances []db.AdapterInstance, getenv func(string) string) []download.DownloaderEntry {
+	out := []download.DownloaderEntry{}
 	hasDownloaderInstance := false
 	for i := range instances {
 		inst := instances[i]
@@ -188,7 +192,13 @@ func BuildDownloaders(reg *registry.Registry, instances []db.AdapterInstance, ge
 			log.Printf("WARNING: downloader %q init failed: %v — skipping", inst.Name, err)
 			continue
 		}
-		out = append(out, dl)
+		// DEFAULT order: each supported granularity gets order = inst.Priority.
+		// Task 2 will add per-granularity config overrides on top of this.
+		order := make(map[core.DownloadGranularity]int, len(dl.SupportedGranularities()))
+		for _, g := range dl.SupportedGranularities() {
+			order[g] = int(inst.Priority)
+		}
+		out = append(out, download.DownloaderEntry{Downloader: dl, Order: order})
 	}
 
 	// Bundled default: the image ships spotDL + ffmpeg, so when the user has not
@@ -200,18 +210,18 @@ func BuildDownloaders(reg *registry.Registry, instances []db.AdapterInstance, ge
 	// set so local/dev runs without it are unaffected.
 	if len(out) == 0 && !hasDownloaderInstance {
 		if dir := getenv("REVERB_DOWNLOAD_DIR"); dir != "" {
-			if dl := buildDefaultSpotdl(reg, dir, getenv); dl != nil {
-				out = append(out, dl)
+			if entry := buildDefaultSpotdl(reg, dir, getenv); entry != nil {
+				out = append(out, *entry)
 			}
 		}
 	}
 	return out
 }
 
-// buildDefaultSpotdl constructs the bundled spotDL downloader (output_dir=dir).
+// buildDefaultSpotdl constructs the bundled spotDL downloader entry (output_dir=dir).
 // Returns nil (with a log line) if spotDL can't be created/initialised, e.g. a
 // build/registry without it — never fatal.
-func buildDefaultSpotdl(reg *registry.Registry, dir string, getenv func(string) string) download.Downloader {
+func buildDefaultSpotdl(reg *registry.Registry, dir string, getenv func(string) string) *download.DownloaderEntry {
 	plugin, err := reg.Create("spotdl")
 	if err != nil {
 		log.Printf("bundled spotdl downloader unavailable: %v", err)
@@ -236,7 +246,12 @@ func buildDefaultSpotdl(reg *registry.Registry, dir string, getenv func(string) 
 		return nil
 	}
 	log.Printf("using bundled spotdl downloader (output_dir=%s)", dir)
-	return dl
+	// Default order: priority 0 for all supported granularities.
+	order := make(map[core.DownloadGranularity]int, len(dl.SupportedGranularities()))
+	for _, g := range dl.SupportedGranularities() {
+		order[g] = 0
+	}
+	return &download.DownloaderEntry{Downloader: dl, Order: order}
 }
 
 // ServiceBundle is the set of active services built from the current enabled

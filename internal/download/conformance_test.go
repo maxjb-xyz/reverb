@@ -10,10 +10,12 @@ import (
 
 type fakeDownloader struct{}
 
-func (fakeDownloader) Type() string                             { return "downloader" }
-func (fakeDownloader) Name() string                             { return "fake" }
-func (fakeDownloader) Granularity() core.DownloadGranularity   { return core.GranularityTrack }
-func (fakeDownloader) ConfigSchema() registry.ConfigSchema      { return registry.ConfigSchema{} }
+func (fakeDownloader) Type() string { return "downloader" }
+func (fakeDownloader) Name() string { return "fake" }
+func (fakeDownloader) SupportedGranularities() []core.DownloadGranularity {
+	return []core.DownloadGranularity{core.GranularityTrack}
+}
+func (fakeDownloader) ConfigSchema() registry.ConfigSchema { return registry.ConfigSchema{} }
 func (fakeDownloader) Init(cfg map[string]any) error            { return nil }
 func (fakeDownloader) TestConnection(ctx context.Context) error { return nil }
 func (fakeDownloader) CanDownload(ctx context.Context, req core.DownloadRequest) (bool, error) {

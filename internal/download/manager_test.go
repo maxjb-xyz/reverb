@@ -29,10 +29,12 @@ type fakeDL struct {
 	startCount  int
 }
 
-func (d *fakeDL) Type() string                                { return "downloader" }
-func (d *fakeDL) Name() string                                { return d.name }
-func (d *fakeDL) Granularity() core.DownloadGranularity       { return core.GranularityTrack }
-func (d *fakeDL) ConfigSchema() registry.ConfigSchema         { return registry.ConfigSchema{} }
+func (d *fakeDL) Type() string    { return "downloader" }
+func (d *fakeDL) Name() string    { return d.name }
+func (d *fakeDL) SupportedGranularities() []core.DownloadGranularity {
+	return []core.DownloadGranularity{core.GranularityTrack}
+}
+func (d *fakeDL) ConfigSchema() registry.ConfigSchema { return registry.ConfigSchema{} }
 func (d *fakeDL) Init(map[string]any) error                   { return nil }
 func (d *fakeDL) TestConnection(context.Context) error        { return nil }
 func (d *fakeDL) CanDownload(context.Context, core.DownloadRequest) (bool, error) {
@@ -257,6 +259,21 @@ func drain(bus *events.Bus, topic string, into *[]core.DownloadEvent, wg *sync.W
 	return unsub
 }
 
+// wrapDownloaders wraps a []Downloader into []DownloaderEntry using default
+// ordering: each granularity in SupportedGranularities() gets order 0 (same
+// priority). This mirrors the wiring.BuildDownloaders default.
+func wrapDownloaders(downloaders []Downloader) []DownloaderEntry {
+	entries := make([]DownloaderEntry, 0, len(downloaders))
+	for _, d := range downloaders {
+		order := make(map[core.DownloadGranularity]int, len(d.SupportedGranularities()))
+		for _, g := range d.SupportedGranularities() {
+			order[g] = 0
+		}
+		entries = append(entries, DownloaderEntry{Downloader: d, Order: order})
+	}
+	return entries
+}
+
 func testManager(t *testing.T, downloaders []Downloader, store JobStore, rematch Rematcher, ver VersionBumper, clk Clock) (*Manager, *events.Bus) {
 	t.Helper()
 	bus := events.New()
@@ -271,7 +288,7 @@ func testManager(t *testing.T, downloaders []Downloader, store JobStore, rematch
 		clk = RealClock{}
 	}
 	m := NewManager(Config{Workers: 2, DebounceWindow: 5 * time.Second, ScanPollEvery: time.Millisecond, ScanPollMax: time.Second, ScanSettleMax: 10 * time.Millisecond},
-		downloaders, store, bus, scanner, rematch, ver, clk, nil)
+		wrapDownloaders(downloaders), store, bus, scanner, rematch, ver, clk, nil)
 	t.Cleanup(m.Stop)
 	m.Start()
 	return m, bus
@@ -547,7 +564,7 @@ func TestCompletionDebouncesIntoOneScan(t *testing.T) {
 	ver := &fakeVersion{v: 1}
 	bus := events.New()
 	m := NewManager(Config{Workers: 3, DebounceWindow: 5 * time.Second, ScanPollEvery: time.Millisecond, ScanPollMax: time.Second, ScanSettleMax: 10 * time.Millisecond},
-		[]Downloader{dl}, store, bus, scanner, &fakeRematcher{trackID: "t1"}, ver, clk, nil)
+		wrapDownloaders([]Downloader{dl}), store, bus, scanner, &fakeRematcher{trackID: "t1"}, ver, clk, nil)
 	t.Cleanup(m.Stop)
 	m.Start()
 
@@ -603,7 +620,7 @@ func TestCompletionSetsLibraryTrackIDAndPublishesComplete(t *testing.T) {
 	bus := events.New()
 	rematcher := &fakeRematcher{trackID: "lib-track-9", coverArtID: "mf-lib-track-9_abc123"}
 	m := NewManager(Config{Workers: 1, DebounceWindow: 5 * time.Second, ScanPollEvery: time.Millisecond, ScanPollMax: time.Second, ScanSettleMax: 10 * time.Millisecond},
-		[]Downloader{dl}, store, bus, &fakeScanner{}, rematcher, &fakeVersion{v: 1}, clk, nil)
+		wrapDownloaders([]Downloader{dl}), store, bus, &fakeScanner{}, rematcher, &fakeVersion{v: 1}, clk, nil)
 	t.Cleanup(m.Stop)
 	m.Start()
 
@@ -740,7 +757,7 @@ func TestRunScanWaitsForScanToCompleteBeforeRematch(t *testing.T) {
 	scanner := &fakeScanner{statusSeq: []bool{false, true, true, false}}
 	rematcher := &fakeRematcher{trackID: "lib-track-classical"}
 	m := NewManager(Config{Workers: 1, DebounceWindow: 5 * time.Second, ScanPollEvery: time.Millisecond, ScanPollMax: time.Second, ScanSettleMax: time.Second},
-		[]Downloader{dl}, store, bus, scanner, rematcher, &fakeVersion{v: 1}, clk, nil)
+		wrapDownloaders([]Downloader{dl}), store, bus, scanner, rematcher, &fakeVersion{v: 1}, clk, nil)
 	t.Cleanup(m.Stop)
 	m.Start()
 
@@ -1099,7 +1116,7 @@ func TestBackfillUnlinkedReLinksCompletedJobs(t *testing.T) {
 	bus := events.New()
 	dl := &fakeDL{name: "dl", canDownload: true}
 	m := NewManager(Config{Workers: 1, DebounceWindow: 5 * time.Second, ScanPollEvery: time.Millisecond, ScanPollMax: time.Second, ScanSettleMax: 10 * time.Millisecond},
-		[]Downloader{dl}, store, bus, &fakeScanner{}, rematcher, &fakeVersion{v: 1}, RealClock{}, nil)
+		wrapDownloaders([]Downloader{dl}), store, bus, &fakeScanner{}, rematcher, &fakeVersion{v: 1}, RealClock{}, nil)
 	t.Cleanup(m.Stop)
 
 	// Subscribe to complete events BEFORE starting so we don't miss the backfill publish.
@@ -1195,7 +1212,7 @@ func TestBackfillPlaylistAdderCalledWhenAddToPlaylistIDSet(t *testing.T) {
 	bus := events.New()
 	dl := &fakeDL{name: "dl", canDownload: true}
 	m := NewManager(Config{Workers: 1, DebounceWindow: 5 * time.Second, ScanPollEvery: time.Millisecond, ScanPollMax: time.Second, ScanSettleMax: 10 * time.Millisecond},
-		[]Downloader{dl}, store, bus, &fakeScanner{}, rematcher, &fakeVersion{v: 1}, RealClock{}, adder)
+		wrapDownloaders([]Downloader{dl}), store, bus, &fakeScanner{}, rematcher, &fakeVersion{v: 1}, RealClock{}, adder)
 	t.Cleanup(m.Stop)
 
 	// Subscribe before Start so we don't miss the backfill publish.
@@ -1281,7 +1298,7 @@ func TestPlaylistAdderCalledOnCompletionWithAddToPlaylistID(t *testing.T) {
 	adder := &fakePlaylistAdder{}
 
 	m := NewManager(Config{Workers: 1, DebounceWindow: 5 * time.Second, ScanPollEvery: time.Millisecond, ScanPollMax: time.Second, ScanSettleMax: 10 * time.Millisecond},
-		[]Downloader{dl}, store, bus, &fakeScanner{}, rematcher, &fakeVersion{v: 1}, clk, adder)
+		wrapDownloaders([]Downloader{dl}), store, bus, &fakeScanner{}, rematcher, &fakeVersion{v: 1}, clk, adder)
 	t.Cleanup(m.Stop)
 	m.Start()
 
@@ -1402,7 +1419,7 @@ func TestPlaylistAdderNotCalledWhenNoAddToPlaylistID(t *testing.T) {
 	adder := &fakePlaylistAdder{}
 
 	m := NewManager(Config{Workers: 1, DebounceWindow: 5 * time.Second, ScanPollEvery: time.Millisecond, ScanPollMax: time.Second, ScanSettleMax: 10 * time.Millisecond},
-		[]Downloader{dl}, store, bus, &fakeScanner{}, rematcher, &fakeVersion{v: 1}, clk, adder)
+		wrapDownloaders([]Downloader{dl}), store, bus, &fakeScanner{}, rematcher, &fakeVersion{v: 1}, clk, adder)
 	t.Cleanup(m.Stop)
 	m.Start()
 
@@ -1459,7 +1476,7 @@ func TestBackfillSkipsAlreadyLinkedAndNonCompleted(t *testing.T) {
 	rematcher := &fakeRematcher{trackID: "should-not-be-set"}
 	dl := &fakeDL{name: "dl", canDownload: true}
 	m := NewManager(Config{Workers: 1, DebounceWindow: 5 * time.Second, ScanPollEvery: time.Millisecond, ScanPollMax: time.Second, ScanSettleMax: 10 * time.Millisecond},
-		[]Downloader{dl}, store, nil, &fakeScanner{}, rematcher, &fakeVersion{v: 1}, RealClock{}, nil)
+		wrapDownloaders([]Downloader{dl}), store, nil, &fakeScanner{}, rematcher, &fakeVersion{v: 1}, RealClock{}, nil)
 	t.Cleanup(m.Stop)
 	m.Start()
 
@@ -1593,7 +1610,7 @@ func TestStopUnblocksPausedWorkers(t *testing.T) {
 	bus := events.New()
 	m := NewManager(
 		Config{Workers: 2, DebounceWindow: 5 * time.Second, ScanPollEvery: time.Millisecond, ScanPollMax: time.Second, ScanSettleMax: 10 * time.Millisecond},
-		[]Downloader{dl}, store, bus, &fakeScanner{}, &fakeRematcher{trackID: "t1"}, &fakeVersion{v: 1}, RealClock{}, nil,
+		wrapDownloaders([]Downloader{dl}), store, bus, &fakeScanner{}, &fakeRematcher{trackID: "t1"}, &fakeVersion{v: 1}, RealClock{}, nil,
 	)
 	m.Start()
 	m.Pause()
@@ -1687,10 +1704,12 @@ type fakeAsyncDL struct {
 	status      AsyncStatus
 }
 
-func (d *fakeAsyncDL) Type() string                                { return "downloader" }
-func (d *fakeAsyncDL) Name() string                                { return d.name }
-func (d *fakeAsyncDL) Granularity() core.DownloadGranularity       { return core.GranularityAlbum }
-func (d *fakeAsyncDL) ConfigSchema() registry.ConfigSchema         { return registry.ConfigSchema{} }
+func (d *fakeAsyncDL) Type() string { return "downloader" }
+func (d *fakeAsyncDL) Name() string { return d.name }
+func (d *fakeAsyncDL) SupportedGranularities() []core.DownloadGranularity {
+	return []core.DownloadGranularity{core.GranularityAlbum}
+}
+func (d *fakeAsyncDL) ConfigSchema() registry.ConfigSchema { return registry.ConfigSchema{} }
 func (d *fakeAsyncDL) Init(map[string]any) error                   { return nil }
 func (d *fakeAsyncDL) TestConnection(context.Context) error        { return nil }
 func (d *fakeAsyncDL) CanDownload(_ context.Context, req core.DownloadRequest) (bool, error) {
@@ -1792,7 +1811,7 @@ func TestReconcileAdvancesProgressThenCompletes(t *testing.T) {
 	scanner := &fakeScanner{}
 	bus := events.New()
 	m := NewManager(Config{Workers: 1, DebounceWindow: time.Second, ScanPollEvery: time.Millisecond, ScanPollMax: time.Second, ScanSettleMax: 10 * time.Millisecond},
-		[]Downloader{async}, store, bus, scanner, &fakeRematcher{trackID: "t1"}, &fakeVersion{v: 1}, clk, nil)
+		wrapDownloaders([]Downloader{async}), store, bus, scanner, &fakeRematcher{trackID: "t1"}, &fakeVersion{v: 1}, clk, nil)
 	t.Cleanup(m.Stop)
 	m.Start()
 
@@ -1862,6 +1881,120 @@ func TestAsyncCapabilityProbe(t *testing.T) {
 		if c == "async" {
 			t.Fatal("sync downloader must not report async")
 		}
+	}
+}
+
+// -- Task 1: SupportedGranularities + DownloaderEntry + granularity-aware pick --
+
+// testManagerEntries builds a Manager directly from []DownloaderEntry (the new
+// API). Used by Task-1 pick/pickAfter tests.
+func testManagerEntries(t *testing.T, entries []DownloaderEntry, store JobStore, clk Clock) (*Manager, *events.Bus) {
+	t.Helper()
+	bus := events.New()
+	scanner := &fakeScanner{}
+	m := NewManager(
+		Config{Workers: 2, DebounceWindow: 5 * time.Second, ScanPollEvery: time.Millisecond, ScanPollMax: time.Second, ScanSettleMax: 10 * time.Millisecond},
+		entries, store, bus, scanner, &fakeRematcher{trackID: "t1"}, &fakeVersion{v: 1}, clk, nil,
+	)
+	t.Cleanup(m.Stop)
+	m.Start()
+	return m, bus
+}
+
+// TestPickOrderTrackRespected: two track entries with Order{track:1} and
+// Order{track:0} → pick returns the Order{track:0} one (lower order = higher priority).
+func TestPickOrderTrackRespected(t *testing.T) {
+	lo := &fakeDL{name: "lo", canDownload: true} // order 1 — should lose
+	hi := &fakeDL{name: "hi", canDownload: true} // order 0 — should win
+	store := newMemStore()
+	entries := []DownloaderEntry{
+		{Downloader: lo, Order: map[core.DownloadGranularity]int{core.GranularityTrack: 1}},
+		{Downloader: hi, Order: map[core.DownloadGranularity]int{core.GranularityTrack: 0}},
+	}
+	m, _ := testManagerEntries(t, entries, store, nil)
+
+	job, err := m.Enqueue(context.Background(), core.DownloadRequest{
+		Source: "spotify", ExternalID: "e-order", Artist: "A", Title: "T", Album: "Al",
+		Granularity: core.GranularityTrack,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if job.DownloaderName != "hi" {
+		t.Fatalf("lower Order[track] value should win: expected %q, got %q", "hi", job.DownloaderName)
+	}
+}
+
+// TestPickAlbumSelectsAlbumEntry: an album request selects the album-capable entry.
+func TestPickAlbumSelectsAlbumEntry(t *testing.T) {
+	trackDL := &fakeDL{name: "spotdl", canDownload: true}
+	albumDL := &fakeAsyncDL{name: "lidarr", submitRef: "ref-album-1"}
+	store := newMemStore()
+	entries := []DownloaderEntry{
+		{Downloader: trackDL, Order: map[core.DownloadGranularity]int{core.GranularityTrack: 0}},
+		{Downloader: albumDL, Order: map[core.DownloadGranularity]int{core.GranularityAlbum: 0}},
+	}
+	m, _ := testManagerEntries(t, entries, store, nil)
+
+	job, err := m.Enqueue(context.Background(), core.DownloadRequest{
+		Source: "spotify", ExternalID: "e-album", Artist: "A", Title: "Album X",
+		Album: "Album X", Granularity: core.GranularityAlbum,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if job.DownloaderName != "lidarr" {
+		t.Fatalf("album request should pick album entry, got %q", job.DownloaderName)
+	}
+}
+
+// TestPickTrackNeverSelectsAlbumOnly: a track request must never select an
+// album-only entry (one whose Order map lacks GranularityTrack).
+func TestPickTrackNeverSelectsAlbumOnly(t *testing.T) {
+	albumDL := &fakeAsyncDL{name: "lidarr", submitRef: "ref-should-not-pick"}
+	store := newMemStore()
+	entries := []DownloaderEntry{
+		{Downloader: albumDL, Order: map[core.DownloadGranularity]int{core.GranularityAlbum: 0}},
+	}
+	m, _ := testManagerEntries(t, entries, store, nil)
+
+	_, err := m.Enqueue(context.Background(), core.DownloadRequest{
+		Source: "spotify", ExternalID: "e-track-only", Artist: "A", Title: "T",
+		Granularity: core.GranularityTrack,
+	})
+	if err == nil {
+		t.Fatal("track request with only an album-only entry must fail, got nil error")
+	}
+	if !strings.Contains(err.Error(), "track") {
+		t.Fatalf("error %q should mention granularity 'track'", err.Error())
+	}
+}
+
+// TestPickAfterReturnsNextTrackEntryByOrder: pickAfter skips 'lo' (order 1)
+// and returns 'mid' (order 2) when afterName = "lo", skipping 'hi' (order 0
+// — it comes before 'lo' in sorted order and has already been tried).
+func TestPickAfterReturnsNextTrackEntryByOrder(t *testing.T) {
+	hi := &fakeDL{name: "hi", canDownload: true}  // order 0 — first in sorted order
+	lo := &fakeDL{name: "lo", canDownload: true}   // order 1 — second
+	mid := &fakeDL{name: "mid", canDownload: true} // order 2 — third
+	store := newMemStore()
+	entries := []DownloaderEntry{
+		// Deliberately register in non-sorted order to prove sort is by Order[g].
+		{Downloader: lo, Order: map[core.DownloadGranularity]int{core.GranularityTrack: 1}},
+		{Downloader: mid, Order: map[core.DownloadGranularity]int{core.GranularityTrack: 2}},
+		{Downloader: hi, Order: map[core.DownloadGranularity]int{core.GranularityTrack: 0}},
+	}
+	m, _ := testManagerEntries(t, entries, store, nil)
+
+	ctx := context.Background()
+	req := core.DownloadRequest{Granularity: core.GranularityTrack}
+	// pickAfter("lo") should return "mid" (next in ascending Order after lo=1 is mid=2).
+	got, err := m.pickAfter(ctx, req, "lo")
+	if err != nil {
+		t.Fatalf("pickAfter returned error: %v", err)
+	}
+	if got.Name() != "mid" {
+		t.Fatalf("pickAfter('lo') should return 'mid' (next by order), got %q", got.Name())
 	}
 }
 

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"sort"
 	"sync"
 	"time"
 
@@ -143,7 +144,7 @@ func (c Config) withDefaults() Config {
 // fallback chain, scan-debounce, cancel/retry, and EventBus publication.
 type Manager struct {
 	cfg         Config
-	downloaders []Downloader
+	downloaders []DownloaderEntry
 	store       JobStore
 	bus         Publisher
 	scanner     ScanController
@@ -170,7 +171,7 @@ type Manager struct {
 // NewManager constructs the Manager. Call Start() to launch workers.
 // playlists may be nil; when non-nil, completed downloads whose request carries
 // AddToPlaylistID will have the matched library track appended to that playlist.
-func NewManager(cfg Config, downloaders []Downloader, store JobStore, bus Publisher,
+func NewManager(cfg Config, downloaders []DownloaderEntry, store JobStore, bus Publisher,
 	scanner ScanController, rematcher Rematcher, version VersionBumper, clock Clock,
 	playlists PlaylistAdder) *Manager {
 	if clock == nil {
@@ -291,9 +292,9 @@ func (m *Manager) Stop() {
 // asyncFor returns the AsyncDownloader registered under name, or nil if that
 // downloader isn't registered or isn't async.
 func (m *Manager) asyncFor(name string) AsyncDownloader {
-	for _, d := range m.downloaders {
-		if d.Name() == name {
-			if a, ok := d.(AsyncDownloader); ok {
+	for _, e := range m.downloaders {
+		if e.Downloader.Name() == name {
+			if a, ok := e.Downloader.(AsyncDownloader); ok {
 				return a
 			}
 		}
@@ -303,8 +304,8 @@ func (m *Manager) asyncFor(name string) AsyncDownloader {
 
 // hasAsync reports whether any configured downloader is an AsyncDownloader.
 func (m *Manager) hasAsync() bool {
-	for _, d := range m.downloaders {
-		if _, ok := d.(AsyncDownloader); ok {
+	for _, e := range m.downloaders {
+		if _, ok := e.Downloader.(AsyncDownloader); ok {
 			return true
 		}
 	}
@@ -420,34 +421,47 @@ func (m *Manager) submitAsync(ctx context.Context, job core.DownloadJob, req cor
 	log.Printf("download submitted to %s: %q (job %s, ref %s)", job.DownloaderName, cur.Title, shortID(cur.ID), ref)
 }
 
-// pick chooses the first downloader (in priority/slice order) whose Granularity
-// matches the request and whose CanDownload returns true.
-// An empty req.Granularity is treated as GranularityTrack.
+// sortedEntries returns a copy of m.downloaders filtered to entries whose Order
+// map contains granularity g, sorted ascending by Order[g] (stable — input order
+// is the tiebreaker). An empty req.Granularity is treated as GranularityTrack.
+func (m *Manager) sortedEntries(g core.DownloadGranularity) []DownloaderEntry {
+	var filtered []DownloaderEntry
+	for _, e := range m.downloaders {
+		if _, ok := e.Order[g]; ok {
+			filtered = append(filtered, e)
+		}
+	}
+	sort.SliceStable(filtered, func(i, j int) bool {
+		return filtered[i].Order[g] < filtered[j].Order[g]
+	})
+	return filtered
+}
+
+// pick chooses the first entry (by ascending Order[g]) whose CanDownload returns
+// true for the request's granularity. An empty req.Granularity defaults to track.
 func (m *Manager) pick(ctx context.Context, req core.DownloadRequest) (Downloader, error) {
 	g := req.Granularity
 	if g == "" {
 		g = core.GranularityTrack
 	}
-	for _, d := range m.downloaders {
-		if d.Granularity() != g {
-			continue
-		}
-		ok, err := d.CanDownload(ctx, req)
+	for _, e := range m.sortedEntries(g) {
+		ok, err := e.Downloader.CanDownload(ctx, req)
 		if err != nil {
 			continue
 		}
 		if ok {
-			return d, nil
+			return e.Downloader, nil
 		}
 	}
 	return nil, fmt.Errorf("no %s downloader can fetch %q by %q", g, req.Title, req.Artist)
 }
 
-// pickAfter returns the first downloader in the same granularity chain that comes
-// AFTER the one named afterName and whose CanDownload accepts req.  It is used by
-// the sync worker to fall back through the chain when a downloader's Start fails.
+// pickAfter returns the first entry in the same granularity chain that comes
+// AFTER the one named afterName (in ascending Order[g] sort) and whose CanDownload
+// accepts req. It is used by the sync worker to fall back through the chain when a
+// downloader's Start fails.
 //
-// Note: fallback is intentionally limited to the sync (track) lane.  Async
+// Note: fallback is intentionally limited to the sync (track) lane. Async
 // downloaders (e.g. Lidarr) run on their own reconciler lane and are not subject
 // to this retry logic.
 func (m *Manager) pickAfter(ctx context.Context, req core.DownloadRequest, afterName string) (Downloader, error) {
@@ -456,24 +470,21 @@ func (m *Manager) pickAfter(ctx context.Context, req core.DownloadRequest, after
 		g = core.GranularityTrack
 	}
 	skip := true
-	for _, d := range m.downloaders {
-		if d.Granularity() != g {
-			continue
-		}
+	for _, e := range m.sortedEntries(g) {
 		if skip {
-			if d.Name() == afterName {
+			if e.Downloader.Name() == afterName {
 				skip = false
 			}
 			continue
 		}
 		// Intentionally uses the background ctx (not jctx) so a fallback candidate
 		// isn't pre-poisoned by the prior attempt's timeout or cancellation.
-		ok, err := d.CanDownload(ctx, req)
+		ok, err := e.Downloader.CanDownload(ctx, req)
 		if err != nil {
 			continue
 		}
 		if ok {
-			return d, nil
+			return e.Downloader, nil
 		}
 	}
 	return nil, fmt.Errorf("no further %s downloader after %q for %q", g, afterName, req.Title)
@@ -656,9 +667,9 @@ func (m *Manager) process(id string) {
 	}()
 
 	var dl Downloader
-	for _, d := range m.downloaders {
-		if d.Name() == job.DownloaderName {
-			dl = d
+	for _, e := range m.downloaders {
+		if e.Downloader.Name() == job.DownloaderName {
+			dl = e.Downloader
 			break
 		}
 	}

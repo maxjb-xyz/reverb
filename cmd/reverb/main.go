@@ -90,11 +90,20 @@ func main() {
 		_, ok := p.(download.AsyncDownloader)
 		return ok
 	})
-	// Surface granularity: "grain:album" is present iff the downloader operates at
-	// album granularity (e.g. Lidarr). Absence means track granularity (e.g. spotDL).
+	// Surface granularity: "grain:album" is present iff the downloader supports
+	// album granularity (e.g. Lidarr). Absence means track-only (e.g. spotDL).
+	// NOTE: this probe is removed in a later task; for now keep it compiling.
 	registry.RegisterCapability("grain:album", func(p registry.Plugin) bool {
 		d, ok := p.(download.Downloader)
-		return ok && d.Granularity() == core.GranularityAlbum
+		if !ok {
+			return false
+		}
+		for _, g := range d.SupportedGranularities() {
+			if g == core.GranularityAlbum {
+				return true
+			}
+		}
+		return false
 	})
 
 	// EventBus backs both the WS endpoint and the Manager's typed events.

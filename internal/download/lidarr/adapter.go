@@ -31,7 +31,9 @@ func NewClientFor(a *Adapter, doer Doer) *Client { return NewClient(a.url, a.api
 
 func (a *Adapter) Type() string                          { return "downloader" }
 func (a *Adapter) Name() string                          { return "lidarr" }
-func (a *Adapter) Granularity() core.DownloadGranularity { return core.GranularityAlbum }
+func (a *Adapter) SupportedGranularities() []core.DownloadGranularity {
+	return []core.DownloadGranularity{core.GranularityAlbum}
+}
 
 func (a *Adapter) ConfigSchema() registry.ConfigSchema {
 	return registry.ConfigSchema{Fields: []registry.ConfigField{

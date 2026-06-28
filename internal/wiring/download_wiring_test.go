@@ -24,8 +24,8 @@ func TestBuildDownloadersEnabledOnly(t *testing.T) {
 	if len(out) != 1 {
 		t.Fatalf("want 1 enabled downloader, got %d", len(out))
 	}
-	if out[0].Name() != "spotdl" {
-		t.Fatalf("name = %q", out[0].Name())
+	if out[0].Downloader.Name() != "spotdl" {
+		t.Fatalf("name = %q", out[0].Downloader.Name())
 	}
 }
 
@@ -51,7 +51,7 @@ func TestBuildDownloadersBundledSpotdlDefault(t *testing.T) {
 	// sets it) → the bundled spotDL default is injected.
 	instances := []db.AdapterInstance{{Type: "library", Name: "subsonic", Enabled: 1, ConfigJson: `{}`}}
 	out := BuildDownloaders(reg, instances, env(map[string]string{"REVERB_DOWNLOAD_DIR": "/music"}))
-	if len(out) != 1 || out[0].Name() != "spotdl" {
+	if len(out) != 1 || out[0].Downloader.Name() != "spotdl" {
 		t.Fatalf("want 1 bundled spotdl default, got %d", len(out))
 	}
 }

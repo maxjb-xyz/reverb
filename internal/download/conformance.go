@@ -24,10 +24,16 @@ func RunConformance(t *testing.T, d Downloader) {
 		}
 	})
 
-	t.Run("Granularity/valid", func(t *testing.T) {
-		g := d.Granularity()
-		if g != core.GranularityTrack && g != core.GranularityAlbum {
-			t.Errorf("Granularity() = %q, must be %q or %q", g, core.GranularityTrack, core.GranularityAlbum)
+	t.Run("SupportedGranularities/valid", func(t *testing.T) {
+		gs := d.SupportedGranularities()
+		if len(gs) == 0 {
+			t.Error("SupportedGranularities() must return at least one element")
+			return
+		}
+		for _, g := range gs {
+			if g != core.GranularityTrack && g != core.GranularityAlbum {
+				t.Errorf("SupportedGranularities() contains invalid value %q, must be %q or %q", g, core.GranularityTrack, core.GranularityAlbum)
+			}
 		}
 	})
 

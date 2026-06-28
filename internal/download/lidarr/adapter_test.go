@@ -26,10 +26,11 @@ func newTestAdapter(t *testing.T, doer *fakeDoer) *Adapter {
 	return a
 }
 
-func TestGranularityIsAlbum(t *testing.T) {
+func TestSupportedGranularitiesAlbumOnly(t *testing.T) {
 	a := New()
-	if got := a.Granularity(); got != core.GranularityAlbum {
-		t.Fatalf("Granularity() = %q, want %q", got, core.GranularityAlbum)
+	gs := a.SupportedGranularities()
+	if len(gs) != 1 || gs[0] != core.GranularityAlbum {
+		t.Fatalf("SupportedGranularities() = %v, want [album]", gs)
 	}
 }
 

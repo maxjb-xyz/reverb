@@ -29,7 +29,15 @@ func TestGrainAlbumCapabilityProbe(t *testing.T) {
 
 	registry.RegisterCapability("grain:album", func(p registry.Plugin) bool {
 		d, ok := p.(download.Downloader)
-		return ok && d.Granularity() == core.GranularityAlbum
+		if !ok {
+			return false
+		}
+		for _, g := range d.SupportedGranularities() {
+			if g == core.GranularityAlbum {
+				return true
+			}
+		}
+		return false
 	})
 
 	t.Run("lidarr has grain:album", func(t *testing.T) {
@@ -45,12 +53,17 @@ func TestGrainAlbumCapabilityProbe(t *testing.T) {
 		}
 	})
 
-	t.Run("spotdl does not have grain:album", func(t *testing.T) {
+	// spotDL now supports {track, album} granularities, so grain:album is present.
+	t.Run("spotdl has grain:album", func(t *testing.T) {
 		caps := registry.DescribeCapabilities(spotdl.New())
+		found := false
 		for _, c := range caps {
 			if c == "grain:album" {
-				t.Fatalf("spotdl: must NOT have 'grain:album', got %v", caps)
+				found = true
 			}
+		}
+		if !found {
+			t.Fatalf("spotdl: want 'grain:album' in capabilities (SupportedGranularities includes album), got %v", caps)
 		}
 	})
 }
