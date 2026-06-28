@@ -28,11 +28,12 @@ type fakeDL struct {
 	startCount  int
 }
 
-func (d *fakeDL) Type() string                         { return "downloader" }
-func (d *fakeDL) Name() string                         { return d.name }
-func (d *fakeDL) ConfigSchema() registry.ConfigSchema  { return registry.ConfigSchema{} }
-func (d *fakeDL) Init(map[string]any) error            { return nil }
-func (d *fakeDL) TestConnection(context.Context) error { return nil }
+func (d *fakeDL) Type() string                                { return "downloader" }
+func (d *fakeDL) Name() string                                { return d.name }
+func (d *fakeDL) Granularity() core.DownloadGranularity       { return core.GranularityTrack }
+func (d *fakeDL) ConfigSchema() registry.ConfigSchema         { return registry.ConfigSchema{} }
+func (d *fakeDL) Init(map[string]any) error                   { return nil }
+func (d *fakeDL) TestConnection(context.Context) error        { return nil }
 func (d *fakeDL) CanDownload(context.Context, core.DownloadRequest) (bool, error) {
 	return d.canDownload, nil
 }
@@ -1582,11 +1583,12 @@ type fakeAsyncDL struct {
 	status      AsyncStatus
 }
 
-func (d *fakeAsyncDL) Type() string                         { return "downloader" }
-func (d *fakeAsyncDL) Name() string                         { return d.name }
-func (d *fakeAsyncDL) ConfigSchema() registry.ConfigSchema  { return registry.ConfigSchema{} }
-func (d *fakeAsyncDL) Init(map[string]any) error            { return nil }
-func (d *fakeAsyncDL) TestConnection(context.Context) error { return nil }
+func (d *fakeAsyncDL) Type() string                                { return "downloader" }
+func (d *fakeAsyncDL) Name() string                                { return d.name }
+func (d *fakeAsyncDL) Granularity() core.DownloadGranularity       { return core.GranularityAlbum }
+func (d *fakeAsyncDL) ConfigSchema() registry.ConfigSchema         { return registry.ConfigSchema{} }
+func (d *fakeAsyncDL) Init(map[string]any) error                   { return nil }
+func (d *fakeAsyncDL) TestConnection(context.Context) error        { return nil }
 func (d *fakeAsyncDL) CanDownload(context.Context, core.DownloadRequest) (bool, error) {
 	return false, nil
 }

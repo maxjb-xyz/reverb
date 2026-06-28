@@ -24,6 +24,13 @@ func RunConformance(t *testing.T, d Downloader) {
 		}
 	})
 
+	t.Run("Granularity/valid", func(t *testing.T) {
+		g := d.Granularity()
+		if g != core.GranularityTrack && g != core.GranularityAlbum {
+			t.Errorf("Granularity() = %q, must be %q or %q", g, core.GranularityTrack, core.GranularityAlbum)
+		}
+	})
+
 	req := core.DownloadRequest{
 		Source: "spotify", ExternalID: "e1", Artist: "Artist", Title: "Song", Album: "Album",
 	}

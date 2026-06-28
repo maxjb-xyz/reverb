@@ -26,11 +26,24 @@ func newTestAdapter(t *testing.T, doer *fakeDoer) *Adapter {
 	return a
 }
 
-func TestCanDownloadIsFalseOptInOnly(t *testing.T) {
+func TestGranularityIsAlbum(t *testing.T) {
 	a := New()
-	ok, _ := a.CanDownload(context.Background(), core.DownloadRequest{Artist: "A", Title: "T", Album: "Al"})
-	if ok {
-		t.Fatal("Lidarr CanDownload must be false (opt-in only)")
+	if got := a.Granularity(); got != core.GranularityAlbum {
+		t.Fatalf("Granularity() = %q, want %q", got, core.GranularityAlbum)
+	}
+}
+
+func TestCanDownloadReturnsTrue(t *testing.T) {
+	// Granularity now keeps Lidarr out of the track/song chain; CanDownload is a
+	// per-request filter only and must return true so the manager can pick Lidarr
+	// when it is the explicit downloader or in the album chain.
+	a := New()
+	ok, err := a.CanDownload(context.Background(), core.DownloadRequest{Artist: "A", Title: "T", Album: "Al"})
+	if err != nil {
+		t.Fatalf("CanDownload: unexpected error: %v", err)
+	}
+	if !ok {
+		t.Fatal("Lidarr CanDownload must return true (granularity keeps it out of the track chain)")
 	}
 }
 

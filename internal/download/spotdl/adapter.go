@@ -66,8 +66,9 @@ func (a *Adapter) WithRunner(r Runner) *Adapter {
 	return a
 }
 
-func (a *Adapter) Type() string { return "downloader" }
-func (a *Adapter) Name() string { return "spotdl" }
+func (a *Adapter) Type() string                          { return "downloader" }
+func (a *Adapter) Name() string                          { return "spotdl" }
+func (a *Adapter) Granularity() core.DownloadGranularity { return core.GranularityTrack }
 
 func (a *Adapter) ConfigSchema() registry.ConfigSchema {
 	return registry.ConfigSchema{Fields: []registry.ConfigField{

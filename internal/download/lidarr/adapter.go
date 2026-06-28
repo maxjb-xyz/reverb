@@ -12,8 +12,9 @@ import (
 	"github.com/maxjb-xyz/reverb/internal/registry"
 )
 
-// Adapter implements download.Downloader (opt-in: CanDownload=false) and
-// download.AsyncDownloader for Lidarr.
+// Adapter implements download.Downloader and download.AsyncDownloader for Lidarr.
+// Granularity() returns GranularityAlbum, which keeps Lidarr out of the per-track
+// fallback chain. CanDownload is a per-request filter only (always true).
 type Adapter struct {
 	url               string
 	apiKey            string
@@ -28,8 +29,9 @@ func New() *Adapter { return &Adapter{} }
 // NewClientFor builds a Client bound to a's config with the given Doer (test seam).
 func NewClientFor(a *Adapter, doer Doer) *Client { return NewClient(a.url, a.apiKey, doer) }
 
-func (a *Adapter) Type() string { return "downloader" }
-func (a *Adapter) Name() string { return "lidarr" }
+func (a *Adapter) Type() string                          { return "downloader" }
+func (a *Adapter) Name() string                          { return "lidarr" }
+func (a *Adapter) Granularity() core.DownloadGranularity { return core.GranularityAlbum }
 
 func (a *Adapter) ConfigSchema() registry.ConfigSchema {
 	return registry.ConfigSchema{Fields: []registry.ConfigField{
@@ -84,10 +86,10 @@ func (a *Adapter) TestConnection(ctx context.Context) error {
 	return a.client.SystemStatus(ctx)
 }
 
-// CanDownload returns FALSE: Lidarr is opt-in only, never chosen by the auto
-// fallback chain or batch/playlist imports.
+// CanDownload returns true. Granularity() == GranularityAlbum is what keeps Lidarr
+// out of the per-track fallback chain; CanDownload is a per-request filter only.
 func (a *Adapter) CanDownload(ctx context.Context, req core.DownloadRequest) (bool, error) {
-	return false, nil
+	return true, nil
 }
 
 // Start is never called for an async downloader (the Manager uses Submit/Poll).

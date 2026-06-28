@@ -446,6 +446,13 @@ func TestStartManualURLWithPipeCharIsStripped(t *testing.T) {
 	}
 }
 
+func TestGranularityIsTrack(t *testing.T) {
+	a := New()
+	if got := a.Granularity(); got != core.GranularityTrack {
+		t.Fatalf("Granularity() = %q, want %q", got, core.GranularityTrack)
+	}
+}
+
 func TestSpotdlConformance(t *testing.T) {
 	// Conformance Start must report progress + return an output path: feed a
 	// runner that yields a progress line and a completion line.

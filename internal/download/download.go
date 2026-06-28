@@ -26,6 +26,13 @@ const (
 type Downloader interface {
 	registry.Plugin
 
+	// Granularity declares whether this downloader operates at track or album
+	// granularity. Track downloaders (e.g. spotDL) are used by the per-song
+	// fallback chain. Album downloaders (e.g. Lidarr) are excluded from that
+	// chain and used only when the request explicitly targets them or the caller
+	// builds an album-granularity chain.
+	Granularity() core.DownloadGranularity
+
 	// CanDownload is a cheap capability heuristic (no network download).
 	CanDownload(ctx context.Context, req core.DownloadRequest) (bool, error)
 

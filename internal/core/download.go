@@ -1,5 +1,16 @@
 package core
 
+// DownloadGranularity describes what unit a downloader operates on.
+// GranularityTrack downloaders (e.g. spotDL) fetch individual songs.
+// GranularityAlbum downloaders (e.g. Lidarr) fetch whole albums and are
+// excluded from the per-track fallback chain.
+type DownloadGranularity string
+
+const (
+	GranularityTrack DownloadGranularity = "track"
+	GranularityAlbum DownloadGranularity = "album"
+)
+
 // DownloadStatus is the lifecycle state of a DownloadJob.
 type DownloadStatus string
 
@@ -36,6 +47,10 @@ type DownloadRequest struct {
 	// the track is matched in the library. Used by the one-time import path so
 	// missing tracks are appended to the target playlist as each finishes.
 	AddToPlaylistID string `json:"addToPlaylistId,omitempty"`
+	// Granularity hints whether this is a track-level or album-level download
+	// request. Empty defaults to GranularityTrack. Set by callers that want an
+	// album-granularity downloader (e.g. Lidarr) for a full-album import.
+	Granularity DownloadGranularity `json:"granularity,omitempty"`
 	// InitiatedBy is the id of the user who initiated this download. It is set
 	// server-side from the request context (never from the client body, hence
 	// json:"-") and persisted on the job as download_jobs.initiated_by.
