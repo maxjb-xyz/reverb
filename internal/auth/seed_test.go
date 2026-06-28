@@ -91,6 +91,48 @@ func TestEnsureSeedRemapsLegacyCapabilities(t *testing.T) {
 	}
 }
 
+func TestEnsureSeedBackfillsManageRequestsOntoAdmin(t *testing.T) {
+	s, q := newTestServiceNoSeed(t)
+	ctx := context.Background()
+	// Simulate an existing role-admin that was seeded before manage_requests existed.
+	if err := q.CreateRole(ctx, db.CreateRoleParams{
+		ID: "role-admin", Name: "Admin", IsSystem: 1,
+		Capabilities: `["is_admin","can_manage_users","can_manage_library","request","auto_approve","can_create_playlists"]`,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.EnsureSeed(ctx); err != nil {
+		t.Fatal(err)
+	}
+	r, err := q.GetRole(ctx, "role-admin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var caps []string
+	if err := json.Unmarshal([]byte(r.Capabilities), &caps); err != nil {
+		t.Fatal(err)
+	}
+	if !contains(caps, CapManageRequests) {
+		t.Errorf("role-admin did not gain manage_requests after EnsureSeed: %v", caps)
+	}
+	// Idempotent: second run must not add duplicates.
+	if err := s.EnsureSeed(ctx); err != nil {
+		t.Fatalf("second EnsureSeed failed: %v", err)
+	}
+	r2, _ := q.GetRole(ctx, "role-admin")
+	var caps2 []string
+	_ = json.Unmarshal([]byte(r2.Capabilities), &caps2)
+	count := 0
+	for _, c := range caps2 {
+		if c == CapManageRequests {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Errorf("role-admin has %d manage_requests entries after second seed (want 1): %v", count, caps2)
+	}
+}
+
 func contains(ss []string, v string) bool {
 	for _, s := range ss {
 		if s == v {

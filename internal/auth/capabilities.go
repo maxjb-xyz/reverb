@@ -8,6 +8,7 @@ const (
 	CapManageLibrary   = "can_manage_library"
 	CapRequest         = "request"
 	CapAutoApprove     = "auto_approve"
+	CapManageRequests  = "manage_requests"
 	CapCreatePlaylists = "can_create_playlists"
 )
 
@@ -28,6 +29,7 @@ func AllCapabilities() []Capability {
 		{CapManageLibrary, "Manage library & integrations", "Configure the music backend, search providers, and downloaders. Opens the Admin area."},
 		{CapRequest, "Request music", "Ask to add music to the library. Fulfilled instantly if Auto-approve is also granted; otherwise it waits for an administrator's approval."},
 		{CapAutoApprove, "Auto-approve music", "Requests to add music are fulfilled immediately, without approval (one-click add). Implies Request."},
+		{CapManageRequests, "Approve requests", "Review and approve or deny other users' requests to add music."},
 		{CapCreatePlaylists, "Create & edit playlists", "Make and manage their own playlists."},
 	}
 }
@@ -60,7 +62,7 @@ type SeedRole struct {
 func DefaultSystemRoles() []SeedRole {
 	return []SeedRole{
 		{ID: "role-admin", Name: "Admin", IsSystem: true, Capabilities: []string{
-			CapAdmin, CapManageUsers, CapManageLibrary, CapRequest, CapAutoApprove, CapCreatePlaylists,
+			CapAdmin, CapManageUsers, CapManageLibrary, CapRequest, CapAutoApprove, CapManageRequests, CapCreatePlaylists,
 		}},
 		{ID: "role-user", Name: "User", IsSystem: true, Capabilities: []string{
 			CapAutoApprove, CapRequest, CapCreatePlaylists,

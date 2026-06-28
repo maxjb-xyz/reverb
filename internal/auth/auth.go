@@ -334,6 +334,18 @@ func (s *Service) EnsureSeed(ctx context.Context) error {
 				caps, changed = append(caps, CapCreatePlaylists), true
 			}
 		}
+		// role-admin gains manage_requests (added in SP2)
+		if r.ID == "role-admin" {
+			has := false
+			for _, c := range caps {
+				if c == CapManageRequests {
+					has = true
+				}
+			}
+			if !has {
+				caps, changed = append(caps, CapManageRequests), true
+			}
+		}
 		if changed {
 			b, _ := json.Marshal(caps)
 			if err := s.q.UpdateRole(ctx, db.UpdateRoleParams{Name: r.Name, Capabilities: string(b), ID: r.ID}); err != nil {
