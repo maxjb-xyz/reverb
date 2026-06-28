@@ -211,14 +211,18 @@ func (m *Manager) Start() {
 		go m.reconcileLoop()
 		log.Printf("download manager: async reconciler started (every %s)", m.cfg.ReconcileEvery)
 	}
-	go m.backfillUnlinked()
+	go m.BackfillUnlinked()
 }
 
-// backfillUnlinked is a one-shot startup pass that re-matches every completed job
-// whose LibraryTrackID is empty. A job that still can't be matched is left alone
-// (no retry loop). Jobs that now match get LibraryTrackID + CoverArtID set and a
+// BackfillUnlinked is a one-shot pass that re-matches every completed job whose
+// LibraryTrackID is empty. A job that still can't be matched is left alone (no
+// retry loop). Jobs that now match get LibraryTrackID + CoverArtID set and a
 // download.complete event published so the FE updates live.
-func (m *Manager) backfillUnlinked() {
+//
+// Called automatically at Start() and also by waitReadyThenBackfill (cmd/reverb)
+// after the bundled Navidrome reports ready, so the boot-race case (backfill ran
+// before Navidrome was serving) is re-resolved.
+func (m *Manager) BackfillUnlinked() {
 	if m.rematcher == nil {
 		return
 	}

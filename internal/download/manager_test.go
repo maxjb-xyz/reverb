@@ -1072,7 +1072,7 @@ func TestBackfillPlaylistAdderCalledWhenAddToPlaylistIDSet(t *testing.T) {
 
 	// Seed a completed, unlinked job with AddToPlaylistID set on the job struct
 	// (mirrors how Enqueue stores it: AddToPlaylistID is copied from the request
-	// directly onto the job row so backfillUnlinked can read it from store.List).
+	// directly onto the job row so BackfillUnlinked can read it from store.List).
 	seeded := core.DownloadJob{
 		ID: "backfill-pl-j1", DedupKey: "dk-backfill-pl", Status: core.DownloadCompleted,
 		DownloaderName: "dl", Source: "spotify", ExternalID: "ext-bf-pl1",

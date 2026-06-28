@@ -126,6 +126,12 @@ func main() {
 		defer bundle.Manager.Stop()
 	}
 
+	// Re-run the backfill after the bundled Navidrome reports ready so that the
+	// boot-race (backfill at Start() fires before Navidrome is serving) is healed.
+	if bundle.Supervisor != nil && bundle.Manager != nil {
+		go waitReadyThenBackfill(ctx, bundle.Supervisor.Ready, bundle.Manager.BackfillUnlinked)
+	}
+
 	// Start the playlist-sync scheduler when a sync service is configured. It ticks
 	// every 15 minutes, syncing due playlists, and stops when ctx is cancelled.
 	if bundle.Sync != nil {
