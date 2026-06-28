@@ -24,6 +24,7 @@ export interface AdapterInstance {
   enabled: boolean
   priority: number
   config: Record<string, unknown>
+  capabilities: string[]
 }
 export interface TestResult {
   ok: boolean

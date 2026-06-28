@@ -95,3 +95,26 @@ func DescribeCapabilities(p Plugin) []string {
 	sort.Strings(out)
 	return out
 }
+
+// SnapshotCapProbes saves the current global capability probes and replaces
+// them with an empty map. Call RestoreCapProbes (typically via t.Cleanup) to
+// restore the saved state. This is a test-isolation helper for packages that
+// cannot reach capProbes directly (e.g. due to import cycles).
+func SnapshotCapProbes() {
+	capMu.Lock()
+	defer capMu.Unlock()
+	saved := capProbes
+	capProbes = map[string]func(Plugin) bool{}
+	savedCapProbes = saved
+}
+
+// RestoreCapProbes restores the probes that were saved by SnapshotCapProbes.
+func RestoreCapProbes() {
+	capMu.Lock()
+	defer capMu.Unlock()
+	capProbes = savedCapProbes
+	savedCapProbes = nil
+}
+
+// savedCapProbes holds the snapshot for SnapshotCapProbes / RestoreCapProbes.
+var savedCapProbes map[string]func(Plugin) bool

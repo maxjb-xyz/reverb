@@ -15,6 +15,7 @@ import (
 	"github.com/maxjb-xyz/reverb/internal/api"
 	"github.com/maxjb-xyz/reverb/internal/auth"
 	"github.com/maxjb-xyz/reverb/internal/config"
+	"github.com/maxjb-xyz/reverb/internal/core"
 	"github.com/maxjb-xyz/reverb/internal/download"
 	"github.com/maxjb-xyz/reverb/internal/download/lidarr"
 	"github.com/maxjb-xyz/reverb/internal/download/spotdl"
@@ -88,6 +89,12 @@ func main() {
 	registry.RegisterCapability("async", func(p registry.Plugin) bool {
 		_, ok := p.(download.AsyncDownloader)
 		return ok
+	})
+	// Surface granularity: "grain:album" is present iff the downloader operates at
+	// album granularity (e.g. Lidarr). Absence means track granularity (e.g. spotDL).
+	registry.RegisterCapability("grain:album", func(p registry.Plugin) bool {
+		d, ok := p.(download.Downloader)
+		return ok && d.Granularity() == core.GranularityAlbum
 	})
 
 	// EventBus backs both the WS endpoint and the Manager's typed events.

@@ -10,6 +10,7 @@ const makeInstance = (overrides: Partial<AdapterInstance> = {}): AdapterInstance
   enabled: true,
   priority: 1,
   config: {},
+  capabilities: [],
   ...overrides,
 })
 

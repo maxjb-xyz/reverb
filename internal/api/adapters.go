@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -16,13 +17,17 @@ import (
 
 // adapterInstanceDTO is the browser-facing shape of a configured adapter instance.
 // Config has Secret:true fields redacted (value removed, "<key>__isSet" boolean added).
+// Capabilities mirrors the registry capability probes: a string is present iff the
+// adapter's plugin satisfies the corresponding probe (e.g. "grain:album" for
+// album-granularity downloaders).
 type adapterInstanceDTO struct {
-	ID       string         `json:"id"`
-	Type     string         `json:"type"`
-	Name     string         `json:"name"`
-	Enabled  bool           `json:"enabled"`
-	Priority int            `json:"priority"`
-	Config   map[string]any `json:"config"`
+	ID           string         `json:"id"`
+	Type         string         `json:"type"`
+	Name         string         `json:"name"`
+	Enabled      bool           `json:"enabled"`
+	Priority     int            `json:"priority"`
+	Config       map[string]any `json:"config"`
+	Capabilities []string       `json:"capabilities"`
 }
 
 // createAdapterBody / updateAdapterBody are the request DTOs.
@@ -78,14 +83,41 @@ func (s *Server) toDTO(inst db.AdapterInstance) adapterInstanceDTO {
 	if inst.ConfigJson != "" {
 		_ = json.Unmarshal([]byte(inst.ConfigJson), &cfg)
 	}
-	return adapterInstanceDTO{
-		ID:       inst.ID,
-		Type:     inst.Type,
-		Name:     inst.Name,
-		Enabled:  inst.Enabled == 1,
-		Priority: int(inst.Priority),
-		Config:   redactConfig(s.schemaFor(inst.Name), cfg),
+	// Derive capabilities by creating a fresh (uninitialised) plugin instance and
+	// running the registered probes. The plugin is never Init'd here — probes must
+	// only inspect the type, not call methods that require configuration.
+	var caps []string
+	if p, err := s.pluginFor(inst.Name); err == nil {
+		caps = registry.DescribeCapabilities(p)
 	}
+	if caps == nil {
+		caps = []string{}
+	}
+	return adapterInstanceDTO{
+		ID:           inst.ID,
+		Type:         inst.Type,
+		Name:         inst.Name,
+		Enabled:      inst.Enabled == 1,
+		Priority:     int(inst.Priority),
+		Config:       redactConfig(s.schemaFor(inst.Name), cfg),
+		Capabilities: caps,
+	}
+}
+
+// pluginFor creates a fresh (uninitialised) plugin for the given adapter name
+// by searching all registries. Returns an error when no registry knows the name.
+func (s *Server) pluginFor(name string) (registry.Plugin, error) {
+	for _, reg := range s.registries() {
+		if reg == nil {
+			continue
+		}
+		for _, n := range reg.Names() {
+			if n == name {
+				return reg.Create(n)
+			}
+		}
+	}
+	return nil, fmt.Errorf("unknown adapter %q", name)
 }
 
 func (s *Server) handleListAdapters(w http.ResponseWriter, r *http.Request) {

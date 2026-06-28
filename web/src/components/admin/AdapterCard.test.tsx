@@ -15,6 +15,7 @@ const makeInstance = (overrides: Partial<AdapterInstance> = {}): AdapterInstance
     client_secret: SECRET_SENTINEL,
     client_secret__isSet: true,
   },
+  capabilities: [],
   ...overrides,
 })
 
