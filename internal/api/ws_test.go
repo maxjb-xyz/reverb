@@ -10,10 +10,12 @@ import (
 
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
+	"github.com/maxjb-xyz/reverb/internal/auth"
 	"github.com/maxjb-xyz/reverb/internal/core"
 	"github.com/maxjb-xyz/reverb/internal/download"
 	"github.com/maxjb-xyz/reverb/internal/events"
 	"github.com/maxjb-xyz/reverb/internal/registry"
+	"github.com/maxjb-xyz/reverb/internal/request"
 	"github.com/maxjb-xyz/reverb/internal/store"
 )
 
@@ -113,5 +115,66 @@ func TestWSRequiresAuth(t *testing.T) {
 	_, _, err := websocket.Dial(ctx, wsURL, nil)
 	if err == nil {
 		t.Fatal("expected dial to fail without auth")
+	}
+}
+
+// TestWSShouldForward unit-tests the pure wsShouldForward filter function.
+func TestWSShouldForward(t *testing.T) {
+	regularUser := auth.CurrentUser{
+		ID:   "user-1",
+		Caps: map[string]bool{auth.CapRequest: true},
+	}
+	managerUser := auth.CurrentUser{
+		ID:   "user-2",
+		Caps: map[string]bool{auth.CapRequest: true, auth.CapManageRequests: true},
+	}
+
+	// request.updated: forward only to the TargetUserID.
+	updatedForOther := events.Event{
+		Topic: request.TopicUpdated,
+		Payload: core.RequestEvent{
+			Request:      core.Request{ID: "r1"},
+			TargetUserID: "user-99", // someone else
+		},
+	}
+	updatedForSelf := events.Event{
+		Topic: request.TopicUpdated,
+		Payload: core.RequestEvent{
+			Request:      core.Request{ID: "r1"},
+			TargetUserID: "user-1",
+		},
+	}
+	if wsShouldForward(regularUser, updatedForOther) {
+		t.Error("request.updated for other user: want false, got true")
+	}
+	if !wsShouldForward(regularUser, updatedForSelf) {
+		t.Error("request.updated for self: want true, got false")
+	}
+
+	// request.created: forward only to users with CapManageRequests.
+	created := events.Event{
+		Topic:   request.TopicCreated,
+		Payload: core.RequestEvent{Request: core.Request{ID: "r2"}, ForManagers: true},
+	}
+	if wsShouldForward(regularUser, created) {
+		t.Error("request.created for non-manager: want false, got true")
+	}
+	if !wsShouldForward(managerUser, created) {
+		t.Error("request.created for manager: want true, got false")
+	}
+
+	// Non-request topics always forward regardless of user.
+	downloadEv := events.Event{Topic: download.TopicComplete, Payload: nil}
+	if !wsShouldForward(regularUser, downloadEv) {
+		t.Error("download.complete for regular user: want true, got false")
+	}
+	if !wsShouldForward(managerUser, downloadEv) {
+		t.Error("download.complete for manager: want true, got false")
+	}
+
+	// Malformed request.updated (wrong payload type) → false, not a panic.
+	malformed := events.Event{Topic: request.TopicUpdated, Payload: "not-a-RequestEvent"}
+	if wsShouldForward(regularUser, malformed) {
+		t.Error("malformed request.updated: want false, got true")
 	}
 }
