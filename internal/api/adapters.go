@@ -11,6 +11,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/maxjb-xyz/reverb/internal/download"
 	"github.com/maxjb-xyz/reverb/internal/registry"
 	"github.com/maxjb-xyz/reverb/internal/store/db"
 )
@@ -18,16 +19,20 @@ import (
 // adapterInstanceDTO is the browser-facing shape of a configured adapter instance.
 // Config has Secret:true fields redacted (value removed, "<key>__isSet" boolean added).
 // Capabilities mirrors the registry capability probes: a string is present iff the
-// adapter's plugin satisfies the corresponding probe (e.g. "grain:album" for
-// album-granularity downloaders).
+// adapter's plugin satisfies the corresponding probe.
+// SupportedGranularities lists all granularities the plugin can operate at (capability).
+// Granularities is the resolved enabled-granularity→order map for this instance (config).
+// Both are nil/omitted for non-downloader adapters.
 type adapterInstanceDTO struct {
-	ID           string         `json:"id"`
-	Type         string         `json:"type"`
-	Name         string         `json:"name"`
-	Enabled      bool           `json:"enabled"`
-	Priority     int            `json:"priority"`
-	Config       map[string]any `json:"config"`
-	Capabilities []string       `json:"capabilities"`
+	ID                     string         `json:"id"`
+	Type                   string         `json:"type"`
+	Name                   string         `json:"name"`
+	Enabled                bool           `json:"enabled"`
+	Priority               int            `json:"priority"`
+	Config                 map[string]any `json:"config"`
+	Capabilities           []string       `json:"capabilities"`
+	SupportedGranularities []string       `json:"supportedGranularities,omitempty"`
+	Granularities          map[string]int `json:"granularities,omitempty"`
 }
 
 // createAdapterBody / updateAdapterBody are the request DTOs.
@@ -87,20 +92,37 @@ func (s *Server) toDTO(inst db.AdapterInstance) adapterInstanceDTO {
 	// running the registered probes. The plugin is never Init'd here — probes must
 	// only inspect the type, not call methods that require configuration.
 	var caps []string
+	var supportedGrans []string
+	var granularities map[string]int
 	if p, err := s.pluginFor(inst.Name); err == nil {
 		caps = registry.DescribeCapabilities(p)
+		// If the plugin is a Downloader, populate the granularity fields.
+		if d, ok := p.(download.Downloader); ok {
+			supported := d.SupportedGranularities()
+			supportedGrans = make([]string, len(supported))
+			for i, g := range supported {
+				supportedGrans[i] = string(g)
+			}
+			resolved := download.ResolveGranularityOrder(cfg, supported, int(inst.Priority))
+			granularities = make(map[string]int, len(resolved))
+			for g, order := range resolved {
+				granularities[string(g)] = order
+			}
+		}
 	}
 	if caps == nil {
 		caps = []string{}
 	}
 	return adapterInstanceDTO{
-		ID:           inst.ID,
-		Type:         inst.Type,
-		Name:         inst.Name,
-		Enabled:      inst.Enabled == 1,
-		Priority:     int(inst.Priority),
-		Config:       redactConfig(s.schemaFor(inst.Name), cfg),
-		Capabilities: caps,
+		ID:                     inst.ID,
+		Type:                   inst.Type,
+		Name:                   inst.Name,
+		Enabled:                inst.Enabled == 1,
+		Priority:               int(inst.Priority),
+		Config:                 redactConfig(s.schemaFor(inst.Name), cfg),
+		Capabilities:           caps,
+		SupportedGranularities: supportedGrans,
+		Granularities:          granularities,
 	}
 }
 

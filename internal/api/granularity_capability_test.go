@@ -1,72 +1,15 @@
 package api
 
-// TestGrainAlbumCapabilityProbe asserts that the "grain:album" capability probe
-// (registered in main.go) causes DescribeCapabilities to include the capability
-// for an album-granularity downloader (lidarr) and exclude it from a
-// track-granularity one (spotdl). Placed here (not in registry_test.go) to avoid
-// the registry → download → registry import cycle.
-//
-// TestAdapterDTOExposesCapabilities verifies that the adapter list endpoint
-// returns a non-nil Capabilities slice in each DTO, so the FE can check
-// capabilities.includes('grain:album') safely.
+// TestGrainAlbumCapabilityProbe was removed: the "grain:album" capability probe
+// has been retired. Granularity information is now exposed directly on the adapter
+// instance DTO via SupportedGranularities ([]string) and Granularities (map[string]int).
+// See TestAdapterDTOGranularities* in adapters_test.go.
 
 import (
 	"encoding/json"
 	"net/http"
 	"testing"
-
-	"github.com/maxjb-xyz/reverb/internal/core"
-	"github.com/maxjb-xyz/reverb/internal/download"
-	"github.com/maxjb-xyz/reverb/internal/download/lidarr"
-	"github.com/maxjb-xyz/reverb/internal/download/spotdl"
-	"github.com/maxjb-xyz/reverb/internal/registry"
 )
-
-func TestGrainAlbumCapabilityProbe(t *testing.T) {
-	// snapshot + restore global probes so other tests aren't polluted
-	registry.SnapshotCapProbes()
-	t.Cleanup(registry.RestoreCapProbes)
-
-	registry.RegisterCapability("grain:album", func(p registry.Plugin) bool {
-		d, ok := p.(download.Downloader)
-		if !ok {
-			return false
-		}
-		for _, g := range d.SupportedGranularities() {
-			if g == core.GranularityAlbum {
-				return true
-			}
-		}
-		return false
-	})
-
-	t.Run("lidarr has grain:album", func(t *testing.T) {
-		caps := registry.DescribeCapabilities(lidarr.New())
-		found := false
-		for _, c := range caps {
-			if c == "grain:album" {
-				found = true
-			}
-		}
-		if !found {
-			t.Fatalf("lidarr: want 'grain:album' in capabilities, got %v", caps)
-		}
-	})
-
-	// spotDL now supports {track, album} granularities, so grain:album is present.
-	t.Run("spotdl has grain:album", func(t *testing.T) {
-		caps := registry.DescribeCapabilities(spotdl.New())
-		found := false
-		for _, c := range caps {
-			if c == "grain:album" {
-				found = true
-			}
-		}
-		if !found {
-			t.Fatalf("spotdl: want 'grain:album' in capabilities (SupportedGranularities includes album), got %v", caps)
-		}
-	})
-}
 
 func TestAdapterDTOExposesCapabilities(t *testing.T) {
 	dirty := &testDirty{}

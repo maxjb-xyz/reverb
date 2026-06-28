@@ -15,7 +15,6 @@ import (
 	"github.com/maxjb-xyz/reverb/internal/api"
 	"github.com/maxjb-xyz/reverb/internal/auth"
 	"github.com/maxjb-xyz/reverb/internal/config"
-	"github.com/maxjb-xyz/reverb/internal/core"
 	"github.com/maxjb-xyz/reverb/internal/download"
 	"github.com/maxjb-xyz/reverb/internal/download/lidarr"
 	"github.com/maxjb-xyz/reverb/internal/download/spotdl"
@@ -90,21 +89,8 @@ func main() {
 		_, ok := p.(download.AsyncDownloader)
 		return ok
 	})
-	// Surface granularity: "grain:album" is present iff the downloader supports
-	// album granularity (e.g. Lidarr). Absence means track-only (e.g. spotDL).
-	// NOTE: this probe is removed in a later task; for now keep it compiling.
-	registry.RegisterCapability("grain:album", func(p registry.Plugin) bool {
-		d, ok := p.(download.Downloader)
-		if !ok {
-			return false
-		}
-		for _, g := range d.SupportedGranularities() {
-			if g == core.GranularityAlbum {
-				return true
-			}
-		}
-		return false
-	})
+	// grain:album removed: granularity info is now exposed directly on the adapter
+	// instance DTO via SupportedGranularities and Granularities fields.
 
 	// EventBus backs both the WS endpoint and the Manager's typed events.
 	bus := events.New()

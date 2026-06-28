@@ -1,13 +1,14 @@
-package wiring
+package download_test
 
 import (
 	"testing"
 
 	"github.com/maxjb-xyz/reverb/internal/core"
+	"github.com/maxjb-xyz/reverb/internal/download"
 )
 
-// Tests for resolveGranularityOrder.
-// Written RED-first: these tests were written before the implementation exists.
+// Tests for download.ResolveGranularityOrder.
+// Moved from internal/wiring/granularity_test.go when the resolver was exported.
 
 func TestResolveGranularityOrder_BothConfigured(t *testing.T) {
 	cfg := map[string]any{
@@ -17,7 +18,7 @@ func TestResolveGranularityOrder_BothConfigured(t *testing.T) {
 		},
 	}
 	supported := []core.DownloadGranularity{core.GranularityTrack, core.GranularityAlbum}
-	got := resolveGranularityOrder(cfg, supported, 5)
+	got := download.ResolveGranularityOrder(cfg, supported, 5)
 	want := map[core.DownloadGranularity]int{
 		core.GranularityTrack: 0,
 		core.GranularityAlbum: 2,
@@ -35,7 +36,7 @@ func TestResolveGranularityOrder_BothConfigured(t *testing.T) {
 func TestResolveGranularityOrder_EmptyCfg_DefaultsToAllSupported(t *testing.T) {
 	cfg := map[string]any{}
 	supported := []core.DownloadGranularity{core.GranularityTrack, core.GranularityAlbum}
-	got := resolveGranularityOrder(cfg, supported, 5)
+	got := download.ResolveGranularityOrder(cfg, supported, 5)
 	want := map[core.DownloadGranularity]int{
 		core.GranularityTrack: 5,
 		core.GranularityAlbum: 5,
@@ -58,7 +59,7 @@ func TestResolveGranularityOrder_OnlyTrackConfigured_AlbumDropped(t *testing.T) 
 		},
 	}
 	supported := []core.DownloadGranularity{core.GranularityTrack, core.GranularityAlbum}
-	got := resolveGranularityOrder(cfg, supported, 5)
+	got := download.ResolveGranularityOrder(cfg, supported, 5)
 	if len(got) != 1 {
 		t.Fatalf("want 1 entry (track only), got %d: %v", len(got), got)
 	}
@@ -78,7 +79,7 @@ func TestResolveGranularityOrder_BogusKeyOnly_FallsBackToDefault(t *testing.T) {
 		},
 	}
 	supported := []core.DownloadGranularity{core.GranularityTrack}
-	got := resolveGranularityOrder(cfg, supported, 3)
+	got := download.ResolveGranularityOrder(cfg, supported, 3)
 	want := map[core.DownloadGranularity]int{core.GranularityTrack: 3}
 	if len(got) != len(want) {
 		t.Fatalf("len = %d, want %d; got %v", len(got), len(want), got)
@@ -98,7 +99,7 @@ func TestResolveGranularityOrder_UnsupportedKeyDropped_FallsBackToDefault(t *tes
 	}
 	supported := []core.DownloadGranularity{core.GranularityAlbum}
 	priority := 7
-	got := resolveGranularityOrder(cfg, supported, priority)
+	got := download.ResolveGranularityOrder(cfg, supported, priority)
 	want := map[core.DownloadGranularity]int{core.GranularityAlbum: 7}
 	if len(got) != len(want) {
 		t.Fatalf("len = %d, want %d; got %v", len(got), len(want), got)

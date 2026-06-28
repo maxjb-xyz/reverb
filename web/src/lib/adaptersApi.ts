@@ -25,6 +25,8 @@ export interface AdapterInstance {
   priority: number
   config: Record<string, unknown>
   capabilities: string[]
+  supportedGranularities?: string[]
+  granularities?: Record<string, number>
 }
 export interface TestResult {
   ok: boolean

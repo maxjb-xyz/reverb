@@ -8,9 +8,170 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/maxjb-xyz/reverb/internal/download/lidarr"
+	"github.com/maxjb-xyz/reverb/internal/download/spotdl"
+	"github.com/maxjb-xyz/reverb/internal/registry"
+	"github.com/maxjb-xyz/reverb/internal/store"
+	"github.com/maxjb-xyz/reverb/internal/store/db"
 )
 
 var errFakeConn = errors.New("connection refused")
+
+// downloaderTestServer builds a Server with spotdl and lidarr registered in the
+// downloader registry, backed by a temp store with an authed session.
+func downloaderTestServer(t *testing.T) (*Server, *http.Cookie) {
+	t.Helper()
+	st, err := store.Open(t.TempDir() + "/dl.db")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { st.Close() })
+	if err := st.Migrate(); err != nil {
+		t.Fatal(err)
+	}
+	authSvc, tok := seededAuthToken(t, st)
+
+	dlReg := registry.NewRegistry("downloader")
+	dlReg.Register("spotdl", func() registry.Plugin { return spotdl.New() })
+	dlReg.Register("lidarr", func() registry.Plugin { return lidarr.New() })
+
+	srv := NewServer(Deps{
+		Auth:       authSvc,
+		Adapters:   st.Q(),
+		Search:     registry.NewRegistry("search"),
+		Downloader: dlReg,
+		Lib:        registry.NewRegistry("library"),
+	})
+	return srv, &http.Cookie{Name: sessionCookie, Value: tok}
+}
+
+// insertAdapterInstance inserts a raw adapter_instance row directly into the store
+// and returns its ID (for DTO retrieval).
+func insertAdapterInstance(t *testing.T, srv *Server, params db.CreateAdapterInstanceParams) {
+	t.Helper()
+	if err := srv.deps.Adapters.CreateAdapterInstance(context.Background(), params); err != nil {
+		t.Fatalf("insert adapter instance: %v", err)
+	}
+}
+
+// TestAdapterDTOGranularitiesSpotDLNoConfig: spotDL with no granularities config →
+// supportedGranularities=["track","album"], granularities={"track":<priority>,"album":<priority>}.
+func TestAdapterDTOGranularitiesSpotDLNoConfig(t *testing.T) {
+	srv, cookie := downloaderTestServer(t)
+	rec := do(t, srv, cookie, http.MethodPost, "/api/v1/adapters",
+		`{"type":"downloader","name":"spotdl","enabled":true,"priority":3,"config":{}}`)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create = %d: %s", rec.Code, rec.Body.String())
+	}
+
+	rec = do(t, srv, cookie, http.MethodGet, "/api/v1/adapters", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("list = %d: %s", rec.Code, rec.Body.String())
+	}
+	var list []adapterInstanceDTO
+	if err := json.Unmarshal(rec.Body.Bytes(), &list); err != nil {
+		t.Fatal(err)
+	}
+	if len(list) != 1 {
+		t.Fatalf("want 1 instance, got %d", len(list))
+	}
+	dto := list[0]
+
+	// supportedGranularities must be ["track","album"]
+	if len(dto.SupportedGranularities) != 2 {
+		t.Fatalf("supportedGranularities: want 2 entries, got %v", dto.SupportedGranularities)
+	}
+	if dto.SupportedGranularities[0] != "track" || dto.SupportedGranularities[1] != "album" {
+		t.Errorf("supportedGranularities: want [track album], got %v", dto.SupportedGranularities)
+	}
+
+	// granularities: default resolution → both at priority 3
+	if len(dto.Granularities) != 2 {
+		t.Fatalf("granularities: want 2 entries, got %v", dto.Granularities)
+	}
+	if dto.Granularities["track"] != 3 {
+		t.Errorf("granularities[track] = %d, want 3", dto.Granularities["track"])
+	}
+	if dto.Granularities["album"] != 3 {
+		t.Errorf("granularities[album] = %d, want 3", dto.Granularities["album"])
+	}
+
+	// grain:album must NOT be in capabilities
+	for _, c := range dto.Capabilities {
+		if c == "grain:album" {
+			t.Errorf("capabilities must not contain 'grain:album' (replaced by DTO fields), got %v", dto.Capabilities)
+		}
+	}
+}
+
+// TestAdapterDTOGranularitiesLidarr: Lidarr → supportedGranularities=["album"],
+// granularities={"album":<priority>}.
+func TestAdapterDTOGranularitiesLidarr(t *testing.T) {
+	srv, cookie := downloaderTestServer(t)
+	rec := do(t, srv, cookie, http.MethodPost, "/api/v1/adapters",
+		`{"type":"downloader","name":"lidarr","enabled":true,"priority":5,"config":{}}`)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create = %d: %s", rec.Code, rec.Body.String())
+	}
+
+	rec = do(t, srv, cookie, http.MethodGet, "/api/v1/adapters", "")
+	var list []adapterInstanceDTO
+	if err := json.Unmarshal(rec.Body.Bytes(), &list); err != nil {
+		t.Fatal(err)
+	}
+	if len(list) != 1 {
+		t.Fatalf("want 1 instance, got %d", len(list))
+	}
+	dto := list[0]
+
+	if len(dto.SupportedGranularities) != 1 || dto.SupportedGranularities[0] != "album" {
+		t.Fatalf("supportedGranularities: want [album], got %v", dto.SupportedGranularities)
+	}
+	if len(dto.Granularities) != 1 {
+		t.Fatalf("granularities: want 1 entry, got %v", dto.Granularities)
+	}
+	if dto.Granularities["album"] != 5 {
+		t.Errorf("granularities[album] = %d, want 5", dto.Granularities["album"])
+	}
+}
+
+// TestAdapterDTOGranularitiesSpotDLTrackOnly: spotDL with config.granularities {"track":0} →
+// granularities={"track":0}, album absent.
+func TestAdapterDTOGranularitiesSpotDLTrackOnly(t *testing.T) {
+	srv, cookie := downloaderTestServer(t)
+	rec := do(t, srv, cookie, http.MethodPost, "/api/v1/adapters",
+		`{"type":"downloader","name":"spotdl","enabled":true,"priority":7,"config":{"granularities":{"track":0}}}`)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create = %d: %s", rec.Code, rec.Body.String())
+	}
+
+	rec = do(t, srv, cookie, http.MethodGet, "/api/v1/adapters", "")
+	var list []adapterInstanceDTO
+	if err := json.Unmarshal(rec.Body.Bytes(), &list); err != nil {
+		t.Fatal(err)
+	}
+	if len(list) != 1 {
+		t.Fatalf("want 1 instance, got %d", len(list))
+	}
+	dto := list[0]
+
+	// supportedGranularities still shows both (capability, not config)
+	if len(dto.SupportedGranularities) != 2 {
+		t.Fatalf("supportedGranularities: want 2 (both supported), got %v", dto.SupportedGranularities)
+	}
+
+	// granularities: only track enabled
+	if len(dto.Granularities) != 1 {
+		t.Fatalf("granularities: want 1 entry (track only), got %v", dto.Granularities)
+	}
+	if dto.Granularities["track"] != 0 {
+		t.Errorf("granularities[track] = %d, want 0", dto.Granularities["track"])
+	}
+	if _, hasAlbum := dto.Granularities["album"]; hasAlbum {
+		t.Error("granularities must not contain 'album' when not in config")
+	}
+}
 
 func TestCreateThenListRedactsSecret(t *testing.T) {
 	dirty := &testDirty{}
