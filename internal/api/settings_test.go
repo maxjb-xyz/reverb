@@ -7,7 +7,6 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/maxjb-xyz/reverb/internal/registry"
 	"github.com/maxjb-xyz/reverb/internal/store"
 )
 
@@ -100,52 +99,39 @@ func TestPutSettingsPartialUpdate(t *testing.T) {
 	}
 }
 
-func TestDefaultDownloaderSetting(t *testing.T) {
-	st, err := store.Open(t.TempDir() + "/s.db")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { st.Close() })
-	if err := st.Migrate(); err != nil {
-		t.Fatal(err)
-	}
-	authSvc, tok := seededAuthToken(t, st)
-	reg := registry.NewRegistry("downloader")
-	reg.Register("spotdl", func() registry.Plugin { return nil })
-	reg.Register("lidarr", func() registry.Plugin { return nil })
-	srv := NewServer(Deps{Auth: authSvc, Adapters: st.Q(), Downloader: reg})
-	cookie := &http.Cookie{Name: sessionCookie, Value: tok}
+// TestDefaultDownloaderSettingRemoved asserts that GET /settings no longer
+// includes a "defaultDownloader" key and that PUT /settings silently ignores
+// any "defaultDownloader" field sent by old clients (i.e. returns 200 without
+// storing or reflecting the value).
+func TestDefaultDownloaderSettingRemoved(t *testing.T) {
+	srv, cookie := adapterTestServer(t, adapterServerOpts{dirty: &testDirty{}})
 
-	put := func(body string) int {
-		rec := httptest.NewRecorder()
-		req := httptest.NewRequest(http.MethodPut, "/api/v1/settings", bytes.NewBufferString(body))
-		req.AddCookie(cookie)
-		srv.Handler().ServeHTTP(rec, req)
-		return rec.Code
+	// GET must not include "defaultDownloader" key at all.
+	rec := do(t, srv, cookie, http.MethodGet, "/api/v1/settings", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET /settings status = %d", rec.Code)
 	}
-	// Valid: a registered downloader name.
-	if code := put(`{"defaultDownloader":"lidarr"}`); code != http.StatusOK {
-		t.Fatalf("set valid default = %d", code)
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(rec.Body.Bytes(), &raw); err != nil {
+		t.Fatalf("unmarshal: %v", err)
 	}
-	// Valid: empty = "Always ask".
-	if code := put(`{"defaultDownloader":""}`); code != http.StatusOK {
-		t.Fatalf("clear default = %d", code)
+	if _, present := raw["defaultDownloader"]; present {
+		t.Fatal("GET /settings must NOT include defaultDownloader key")
 	}
-	// Invalid: unknown downloader → 400.
-	if code := put(`{"defaultDownloader":"bogus"}`); code != http.StatusBadRequest {
-		t.Fatalf("unknown default = %d, want 400", code)
+
+	// PUT with a "defaultDownloader" field must be silently ignored (200, no error).
+	rec = do(t, srv, cookie, http.MethodPut, "/api/v1/settings",
+		`{"defaultDownloader":"spotdl","accentColor":"#112233"}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("PUT with defaultDownloader = %d, want 200", rec.Code)
 	}
-	// GET reflects the last valid set ("").
-	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/settings", nil)
-	req.AddCookie(cookie)
-	srv.Handler().ServeHTTP(rec, req)
-	var dto struct {
-		DefaultDownloader string `json:"defaultDownloader"`
+	// Confirm the response also has no defaultDownloader key.
+	var raw2 map[string]json.RawMessage
+	if err := json.Unmarshal(rec.Body.Bytes(), &raw2); err != nil {
+		t.Fatalf("unmarshal put response: %v", err)
 	}
-	_ = json.Unmarshal(rec.Body.Bytes(), &dto)
-	if dto.DefaultDownloader != "" {
-		t.Fatalf("default = %q, want empty", dto.DefaultDownloader)
+	if _, present := raw2["defaultDownloader"]; present {
+		t.Fatal("PUT /settings response must NOT include defaultDownloader key")
 	}
 }
 

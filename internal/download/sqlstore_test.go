@@ -33,7 +33,7 @@ func TestSQLStoreInsertGetUpdate(t *testing.T) {
 	}
 	req := core.DownloadRequest{
 		Source: "spotify", ExternalID: "e1", Artist: "Daft Punk", Title: "One More Time",
-		Album: "Discovery", ISRC: "US-XYZ-01", Downloader: "spotdl", PlayWhenReady: true,
+		Album: "Discovery", ISRC: "US-XYZ-01", PlayWhenReady: true,
 	}
 	if err := s.Insert(ctx, job, req); err != nil {
 		t.Fatal(err)

@@ -23,7 +23,6 @@ const (
 )
 
 // DownloadRequest is built from an ExternalResult when the user clicks download.
-// Downloader is optional (empty = let the Manager pick via the fallback chain).
 type DownloadRequest struct {
 	Source        string `json:"source"`
 	ExternalID    string `json:"externalId"`
@@ -34,7 +33,6 @@ type DownloadRequest struct {
 	// DurationMs from the originating search result; forwarded into the
 	// post-download re-match so the fuzzy rung can disambiguate by length.
 	DurationMs    int    `json:"durationMs,omitempty"`
-	Downloader    string `json:"downloader,omitempty"`
 	PlayWhenReady bool   `json:"playWhenReady"`
 	// ManualURL is an optional user-supplied source URL (e.g. a YouTube link) that
 	// overrides the default query construction. When set alongside a Spotify source +

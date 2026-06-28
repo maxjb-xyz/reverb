@@ -635,7 +635,7 @@ func (m *Manager) process(id string) {
 		req = core.DownloadRequest{
 			Source: job.Source, ExternalID: job.ExternalID, Artist: job.Artist,
 			Title: job.Title, Album: job.Album, ISRC: job.ISRC,
-			Downloader: job.DownloaderName, PlayWhenReady: job.PlayWhenReady,
+			PlayWhenReady: job.PlayWhenReady,
 			AddToPlaylistID: job.AddToPlaylistID,
 		}
 	}
@@ -1046,7 +1046,7 @@ func (m *Manager) Retry(ctx context.Context, jobID string, manualURL string) (co
 			req = core.DownloadRequest{
 				Source: job.Source, ExternalID: job.ExternalID, Artist: job.Artist,
 				Title: job.Title, Album: job.Album, ISRC: job.ISRC,
-				Downloader: job.DownloaderName, PlayWhenReady: job.PlayWhenReady,
+				PlayWhenReady: job.PlayWhenReady,
 			}
 		}
 		req.ManualURL = manualURL
