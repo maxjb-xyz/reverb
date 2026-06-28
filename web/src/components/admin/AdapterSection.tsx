@@ -156,6 +156,9 @@ export function AdapterSection({
                 schema={chosen ? chosen.configSchema : editSchema ?? { fields: [] }}
                 initial={editing?.config}
                 submitLabel={chosen ? 'Add' : 'Save'}
+                supportedGranularities={editing?.supportedGranularities}
+                granularities={editing?.granularities}
+                priority={editing?.priority}
                 onSubmit={async (config) => {
                   if (chosen) await onCreate(chosen.name, config)
                   else if (editing) await onUpdate(editing, config)

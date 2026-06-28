@@ -9,9 +9,20 @@ export interface AdapterFormProps {
   initial?: Record<string, unknown>
   submitLabel?: string
   onSubmit: (config: Record<string, unknown>) => void | Promise<void>
+  /** Downloader-only: list of granularities this adapter can serve (e.g. ["track","album"]). */
+  supportedGranularities?: string[]
+  /** Downloader-only: currently enabled granularities with their chain-order values. */
+  granularities?: Record<string, number>
+  /** Downloader-only: the instance priority, used as default order for newly-enabled granularities. */
+  priority?: number
 }
 
 type FieldValue = string | boolean
+
+const GRANULARITY_LABELS: Record<string, string> = {
+  track: 'Song',
+  album: 'Album',
+}
 
 // initialValue derives the form value for a field from the (redacted) initial config.
 // Secret fields always start blank (the real value is never sent to the browser).
@@ -37,12 +48,34 @@ function collect(schema: ConfigSchema, values: Record<string, FieldValue>): Reco
   return out
 }
 
-export function AdapterForm({ name, schema, initial, submitLabel = 'Save', onSubmit }: AdapterFormProps) {
+export function AdapterForm({
+  name,
+  schema,
+  initial,
+  submitLabel = 'Save',
+  onSubmit,
+  supportedGranularities,
+  granularities: granularitiesProp,
+  priority = 0,
+}: AdapterFormProps) {
   const [values, setValues] = useState<Record<string, FieldValue>>(() => {
     const v: Record<string, FieldValue> = {}
     for (const f of schema.fields) v[f.key] = initialValue(f, initial)
     return v
   })
+
+  // granularityChecked tracks which supported granularities are enabled in the form.
+  // Seeded from the granularities prop keys.
+  const [granularityChecked, setGranularityChecked] = useState<Record<string, boolean>>(() => {
+    const checked: Record<string, boolean> = {}
+    if (supportedGranularities) {
+      for (const g of supportedGranularities) {
+        checked[g] = granularitiesProp ? g in granularitiesProp : false
+      }
+    }
+    return checked
+  })
+
   const [testState, setTestState] = useState<{ status: 'idle' | 'testing' | 'ok' | 'error'; msg?: string }>({ status: 'idle' })
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
@@ -53,8 +86,31 @@ export function AdapterForm({ name, schema, initial, submitLabel = 'Save', onSub
     return m
   }, [schema, initial])
 
+  // Count of currently checked granularities (for the last-untick guard).
+  const checkedCount = useMemo(
+    () => Object.values(granularityChecked).filter(Boolean).length,
+    [granularityChecked],
+  )
+
   function set(key: string, v: FieldValue) {
     setValues((prev) => ({ ...prev, [key]: v }))
+  }
+
+  function toggleGranularity(g: string, checked: boolean) {
+    setGranularityChecked((prev) => ({ ...prev, [g]: checked }))
+  }
+
+  // buildGranularities builds the config.granularities value to include in the submit payload.
+  // Checked granularities keep their existing order; newly-checked ones get priority as default.
+  function buildGranularities(): Record<string, number> {
+    const result: Record<string, number> = {}
+    if (!supportedGranularities) return result
+    for (const g of supportedGranularities) {
+      if (granularityChecked[g]) {
+        result[g] = granularitiesProp?.[g] ?? priority
+      }
+    }
+    return result
   }
 
   async function runTest() {
@@ -72,7 +128,11 @@ export function AdapterForm({ name, schema, initial, submitLabel = 'Save', onSub
     setSubmitError(null)
     setSubmitting(true)
     try {
-      await onSubmit(collect(schema, values))
+      const config = collect(schema, values)
+      if (supportedGranularities && supportedGranularities.length > 0) {
+        config.granularities = buildGranularities()
+      }
+      await onSubmit(config)
     } catch (e) {
       setSubmitError(e instanceof Error ? e.message : 'Save failed. Please try again.')
     } finally {
@@ -114,6 +174,32 @@ export function AdapterForm({ name, schema, initial, submitLabel = 'Save', onSub
           )}
         </div>
       ))}
+
+      {/* Granularity checkboxes — only for downloaders that report supportedGranularities */}
+      {supportedGranularities && supportedGranularities.length > 0 && (
+        <div className="space-y-1">
+          <p className="text-sm font-medium text-text-primary">Download chains</p>
+          <div className="flex flex-wrap gap-4">
+            {supportedGranularities.map((g) => {
+              const isChecked = Boolean(granularityChecked[g])
+              const isLast = isChecked && checkedCount === 1
+              const label = GRANULARITY_LABELS[g] ?? g
+              return (
+                <label key={g} className="flex items-center gap-1.5 text-sm text-text-primary cursor-pointer">
+                  <input
+                    type="checkbox"
+                    aria-label={label}
+                    checked={isChecked}
+                    disabled={isLast}
+                    onChange={(e) => toggleGranularity(g, e.target.checked)}
+                  />
+                  {label}
+                </label>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       {submitError && <p className="text-sm text-accent">{submitError}</p>}
       <div className="flex items-center gap-3 pt-1">

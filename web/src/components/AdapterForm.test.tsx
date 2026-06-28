@@ -103,3 +103,128 @@ describe('AdapterForm', () => {
     expect(screen.queryByText(/leave blank to keep the current value/i)).not.toBeInTheDocument()
   })
 })
+
+describe('AdapterForm — granularity checkboxes', () => {
+  const downloaderSchema: ConfigSchema = { fields: [{ key: 'api_key', label: 'API Key', type: 'string', required: true, secret: false }] }
+  const supportedGranularities = ['track', 'album']
+  const granularities: Record<string, number> = { track: 0, album: 0 }
+
+  it('renders no granularity checkboxes when supportedGranularities is not provided', () => {
+    render(<AdapterForm name="mydownloader" schema={downloaderSchema} onSubmit={vi.fn()} />)
+    expect(screen.queryByRole('checkbox', { name: /song/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('checkbox', { name: /album/i })).not.toBeInTheDocument()
+  })
+
+  it('renders a checkbox for each supported granularity with correct labels', () => {
+    render(
+      <AdapterForm
+        name="mydownloader"
+        schema={downloaderSchema}
+        supportedGranularities={supportedGranularities}
+        granularities={granularities}
+        onSubmit={vi.fn()}
+      />,
+    )
+    expect(screen.getByRole('checkbox', { name: /song/i })).toBeInTheDocument()
+    expect(screen.getByRole('checkbox', { name: /album/i })).toBeInTheDocument()
+  })
+
+  it('checks granularity checkboxes that are keys in the granularities prop', () => {
+    render(
+      <AdapterForm
+        name="mydownloader"
+        schema={downloaderSchema}
+        supportedGranularities={supportedGranularities}
+        granularities={granularities}
+        onSubmit={vi.fn()}
+      />,
+    )
+    expect(screen.getByRole('checkbox', { name: /song/i })).toBeChecked()
+    expect(screen.getByRole('checkbox', { name: /album/i })).toBeChecked()
+  })
+
+  it('unchecks a granularity that is not in the granularities prop', () => {
+    render(
+      <AdapterForm
+        name="mydownloader"
+        schema={downloaderSchema}
+        supportedGranularities={supportedGranularities}
+        granularities={{ track: 0 }}
+        onSubmit={vi.fn()}
+      />,
+    )
+    expect(screen.getByRole('checkbox', { name: /song/i })).toBeChecked()
+    expect(screen.getByRole('checkbox', { name: /album/i })).not.toBeChecked()
+  })
+
+  it('submits granularities including only checked granularities alongside schema fields', async () => {
+    const onSubmit = vi.fn()
+    render(
+      <AdapterForm
+        name="mydownloader"
+        schema={downloaderSchema}
+        supportedGranularities={supportedGranularities}
+        granularities={granularities}
+        priority={5}
+        onSubmit={onSubmit}
+      />,
+    )
+    // Uncheck "Album"
+    fireEvent.click(screen.getByRole('checkbox', { name: /album/i }))
+    // Fill in API key
+    fireEvent.change(screen.getByLabelText('API Key'), { target: { value: 'mykey' } })
+    fireEvent.click(screen.getByRole('button', { name: /^save$/i }))
+    await waitFor(() =>
+      expect(onSubmit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          api_key: 'mykey',
+          granularities: { track: 0 },
+        }),
+      ),
+    )
+    // album should not be in submitted granularities
+    const submitted = onSubmit.mock.calls[0][0] as Record<string, unknown>
+    const submittedGranularities = submitted.granularities as Record<string, number>
+    expect(submittedGranularities).not.toHaveProperty('album')
+  })
+
+  it('disables a checkbox when it is the only one still checked (last-untick guard)', () => {
+    render(
+      <AdapterForm
+        name="mydownloader"
+        schema={downloaderSchema}
+        supportedGranularities={supportedGranularities}
+        granularities={{ track: 0 }}
+        onSubmit={vi.fn()}
+      />,
+    )
+    // Only "track" (Song) is enabled — its checkbox should be disabled
+    expect(screen.getByRole('checkbox', { name: /song/i })).toBeDisabled()
+    // "album" is unchecked, not disabled
+    expect(screen.getByRole('checkbox', { name: /album/i })).not.toBeDisabled()
+  })
+
+  it('keeps existing order for a granularity already in granularities, uses priority for new ones', async () => {
+    const onSubmit = vi.fn()
+    render(
+      <AdapterForm
+        name="mydownloader"
+        schema={downloaderSchema}
+        supportedGranularities={supportedGranularities}
+        granularities={{ track: 42 }}
+        priority={7}
+        onSubmit={onSubmit}
+      />,
+    )
+    // Check "Album" (not previously enabled)
+    fireEvent.click(screen.getByRole('checkbox', { name: /album/i }))
+    fireEvent.click(screen.getByRole('button', { name: /^save$/i }))
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled())
+    const submitted = onSubmit.mock.calls[0][0] as Record<string, unknown>
+    const submittedGranularities = submitted.granularities as Record<string, number>
+    // track preserves its order 42
+    expect(submittedGranularities.track).toBe(42)
+    // album gets the priority as default order
+    expect(submittedGranularities.album).toBe(7)
+  })
+})
