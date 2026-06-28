@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import type { ReactElement } from 'react'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import Settings from './Settings'
 import type { AdapterInstance } from '../lib/adaptersApi'
@@ -90,16 +90,37 @@ describe('Settings default downloader', () => {
   })
 })
 
-describe('Settings Downloaders section', () => {
-  const twoDownloaders: AdapterInstance[] = [
-    { id: 'dl-1', type: 'downloader', name: 'spotdl', enabled: true, priority: 1, config: {}, capabilities: [] },
-    { id: 'dl-2', type: 'downloader', name: 'lidarr', enabled: true, priority: 2, config: {}, capabilities: ['grain:album'] },
+describe('Settings Downloaders — two-column layout', () => {
+  // spotDL: both track and album; Lidarr: album only
+  const mockAdapters: AdapterInstance[] = [
+    {
+      id: 'dl-1',
+      type: 'downloader',
+      name: 'spotdl',
+      enabled: true,
+      priority: 0,
+      config: {},
+      capabilities: [],
+      granularities: { track: 0, album: 0 },
+      supportedGranularities: ['track', 'album'],
+    },
+    {
+      id: 'dl-2',
+      type: 'downloader',
+      name: 'lidarr',
+      enabled: true,
+      priority: 1,
+      config: {},
+      capabilities: [],
+      granularities: { album: 1 },
+      supportedGranularities: ['album'],
+    },
   ]
 
   beforeEach(() => {
     mockMutate.mockClear()
     mockUpdateAdapter.mockClear()
-    mockUseAdapters.mockReturnValue({ data: twoDownloaders })
+    mockUseAdapters.mockReturnValue({ data: mockAdapters })
   })
   afterEach(() => {
     mockUseAdapters.mockReturnValue({ data: [] })
@@ -111,57 +132,82 @@ describe('Settings Downloaders section', () => {
     expect(screen.getByRole('heading', { name: /downloaders/i })).toBeInTheDocument()
   })
 
-  it('shows each downloader by name', () => {
+  it('renders a Song column heading and an Album column heading', () => {
     wrap(<Settings />)
-    expect(screen.getByText('spotdl')).toBeInTheDocument()
-    expect(screen.getByText('lidarr')).toBeInTheDocument()
+    expect(screen.getAllByText(/song/i).length).toBeGreaterThan(0)
+    expect(screen.getAllByText(/album/i).length).toBeGreaterThan(0)
   })
 
-  it('shows granularity label Track for spotdl (no grain:album capability)', () => {
+  it('Song column contains only spotdl (has track granularity)', () => {
     wrap(<Settings />)
-    // spotdl has no grain:album capability → Track
-    const spotdlRow = screen.getByText('spotdl').closest('[data-testid]') ??
-      screen.getByText('spotdl').parentElement
-    expect(spotdlRow).toBeTruthy()
-    // Track label should appear in the document
-    const trackLabels = screen.getAllByText('Track')
-    expect(trackLabels.length).toBeGreaterThan(0)
+    const songCol = screen.getByTestId('downloaders-song-col')
+    expect(within(songCol).getByText('spotdl')).toBeInTheDocument()
+    expect(within(songCol).queryByText('lidarr')).toBeNull()
   })
 
-  it('shows granularity label Album for lidarr (has grain:album capability)', () => {
+  it('Album column contains spotdl then lidarr (sorted by album granularity order)', () => {
     wrap(<Settings />)
-    const albumLabels = screen.getAllByText('Album')
-    expect(albumLabels.length).toBeGreaterThan(0)
+    const albumCol = screen.getByTestId('downloaders-album-col')
+    expect(within(albumCol).getByText('spotdl')).toBeInTheDocument()
+    expect(within(albumCol).getByText('lidarr')).toBeInTheDocument()
+    // spotdl (album:0) should come before lidarr (album:1)
+    const names = within(albumCol).getAllByTestId('downloader-name').map((el) => el.textContent)
+    expect(names).toEqual(['spotdl', 'lidarr'])
   })
 
-  it('the first downloader up button is disabled', () => {
+  it('a downloader with both track and album granularities appears in both columns', () => {
     wrap(<Settings />)
-    // First downloader (priority 1) up button should be disabled
-    const upButtons = screen.getAllByRole('button', { name: /move up/i })
+    // spotdl has both track and album
+    const songCol = screen.getByTestId('downloaders-song-col')
+    const albumCol = screen.getByTestId('downloaders-album-col')
+    expect(within(songCol).getByText('spotdl')).toBeInTheDocument()
+    expect(within(albumCol).getByText('spotdl')).toBeInTheDocument()
+  })
+
+  it('first-row up button is disabled in Song column', () => {
+    wrap(<Settings />)
+    const songCol = screen.getByTestId('downloaders-song-col')
+    const upButtons = within(songCol).getAllByRole('button', { name: /move up/i })
     expect(upButtons[0]).toBeDisabled()
   })
 
-  it('the last downloader down button is disabled', () => {
+  it('last-row down button is disabled in Album column', () => {
     wrap(<Settings />)
-    const downButtons = screen.getAllByRole('button', { name: /move down/i })
+    const albumCol = screen.getByTestId('downloaders-album-col')
+    const downButtons = within(albumCol).getAllByRole('button', { name: /move down/i })
     expect(downButtons[downButtons.length - 1]).toBeDisabled()
   })
 
-  it('clicking up on the second downloader calls updateAdapter swapping priorities', async () => {
+  it('clicking down on spotdl in Album column swaps album order — writes config.granularities with swapped album values', async () => {
     wrap(<Settings />)
-    const upButtons = screen.getAllByRole('button', { name: /move up/i })
-    // second row's up button (index 1)
-    fireEvent.click(upButtons[1])
-    await waitFor(() => expect(mockUpdateAdapter).toHaveBeenCalled())
-    // lidarr (priority 2) should get priority 1, and spotdl (priority 1) should get priority 2
-    // Cast to any to avoid tuple-type TS noise from vitest mock inference.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const calls = mockUpdateAdapter.mock.calls as unknown as Array<[string, { priority: number }]>
-    // Two adapter updates: lidarr → priority 1, spotdl → priority 2
-    expect(calls).toHaveLength(2)
-    const lidarrCall = calls.find((c) => c[0] === 'dl-2')
+    const albumCol = screen.getByTestId('downloaders-album-col')
+    // spotdl is row 0 in Album column; click its "down" button
+    const downButtons = within(albumCol).getAllByRole('button', { name: /move down/i })
+    fireEvent.click(downButtons[0])
+    await waitFor(() => expect(mockUpdateAdapter).toHaveBeenCalledTimes(2))
+
+    const calls = mockUpdateAdapter.mock.calls as unknown as Array<[string, { name: string; enabled: boolean; priority: number; config: Record<string, unknown> }]>
     const spotdlCall = calls.find((c) => c[0] === 'dl-1')
-    expect(lidarrCall?.[1].priority).toBe(1)
-    expect(spotdlCall?.[1].priority).toBe(2)
+    const lidarrCall = calls.find((c) => c[0] === 'dl-2')
+
+    // spotdl should now have album:1 (swapped from lidarr's album:1)
+    expect((spotdlCall?.[1].config as Record<string, unknown>)['granularities']).toEqual({ track: 0, album: 1 })
+    // lidarr should now have album:0 (swapped from spotdl's album:0)
+    expect((lidarrCall?.[1].config as Record<string, unknown>)['granularities']).toEqual({ album: 0 })
+  })
+
+  it('reordering Album column does NOT change spotdl track order (Song column independent)', async () => {
+    wrap(<Settings />)
+    const albumCol = screen.getByTestId('downloaders-album-col')
+    const downButtons = within(albumCol).getAllByRole('button', { name: /move down/i })
+    fireEvent.click(downButtons[0])
+    await waitFor(() => expect(mockUpdateAdapter).toHaveBeenCalledTimes(2))
+
+    const calls = mockUpdateAdapter.mock.calls as unknown as Array<[string, { config: Record<string, unknown> }]>
+    const spotdlCall = calls.find((c) => c[0] === 'dl-1')
+
+    // track order must still be 0 — unchanged
+    const granularities = (spotdlCall?.[1].config as Record<string, unknown>)['granularities'] as Record<string, number>
+    expect(granularities['track']).toBe(0)
   })
 })
