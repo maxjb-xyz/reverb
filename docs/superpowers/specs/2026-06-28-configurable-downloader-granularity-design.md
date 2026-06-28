@@ -21,7 +21,7 @@
 1. **Capable vs. enabled.** A downloader declares `SupportedGranularities()` (capability, code-level). Each *instance* has an admin-chosen **enabled** subset. The chains are built from the enabled sets.
 2. **spotDL album = one long sync job** (point spotDL at the album URL). Album-granularity sync jobs get a longer timeout. One request ↔ one job is preserved (no fan-out).
 3. **Default enablement:** when an instance hasn't been configured, enabled = its full supported set. So spotDL defaults to **{song, album}** (album requests work out of the box) and Lidarr to **{album}** — no data migration needed.
-4. **Two-column UI**, single shared `priority` for ordering (independent per-chain ordering deferred — see §6).
+4. **Two-column UI** with **independent per-chain ordering** — each chain (Song / Album) has its own order; reordering one column never affects the other.
 
 ---
 
@@ -35,11 +35,13 @@ Replace `Downloader.Granularity() core.DownloadGranularity` with `SupportedGranu
 
 The conformance suite asserts each downloader returns a non-empty set of valid granularities.
 
-### 2. Enabled granularities (per-instance config)
+### 2. Enabled granularities + per-chain order (per-instance config)
 
-Each downloader `adapter_instance`'s config JSON gains an optional `granularities` array (the enabled subset), e.g. `{"granularities":["track","album"]}`. **Resolution rule:** an instance's enabled granularities = `config.granularities` if present and non-empty, else `SupportedGranularities()` (the full supported set). This makes the §Decisions-3 default automatic (unset → all supported enabled) with **no migration**, and an admin restricts by editing the instance.
+Each downloader `adapter_instance`'s config JSON gains an optional **`granularities` map**: `{"<granularity>": <orderInt>}` — the **keys** are the enabled granularities, and each **value** is that instance's order *within that granularity's chain* (ascending = earlier; ties broken by the instance's `priority` column then id). Example: `{"granularities":{"track":0,"album":1}}` means enabled for both, first in the Song chain, second in the Album chain. This single map encodes both enablement (key presence) AND independent per-chain order (the values are per-granularity, so the Song and Album orders move independently).
 
-The built `Downloader` must carry its enabled set so `pick()` can filter without re-reading the DB. `wiring.BuildDownloaders` already reads each instance; it wraps each constructed downloader with its resolved enabled granularities (a small wrapper carrying `enabled []core.DownloadGranularity` + the underlying `Downloader`, or an added `EnabledGranularities()` accessor the manager populates at build). `pick(G)`/`pickAfter` then filter on **enabled** (contains G) instead of `Granularity() == G`. The "track never reaches album" guarantee is unchanged — it now keys on the enabled set.
+**Resolution rule:** an instance's enabled granularities = the keys of `config.granularities` if the map is present and non-empty, else `SupportedGranularities()` (the full supported set) with default order = the instance's `priority` column value. This makes the §Decisions-3 default automatic (unset → all supported enabled) with **no migration**, and an admin restricts/reorders by editing the instance.
+
+The built `Downloader` must carry its enabled-granularity→order map so the manager can build each chain without re-reading the DB. `wiring.BuildDownloaders` already reads each instance; it pairs each constructed downloader with its resolved `map[core.DownloadGranularity]int` (e.g. the manager stores `[]downloaderEntry{ dl Downloader; order map[core.DownloadGranularity]int }` rather than a bare `[]Downloader`). `pick(G)`/`pickAfter` select the entries whose map contains G, **sorted by `order[G]`** (a cheap per-pick sort over a handful of downloaders), then iterate. The "track never reaches album" guarantee is unchanged — it now keys on the enabled set (map-key presence).
 
 ### 3. spotDL album capability
 
@@ -56,15 +58,15 @@ Replace the single `grain:album` probe with a per-instance granularity surface t
 ### 6. UI — two columns + per-downloader toggles
 
 - **Adapter edit form** (the downloader's options, in Settings): a checkbox per **supported** granularity — spotDL shows **Song** + **Album**, Lidarr shows **Album** only (single supported → shown, not unconfigurable below zero). Checking/unchecking writes `config.granularities`. At least one granularity must stay enabled (can't disable a downloader's last granularity — it'd belong to no chain).
-- **Settings → Downloaders section**: ONE section titled "Downloaders" with two columns side by side — **Song** and **Album**. Each column lists the instances whose *enabled* set includes that granularity, ordered by `priority`, with up/down reorder (swapping `priority`). A downloader enabled for both appears in both columns. Helper copy: "Each chain is tried in order. Enable a downloader for a granularity in its settings." Design tokens only.
-- **Ordering model:** single shared `priority` per instance; the columns display filtered+sorted by it. With the realistic downloader set (spotDL both, Lidarr album-only) this is already effectively independent. Fully-independent per-chain ordering (needed only when 2+ downloaders serve both chains with *different* desired orders) is a deferred future add — noted, not built.
+- **Settings → Downloaders section**: ONE section titled "Downloaders" with two columns side by side — **Song** and **Album**. Each column lists the instances whose *enabled* set includes that granularity, ordered by that granularity's per-chain order, with up/down reorder. A downloader enabled for both appears in both columns. Helper copy: "Each chain is tried in order. Enable a downloader for a granularity in its settings." Design tokens only.
+- **Ordering model:** **independent per-chain order.** Reordering up/down in the Song column swaps the `track`-order value of two adjacent Song-chain instances (writing `config.granularities`); reordering the Album column swaps the `album`-order of two Album-chain instances. The two columns move **independently** — reordering Album never changes the Song order, even for a downloader present in both. The write is the existing adapter-update mutation persisting the updated `config.granularities` map.
 
 ---
 
 ## Data flow
 
-- **Track add** → song chain = downloaders with `track` enabled, in priority order → fallback among them on failure (unchanged mechanics).
-- **Album request** → album chain = downloaders with `album` enabled, in priority order. If spotDL is album-enabled (default), an auto-approved album request enqueues a spotDL album job (long sync job, album timeout); if Lidarr is configured + album-enabled, it's in the chain too (priority decides order, fallback applies). With no album-enabled downloader, the request still creates but enqueue errors clearly ("no album downloader") — same as today.
+- **Track add** → song chain = downloaders with `track` enabled, in the Song-chain order → fallback among them on failure (unchanged mechanics).
+- **Album request** → album chain = downloaders with `album` enabled, in the Album-chain order. If spotDL is album-enabled (default), an auto-approved album request enqueues a spotDL album job (long sync job, album timeout); if Lidarr is configured + album-enabled, it's in the chain too (the Album order decides who's tried first, fallback applies). With no album-enabled downloader, the request still creates but enqueue errors clearly ("no album downloader") — same as today.
 
 ## Error handling
 
@@ -79,7 +81,6 @@ Replace the single `grain:album` probe with a per-instance granularity surface t
 
 ## Out of scope (explicit)
 
-- **Fully-independent per-chain ordering** (per-granularity priority) — deferred; single shared `priority` until a downloader set actually needs different per-chain orders.
 - **Album fan-out** (one job per track) — rejected in brainstorm; one spotDL job per album.
 - **The deferred Retry-of-failed-album-job fix** from the prior feature — separate follow-up, not this spec.
 
@@ -87,7 +88,8 @@ Replace the single `grain:album` probe with a per-instance granularity surface t
 
 - `SupportedGranularities` returns the right sets (spotDL both, Lidarr album); conformance asserts non-empty/valid.
 - Enabled resolution: unset config → full supported; an explicit `["track"]` → only track; the resolver is unit-tested.
-- `pick(track)` selects only track-enabled downloaders; `pick(album)` only album-enabled; an instance enabled for both is selected for both; the track-never-reaches-album guarantee holds via the enabled set.
+- `pick(track)` selects only track-enabled downloaders; `pick(album)` only album-enabled; an instance enabled for both is selected for both; each chain is iterated in its own `order[G]` (a per-pick sort); the track-never-reaches-album guarantee holds via the enabled set.
+- **Independent per-chain order:** with two downloaders enabled for both, reordering the Album chain swaps their album-order and leaves the Song-chain order unchanged (and vice-versa) — asserted directly on the resolved chains.
 - spotDL `Start` with album granularity builds the `…/album/<id>` URL; track granularity unchanged.
 - The album sync job uses the album timeout, not the per-track one.
 - The adapter DTO exposes supported + enabled granularities; the adapter form renders a checkbox per supported granularity and blocks unticking the last; Settings renders the two columns from enabled sets and reorders via `priority`.
