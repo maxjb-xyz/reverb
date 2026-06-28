@@ -99,6 +99,25 @@ type MatchCache struct {
 	CoverArtID     string         `json:"cover_art_id"`
 }
 
+type Request struct {
+	ID            string         `json:"id"`
+	RequestedBy   string         `json:"requested_by"`
+	Source        string         `json:"source"`
+	ExternalID    string         `json:"external_id"`
+	Title         string         `json:"title"`
+	Artist        string         `json:"artist"`
+	Album         sql.NullString `json:"album"`
+	Isrc          sql.NullString `json:"isrc"`
+	DurationMs    sql.NullInt64  `json:"duration_ms"`
+	CoverArtID    sql.NullString `json:"cover_art_id"`
+	Status        string         `json:"status"`
+	CreatedAt     int64          `json:"created_at"`
+	DecidedBy     sql.NullString `json:"decided_by"`
+	DecidedAt     sql.NullInt64  `json:"decided_at"`
+	DownloadJobID sql.NullString `json:"download_job_id"`
+	DenyReason    sql.NullString `json:"deny_reason"`
+}
+
 type Role struct {
 	ID           string `json:"id"`
 	Name         string `json:"name"`

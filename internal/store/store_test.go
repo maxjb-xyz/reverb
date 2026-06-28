@@ -233,6 +233,55 @@ func TestSyncedPlaylistRoundTrip(t *testing.T) {
 	}
 }
 
+func TestRequestRoundTrip(t *testing.T) {
+	st := openMigrated(t)
+	ctx := context.Background()
+	q := st.Q()
+
+	// Seed role + user (FK requirement)
+	if err := q.CreateRole(ctx, db.CreateRoleParams{ID: "role-user", Name: "User", IsSystem: 1, Capabilities: `["can_request"]`}); err != nil {
+		t.Fatal(err)
+	}
+	if err := q.CreateUser(ctx, db.CreateUserParams{ID: "u1", Username: "alice", PasswordHash: "h", RoleID: "role-user", IsOwner: 0}); err != nil {
+		t.Fatal(err)
+	}
+
+	// Insert a request (status = pending)
+	if err := q.CreateRequest(ctx, db.CreateRequestParams{
+		ID:          "req-1",
+		RequestedBy: "u1",
+		Source:      "spotify",
+		ExternalID:  "track-abc",
+		Title:       "Test Song",
+		Artist:      "Test Artist",
+		Status:      "pending",
+	}); err != nil {
+		t.Fatalf("CreateRequest: %v", err)
+	}
+
+	// GetOpenRequestByItem should find it (status IN pending/approved)
+	open, err := q.GetOpenRequestByItem(ctx, db.GetOpenRequestByItemParams{
+		RequestedBy: "u1",
+		Source:      "spotify",
+		ExternalID:  "track-abc",
+	})
+	if err != nil {
+		t.Fatalf("GetOpenRequestByItem: %v", err)
+	}
+	if open.ID != "req-1" || open.Title != "Test Song" {
+		t.Fatalf("unexpected open request: %+v", open)
+	}
+
+	// ListRequestsForOwner should return it
+	list, err := q.ListRequestsForOwner(ctx, "u1")
+	if err != nil {
+		t.Fatalf("ListRequestsForOwner: %v", err)
+	}
+	if len(list) != 1 || list[0].ID != "req-1" {
+		t.Fatalf("ListRequestsForOwner: want 1 row with req-1, got %+v", list)
+	}
+}
+
 func TestAdapterInstanceCRUD(t *testing.T) {
 	st, err := Open(t.TempDir() + "/ai.db")
 	if err != nil {
