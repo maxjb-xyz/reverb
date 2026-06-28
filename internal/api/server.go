@@ -15,6 +15,7 @@ import (
 	"github.com/maxjb-xyz/reverb/internal/events"
 	"github.com/maxjb-xyz/reverb/internal/library"
 	"github.com/maxjb-xyz/reverb/internal/registry"
+	"github.com/maxjb-xyz/reverb/internal/request"
 	"github.com/maxjb-xyz/reverb/internal/search"
 	"github.com/maxjb-xyz/reverb/internal/store/db"
 )
@@ -112,6 +113,8 @@ type Deps struct {
 	// LibraryStatus reports (mode, state) for the bundled-library status endpoint.
 	// nil in tests/legacy — handler falls back based on whether a library adapter is present.
 	LibraryStatus func() (mode string, state string)
+	// Requests is the request service. Nil in tests/legacy that don't use the request system.
+	Requests *request.Service
 }
 
 type Server struct {
@@ -280,6 +283,22 @@ func (s *Server) routes() {
 				cr.Delete("/playlists/{id}/tracks", s.handleRemoveSyncedTrack)
 				cr.Post("/playlists/{id}/cover", s.handleUploadPlaylistCover)
 				cr.Put("/playlists/{id}/tracks/order", s.handleReorderSyncedTracks)
+			})
+
+			// request music: create/list own/cancel.
+			pr.Group(func(rr chi.Router) {
+				rr.Use(s.requireCapability(auth.CapRequest))
+				rr.Post("/requests", s.handleCreateRequest)
+				rr.Get("/requests/mine", s.handleListMyRequests)
+				rr.Post("/requests/{id}/cancel", s.handleCancelRequest)
+			})
+
+			// manage requests: list all + approve/deny.
+			pr.Group(func(mr chi.Router) {
+				mr.Use(s.requireCapability(auth.CapManageRequests))
+				mr.Get("/requests", s.handleListRequests)
+				mr.Post("/requests/{id}/approve", s.handleApproveRequest)
+				mr.Post("/requests/{id}/deny", s.handleDenyRequest)
 			})
 
 			// admin-only: user management

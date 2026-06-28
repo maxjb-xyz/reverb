@@ -23,6 +23,7 @@ import (
 	"github.com/maxjb-xyz/reverb/internal/library/subsonic"
 	"github.com/maxjb-xyz/reverb/internal/playlistsync"
 	"github.com/maxjb-xyz/reverb/internal/registry"
+	"github.com/maxjb-xyz/reverb/internal/request"
 	"github.com/maxjb-xyz/reverb/internal/search/spotify"
 	"github.com/maxjb-xyz/reverb/internal/store"
 	"github.com/maxjb-xyz/reverb/internal/store/db"
@@ -92,6 +93,13 @@ func main() {
 	// EventBus backs both the WS endpoint and the Manager's typed events.
 	bus := events.New()
 
+	// Request system: service + tracker. The tracker subscribes to the stable bus
+	// (survives download-manager reloads). Start before any API traffic.
+	reqSvc := request.NewService(st.Q(), bus, time.Now)
+	tracker := request.NewTracker(reqSvc, bus)
+	tracker.Start(ctx)
+	defer tracker.Stop()
+
 	dirty := &atomicDirty{}
 
 	// The Builder constructs the active library/search/download services from the
@@ -145,6 +153,7 @@ func main() {
 		Dev:           cfg.Dev,
 		Version:       version,
 		DataDir:       filepath.Dir(cfg.DBPath),
+		Requests:      reqSvc,
 	}
 	// Guard against the "non-nil interface wrapping a nil pointer" trap: only set
 	// the interface fields when the concrete service is actually present.
