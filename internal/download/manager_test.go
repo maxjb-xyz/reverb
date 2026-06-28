@@ -301,18 +301,133 @@ func TestEnqueueNoDownloaderAccepts(t *testing.T) {
 	}
 }
 
-func TestEnqueueExplicitDownloader(t *testing.T) {
+func TestEnqueueFallbackPicksFirstCanDownload(t *testing.T) {
+	// With two track downloaders and both able to download, the first (a) wins.
 	a := &fakeDL{name: "a", canDownload: true}
 	b := &fakeDL{name: "b", canDownload: true}
 	store := newMemStore()
 	m, _ := testManager(t, []Downloader{a, b}, store, nil, nil, nil)
-	job, err := m.Enqueue(context.Background(), core.DownloadRequest{Source: "s", ExternalID: "e", Title: "T", Downloader: "b"})
+	job, err := m.Enqueue(context.Background(), core.DownloadRequest{Source: "s", ExternalID: "e", Title: "T"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if job.DownloaderName != "b" {
-		t.Fatalf("explicit downloader ignored, got %q", job.DownloaderName)
+	if job.DownloaderName != "a" {
+		t.Fatalf("fallback should pick first CanDownload downloader 'a', got %q", job.DownloaderName)
 	}
+}
+
+// -- Task 2: Granularity-scoped pick() tests --
+
+// TestPickGranularityTrackExplicit: a request with Granularity=track must select
+// the track downloader even when an album downloader is also registered.
+func TestPickGranularityTrackExplicit(t *testing.T) {
+	track := &fakeDL{name: "spotdl", canDownload: true}
+	album := &fakeAsyncDL{name: "lidarr", submitRef: "ref1"}
+	store := newMemStore()
+	m, _ := testManager(t, []Downloader{track, album}, store, nil, nil, nil)
+
+	job, err := m.Enqueue(context.Background(), core.DownloadRequest{
+		Source: "spotify", ExternalID: "e1", Artist: "A", Title: "T", Album: "Al",
+		Granularity: core.GranularityTrack,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if job.DownloaderName != "spotdl" {
+		t.Fatalf("track request should pick track downloader, got %q", job.DownloaderName)
+	}
+}
+
+// TestPickGranularityEmptyDefaultsToTrack: an empty Granularity on the request must
+// be treated as GranularityTrack (must not fall through to album downloaders).
+func TestPickGranularityEmptyDefaultsToTrack(t *testing.T) {
+	track := &fakeDL{name: "spotdl", canDownload: true}
+	album := &fakeAsyncDL{name: "lidarr", submitRef: "ref1"}
+	store := newMemStore()
+	m, _ := testManager(t, []Downloader{track, album}, store, nil, nil, nil)
+
+	job, err := m.Enqueue(context.Background(), core.DownloadRequest{
+		Source: "spotify", ExternalID: "e2", Artist: "A", Title: "T", Album: "Al",
+		// Granularity intentionally empty — must default to track
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if job.DownloaderName != "spotdl" {
+		t.Fatalf("empty-granularity request should default to track downloader, got %q", job.DownloaderName)
+	}
+}
+
+// TestPickGranularityAlbum: a request with Granularity=album must select the album
+// downloader and never reach the track downloader.
+func TestPickGranularityAlbum(t *testing.T) {
+	track := &fakeDL{name: "spotdl", canDownload: true}
+	album := &fakeAsyncDL{name: "lidarr", submitRef: "ref1"}
+	store := newMemStore()
+	m, _ := testManager(t, []Downloader{track, album}, store, nil, nil, nil)
+
+	job, err := m.Enqueue(context.Background(), core.DownloadRequest{
+		Source: "spotify", ExternalID: "e3", Artist: "Daft Punk", Title: "Discovery",
+		Album: "Discovery", Granularity: core.GranularityAlbum,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if job.DownloaderName != "lidarr" {
+		t.Fatalf("album request should pick album downloader, got %q", job.DownloaderName)
+	}
+}
+
+// TestPickGranularityTrackPriorityOrder: with two track downloaders, the first one
+// in slice order wins (provided its CanDownload returns true).
+func TestPickGranularityTrackPriorityOrder(t *testing.T) {
+	first := &fakeDL{name: "first", canDownload: true}
+	second := &fakeDL{name: "second", canDownload: true}
+	store := newMemStore()
+	m, _ := testManager(t, []Downloader{first, second}, store, nil, nil, nil)
+
+	job, err := m.Enqueue(context.Background(), core.DownloadRequest{
+		Source: "spotify", ExternalID: "e4", Artist: "A", Title: "T", Album: "Al",
+		Granularity: core.GranularityTrack,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if job.DownloaderName != "first" {
+		t.Fatalf("first track downloader in slice should win, got %q", job.DownloaderName)
+	}
+}
+
+// TestPickGranularityNoMatchReturnsError: when no downloader matches the requested
+// granularity the error must mention the granularity.
+func TestPickGranularityNoMatchReturnsError(t *testing.T) {
+	track := &fakeDL{name: "spotdl", canDownload: true}
+	store := newMemStore()
+	m, _ := testManager(t, []Downloader{track}, store, nil, nil, nil)
+
+	_, err := m.Enqueue(context.Background(), core.DownloadRequest{
+		Source: "spotify", ExternalID: "e5", Artist: "A", Title: "T", Album: "Al",
+		Granularity: core.GranularityAlbum,
+	})
+	if err == nil {
+		t.Fatal("expected error when no album downloader is registered")
+	}
+	const want = "no album downloader"
+	if !contains(err.Error(), want) {
+		t.Fatalf("error %q should contain %q", err.Error(), want)
+	}
+}
+
+func contains(s, sub string) bool {
+	return len(s) >= len(sub) && (s == sub || len(sub) == 0 ||
+		func() bool {
+			for i := 0; i <= len(s)-len(sub); i++ {
+				if s[i:i+len(sub)] == sub {
+					return true
+				}
+			}
+			return false
+		}())
 }
 
 func TestDedupJoinWhileInFlight(t *testing.T) {
@@ -1589,8 +1704,12 @@ func (d *fakeAsyncDL) Granularity() core.DownloadGranularity       { return core
 func (d *fakeAsyncDL) ConfigSchema() registry.ConfigSchema         { return registry.ConfigSchema{} }
 func (d *fakeAsyncDL) Init(map[string]any) error                   { return nil }
 func (d *fakeAsyncDL) TestConnection(context.Context) error        { return nil }
-func (d *fakeAsyncDL) CanDownload(context.Context, core.DownloadRequest) (bool, error) {
-	return false, nil
+func (d *fakeAsyncDL) CanDownload(_ context.Context, req core.DownloadRequest) (bool, error) {
+	g := req.Granularity
+	if g == "" {
+		g = core.GranularityTrack
+	}
+	return g == core.GranularityAlbum, nil
 }
 func (d *fakeAsyncDL) Start(context.Context, core.DownloadRequest, func(int)) (string, error) {
 	return "", fmt.Errorf("fakeAsyncDL.Start should never be called")
@@ -1621,7 +1740,7 @@ func TestEnqueueAsyncSubmitsAndDoesNotPinWorker(t *testing.T) {
 
 	job, err := m.Enqueue(context.Background(), core.DownloadRequest{
 		Source: "spotify", ExternalID: "e1", Artist: "Daft Punk", Title: "One More Time",
-		Album: "Discovery", Downloader: "lidarr",
+		Album: "Discovery", Granularity: core.GranularityAlbum,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -1646,7 +1765,7 @@ func TestEnqueueAsyncSubmitErrorFailsJob(t *testing.T) {
 	m, _ := testManager(t, []Downloader{async}, store, nil, nil, nil)
 
 	job, _ := m.Enqueue(context.Background(), core.DownloadRequest{
-		Source: "spotify", ExternalID: "e1", Artist: "X", Title: "Y", Album: "Z", Downloader: "lidarr",
+		Source: "spotify", ExternalID: "e1", Artist: "X", Title: "Y", Album: "Z", Granularity: core.GranularityAlbum,
 	})
 	got, _, _ := store.Get(context.Background(), job.ID)
 	if got.Status != core.DownloadFailed {
@@ -1663,7 +1782,7 @@ func TestCancelAsyncJob(t *testing.T) {
 	m, _ := testManager(t, []Downloader{async}, store, nil, nil, nil)
 
 	job, _ := m.Enqueue(context.Background(), core.DownloadRequest{
-		Source: "spotify", ExternalID: "e1", Artist: "X", Title: "Y", Album: "Z", Downloader: "lidarr",
+		Source: "spotify", ExternalID: "e1", Artist: "X", Title: "Y", Album: "Z", Granularity: core.GranularityAlbum,
 	})
 	if err := m.Cancel(context.Background(), job.ID); err != nil {
 		t.Fatal(err)
@@ -1689,7 +1808,7 @@ func TestReconcileAdvancesProgressThenCompletes(t *testing.T) {
 	m.Start()
 
 	job, _ := m.Enqueue(context.Background(), core.DownloadRequest{
-		Source: "spotify", ExternalID: "e1", Artist: "A", Title: "T", Album: "Al", Downloader: "lidarr",
+		Source: "spotify", ExternalID: "e1", Artist: "A", Title: "T", Album: "Al", Granularity: core.GranularityAlbum,
 	})
 
 	// Downloading at 40%.
@@ -1723,7 +1842,7 @@ func TestReconcileFailMapsToFailed(t *testing.T) {
 	async := &fakeAsyncDL{name: "lidarr", submitRef: "album-1"}
 	store := newMemStore()
 	m, _ := testManager(t, []Downloader{async}, store, nil, nil, nil)
-	job, _ := m.Enqueue(context.Background(), core.DownloadRequest{Source: "spotify", ExternalID: "e", Artist: "A", Title: "T", Album: "Al", Downloader: "lidarr"})
+	job, _ := m.Enqueue(context.Background(), core.DownloadRequest{Source: "spotify", ExternalID: "e", Artist: "A", Title: "T", Album: "Al", Granularity: core.GranularityAlbum})
 
 	async.setStatus(AsyncStatus{State: core.DownloadFailed, Error: "Lidarr found no release"})
 	m.reconcileOnce(context.Background())

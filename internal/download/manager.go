@@ -420,18 +420,18 @@ func (m *Manager) submitAsync(ctx context.Context, job core.DownloadJob, req cor
 	log.Printf("download submitted to %s: %q (job %s, ref %s)", job.DownloaderName, cur.Title, shortID(cur.ID), ref)
 }
 
-// pick chooses the downloader: an explicit name if set & present, else the first
-// (priority order is preserved by the input slice) whose CanDownload returns true.
+// pick chooses the first downloader (in priority/slice order) whose Granularity
+// matches the request and whose CanDownload returns true.
+// An empty req.Granularity is treated as GranularityTrack.
 func (m *Manager) pick(ctx context.Context, req core.DownloadRequest) (Downloader, error) {
-	if req.Downloader != "" {
-		for _, d := range m.downloaders {
-			if d.Name() == req.Downloader {
-				return d, nil
-			}
-		}
-		return nil, fmt.Errorf("downloader %q not registered", req.Downloader)
+	g := req.Granularity
+	if g == "" {
+		g = core.GranularityTrack
 	}
 	for _, d := range m.downloaders {
+		if d.Granularity() != g {
+			continue
+		}
 		ok, err := d.CanDownload(ctx, req)
 		if err != nil {
 			continue
@@ -440,7 +440,7 @@ func (m *Manager) pick(ctx context.Context, req core.DownloadRequest) (Downloade
 			return d, nil
 		}
 	}
-	return nil, fmt.Errorf("no downloader can fetch %q by %q", req.Title, req.Artist)
+	return nil, fmt.Errorf("no %s downloader can fetch %q by %q", g, req.Title, req.Artist)
 }
 
 // Enqueue persists a new job (or JOINS an active one with the same dedup key) and
