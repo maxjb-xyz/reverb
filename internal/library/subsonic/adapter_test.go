@@ -306,6 +306,54 @@ func TestStream_JSONErrorBodyWrapsErrLibraryItemNotFound(t *testing.T) {
 	}
 }
 
+func TestStream_NonOKStatusWrapsErrLibraryItemNotFound(t *testing.T) {
+	// A non-2xx response (e.g. 404 text/plain) from the backend must be rejected and
+	// wrapped as core.ErrLibraryItemNotFound so the API returns 404, not proxied garbage.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "not found", http.StatusNotFound)
+	}))
+	t.Cleanup(srv.Close)
+	a := New().WithHTTPClient(srv.Client())
+	if err := a.Init(map[string]any{"url": srv.URL, "username": "u", "password": "p"}); err != nil {
+		t.Fatal(err)
+	}
+	_, err := a.Stream(context.Background(), "stale-id", core.StreamOpts{}, "")
+	if err == nil {
+		t.Fatal("expected error for non-2xx stream response, got nil")
+	}
+	if !errors.Is(err, core.ErrLibraryItemNotFound) {
+		t.Fatalf("expected errors.Is(err, core.ErrLibraryItemNotFound) true, got err=%v", err)
+	}
+}
+
+func TestStream_206PartialContentSucceeds(t *testing.T) {
+	// A 206 Partial Content response (range request) must pass through as a success,
+	// not be rejected by the non-2xx guard.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "audio/mpeg")
+		w.Header().Set("Accept-Ranges", "bytes")
+		w.Header().Set("Content-Range", "bytes 0-3/100")
+		w.WriteHeader(http.StatusPartialContent)
+		_, _ = w.Write([]byte("abcd"))
+	}))
+	t.Cleanup(srv.Close)
+	a := New().WithHTTPClient(srv.Client())
+	if err := a.Init(map[string]any{"url": srv.URL, "username": "u", "password": "p"}); err != nil {
+		t.Fatal(err)
+	}
+	h, err := a.Stream(context.Background(), "t1", core.StreamOpts{}, "bytes=0-3")
+	if err != nil {
+		t.Fatalf("expected success for 206 Partial Content, got err=%v", err)
+	}
+	defer h.Body.Close()
+	if h.StatusCode != http.StatusPartialContent {
+		t.Fatalf("status = %d, want 206", h.StatusCode)
+	}
+	if h.ContentRange == "" {
+		t.Error("missing Content-Range passthrough")
+	}
+}
+
 func TestCoverArt_TransportErrorDoesNotWrapErrLibraryItemNotFound(t *testing.T) {
 	// A real transport error (backend unreachable) must NOT wrap the sentinel
 	// so the handler keeps returning 502 Bad Gateway.

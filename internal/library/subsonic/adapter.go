@@ -264,6 +264,12 @@ func (a *Adapter) Stream(ctx context.Context, trackID string, opts core.StreamOp
 		// Transport error: backend unreachable — leave unwrapped so caller returns 502.
 		return core.StreamHandle{}, err
 	}
+	// Reject non-2xx responses (e.g. 404/500 with text/plain or empty body) before
+	// the content-type check below. 206 Partial Content is allowed for range requests.
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusPartialContent {
+		resp.Body.Close()
+		return core.StreamHandle{}, fmt.Errorf("subsonic stream %q: HTTP %d: %w", trackID, resp.StatusCode, core.ErrLibraryItemNotFound)
+	}
 	// Navidrome returns 200 + application/json (a Subsonic "failed" body) when the
 	// track ID is unknown — e.g. a stale ID after a library-backend swap. Reject it
 	// so the API errors instead of proxying JSON as audio (the player would
