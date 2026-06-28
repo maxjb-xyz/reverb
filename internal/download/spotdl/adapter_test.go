@@ -446,6 +446,59 @@ func TestStartManualURLWithPipeCharIsStripped(t *testing.T) {
 	}
 }
 
+func TestSpotifyTargetURL(t *testing.T) {
+	cases := []struct {
+		name string
+		req  core.DownloadRequest
+		want string
+	}{
+		{
+			name: "album granularity → album URL",
+			req:  core.DownloadRequest{Source: "spotify", ExternalID: "ALB", Granularity: core.GranularityAlbum},
+			want: "https://open.spotify.com/album/ALB",
+		},
+		{
+			name: "track granularity → track URL",
+			req:  core.DownloadRequest{Source: "spotify", ExternalID: "TRK", Granularity: core.GranularityTrack},
+			want: "https://open.spotify.com/track/TRK",
+		},
+		{
+			name: "empty granularity defaults to track URL",
+			req:  core.DownloadRequest{Source: "spotify", ExternalID: "TRK"},
+			want: "https://open.spotify.com/track/TRK",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := spotifyTargetURL(tc.req)
+			if got != tc.want {
+				t.Fatalf("spotifyTargetURL(%+v) = %q, want %q", tc.req, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestStartUsesAlbumURLForAlbumGranularity(t *testing.T) {
+	// When Granularity==GranularityAlbum, the trailing query arg must be an album URL.
+	r := &fakeRunner{lines: []string{`Downloaded: ok`}}
+	a := newAdapter(t, r)
+	_, _ = a.Start(context.Background(), core.DownloadRequest{
+		Source:      "spotify",
+		ExternalID:  "ALB123",
+		Artist:      "The Beatles",
+		Title:       "Abbey Road",
+		Granularity: core.GranularityAlbum,
+	}, func(int) {})
+	n := len(r.gotArgs)
+	if n == 0 {
+		t.Fatal("no args captured")
+	}
+	want := "https://open.spotify.com/album/ALB123"
+	if r.gotArgs[n-1] != want {
+		t.Fatalf("album granularity: trailing query arg = %q, want %q", r.gotArgs[n-1], want)
+	}
+}
+
 func TestSupportedGranularitiesTrackAndAlbum(t *testing.T) {
 	a := New()
 	gs := a.SupportedGranularities()

@@ -146,6 +146,16 @@ func ensureSpotdlTempDir() {
 	_ = os.MkdirAll(filepath.Join(cfg, "spotdl", "temp"), 0o755)
 }
 
+// spotifyTargetURL returns the Spotify URL for the given request. It chooses the
+// "album" path segment when req.Granularity is GranularityAlbum, otherwise "track".
+func spotifyTargetURL(req core.DownloadRequest) string {
+	segment := "track"
+	if req.Granularity == core.GranularityAlbum {
+		segment = "album"
+	}
+	return "https://open.spotify.com/" + segment + "/" + req.ExternalID
+}
+
 // normalizeManualURL strips YouTube playlist/radio parameters so yt-dlp fetches only
 // the single video. Without this, a URL like ?v=abc&list=RDabc&start_radio=1 causes
 // yt-dlp to download the entire radio playlist — hanging the job for minutes.
@@ -214,7 +224,7 @@ func (a *Adapter) Start(ctx context.Context, req core.DownloadRequest, onProgres
 		// Direct manual URL (non-Spotify or missing ID).
 		query = manualURL
 	} else if req.Source == "spotify" && req.ExternalID != "" {
-		query = "https://open.spotify.com/track/" + req.ExternalID
+		query = spotifyTargetURL(req)
 	} else {
 		query = strings.TrimSpace(req.Artist + " - " + req.Title)
 	}
