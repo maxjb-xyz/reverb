@@ -3,8 +3,15 @@ import {
   installApiMocks,
   installRequestMocks,
   installRequestWsMock,
+  installAlbumDetailMock,
+  installAlbumRequestMocks,
+  installAlbumRequestWsMock,
   ownerMe,
   externalTrack,
+  mockAlbumId,
+  mockAlbumName,
+  mockAlbumArtist,
+  pendingAlbumRequest,
 } from './mocks'
 
 // Hermetic e2e for the request flow (mock-driven; no real backend).
@@ -194,4 +201,182 @@ test('approval flow: manager sees Approval tab, pending item listed, clicking Ap
   await approvePost
   // The POST resolved — the request is now approved in the mock.
   // The Approval row may update or be removed; the primary assertion is the POST fired.
+})
+
+// ── 3) Album request flow ─────────────────────────────────────────────────────
+//
+// A requester navigates to an album detail page, clicks "Request album", confirms
+// the disclosure dialog, and the POST /requests body has `kind === "album"`.
+// The item then appears in My Requests with the "Album" cue (badge text "ALBUM");
+// a mocked `request.updated` WS frame (status → fulfilled) flips the row to "Added".
+
+test('album request: requester sees "Request album" on album page, confirms dialog, POST has kind:album, appears in My Requests with Album cue, WS flips to Added', async ({ page }) => {
+  const authed = { value: false }
+  await installApiMocks(page, authed, { me: requesterMe })
+  // Mount the album detail route BEFORE the request mocks (installApiMocks has already
+  // registered the downloads + adapters handlers; album detail is a new route).
+  await installAlbumDetailMock(page)
+  const { getLastPostBody } = await installAlbumRequestMocks(page)
+  const ws = await installAlbumRequestWsMock(page)
+
+  const initialResync = page
+    .waitForResponse((r) => r.url().includes('/api/v1/downloads') && r.request().method() === 'GET')
+    .catch(() => undefined)
+
+  await loginAndLand(page, authed)
+  await initialResync
+
+  // ── Step 1: Navigate to the album detail page ──────────────────────────────
+  await page.goto(`/album/spotify/${mockAlbumId}`)
+  // The album name is in the <h1>.
+  await expect(page.getByRole('heading', { level: 1, name: mockAlbumName })).toBeVisible()
+
+  // ── Step 2: "Request album" button is gated on `request` cap ───────────────
+  const requestAlbumBtn = page.getByRole('button', { name: 'Request album', exact: true })
+  await expect(requestAlbumBtn).toBeVisible()
+
+  // ── Step 3: Click → disclosure dialog opens ────────────────────────────────
+  await requestAlbumBtn.click()
+  // The dialog has aria-label="Request album"
+  const dialog = page.getByRole('dialog', { name: 'Request album' })
+  await expect(dialog).toBeVisible()
+  await expect(dialog).toContainText('Request the whole album?')
+
+  // ── Step 4: Confirm → POST /requests with kind:"album" ────────────────────
+  const requestPost = page.waitForRequest(
+    (r) => r.url().includes('/api/v1/requests') && r.method() === 'POST',
+  )
+  await page.getByRole('button', { name: 'Confirm request album', exact: true }).click()
+  await requestPost
+
+  // Assert the request body sent to the server includes kind:"album"
+  const body = getLastPostBody()
+  expect(body?.kind).toBe('album')
+
+  // ── Step 5: Navigate to /requests → item appears in My Requests with Album cue
+  await page.goto('/requests')
+  await expect(page.getByRole('heading', { name: 'My Requests' })).toBeVisible()
+
+  // The album title appears in the request list.
+  await expect(page.getByText(mockAlbumName, { exact: true })).toBeVisible()
+  // Status is "Pending".
+  await expect(page.getByText('Pending', { exact: true })).toBeVisible()
+  // The "Album" badge cue is visible (Requests.tsx renders it when req.kind === "album").
+  await expect(page.getByText('Album', { exact: true })).toBeVisible()
+
+  // ── Step 6: WS frame flips the row to "Added" ─────────────────────────────
+  await ws.fulfill()
+
+  await expect(page.getByText('Added', { exact: true })).toBeVisible()
+  await expect(page.getByText('Pending', { exact: true })).toHaveCount(0)
+
+  // A success toast surfaces referencing the album.
+  await expect(page.getByTestId('toast')).toBeVisible()
+  await expect(page.getByTestId('toast')).toContainText(mockAlbumName)
+})
+
+// ── 4) Manager approval of album request ─────────────────────────────────────
+//
+// A manager sees the album request in the Approval queue with the "Album" cue,
+// and clicking Approve fires POST /requests/{id}/approve.
+
+test('album request approval: manager sees album request in Approval queue with Album cue, Approve calls POST /approve', async ({ page }) => {
+  const authed = { value: false }
+  await installApiMocks(page, authed, { me: managerMe })
+  await installAlbumDetailMock(page)
+  const { getLastPostBody } = await installAlbumRequestMocks(page)
+  // We need the WS interceptor so the socket doesn't try to reach a real server,
+  // but we don't need to fire a frame.
+  await installAlbumRequestWsMock(page)
+
+  const initialResync = page
+    .waitForResponse((r) => r.url().includes('/api/v1/downloads') && r.request().method() === 'GET')
+    .catch(() => undefined)
+
+  await loginAndLand(page, authed)
+  await initialResync
+
+  // ── Step 1: Navigate to the album page and submit a request to seed the queue
+  await page.goto(`/album/spotify/${mockAlbumId}`)
+  await expect(page.getByRole('heading', { level: 1, name: mockAlbumName })).toBeVisible()
+
+  const requestAlbumBtn = page.getByRole('button', { name: 'Request album', exact: true })
+  await expect(requestAlbumBtn).toBeVisible()
+  await requestAlbumBtn.click()
+
+  const dialog = page.getByRole('dialog', { name: 'Request album' })
+  await expect(dialog).toBeVisible()
+
+  const seedPost = page.waitForRequest(
+    (r) => r.url().includes('/api/v1/requests') && r.method() === 'POST',
+  )
+  await page.getByRole('button', { name: 'Confirm request album', exact: true }).click()
+  await seedPost
+
+  // Confirm the body sent had kind:"album"
+  expect(getLastPostBody()?.kind).toBe('album')
+
+  // ── Step 2: Navigate to /requests → Approval tab is visible for managers ───
+  await page.goto('/requests')
+  await expect(page.getByRole('heading', { name: 'My Requests' })).toBeVisible()
+
+  const approvalTab = page.getByRole('tab', { name: 'Approval' })
+  await expect(approvalTab).toBeVisible()
+  await approvalTab.click()
+
+  // ── Step 3: Album request appears in Approval queue WITH the Album cue ──────
+  await expect(page.getByText(mockAlbumName, { exact: true })).toBeVisible()
+  // The "Album" badge (rendered when req.kind === "album") is visible.
+  await expect(page.getByText('Album', { exact: true })).toBeVisible()
+
+  // ── Step 4: Approve button fires POST /requests/{id}/approve ─────────────────
+  const approveBtn = page.getByRole('button', { name: `Approve ${mockAlbumName}`, exact: true })
+  await expect(approveBtn).toBeVisible()
+
+  const approvePost = page.waitForRequest(
+    (r) => r.url().includes('/approve') && r.method() === 'POST',
+  )
+  await approveBtn.click()
+  await approvePost
+  // POST resolved — primary assertion is the approve endpoint was called.
+})
+
+// ── 5) Regression: track add is unaffected — single button, no picker ─────────
+//
+// A full-capability (auto_approve) user on a not-in-library Everywhere result sees
+// exactly ONE "Download" button and NO picker caret / popover (the picker was removed
+// in the downloader-chains feature; the backend chains now handle granularity).
+
+test('regression: track download has a single Download button and no picker popover', async ({ page }) => {
+  // Start already authenticated (authed: true) so we skip the login form and the
+  // double-navigate pattern in loginAndLand — eliminates the net::ERR_ABORTED race
+  // that can occur when page.goto('/') fires before the prior navigation settles.
+  const authed = { value: true }
+  // Owner has auto_approve + all other caps — the full download path should render.
+  await installApiMocks(page, authed)
+  // We need a WS interceptor so the realtime socket doesn't try to reach a real server.
+  await installRequestWsMock(page)
+
+  // Load the app shell directly (no login needed — authed is already true).
+  await page.goto('/')
+  await expect(page.getByTestId('app-shell-root')).toBeVisible()
+
+  // Wait for the initial downloads resync to settle before asserting.
+  await page
+    .waitForResponse((r) => r.url().includes('/api/v1/downloads') && r.request().method() === 'GET')
+    .catch(() => undefined)
+
+  await searchEverywhere(page)
+
+  // Exactly ONE Download button (no picker caret splits it into two).
+  const downloadBtns = page.getByRole('button', { name: `Download ${externalTrack.title}`, exact: true })
+  await expect(downloadBtns).toHaveCount(1)
+
+  // No picker popover trigger (the old caret/chevron next to the download button).
+  // Absence of any button with aria-label containing "picker", "chevron", or "▾" caret.
+  await expect(page.getByRole('button', { name: /picker|caret|chevron/i })).toHaveCount(0)
+
+  // Clicking the single Download button works (enqueues a job → Queued badge).
+  await downloadBtns.click()
+  await expect(page.getByText('Queued')).toBeVisible()
 })

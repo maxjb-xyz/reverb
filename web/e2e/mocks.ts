@@ -833,6 +833,134 @@ export function fulfilledRequest() {
   return { ...pendingRequest(), status: 'fulfilled' as const }
 }
 
+// ── Album-request fixtures ────────────────────────────────────────────────────
+// A pending album request (kind:"album") for the mocked album al-1.
+export const mockAlbumId = 'al-1'
+export const mockAlbumName = 'Mock Album'
+export const mockAlbumArtist = 'Mock Artist'
+
+export function pendingAlbumRequest() {
+  return {
+    id: 'req-album-1',
+    requestedBy: 'user-requester',
+    kind: 'album' as const,
+    source: 'spotify',
+    externalId: mockAlbumId,
+    title: mockAlbumName,
+    artist: mockAlbumArtist,
+    album: mockAlbumName,
+    status: 'pending' as const,
+    createdAt: 1700000002,
+  }
+}
+
+export function fulfilledAlbumRequest() {
+  return { ...pendingAlbumRequest(), status: 'fulfilled' as const }
+}
+
+// installAlbumDetailMock registers the album detail route (GET /api/v1/album/spotify/al-1)
+// returning the partial album (1 owned, 1 missing) so the Album page renders.
+// The per-track DownloadAction routes /api/v1/downloads and /api/v1/adapters are
+// already handled by installApiMocks.
+export async function installAlbumDetailMock(page: Page): Promise<void> {
+  await page.route('**/api/v1/album/spotify/al-1', (route: Route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(albumDetailPartial()),
+    }),
+  )
+}
+
+// installAlbumRequestMocks is the isolated request-state handler for the album
+// request e2e tests. It mirrors installRequestMocks but the POST /requests handler
+// captures the request body so the spec can assert `kind === "album"`.
+type AlbumRequestState = {
+  requests: ReturnType<typeof pendingAlbumRequest>[]
+  lastPostBody: Record<string, unknown> | null
+}
+
+let albumRequestStateRef: AlbumRequestState | null = null
+
+export async function installAlbumRequestMocks(
+  page: Page,
+): Promise<{ getLastPostBody: () => Record<string, unknown> | null }> {
+  const state: AlbumRequestState = { requests: [], lastPostBody: null }
+  albumRequestStateRef = state
+
+  await page.route('**/api/v1/requests/mine', (route: Route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(state.requests) }),
+  )
+
+  await page.route('**/api/v1/requests', async (route: Route) => {
+    if (route.request().method() === 'POST') {
+      const bodyText = route.request().postData() ?? '{}'
+      try {
+        state.lastPostBody = JSON.parse(bodyText) as Record<string, unknown>
+      } catch {
+        state.lastPostBody = null
+      }
+      const req = pendingAlbumRequest()
+      state.requests = [req]
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(req) })
+    }
+    return route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(state.requests.filter((r) => r.status === 'pending')),
+    })
+  })
+
+  await page.route('**/api/v1/requests/*/approve', (route: Route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ ...pendingAlbumRequest(), status: 'approved' }),
+    }),
+  )
+
+  return { getLastPostBody: () => state.lastPostBody }
+}
+
+// installAlbumRequestWsMock — sends a `request.updated` (status → fulfilled)
+// for the album request. Mirrors installRequestWsMock.
+export async function installAlbumRequestWsMock(page: Page): Promise<RequestWsTrigger> {
+  let capturedWs: WebSocketRoute | null = null
+
+  await page.routeWebSocket('**/api/v1/ws', (ws: WebSocketRoute) => {
+    capturedWs = ws
+  })
+
+  return {
+    fulfill: () =>
+      new Promise<void>((resolve, reject) => {
+        const deadline = Date.now() + 5000
+        const poll = () => {
+          if (capturedWs) {
+            if (albumRequestStateRef) {
+              albumRequestStateRef.requests = [fulfilledAlbumRequest()]
+            }
+            const frame = {
+              type: 'request.updated',
+              payload: {
+                request: fulfilledAlbumRequest(),
+                targetUserId: 'user-requester',
+                forManagers: false,
+              },
+            }
+            capturedWs.send(JSON.stringify(frame))
+            resolve()
+          } else if (Date.now() > deadline) {
+            reject(new Error('installAlbumRequestWsMock: WebSocket never opened within 5 s'))
+          } else {
+            setTimeout(poll, 20)
+          }
+        }
+        poll()
+      }),
+  }
+}
+
 type RequestState = { requests: ReturnType<typeof pendingRequest>[] }
 
 // Module-level ref so the WS trigger can access the mutable request state.
