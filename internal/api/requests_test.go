@@ -430,3 +430,66 @@ func TestCreateRequestNilManager503(t *testing.T) {
 		t.Fatalf("want 503, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
+
+// TestDownloadReqFromItemAlbumKind verifies that downloadReqFromItem of an album item
+// produces Granularity==GranularityAlbum and a non-empty Album field.
+func TestDownloadReqFromItemAlbumKind(t *testing.T) {
+	item := core.RequestItem{
+		Source:     "lidarr",
+		ExternalID: "album-123",
+		Title:      "Dark Side of the Moon",
+		Artist:     "Pink Floyd",
+		Album:      "Dark Side of the Moon",
+		Kind:       "album",
+	}
+	got := downloadReqFromItem(item, "user-1")
+	if got.Granularity != core.GranularityAlbum {
+		t.Fatalf("want Granularity=%q, got %q", core.GranularityAlbum, got.Granularity)
+	}
+	if got.Album == "" {
+		t.Fatal("want non-empty Album")
+	}
+}
+
+// TestDownloadReqFromRequestAlbumKind verifies that downloadReqFromRequest of an album
+// Request produces Granularity==GranularityAlbum.
+func TestDownloadReqFromRequestAlbumKind(t *testing.T) {
+	req := core.Request{
+		ID:          "req-1",
+		RequestedBy: "user-1",
+		Source:      "lidarr",
+		ExternalID:  "album-456",
+		Title:       "Wish You Were Here",
+		Artist:      "Pink Floyd",
+		Album:       "Wish You Were Here",
+		Kind:        "album",
+		Status:      core.RequestApproved,
+	}
+	got := downloadReqFromRequest(req)
+	if got.Granularity != core.GranularityAlbum {
+		t.Fatalf("want Granularity=%q, got %q", core.GranularityAlbum, got.Granularity)
+	}
+}
+
+// TestDownloadReqFromItemTrackKind verifies that a track/empty Kind yields GranularityTrack.
+func TestDownloadReqFromItemTrackKind(t *testing.T) {
+	item := core.RequestItem{
+		Source:     "spotify",
+		ExternalID: "track-abc",
+		Title:      "Song",
+		Artist:     "Artist",
+		Kind:       "track",
+	}
+	got := downloadReqFromItem(item, "user-1")
+	if got.Granularity != core.GranularityTrack {
+		t.Fatalf("want Granularity=%q, got %q", core.GranularityTrack, got.Granularity)
+	}
+
+	// empty kind also resolves to track
+	itemEmpty := item
+	itemEmpty.Kind = ""
+	got2 := downloadReqFromItem(itemEmpty, "user-1")
+	if got2.Granularity != core.GranularityTrack {
+		t.Fatalf("empty Kind: want Granularity=%q, got %q", core.GranularityTrack, got2.Granularity)
+	}
+}

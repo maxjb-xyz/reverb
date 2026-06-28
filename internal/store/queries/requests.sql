@@ -1,6 +1,6 @@
 -- name: CreateRequest :exec
-INSERT INTO requests (id, requested_by, source, external_id, title, artist, album, isrc, duration_ms, cover_art_id, cover_url, status)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+INSERT INTO requests (id, requested_by, source, external_id, title, artist, album, isrc, duration_ms, cover_art_id, cover_url, kind, status)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 -- name: GetRequest :one
 SELECT * FROM requests WHERE id = ?;

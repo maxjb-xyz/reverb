@@ -166,6 +166,15 @@ func (s *Server) handleCancelRequest(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "canceled"})
 }
 
+// granularityForKind maps a kind string to a DownloadGranularity.
+// An empty kind defaults to GranularityTrack.
+func granularityForKind(kind string) core.DownloadGranularity {
+	if kind == "album" {
+		return core.GranularityAlbum
+	}
+	return core.GranularityTrack
+}
+
 // downloadReqFromItem builds a DownloadRequest from a RequestItem.
 // InitiatedBy is set to the requester (the person who created the request).
 func downloadReqFromItem(item core.RequestItem, requesterID string) core.DownloadRequest {
@@ -178,6 +187,7 @@ func downloadReqFromItem(item core.RequestItem, requesterID string) core.Downloa
 		ISRC:        item.ISRC,
 		DurationMs:  item.DurationMs,
 		InitiatedBy: requesterID,
+		Granularity: granularityForKind(item.Kind),
 	}
 }
 
@@ -193,5 +203,6 @@ func downloadReqFromRequest(req core.Request) core.DownloadRequest {
 		ISRC:        req.ISRC,
 		DurationMs:  req.DurationMs,
 		InitiatedBy: req.RequestedBy,
+		Granularity: granularityForKind(req.Kind),
 	}
 }

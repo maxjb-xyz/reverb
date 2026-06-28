@@ -69,6 +69,10 @@ func (s *Service) Create(ctx context.Context, requestedBy string, item core.Requ
 	}
 
 	id := uuid.NewString()
+	kind := item.Kind
+	if kind == "" {
+		kind = "track"
+	}
 	params := db.CreateRequestParams{
 		ID:          id,
 		RequestedBy: requestedBy,
@@ -81,6 +85,7 @@ func (s *Service) Create(ctx context.Context, requestedBy string, item core.Requ
 		DurationMs:  nullInt(int64(item.DurationMs)),
 		CoverArtID:  nullStr(item.CoverArtID),
 		CoverUrl:    nullStr(item.CoverUrl),
+		Kind:        kind,
 		Status:      core.RequestPending,
 	}
 	if err := s.q.CreateRequest(ctx, params); err != nil {
@@ -318,6 +323,7 @@ func fromRow(r db.Request) core.Request {
 		DurationMs:    int(r.DurationMs.Int64),
 		CoverArtID:    r.CoverArtID.String,
 		CoverUrl:      r.CoverUrl.String,
+		Kind:          r.Kind,
 		Status:        r.Status,
 		CreatedAt:     r.CreatedAt,
 		DecidedBy:     r.DecidedBy.String,

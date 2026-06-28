@@ -431,3 +431,67 @@ func TestMarkFailedPreservesMetadata(t *testing.T) {
 		t.Fatalf("event payload DownloadJobID: want %q, got %q", "job-1", re.Request.DownloadJobID)
 	}
 }
+
+// TestCreateKindAlbumRoundTrip verifies that Kind:"album" is persisted and read back.
+func TestCreateKindAlbumRoundTrip(t *testing.T) {
+	svc, _, userID := newTestService(t)
+	ctx := context.Background()
+
+	albumItem := core.RequestItem{
+		Source:     "lidarr",
+		ExternalID: "album-xyz",
+		Title:      "Dark Side of the Moon",
+		Artist:     "Pink Floyd",
+		Album:      "Dark Side of the Moon",
+		Kind:       "album",
+	}
+
+	req, existed, err := svc.Create(ctx, userID, albumItem)
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if existed {
+		t.Fatal("want existed=false for new request")
+	}
+	if req.Kind != "album" {
+		t.Fatalf("want Kind=%q, got %q", "album", req.Kind)
+	}
+
+	// Also verify via a fresh Get
+	fetched, err := svc.Get(ctx, req.ID)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if fetched.Kind != "album" {
+		t.Fatalf("Get: want Kind=%q, got %q", "album", fetched.Kind)
+	}
+}
+
+// TestCreateEmptyKindDefaultsToTrack verifies that an empty Kind is stored as "track".
+func TestCreateEmptyKindDefaultsToTrack(t *testing.T) {
+	svc, _, userID := newTestService(t)
+	ctx := context.Background()
+
+	itemNoKind := core.RequestItem{
+		Source:     "spotify",
+		ExternalID: "track-nokind",
+		Title:      "No Kind Song",
+		Artist:     "Some Artist",
+	}
+
+	req, _, err := svc.Create(ctx, userID, itemNoKind)
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if req.Kind != "track" {
+		t.Fatalf("want Kind=%q (default), got %q", "track", req.Kind)
+	}
+
+	fetched, err := svc.Get(ctx, req.ID)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if fetched.Kind != "track" {
+		t.Fatalf("Get: want Kind=%q (default), got %q", "track", fetched.Kind)
+	}
+}
