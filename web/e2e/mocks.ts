@@ -176,6 +176,7 @@ export async function installApiMocks(
     return route.continue()
   })
 
+
   // Stream proxy → tiny audio body so the <audio> src resolves (no real media).
   await page.route('**/api/v1/stream/**', (route: Route) =>
     route.fulfill({ status: 200, contentType: 'audio/mpeg', body: '' }),
@@ -800,6 +801,125 @@ export async function installPlaylistSyncWsMock(page: Page): Promise<WsTrigger> 
 
 // WsTrigger lets the spec fire the completion frame at the right moment.
 export type WsTrigger = { complete: () => Promise<void> }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Downloaders Settings mocks (Task 8): stateful adapters list with spotDL
+// (track+album) and Lidarr (album only), so the two-column Settings section
+// renders and reorder PUTs are observable.
+//
+// installDownloadersMocks is registered AFTER installApiMocks so its
+// `**/api/v1/adapters` and `**/api/v1/adapters/**` handlers win (Playwright
+// most-recently-registered-first). It returns a getter so the spec can
+// inspect the current adapter state after PUTs.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type DownloaderAdapterInstance = {
+  id: string
+  type: string
+  name: string
+  enabled: boolean
+  priority: number
+  config: { granularities: Record<string, number> }
+  capabilities: string[]
+  supportedGranularities: string[]
+  granularities: Record<string, number>
+}
+
+export type DownloadersMocksControl = {
+  getAdapters: () => DownloaderAdapterInstance[]
+  getLastPutBody: (id: string) => Record<string, unknown> | null
+}
+
+export async function installDownloadersMocks(page: Page): Promise<DownloadersMocksControl> {
+  // Mutable state: per-adapter granularities maps, updated by PUT /adapters/:id.
+  const state: {
+    adapters: DownloaderAdapterInstance[]
+    lastPutBodies: Record<string, Record<string, unknown> | null>
+  } = {
+    adapters: [
+      {
+        id: 'spotdl-1',
+        type: 'downloader',
+        name: 'spotdl',
+        enabled: true,
+        priority: 0,
+        config: { granularities: { track: 0, album: 0 } },
+        capabilities: [],
+        supportedGranularities: ['track', 'album'],
+        granularities: { track: 0, album: 0 },
+      },
+      {
+        id: 'lidarr-1',
+        type: 'downloader',
+        name: 'lidarr',
+        enabled: true,
+        priority: 1,
+        config: { granularities: { album: 1 } },
+        capabilities: [],
+        supportedGranularities: ['album'],
+        granularities: { album: 1 },
+      },
+    ],
+    lastPutBodies: {},
+  }
+
+  // Helper: sync the top-level `granularities` field from `config.granularities`
+  // so the Settings component (which reads `a.granularities`) stays in sync with
+  // what updateAdapter PUT into `config.granularities`.
+  function syncGranularities(adapter: DownloaderAdapterInstance): void {
+    adapter.granularities = { ...adapter.config.granularities }
+  }
+
+  // GET /api/v1/adapters — list; PUT /api/v1/adapters/:id — update one instance.
+  // Registered with a broad glob so it catches both the list and per-id routes.
+  await page.route('**/api/v1/adapters', async (route: Route) => {
+    if (route.request().method() === 'GET') {
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(state.adapters),
+      })
+    }
+    return route.continue()
+  })
+
+  // Per-id PUT: extract :id from the URL, update state.
+  await page.route('**/api/v1/adapters/**', async (route: Route) => {
+    if (route.request().method() !== 'PUT') return route.continue()
+
+    const url = route.request().url()
+    const id = decodeURIComponent(url.split('/api/v1/adapters/')[1] ?? '')
+    const adapter = state.adapters.find((a) => a.id === id)
+    if (!adapter) {
+      return route.fulfill({ status: 404, contentType: 'application/json', body: JSON.stringify({ error: 'not found' }) })
+    }
+
+    let body: Record<string, unknown> = {}
+    try {
+      body = JSON.parse(route.request().postData() ?? '{}') as Record<string, unknown>
+    } catch {
+      // ignore parse errors
+    }
+    state.lastPutBodies[id] = body
+
+    // Merge the config.granularities from the PUT body into the adapter state.
+    const newConfig = (body.config ?? {}) as Record<string, unknown>
+    const newGranularities = (newConfig.granularities ?? {}) as Record<string, number>
+    adapter.config = { ...adapter.config, granularities: { ...adapter.config.granularities, ...newGranularities } }
+    syncGranularities(adapter)
+
+    return route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ data: adapter, pendingRestart: false }),
+    })
+  })
+
+  return {
+    getAdapters: () => state.adapters,
+    getLastPutBody: (id: string) => state.lastPutBodies[id] ?? null,
+  }
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Request flow mocks (Task 11): request-only user submits a request → Pending;
