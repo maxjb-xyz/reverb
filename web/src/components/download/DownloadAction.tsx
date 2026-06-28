@@ -199,6 +199,7 @@ export function DownloadAction({ result, onPlay }: Props) {
               isrc: result.isrc,
               durationMs: result.durationMs,
               coverArtId: result.coverArtId,
+              coverUrl: result.coverUrl,
             })
               .then((req) => useRequestStore.getState().upsert(req))
               .catch((err) => console.error('[DownloadAction] postRequest failed:', err))

@@ -10,6 +10,7 @@ import {
 } from '../lib/requestApi'
 import type { Request as MusicRequest, RequestStatus } from '../lib/requestApi'
 import { Cover, EmptyState, Button } from '../components/ui'
+import { coverUrl } from '../lib/libraryApi'
 
 // ---- Status chip --------------------------------------------------------
 
@@ -86,6 +87,7 @@ function MyRequestsTab({ userId }: { userId: string }) {
 
 function MyRequestRow({ req, userId }: { req: MusicRequest; userId: string }) {
   const isPendingOwn = req.status === 'pending' && req.requestedBy === userId
+  const coverSrc = req.coverUrl ?? (req.coverArtId ? coverUrl(req.coverArtId) : undefined)
 
   async function handleCancel() {
     await cancelRequest(req.id)
@@ -96,7 +98,7 @@ function MyRequestRow({ req, userId }: { req: MusicRequest; userId: string }) {
 
   return (
     <li className="flex items-center gap-3 rounded-lg px-2 py-2 transition-colors hover:bg-raised-hover">
-      <Cover src={undefined} alt={req.title} size={40} />
+      <Cover src={coverSrc} alt={req.title} size={40} />
       <div className="min-w-0 flex-1">
         <div className="truncate text-sm font-semibold text-text-primary">{req.title}</div>
         <div className="truncate text-xs text-text-secondary">{req.artist}</div>
@@ -146,6 +148,7 @@ function ApprovalTab() {
 function ApprovalRow({ req }: { req: MusicRequest }) {
   const [denying, setDenying] = useState(false)
   const [reason, setReason] = useState('')
+  const coverSrc = req.coverUrl ?? (req.coverArtId ? coverUrl(req.coverArtId) : undefined)
 
   async function handleApprove() {
     const updated = await approveRequest(req.id)
@@ -162,7 +165,7 @@ function ApprovalRow({ req }: { req: MusicRequest }) {
   return (
     <li className="flex flex-col gap-2 rounded-lg px-2 py-2 transition-colors hover:bg-raised-hover">
       <div className="flex items-center gap-3">
-        <Cover src={undefined} alt={req.title} size={40} />
+        <Cover src={coverSrc} alt={req.title} size={40} />
         <div className="min-w-0 flex-1">
           <div className="truncate text-sm font-semibold text-text-primary">{req.title}</div>
           <div className="truncate text-xs text-text-secondary">

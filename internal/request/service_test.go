@@ -349,6 +349,41 @@ func TestMarkFailedIdempotentPublishesOnce(t *testing.T) {
 	}
 }
 
+// TestCreateCoverUrlRoundTrip verifies that a coverUrl set on the request item
+// persists to the DB and is returned on the core.Request.
+func TestCreateCoverUrlRoundTrip(t *testing.T) {
+	svc, _, userID := newTestService(t)
+	ctx := context.Background()
+
+	itemWithCover := core.RequestItem{
+		Source:     "spotify",
+		ExternalID: "track-cover",
+		Title:      "Cover Song",
+		Artist:     "Cover Artist",
+		CoverUrl:   "https://i.scdn.co/image/abc123",
+	}
+
+	req, existed, err := svc.Create(ctx, userID, itemWithCover)
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if existed {
+		t.Fatal("want existed=false for new request")
+	}
+	if req.CoverUrl != "https://i.scdn.co/image/abc123" {
+		t.Fatalf("want CoverUrl=%q, got %q", "https://i.scdn.co/image/abc123", req.CoverUrl)
+	}
+
+	// Also verify via a fresh Get
+	fetched, err := svc.Get(ctx, req.ID)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if fetched.CoverUrl != "https://i.scdn.co/image/abc123" {
+		t.Fatalf("Get: want CoverUrl=%q, got %q", "https://i.scdn.co/image/abc123", fetched.CoverUrl)
+	}
+}
+
 // TestMarkFailedPreservesMetadata verifies approved→failed preserves approval metadata + publishes event.
 func TestMarkFailedPreservesMetadata(t *testing.T) {
 	svc, pub, userID := newTestService(t)

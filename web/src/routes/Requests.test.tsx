@@ -198,6 +198,62 @@ describe('Requests page — Approval tab (manager)', () => {
   })
 })
 
+describe('Requests page — cover art rendering', () => {
+  beforeEach(() => {
+    useRequestStore.setState({ byId: {} })
+    useAuthStore.setState({ me: null, loading: false })
+    mockNavigate.mockReset()
+  })
+
+  it('My Requests row renders an img with the coverUrl when a request has a coverUrl', async () => {
+    setMe('u1', ['request'])
+    useRequestStore.setState({
+      byId: {
+        r1: makeRequest({ requestedBy: 'u1', status: 'pending', coverUrl: 'https://i.scdn.co/image/abc123' }),
+      },
+    })
+    renderRequests()
+    await waitFor(() => expect(screen.getByText('Test Song')).toBeInTheDocument())
+    const img = screen.getAllByRole('img').find((el) => el.getAttribute('src') === 'https://i.scdn.co/image/abc123')
+    expect(img).toBeDefined()
+  })
+
+  it('My Requests row builds /api/v1/cover/... URL when only coverArtId is present', async () => {
+    setMe('u1', ['request'])
+    useRequestStore.setState({
+      byId: {
+        r1: makeRequest({ requestedBy: 'u1', status: 'pending', coverArtId: 'lib-id-42' }),
+      },
+    })
+    renderRequests()
+    await waitFor(() => expect(screen.getByText('Test Song')).toBeInTheDocument())
+    const img = screen.getAllByRole('img').find((el) =>
+      (el.getAttribute('src') ?? '').includes('/api/v1/cover/lib-id-42'),
+    )
+    expect(img).toBeDefined()
+  })
+
+  it('Approval row renders an img with the coverUrl when a pending request has a coverUrl', async () => {
+    setMe('u2', ['request', 'manage_requests'])
+    useRequestStore.setState({
+      byId: {
+        r2: makeRequest({
+          id: 'r2',
+          requestedBy: 'u3',
+          status: 'pending',
+          title: 'Queue Track',
+          coverUrl: 'https://i.scdn.co/image/xyz999',
+        }),
+      },
+    })
+    renderRequests()
+    fireEvent.click(screen.getByRole('tab', { name: /approval/i }))
+    await waitFor(() => expect(screen.getByText('Queue Track')).toBeInTheDocument())
+    const img = screen.getAllByRole('img').find((el) => el.getAttribute('src') === 'https://i.scdn.co/image/xyz999')
+    expect(img).toBeDefined()
+  })
+})
+
 describe('TopBar — Requests nav entry', () => {
   beforeEach(() => {
     useAuthStore.setState({ me: null, loading: false })

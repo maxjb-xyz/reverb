@@ -116,6 +116,7 @@ type Request struct {
 	DecidedAt     sql.NullInt64  `json:"decided_at"`
 	DownloadJobID sql.NullString `json:"download_job_id"`
 	DenyReason    sql.NullString `json:"deny_reason"`
+	CoverUrl      sql.NullString `json:"cover_url"`
 }
 
 type Role struct {

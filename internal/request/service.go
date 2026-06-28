@@ -80,6 +80,7 @@ func (s *Service) Create(ctx context.Context, requestedBy string, item core.Requ
 		Isrc:        nullStr(item.ISRC),
 		DurationMs:  nullInt(int64(item.DurationMs)),
 		CoverArtID:  nullStr(item.CoverArtID),
+		CoverUrl:    nullStr(item.CoverUrl),
 		Status:      core.RequestPending,
 	}
 	if err := s.q.CreateRequest(ctx, params); err != nil {
@@ -316,6 +317,7 @@ func fromRow(r db.Request) core.Request {
 		ISRC:          r.Isrc.String,
 		DurationMs:    int(r.DurationMs.Int64),
 		CoverArtID:    r.CoverArtID.String,
+		CoverUrl:      r.CoverUrl.String,
 		Status:        r.Status,
 		CreatedAt:     r.CreatedAt,
 		DecidedBy:     r.DecidedBy.String,

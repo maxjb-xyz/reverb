@@ -19,6 +19,7 @@ type RequestItem struct {
 	ISRC       string `json:"isrc,omitempty"`
 	DurationMs int    `json:"durationMs,omitempty"`
 	CoverArtID string `json:"coverArtId,omitempty"`
+	CoverUrl   string `json:"coverUrl,omitempty"`
 }
 
 // Request is the persisted domain entity for a user's download request.
@@ -33,6 +34,7 @@ type Request struct {
 	ISRC          string `json:"isrc,omitempty"`
 	DurationMs    int    `json:"durationMs,omitempty"`
 	CoverArtID    string `json:"coverArtId,omitempty"`
+	CoverUrl      string `json:"coverUrl,omitempty"`
 	Status        string `json:"status"`
 	CreatedAt     int64  `json:"createdAt"`
 	DecidedBy     string `json:"decidedBy,omitempty"`

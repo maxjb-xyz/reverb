@@ -11,8 +11,8 @@ import (
 )
 
 const createRequest = `-- name: CreateRequest :exec
-INSERT INTO requests (id, requested_by, source, external_id, title, artist, album, isrc, duration_ms, cover_art_id, status)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+INSERT INTO requests (id, requested_by, source, external_id, title, artist, album, isrc, duration_ms, cover_art_id, cover_url, status)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `
 
 type CreateRequestParams struct {
@@ -26,6 +26,7 @@ type CreateRequestParams struct {
 	Isrc        sql.NullString `json:"isrc"`
 	DurationMs  sql.NullInt64  `json:"duration_ms"`
 	CoverArtID  sql.NullString `json:"cover_art_id"`
+	CoverUrl    sql.NullString `json:"cover_url"`
 	Status      string         `json:"status"`
 }
 
@@ -41,6 +42,7 @@ func (q *Queries) CreateRequest(ctx context.Context, arg CreateRequestParams) er
 		arg.Isrc,
 		arg.DurationMs,
 		arg.CoverArtID,
+		arg.CoverUrl,
 		arg.Status,
 	)
 	return err
@@ -56,7 +58,7 @@ func (q *Queries) DeleteRequest(ctx context.Context, id string) error {
 }
 
 const getOpenRequestByItem = `-- name: GetOpenRequestByItem :one
-SELECT id, requested_by, source, external_id, title, artist, album, isrc, duration_ms, cover_art_id, status, created_at, decided_by, decided_at, download_job_id, deny_reason FROM requests WHERE requested_by = ? AND source = ? AND external_id = ? AND status IN ('pending','approved') LIMIT 1
+SELECT id, requested_by, source, external_id, title, artist, album, isrc, duration_ms, cover_art_id, status, created_at, decided_by, decided_at, download_job_id, deny_reason, cover_url FROM requests WHERE requested_by = ? AND source = ? AND external_id = ? AND status IN ('pending','approved') LIMIT 1
 `
 
 type GetOpenRequestByItemParams struct {
@@ -85,12 +87,13 @@ func (q *Queries) GetOpenRequestByItem(ctx context.Context, arg GetOpenRequestBy
 		&i.DecidedAt,
 		&i.DownloadJobID,
 		&i.DenyReason,
+		&i.CoverUrl,
 	)
 	return i, err
 }
 
 const getRequest = `-- name: GetRequest :one
-SELECT id, requested_by, source, external_id, title, artist, album, isrc, duration_ms, cover_art_id, status, created_at, decided_by, decided_at, download_job_id, deny_reason FROM requests WHERE id = ?
+SELECT id, requested_by, source, external_id, title, artist, album, isrc, duration_ms, cover_art_id, status, created_at, decided_by, decided_at, download_job_id, deny_reason, cover_url FROM requests WHERE id = ?
 `
 
 func (q *Queries) GetRequest(ctx context.Context, id string) (Request, error) {
@@ -113,12 +116,13 @@ func (q *Queries) GetRequest(ctx context.Context, id string) (Request, error) {
 		&i.DecidedAt,
 		&i.DownloadJobID,
 		&i.DenyReason,
+		&i.CoverUrl,
 	)
 	return i, err
 }
 
 const getRequestByDownloadJob = `-- name: GetRequestByDownloadJob :one
-SELECT id, requested_by, source, external_id, title, artist, album, isrc, duration_ms, cover_art_id, status, created_at, decided_by, decided_at, download_job_id, deny_reason FROM requests WHERE download_job_id = ?
+SELECT id, requested_by, source, external_id, title, artist, album, isrc, duration_ms, cover_art_id, status, created_at, decided_by, decided_at, download_job_id, deny_reason, cover_url FROM requests WHERE download_job_id = ?
 `
 
 func (q *Queries) GetRequestByDownloadJob(ctx context.Context, downloadJobID sql.NullString) (Request, error) {
@@ -141,12 +145,13 @@ func (q *Queries) GetRequestByDownloadJob(ctx context.Context, downloadJobID sql
 		&i.DecidedAt,
 		&i.DownloadJobID,
 		&i.DenyReason,
+		&i.CoverUrl,
 	)
 	return i, err
 }
 
 const listRequests = `-- name: ListRequests :many
-SELECT id, requested_by, source, external_id, title, artist, album, isrc, duration_ms, cover_art_id, status, created_at, decided_by, decided_at, download_job_id, deny_reason FROM requests ORDER BY created_at DESC
+SELECT id, requested_by, source, external_id, title, artist, album, isrc, duration_ms, cover_art_id, status, created_at, decided_by, decided_at, download_job_id, deny_reason, cover_url FROM requests ORDER BY created_at DESC
 `
 
 func (q *Queries) ListRequests(ctx context.Context) ([]Request, error) {
@@ -175,6 +180,7 @@ func (q *Queries) ListRequests(ctx context.Context) ([]Request, error) {
 			&i.DecidedAt,
 			&i.DownloadJobID,
 			&i.DenyReason,
+			&i.CoverUrl,
 		); err != nil {
 			return nil, err
 		}
@@ -190,7 +196,7 @@ func (q *Queries) ListRequests(ctx context.Context) ([]Request, error) {
 }
 
 const listRequestsByStatus = `-- name: ListRequestsByStatus :many
-SELECT id, requested_by, source, external_id, title, artist, album, isrc, duration_ms, cover_art_id, status, created_at, decided_by, decided_at, download_job_id, deny_reason FROM requests WHERE status = ? ORDER BY created_at DESC
+SELECT id, requested_by, source, external_id, title, artist, album, isrc, duration_ms, cover_art_id, status, created_at, decided_by, decided_at, download_job_id, deny_reason, cover_url FROM requests WHERE status = ? ORDER BY created_at DESC
 `
 
 func (q *Queries) ListRequestsByStatus(ctx context.Context, status string) ([]Request, error) {
@@ -219,6 +225,7 @@ func (q *Queries) ListRequestsByStatus(ctx context.Context, status string) ([]Re
 			&i.DecidedAt,
 			&i.DownloadJobID,
 			&i.DenyReason,
+			&i.CoverUrl,
 		); err != nil {
 			return nil, err
 		}
@@ -234,7 +241,7 @@ func (q *Queries) ListRequestsByStatus(ctx context.Context, status string) ([]Re
 }
 
 const listRequestsForOwner = `-- name: ListRequestsForOwner :many
-SELECT id, requested_by, source, external_id, title, artist, album, isrc, duration_ms, cover_art_id, status, created_at, decided_by, decided_at, download_job_id, deny_reason FROM requests WHERE requested_by = ? ORDER BY created_at DESC
+SELECT id, requested_by, source, external_id, title, artist, album, isrc, duration_ms, cover_art_id, status, created_at, decided_by, decided_at, download_job_id, deny_reason, cover_url FROM requests WHERE requested_by = ? ORDER BY created_at DESC
 `
 
 func (q *Queries) ListRequestsForOwner(ctx context.Context, requestedBy string) ([]Request, error) {
@@ -263,6 +270,7 @@ func (q *Queries) ListRequestsForOwner(ctx context.Context, requestedBy string) 
 			&i.DecidedAt,
 			&i.DownloadJobID,
 			&i.DenyReason,
+			&i.CoverUrl,
 		); err != nil {
 			return nil, err
 		}

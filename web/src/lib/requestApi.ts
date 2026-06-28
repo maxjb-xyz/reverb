@@ -14,6 +14,7 @@ export interface Request {
   isrc?: string
   durationMs?: number
   coverArtId?: string
+  coverUrl?: string
   status: RequestStatus
   createdAt: number // unix seconds
   decidedBy?: string
@@ -31,6 +32,7 @@ export interface CreateRequestItem {
   isrc?: string
   durationMs?: number
   coverArtId?: string
+  coverUrl?: string
 }
 
 export interface RequestEventPayload {
