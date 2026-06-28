@@ -3,7 +3,9 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { DownloadAction } from './DownloadAction'
 import { useDownloads } from '../../lib/downloadStore'
 import { useAuthStore } from '../../lib/authStore'
+import { useRequestStore } from '../../lib/requestApi'
 import type { ExternalResult, DownloadJob } from '../../lib/types'
+import type { Request } from '../../lib/requestApi'
 
 function setCaps(capabilities: string[]) {
   useAuthStore.setState({
@@ -52,6 +54,28 @@ const retryDownloadMock = vi.fn(
       finishedAt: 0,
     } as DownloadJob),
 )
+
+const postRequestMock = vi.fn(
+  (_item?: unknown): Promise<Request> =>
+    Promise.resolve({
+      id: 'req-1',
+      requestedBy: 'u',
+      source: 'spotify',
+      externalId: 'sp1',
+      title: 'Song',
+      artist: 'Artist',
+      status: 'pending',
+      createdAt: 1700000000,
+    } as Request),
+)
+
+vi.mock('../../lib/requestApi', async (importOriginal) => {
+  const mod = await importOriginal<typeof import('../../lib/requestApi')>()
+  return {
+    ...mod,
+    postRequest: (...args: Parameters<typeof postRequestMock>) => postRequestMock(...args),
+  }
+})
 
 vi.mock('../../lib/downloadApi', () => ({
   postDownload: (req: unknown) => postDownloadMock(req),
@@ -119,6 +143,7 @@ describe('DownloadAction', () => {
 
   beforeEach(() => {
     useDownloads.setState({ jobs: {} })
+    useRequestStore.setState({ byId: {} })
     vi.clearAllMocks()
     // default: user can download, 1 enabled downloader
     setCaps(['auto_approve'])
@@ -465,6 +490,87 @@ describe('DownloadAction', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Download T' }))
     expect(postDownloadMock).toHaveBeenCalledWith(expect.objectContaining({ downloader: 'spotdl' }))
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
+  // ── Task 8: Request affordance ────────────────────────────────────────────
+
+  it('request cap only: not-in-library → renders "Request" button, not the download control', () => {
+    setCaps(['request']) // no auto_approve
+    render(<DownloadAction result={makeResult()} onPlay={onPlay} />)
+
+    expect(screen.getByRole('button', { name: /^request$/i })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /download/i })).not.toBeInTheDocument()
+  })
+
+  it('request cap only: clicking Request calls postRequest and transitions to "Requested"', async () => {
+    setCaps(['request'])
+    render(<DownloadAction result={makeResult()} onPlay={onPlay} />)
+
+    const btn = screen.getByRole('button', { name: /^request$/i })
+    fireEvent.click(btn)
+
+    await waitFor(() => expect(postRequestMock).toHaveBeenCalledTimes(1))
+    expect(postRequestMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        source: 'spotify',
+        externalId: 'sp1',
+        title: 'Song',
+        artist: 'Artist',
+        album: 'Album',
+      }),
+    )
+    // After the request resolves the store has the request → "Requested" shows
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /requested/i })).toBeInTheDocument(),
+    )
+    expect(screen.queryByRole('button', { name: /^request$/i })).not.toBeInTheDocument()
+  })
+
+  it('request cap only + pending request in store → shows "Requested" (no Request button)', () => {
+    setCaps(['request'])
+    const req: Request = {
+      id: 'req-1',
+      requestedBy: 'u',
+      source: 'spotify',
+      externalId: 'sp1',
+      title: 'Song',
+      artist: 'Artist',
+      status: 'pending',
+      createdAt: 1700000000,
+    }
+    useRequestStore.getState().upsert(req)
+    render(<DownloadAction result={makeResult()} onPlay={onPlay} />)
+
+    expect(screen.getByRole('button', { name: /requested/i })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^request$/i })).not.toBeInTheDocument()
+  })
+
+  it('auto_approve cap → renders Download button (unchanged)', () => {
+    setCaps(['auto_approve'])
+    render(<DownloadAction result={makeResult()} onPlay={onPlay} />)
+
+    expect(screen.getByRole('button', { name: /download song/i })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^request$/i })).not.toBeInTheDocument()
+  })
+
+  it('neither cap → no add control, but in-library Play still renders', () => {
+    setCaps([])
+    const result = makeResult({
+      match: { status: 'in_library', libraryTrackId: 'lib-t3', method: 'isrc', confidence: 1 },
+    })
+    render(<DownloadAction result={result} onPlay={onPlay} />)
+
+    expect(screen.getByText('In Library')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^request$/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /download/i })).not.toBeInTheDocument()
+  })
+
+  it('neither cap, not-in-library → no add control at all (null)', () => {
+    setCaps([])
+    render(<DownloadAction result={makeResult()} onPlay={onPlay} />)
+
+    expect(screen.queryByRole('button', { name: /^request$/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /download/i })).not.toBeInTheDocument()
   })
 
   // ── 20. override caret → pick Lidarr → album disclosure → confirm enqueues lidarr

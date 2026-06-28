@@ -76,6 +76,9 @@ interface RequestStore {
   applyRequestEvent(payload: RequestEventPayload): void
   mine(userId?: string): Request[]
   pending(): Request[]
+  /** Returns the most relevant request for the given source+externalId pair,
+   *  preferring an open (pending/approved) entry when multiple exist. */
+  byExternal(source: string, externalId: string): Request | undefined
 }
 
 export const useRequestStore = create<RequestStore>((set, get) => ({
@@ -108,4 +111,16 @@ export const useRequestStore = create<RequestStore>((set, get) => ({
 
   pending: () =>
     Object.values(get().byId).filter((r) => r.status === 'pending'),
+
+  byExternal: (source, externalId) => {
+    const matches = Object.values(get().byId).filter(
+      (r) => r.source === source && r.externalId === externalId,
+    )
+    if (matches.length === 0) return undefined
+    // Prefer an open (pending/approved) entry when multiple exist
+    return (
+      matches.find((r) => r.status === 'pending' || r.status === 'approved') ??
+      matches[0]
+    )
+  },
 }))

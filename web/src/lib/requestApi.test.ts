@@ -147,4 +147,33 @@ describe('useRequestStore', () => {
     useRequestStore.getState().setMine([mkRequest('r1', 'pending', 'alice'), mkRequest('r2', 'approved', 'bob')])
     expect(useRequestStore.getState().mine()).toHaveLength(2)
   })
+
+  // ── byExternal ────────────────────────────────────────────────────────────
+
+  it('byExternal returns undefined when no matching request exists', () => {
+    expect(useRequestStore.getState().byExternal('spotify', 'sp1')).toBeUndefined()
+  })
+
+  it('byExternal returns the matching request by source+externalId', () => {
+    const req = mkRequest('r1', 'pending')
+    req.source = 'spotify'
+    req.externalId = 'sp1'
+    useRequestStore.getState().upsert(req)
+    expect(useRequestStore.getState().byExternal('spotify', 'sp1')).toEqual(req)
+  })
+
+  it('byExternal prefers an open (pending) request when multiple exist for same source+externalId', () => {
+    const denied: Request = { ...mkRequest('r1', 'denied'), source: 'spotify', externalId: 'sp1' }
+    const open: Request = { ...mkRequest('r2', 'pending'), source: 'spotify', externalId: 'sp1' }
+    useRequestStore.getState().upsert(denied)
+    useRequestStore.getState().upsert(open)
+    expect(useRequestStore.getState().byExternal('spotify', 'sp1')?.id).toBe('r2')
+  })
+
+  it('byExternal returns undefined for a different source or externalId', () => {
+    const req: Request = { ...mkRequest('r1', 'pending'), source: 'spotify', externalId: 'sp1' }
+    useRequestStore.getState().upsert(req)
+    expect(useRequestStore.getState().byExternal('tidal', 'sp1')).toBeUndefined()
+    expect(useRequestStore.getState().byExternal('spotify', 'other')).toBeUndefined()
+  })
 })

@@ -4,6 +4,7 @@ import { Badge, ProgressRing, Icon, Button } from '../ui'
 import { DownloadPopover } from './DownloadPopover'
 import { useDownloads } from '../../lib/downloadStore'
 import { postDownload, retryDownload, reqFromResult } from '../../lib/downloadApi'
+import { postRequest, useRequestStore } from '../../lib/requestApi'
 import { useAdapters } from '../../lib/adaptersApi'
 import { useSettings } from '../../lib/settingsApi'
 import { useAuthStore } from '../../lib/authStore'
@@ -44,11 +45,15 @@ export function DownloadAction({ result, onPlay }: Props) {
   const job = useDownloads((s) => s.byExternal(result.source, result.externalId))
   const downloaders = useDownloaders()
 
-  // Defense-in-depth: a user without `auto_approve` never sees the download
-  // affordance (the backend enforces this regardless). The in-library Play
-  // affordance below is unaffected. The "Request" fallback is a future
-  // sub-project — for now we simply omit the control.
+  // Defense-in-depth: the backend enforces these caps regardless.
   const canDownload = useAuthStore((s) => s.can('auto_approve'))
+  const canRequest = useAuthStore((s) => s.can('request'))
+
+  // For request-only users: find a matching pending/approved request so we can
+  // show "Requested" instead of "Request" once one exists.
+  const matchingRequest = useRequestStore((s) =>
+    canRequest && !canDownload ? s.byExternal(result.source, result.externalId) : undefined,
+  )
 
   // A completed job that matched a library track is treated as in-library.
   const inLibraryTrackId =
@@ -163,10 +168,49 @@ export function DownloadAction({ result, onPlay }: Props) {
   }
 
   // ── Capability gate ───────────────────────────────────────────────────────
-  // Past the in-library Play branch, everything below is a download affordance
-  // (queue/progress/retry/the Download button). Users without `auto_approve`
-  // get nothing here.
-  if (!canDownload) return null
+  // Three branches: auto_approve → full download control; request → Request
+  // affordance; neither → nothing.
+  if (!canDownload) {
+    if (canRequest) {
+      // "Requested" if a pending/approved request exists, else "Request" button.
+      const isRequested =
+        matchingRequest?.status === 'pending' || matchingRequest?.status === 'approved'
+      return isRequested ? (
+        <button
+          type="button"
+          disabled
+          aria-label="Requested"
+          className="inline-flex items-center gap-1 rounded-full border border-border-subtle px-2.5 py-1 text-xs font-bold text-text-muted opacity-60 cursor-default"
+        >
+          Requested
+        </button>
+      ) : (
+        <button
+          type="button"
+          aria-label="Request"
+          onClick={(e) => {
+            e.stopPropagation()
+            postRequest({
+              source: result.source,
+              externalId: result.externalId,
+              title: result.title,
+              artist: result.artist,
+              album: result.album,
+              isrc: result.isrc,
+              durationMs: result.durationMs,
+              coverArtId: result.coverArtId,
+            })
+              .then((req) => useRequestStore.getState().upsert(req))
+              .catch((err) => console.error('[DownloadAction] postRequest failed:', err))
+          }}
+          className="inline-flex items-center gap-1 rounded-full border border-border-subtle px-2.5 py-1 text-xs font-bold text-text-primary transition-colors hover:bg-raised-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent active:opacity-80"
+        >
+          Request
+        </button>
+      )
+    }
+    return null
+  }
 
   // ── 2a. Queued (incl. optimistic post-click) ─────────────────────────────
   // A worker hasn't picked it up yet — show "Queued" with an indeterminate ring,
