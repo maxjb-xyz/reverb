@@ -277,6 +277,20 @@ func (q *Queries) ListRequestsForOwner(ctx context.Context, requestedBy string) 
 	return items, nil
 }
 
+const setRequestStatus = `-- name: SetRequestStatus :exec
+UPDATE requests SET status = ? WHERE id = ?
+`
+
+type SetRequestStatusParams struct {
+	Status string `json:"status"`
+	ID     string `json:"id"`
+}
+
+func (q *Queries) SetRequestStatus(ctx context.Context, arg SetRequestStatusParams) error {
+	_, err := q.db.ExecContext(ctx, setRequestStatus, arg.Status, arg.ID)
+	return err
+}
+
 const updateRequestStatus = `-- name: UpdateRequestStatus :exec
 UPDATE requests SET status = ?, decided_by = ?, decided_at = ?, download_job_id = ?, deny_reason = ? WHERE id = ?
 `

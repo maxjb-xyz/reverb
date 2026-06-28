@@ -242,7 +242,8 @@ func TestCancelOthersForbidden(t *testing.T) {
 	}
 }
 
-// TestMarkFulfilledFlipsAndPublishes verifies approved→fulfilled transition + event.
+// TestMarkFulfilledFlipsAndPublishes verifies approved→fulfilled transition + event,
+// and that approval metadata (decided_by, decided_at, download_job_id) is preserved.
 func TestMarkFulfilledFlipsAndPublishes(t *testing.T) {
 	svc, pub, userID := newTestService(t)
 	ctx := context.Background()
@@ -264,11 +265,76 @@ func TestMarkFulfilledFlipsAndPublishes(t *testing.T) {
 	if got.Status != core.RequestFulfilled {
 		t.Fatalf("want status=%q, got %q", core.RequestFulfilled, got.Status)
 	}
+	// approval metadata must survive the fulfill transition
+	if got.DecidedBy != "manager-1" {
+		t.Fatalf("MarkFulfilled wiped DecidedBy: want %q, got %q", "manager-1", got.DecidedBy)
+	}
+	if got.DownloadJobID != "job-1" {
+		t.Fatalf("MarkFulfilled wiped DownloadJobID: want %q, got %q", "job-1", got.DownloadJobID)
+	}
+	if got.DecidedAt == 0 {
+		t.Fatal("MarkFulfilled wiped DecidedAt")
+	}
 	if len(pub.events) != 1 || pub.events[0].Topic != request.TopicUpdated {
 		t.Fatalf("want 1 request.updated event after MarkFulfilled, got %d", len(pub.events))
 	}
 	re := pub.events[0].Payload.(core.RequestEvent)
 	if re.TargetUserID != userID {
 		t.Fatalf("want TargetUserID=%q, got %q", userID, re.TargetUserID)
+	}
+	// event payload must also carry the preserved metadata
+	if re.Request.DecidedBy != "manager-1" {
+		t.Fatalf("event payload DecidedBy: want %q, got %q", "manager-1", re.Request.DecidedBy)
+	}
+	if re.Request.DownloadJobID != "job-1" {
+		t.Fatalf("event payload DownloadJobID: want %q, got %q", "job-1", re.Request.DownloadJobID)
+	}
+}
+
+// TestMarkFailedPreservesMetadata verifies approved→failed preserves approval metadata + publishes event.
+func TestMarkFailedPreservesMetadata(t *testing.T) {
+	svc, pub, userID := newTestService(t)
+	ctx := context.Background()
+
+	req, _, _ := svc.Create(ctx, userID, testItem)
+	if _, err := svc.MarkApproved(ctx, req.ID, "manager-1", "job-1"); err != nil {
+		t.Fatal(err)
+	}
+	pub.events = nil // clear approval event
+
+	if err := svc.MarkFailed(ctx, req.ID, "download error"); err != nil {
+		t.Fatalf("MarkFailed: %v", err)
+	}
+
+	got, err := svc.Get(ctx, req.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Status != core.RequestFailed {
+		t.Fatalf("want status=%q, got %q", core.RequestFailed, got.Status)
+	}
+	// approval metadata must survive the fail transition
+	if got.DecidedBy != "manager-1" {
+		t.Fatalf("MarkFailed wiped DecidedBy: want %q, got %q", "manager-1", got.DecidedBy)
+	}
+	if got.DownloadJobID != "job-1" {
+		t.Fatalf("MarkFailed wiped DownloadJobID: want %q, got %q", "job-1", got.DownloadJobID)
+	}
+	if got.DecidedAt == 0 {
+		t.Fatal("MarkFailed wiped DecidedAt")
+	}
+	if len(pub.events) != 1 || pub.events[0].Topic != request.TopicUpdated {
+		t.Fatalf("want 1 request.updated event after MarkFailed, got %d", len(pub.events))
+	}
+	re := pub.events[0].Payload.(core.RequestEvent)
+	if re.TargetUserID != userID {
+		t.Fatalf("want TargetUserID=%q, got %q", userID, re.TargetUserID)
+	}
+	// event payload must also carry the preserved metadata
+	if re.Request.DecidedBy != "manager-1" {
+		t.Fatalf("event payload DecidedBy: want %q, got %q", "manager-1", re.Request.DecidedBy)
+	}
+	if re.Request.DownloadJobID != "job-1" {
+		t.Fatalf("event payload DownloadJobID: want %q, got %q", "job-1", re.Request.DownloadJobID)
 	}
 }

@@ -23,5 +23,8 @@ SELECT * FROM requests WHERE status = ? ORDER BY created_at DESC;
 -- name: UpdateRequestStatus :exec
 UPDATE requests SET status = ?, decided_by = ?, decided_at = ?, download_job_id = ?, deny_reason = ? WHERE id = ?;
 
+-- name: SetRequestStatus :exec
+UPDATE requests SET status = ? WHERE id = ?;
+
 -- name: DeleteRequest :exec
 DELETE FROM requests WHERE id = ?;

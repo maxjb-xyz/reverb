@@ -39,6 +39,7 @@ type Querier interface {
 	ListRequests(ctx context.Context) ([]db.Request, error)
 	ListRequestsByStatus(ctx context.Context, status string) ([]db.Request, error)
 	UpdateRequestStatus(ctx context.Context, arg db.UpdateRequestStatusParams) error
+	SetRequestStatus(ctx context.Context, arg db.SetRequestStatusParams) error
 	DeleteRequest(ctx context.Context, id string) error
 }
 
@@ -106,7 +107,10 @@ func (s *Service) NotifyPending(ctx context.Context, req core.Request) {
 func (s *Service) MarkApproved(ctx context.Context, id, approverID, downloadJobID string) (core.Request, error) {
 	row, err := s.q.GetRequest(ctx, id)
 	if err != nil {
-		return core.Request{}, ErrNotFound
+		if errors.Is(err, sql.ErrNoRows) {
+			return core.Request{}, ErrNotFound
+		}
+		return core.Request{}, err
 	}
 	if row.Status != core.RequestPending {
 		return core.Request{}, ErrNotPending
@@ -129,7 +133,10 @@ func (s *Service) MarkApproved(ctx context.Context, id, approverID, downloadJobI
 func (s *Service) Deny(ctx context.Context, id, approverID, reason string) (core.Request, error) {
 	row, err := s.q.GetRequest(ctx, id)
 	if err != nil {
-		return core.Request{}, ErrNotFound
+		if errors.Is(err, sql.ErrNoRows) {
+			return core.Request{}, ErrNotFound
+		}
+		return core.Request{}, err
 	}
 	if row.Status != core.RequestPending {
 		return core.Request{}, ErrNotPending
@@ -153,7 +160,10 @@ func (s *Service) Deny(ctx context.Context, id, approverID, reason string) (core
 func (s *Service) Cancel(ctx context.Context, id, requesterID string) error {
 	row, err := s.q.GetRequest(ctx, id)
 	if err != nil {
-		return ErrNotFound
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrNotFound
+		}
+		return err
 	}
 	if row.RequestedBy != requesterID {
 		return ErrForbidden
@@ -165,18 +175,14 @@ func (s *Service) Cancel(ctx context.Context, id, requesterID string) error {
 }
 
 // MarkFulfilled sets status to fulfilled and publishes request.updated.
+// Uses SetRequestStatus (status-only) to preserve decided_by/decided_at/download_job_id.
 func (s *Service) MarkFulfilled(ctx context.Context, id string) error {
-	if err := s.q.UpdateRequestStatus(ctx, db.UpdateRequestStatusParams{
-		ID:            id,
-		Status:        core.RequestFulfilled,
-		DecidedBy:     sql.NullString{},
-		DecidedAt:     sql.NullInt64{},
-		DownloadJobID: sql.NullString{},
-		DenyReason:    sql.NullString{},
+	if err := s.q.SetRequestStatus(ctx, db.SetRequestStatusParams{
+		ID:     id,
+		Status: core.RequestFulfilled,
 	}); err != nil {
 		return err
 	}
-	// preserve existing decided_by/at/download_job_id by re-reading
 	row, err := s.q.GetRequest(ctx, id)
 	if err != nil {
 		return err
@@ -186,14 +192,11 @@ func (s *Service) MarkFulfilled(ctx context.Context, id string) error {
 }
 
 // MarkFailed sets status to failed and publishes request.updated.
+// Uses SetRequestStatus (status-only) to preserve decided_by/decided_at/download_job_id.
 func (s *Service) MarkFailed(ctx context.Context, id, errMsg string) error {
-	if err := s.q.UpdateRequestStatus(ctx, db.UpdateRequestStatusParams{
-		ID:            id,
-		Status:        core.RequestFailed,
-		DecidedBy:     sql.NullString{},
-		DecidedAt:     sql.NullInt64{},
-		DownloadJobID: sql.NullString{},
-		DenyReason:    nullStr(errMsg),
+	if err := s.q.SetRequestStatus(ctx, db.SetRequestStatusParams{
+		ID:     id,
+		Status: core.RequestFailed,
 	}); err != nil {
 		return err
 	}
@@ -209,7 +212,10 @@ func (s *Service) MarkFailed(ctx context.Context, id, errMsg string) error {
 func (s *Service) Get(ctx context.Context, id string) (core.Request, error) {
 	row, err := s.q.GetRequest(ctx, id)
 	if err != nil {
-		return core.Request{}, ErrNotFound
+		if errors.Is(err, sql.ErrNoRows) {
+			return core.Request{}, ErrNotFound
+		}
+		return core.Request{}, err
 	}
 	return fromRow(row), nil
 }
@@ -243,7 +249,10 @@ func (s *Service) ListAll(ctx context.Context, statusFilter string) ([]core.Requ
 func (s *Service) GetByDownloadJob(ctx context.Context, jobID string) (core.Request, error) {
 	row, err := s.q.GetRequestByDownloadJob(ctx, nullStr(jobID))
 	if err != nil {
-		return core.Request{}, ErrNotFound
+		if errors.Is(err, sql.ErrNoRows) {
+			return core.Request{}, ErrNotFound
+		}
+		return core.Request{}, err
 	}
 	return fromRow(row), nil
 }
