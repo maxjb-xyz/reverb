@@ -176,14 +176,25 @@ func (s *Service) Cancel(ctx context.Context, id, requesterID string) error {
 
 // MarkFulfilled sets status to fulfilled and publishes request.updated.
 // Uses SetRequestStatus (status-only) to preserve decided_by/decided_at/download_job_id.
+// No-ops (without publishing) if the request is already in a terminal state (fulfilled).
 func (s *Service) MarkFulfilled(ctx context.Context, id string) error {
+	row, err := s.q.GetRequest(ctx, id)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrNotFound
+		}
+		return err
+	}
+	if row.Status == core.RequestFulfilled {
+		return nil
+	}
 	if err := s.q.SetRequestStatus(ctx, db.SetRequestStatusParams{
 		ID:     id,
 		Status: core.RequestFulfilled,
 	}); err != nil {
 		return err
 	}
-	row, err := s.q.GetRequest(ctx, id)
+	row, err = s.q.GetRequest(ctx, id)
 	if err != nil {
 		return err
 	}
@@ -193,14 +204,25 @@ func (s *Service) MarkFulfilled(ctx context.Context, id string) error {
 
 // MarkFailed sets status to failed and publishes request.updated.
 // Uses SetRequestStatus (status-only) to preserve decided_by/decided_at/download_job_id.
+// No-ops (without publishing) if the request is already in a terminal state (failed or fulfilled).
 func (s *Service) MarkFailed(ctx context.Context, id, errMsg string) error {
+	row, err := s.q.GetRequest(ctx, id)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrNotFound
+		}
+		return err
+	}
+	if row.Status == core.RequestFailed || row.Status == core.RequestFulfilled {
+		return nil
+	}
 	if err := s.q.SetRequestStatus(ctx, db.SetRequestStatusParams{
 		ID:     id,
 		Status: core.RequestFailed,
 	}); err != nil {
 		return err
 	}
-	row, err := s.q.GetRequest(ctx, id)
+	row, err = s.q.GetRequest(ctx, id)
 	if err != nil {
 		return err
 	}

@@ -291,6 +291,64 @@ func TestMarkFulfilledFlipsAndPublishes(t *testing.T) {
 	}
 }
 
+// TestMarkFulfilledIdempotentPublishesOnce verifies that calling MarkFulfilled twice
+// on an already-fulfilled request publishes request.updated exactly once (no duplicate toast).
+func TestMarkFulfilledIdempotentPublishesOnce(t *testing.T) {
+	svc, pub, userID := newTestService(t)
+	ctx := context.Background()
+
+	req, _, _ := svc.Create(ctx, userID, testItem)
+	if _, err := svc.MarkApproved(ctx, req.ID, "manager-1", "job-1"); err != nil {
+		t.Fatal(err)
+	}
+	pub.events = nil // clear approval event
+
+	// first call: should flip to fulfilled and publish
+	if err := svc.MarkFulfilled(ctx, req.ID); err != nil {
+		t.Fatalf("first MarkFulfilled: %v", err)
+	}
+	if len(pub.events) != 1 {
+		t.Fatalf("after first call: want 1 event, got %d", len(pub.events))
+	}
+
+	// second call (simulating duplicate download.complete): must no-op, no new event
+	if err := svc.MarkFulfilled(ctx, req.ID); err != nil {
+		t.Fatalf("second MarkFulfilled: %v", err)
+	}
+	if len(pub.events) != 1 {
+		t.Fatalf("after second call: want still 1 event (idempotent), got %d", len(pub.events))
+	}
+}
+
+// TestMarkFailedIdempotentPublishesOnce verifies that calling MarkFailed twice
+// on an already-failed request publishes request.updated exactly once.
+func TestMarkFailedIdempotentPublishesOnce(t *testing.T) {
+	svc, pub, userID := newTestService(t)
+	ctx := context.Background()
+
+	req, _, _ := svc.Create(ctx, userID, testItem)
+	if _, err := svc.MarkApproved(ctx, req.ID, "manager-1", "job-1"); err != nil {
+		t.Fatal(err)
+	}
+	pub.events = nil // clear approval event
+
+	// first call: should flip to failed and publish
+	if err := svc.MarkFailed(ctx, req.ID, "download error"); err != nil {
+		t.Fatalf("first MarkFailed: %v", err)
+	}
+	if len(pub.events) != 1 {
+		t.Fatalf("after first call: want 1 event, got %d", len(pub.events))
+	}
+
+	// second call: must no-op, no new event
+	if err := svc.MarkFailed(ctx, req.ID, "download error again"); err != nil {
+		t.Fatalf("second MarkFailed: %v", err)
+	}
+	if len(pub.events) != 1 {
+		t.Fatalf("after second call: want still 1 event (idempotent), got %d", len(pub.events))
+	}
+}
+
 // TestMarkFailedPreservesMetadata verifies approved→failed preserves approval metadata + publishes event.
 func TestMarkFailedPreservesMetadata(t *testing.T) {
 	svc, pub, userID := newTestService(t)
