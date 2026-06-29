@@ -2451,3 +2451,95 @@ func TestStopWithoutStartIsNoOp(t *testing.T) {
 		t.Fatal("Stop() without Start() did not return within 2s (potential deadlock)")
 	}
 }
+
+// ctxSensitiveAsyncDL is a fakeAsyncDL variant whose Submit blocks until the test
+// signals via readyCh, then checks ctx.Err(). This makes the cancellation test
+// deterministic: the test cancels the request context WHILE Submit is blocking,
+// so ctx.Err() is guaranteed to be non-nil if the un-detached context was passed.
+// With context.WithoutCancel the child ctx is never canceled → Submit returns the
+// ref and the job reaches Running.
+type ctxSensitiveAsyncDL struct {
+	fakeAsyncDL
+	readyCh chan struct{} // closed by the test to unblock Submit
+}
+
+func (d *ctxSensitiveAsyncDL) Submit(ctx context.Context, req core.DownloadRequest) (string, error) {
+	// Block until the test signals (gives it time to call cancel()).
+	<-d.readyCh
+	// Now check — if the un-detached request ctx was forwarded it will be canceled.
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+	return d.fakeAsyncDL.Submit(ctx, req)
+}
+
+// TestRetryAsyncDetachesRequestContext asserts that Retry's spawned goroutine uses
+// context.WithoutCancel so that canceling the caller's request context (which the
+// HTTP handler does the instant it returns) does not kill the in-flight Submit.
+//
+// Fail-without-fix: with the old `go m.submitAsync(ctx, …)` the request ctx is
+// forwarded into Submit; canceling it before Submit runs causes Submit to return
+// ctx.Err(), which submitAsync treats as a failure → job goes Failed.
+// With the fix (context.WithoutCancel(ctx)), Submit receives a non-canceled ctx →
+// job goes Running. The test is deterministic: Submit blocks on readyCh until the
+// test has called cancel(), guaranteeing the cancellation has propagated.
+func TestRetryAsyncDetachesRequestContext(t *testing.T) {
+	readyCh := make(chan struct{})
+	async := &ctxSensitiveAsyncDL{readyCh: readyCh}
+	async.name = "lidarr"
+	async.submitRef = "detach-ref-1"
+	store := newMemStore()
+
+	failed := core.DownloadJob{
+		ID: "async-detach-j1", DedupKey: "dk-async-detach", Status: core.DownloadFailed,
+		DownloaderName: "lidarr", Attempts: 1,
+		Source: "spotify", ExternalID: "album-detach-ext",
+		Artist: "Pink Floyd", Title: "The Wall", Album: "The Wall",
+	}
+	_ = store.Insert(context.Background(), failed, core.DownloadRequest{
+		Source: "spotify", ExternalID: "album-detach-ext", Artist: "Pink Floyd",
+		Title: "The Wall", Album: "The Wall", Granularity: core.GranularityAlbum,
+	})
+
+	m, _ := testManager(t, []Downloader{async}, store, nil, nil, nil)
+	m.SeedRequest("async-detach-j1", core.DownloadRequest{
+		Source: "spotify", ExternalID: "album-detach-ext", Artist: "Pink Floyd",
+		Title: "The Wall", Album: "The Wall", Granularity: core.GranularityAlbum,
+	})
+
+	// Simulate an HTTP handler context: the caller cancels it immediately after
+	// Retry returns (mimicking the Go HTTP server canceling r.Context() on return).
+	reqCtx, cancel := context.WithCancel(context.Background())
+
+	_, err := m.Retry(reqCtx, "async-detach-j1", "")
+	if err != nil {
+		t.Fatalf("Retry: %v", err)
+	}
+
+	// Cancel the request context BEFORE unblocking Submit. This guarantees the
+	// cancellation has propagated when Submit checks ctx.Err().
+	cancel()
+	close(readyCh) // now let Submit proceed and observe the (possibly canceled) ctx
+
+	// The job must reach Running (Submit succeeded with detached ctx), NOT Failed.
+	deadline := time.After(2 * time.Second)
+	for {
+		got, _, _ := store.Get(context.Background(), "async-detach-j1")
+		if got.Status == core.DownloadRunning {
+			if got.DownloaderRef != "detach-ref-1" {
+				t.Fatalf("ref = %q, want detach-ref-1", got.DownloaderRef)
+			}
+			return // pass
+		}
+		if got.Status == core.DownloadFailed {
+			t.Fatalf("job went Failed after retry — request ctx was NOT detached (context.WithoutCancel fix missing): error=%q", got.Error)
+		}
+		select {
+		case <-deadline:
+			got2, _, _ := store.Get(context.Background(), "async-detach-j1")
+			t.Fatalf("timed out waiting for Running (status=%q)", got2.Status)
+		default:
+			time.Sleep(time.Millisecond)
+		}
+	}
+}

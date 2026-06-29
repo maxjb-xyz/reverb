@@ -1153,7 +1153,7 @@ func (m *Manager) Retry(ctx context.Context, jobID string, manualURL string) (co
 	// (album/Lidarr) jobs to call Start, which returns "Start is not used (async
 	// downloader)" and immediately fails the retried job.
 	if async := m.asyncFor(job.DownloaderName); async != nil {
-		go m.submitAsync(ctx, job, req, async)
+		go m.submitAsync(context.WithoutCancel(ctx), job, req, async)
 		return job, nil
 	}
 	select {
