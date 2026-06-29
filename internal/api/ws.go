@@ -25,6 +25,7 @@ var wsTopics = []string{
 	download.TopicRemoved,
 	request.TopicCreated,
 	request.TopicUpdated,
+	"notification",
 }
 
 // wsShouldForward is a pure filter that decides whether to send an event to a
@@ -45,6 +46,9 @@ func wsShouldForward(cu auth.CurrentUser, ev events.Event) bool {
 		return cu.ID == re.TargetUserID
 	case request.TopicCreated:
 		return cu.Has(auth.CapManageRequests)
+	case "notification":
+		ne, ok := ev.Payload.(core.NotificationEvent)
+		return ok && cu.ID == ne.TargetUserID
 	default:
 		return true
 	}

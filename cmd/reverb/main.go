@@ -170,6 +170,7 @@ func main() {
 		Version:       version,
 		DataDir:       filepath.Dir(cfg.DBPath),
 		Requests:      reqSvc,
+		Notifications: notifSvc,
 	}
 	// Guard against the "non-nil interface wrapping a nil pointer" trap: only set
 	// the interface fields when the concrete service is actually present.

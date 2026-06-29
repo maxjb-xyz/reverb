@@ -177,4 +177,35 @@ func TestWSShouldForward(t *testing.T) {
 	if wsShouldForward(regularUser, malformed) {
 		t.Error("malformed request.updated: want false, got true")
 	}
+
+	// notification: forward only to the TargetUserID.
+	notifForSelf := events.Event{
+		Topic: "notification",
+		Payload: core.NotificationEvent{
+			TargetUserID: "user-1",
+			Notification: core.Notification{ID: "n1", Title: "Hi"},
+		},
+	}
+	notifForOther := events.Event{
+		Topic: "notification",
+		Payload: core.NotificationEvent{
+			TargetUserID: "user-99",
+			Notification: core.Notification{ID: "n2", Title: "Hi"},
+		},
+	}
+	if !wsShouldForward(regularUser, notifForSelf) {
+		t.Error("notification for self: want true, got false")
+	}
+	if wsShouldForward(regularUser, notifForOther) {
+		t.Error("notification for other user: want false, got true")
+	}
+	if wsShouldForward(managerUser, notifForSelf) {
+		t.Error("notification targeted at user-1, sent to user-2: want false, got true")
+	}
+
+	// Malformed notification payload → false, not a panic.
+	malformedNotif := events.Event{Topic: "notification", Payload: 123}
+	if wsShouldForward(regularUser, malformedNotif) {
+		t.Error("malformed notification payload: want false, got true")
+	}
 }

@@ -14,6 +14,7 @@ import (
 	"github.com/maxjb-xyz/reverb/internal/core"
 	"github.com/maxjb-xyz/reverb/internal/events"
 	"github.com/maxjb-xyz/reverb/internal/library"
+	"github.com/maxjb-xyz/reverb/internal/notification"
 	"github.com/maxjb-xyz/reverb/internal/registry"
 	"github.com/maxjb-xyz/reverb/internal/request"
 	"github.com/maxjb-xyz/reverb/internal/search"
@@ -115,6 +116,8 @@ type Deps struct {
 	LibraryStatus func() (mode string, state string)
 	// Requests is the request service. Nil in tests/legacy that don't use the request system.
 	Requests *request.Service
+	// Notifications is the notification service. Nil in tests/legacy that don't use notifications.
+	Notifications *notification.Service
 }
 
 type Server struct {
@@ -247,6 +250,8 @@ func (s *Server) routes() {
 			pr.Post("/downloads/{id}/cancel", s.handleCancelDownload)
 			pr.Post("/downloads/{id}/retry", s.handleRetryDownload)
 			pr.Get("/ws", s.handleWS)
+			pr.Get("/notifications", s.handleListNotifications)
+			pr.Post("/notifications/read", s.handleMarkNotificationsRead)
 
 			// manage library & integrations: adapter CRUD + server settings.
 			pr.Group(func(mr chi.Router) {
