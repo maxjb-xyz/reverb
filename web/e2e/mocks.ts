@@ -186,6 +186,25 @@ export async function installApiMocks(
   await page.route('**/api/v1/cover/**', (route: Route) =>
     route.fulfill({ status: 200, contentType: 'image/png', body: '' }),
   )
+
+  // Default notifications endpoint — empty list so the NotificationBell (present on
+  // every page via TopBar) hydrates without error. Individual specs OVERRIDE this by
+  // registering their own handler AFTER installApiMocks (Playwright matches
+  // most-recently-registered-first).
+  await page.route('**/api/v1/notifications/read', (route: Route) => {
+    if (route.request().method() === 'POST') {
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ unread: 0 }) })
+    }
+    return route.continue()
+  })
+
+  await page.route('**/api/v1/notifications', (route: Route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ notifications: [], unread: 0 }),
+    }),
+  )
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
