@@ -41,6 +41,7 @@ type Querier interface {
 	UpdateRequestStatus(ctx context.Context, arg db.UpdateRequestStatusParams) error
 	SetRequestStatus(ctx context.Context, arg db.SetRequestStatusParams) error
 	DeleteRequest(ctx context.Context, id string) error
+	CountPendingRequestsByUser(ctx context.Context, requestedBy string) (int64, error)
 }
 
 // Service manages request rows and publishes targeted WebSocket events.
@@ -272,6 +273,11 @@ func (s *Service) ListAll(ctx context.Context, statusFilter string) ([]core.Requ
 		return nil, err
 	}
 	return mapRows(rows), nil
+}
+
+// CountPending returns the number of pending requests for the given user.
+func (s *Service) CountPending(ctx context.Context, userID string) (int64, error) {
+	return s.q.CountPendingRequestsByUser(ctx, userID)
 }
 
 // GetByDownloadJob returns the request associated with a download job ID, or ErrNotFound.

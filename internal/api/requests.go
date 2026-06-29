@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log"
 	"net/http"
+	"strconv"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/maxjb-xyz/reverb/internal/auth"
@@ -16,10 +17,30 @@ import (
 // no download manager is configured.
 var errNoDownloader = errors.New("no downloader configured")
 
+// errQuotaReached is returned by createOneRequest when the user has reached
+// their pending-request cap (max_pending_requests_per_user setting).
+var errQuotaReached = errors.New("pending request quota reached")
+
 // createOneRequest runs the single-item request create/approve/pending logic.
 // Returns (req, created, err) where created is false when the request already
 // existed (dedup hit) and true when newly created (auto-approved+enqueued OR pending).
 func (s *Server) createOneRequest(ctx context.Context, cu auth.CurrentUser, item core.RequestItem) (core.Request, bool, error) {
+	// Quota enforcement: only applies to non-auto_approve users (their requests pend).
+	if !cu.Has("auto_approve") && s.deps.Adapters != nil {
+		cap := 0
+		if v, err := s.deps.Adapters.GetSetting(ctx, keyMaxPendingRequests); err == nil && v != "" {
+			if n, err2 := strconv.Atoi(v); err2 == nil {
+				cap = n
+			}
+		}
+		if cap > 0 {
+			n, _ := s.deps.Requests.CountPending(ctx, cu.ID)
+			if int(n) >= cap {
+				return core.Request{}, false, errQuotaReached
+			}
+		}
+	}
+
 	req, existed, err := s.deps.Requests.Create(ctx, cu.ID, item)
 	if err != nil {
 		return core.Request{}, false, err
@@ -64,6 +85,21 @@ func (s *Server) handleCreateRequest(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": err.Error()})
 			return
 		}
+		if errors.Is(err, errQuotaReached) {
+			cap := 0
+			if s.deps.Adapters != nil {
+				if v, e := s.deps.Adapters.GetSetting(r.Context(), keyMaxPendingRequests); e == nil && v != "" {
+					if n, e2 := strconv.Atoi(v); e2 == nil {
+						cap = n
+					}
+				}
+			}
+			writeJSON(w, http.StatusTooManyRequests, map[string]any{
+				"error": "You've reached your limit of pending requests — wait for some to be reviewed.",
+				"limit": cap,
+			})
+			return
+		}
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
@@ -73,8 +109,6 @@ func (s *Server) handleCreateRequest(w http.ResponseWriter, r *http.Request) {
 
 // handleBatchCreateRequests POST /requests/batch
 func (s *Server) handleBatchCreateRequests(w http.ResponseWriter, r *http.Request) {
-	// TODO(quota): enforce per-user request quota here (feature 2 — request quotas)
-
 	var body struct {
 		Items []core.RequestItem `json:"items"`
 	}
@@ -87,15 +121,20 @@ func (s *Server) handleBatchCreateRequests(w http.ResponseWriter, r *http.Reques
 	ctx := r.Context()
 
 	var (
-		created  int
-		skipped  int
-		failed   int
-		requests []core.Request
+		created    int
+		skipped    int
+		failed     int
+		quotaCapped int
+		requests   []core.Request
 	)
 
 	for _, item := range body.Items {
 		req, wasCreated, err := s.createOneRequest(ctx, cu, item)
 		if err != nil {
+			if errors.Is(err, errQuotaReached) {
+				quotaCapped++
+				continue
+			}
 			log.Printf("batch request: item %q error: %v", item.ExternalID, err)
 			failed++
 			continue
@@ -115,9 +154,10 @@ func (s *Server) handleBatchCreateRequests(w http.ResponseWriter, r *http.Reques
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{
-		"created":  created,
-		"skipped":  skipped,
-		"requests": requests,
+		"created":     created,
+		"skipped":     skipped,
+		"quotaCapped": quotaCapped,
+		"requests":    requests,
 	})
 }
 

@@ -26,5 +26,8 @@ UPDATE requests SET status = ?, decided_by = ?, decided_at = ?, download_job_id 
 -- name: SetRequestStatus :exec
 UPDATE requests SET status = ? WHERE id = ?;
 
+-- name: CountPendingRequestsByUser :one
+SELECT COUNT(*) FROM requests WHERE requested_by = ? AND status = 'pending';
+
 -- name: DeleteRequest :exec
 DELETE FROM requests WHERE id = ?;

@@ -135,6 +135,76 @@ func TestDefaultDownloaderSettingRemoved(t *testing.T) {
 	}
 }
 
+// TestMaxPendingRequestsPerUserSetting verifies the maxPendingRequestsPerUser
+// field in GET /settings (default 0 when unset) and that PUT /settings persists
+// it and round-trips (admin). Also validates non-negative enforcement.
+func TestMaxPendingRequestsPerUserSetting(t *testing.T) {
+	st, err := store.Open(t.TempDir() + "/quota.db")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { st.Close() })
+	if err := st.Migrate(); err != nil {
+		t.Fatal(err)
+	}
+	authSvc, tok := seededAuthToken(t, st)
+	srv := NewServer(Deps{Auth: authSvc, Adapters: st.Q()})
+	cookie := &http.Cookie{Name: sessionCookie, Value: tok}
+
+	// GET default → maxPendingRequestsPerUser must be 0.
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/settings", nil)
+	req.AddCookie(cookie)
+	srv.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET /settings status = %d", rec.Code)
+	}
+	var dto struct {
+		MaxPendingRequestsPerUser int `json:"maxPendingRequestsPerUser"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &dto); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if dto.MaxPendingRequestsPerUser != 0 {
+		t.Fatalf("default maxPendingRequestsPerUser = %d, want 0", dto.MaxPendingRequestsPerUser)
+	}
+
+	// PUT {maxPendingRequestsPerUser:3} → 200.
+	putRec := httptest.NewRecorder()
+	putReq := httptest.NewRequest(http.MethodPut, "/api/v1/settings",
+		bytes.NewBufferString(`{"maxPendingRequestsPerUser":3}`))
+	putReq.AddCookie(cookie)
+	srv.Handler().ServeHTTP(putRec, putReq)
+	if putRec.Code != http.StatusOK {
+		t.Fatalf("PUT /settings status = %d: %s", putRec.Code, putRec.Body.String())
+	}
+
+	// GET after PUT → must round-trip to 3.
+	getRec := httptest.NewRecorder()
+	getReq := httptest.NewRequest(http.MethodGet, "/api/v1/settings", nil)
+	getReq.AddCookie(cookie)
+	srv.Handler().ServeHTTP(getRec, getReq)
+	var dto2 struct {
+		MaxPendingRequestsPerUser int `json:"maxPendingRequestsPerUser"`
+	}
+	if err := json.Unmarshal(getRec.Body.Bytes(), &dto2); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if dto2.MaxPendingRequestsPerUser != 3 {
+		t.Fatalf("after PUT maxPendingRequestsPerUser = %d, want 3", dto2.MaxPendingRequestsPerUser)
+	}
+
+	// PUT with negative value → 400.
+	negRec := httptest.NewRecorder()
+	negReq := httptest.NewRequest(http.MethodPut, "/api/v1/settings",
+		bytes.NewBufferString(`{"maxPendingRequestsPerUser":-1}`))
+	negReq.AddCookie(cookie)
+	srv.Handler().ServeHTTP(negRec, negReq)
+	if negRec.Code != http.StatusBadRequest {
+		t.Fatalf("PUT negative maxPendingRequestsPerUser = %d, want 400", negRec.Code)
+	}
+}
+
 func TestLibraryBackendModeSetting(t *testing.T) {
 	st, err := store.Open(t.TempDir() + "/s.db")
 	if err != nil {

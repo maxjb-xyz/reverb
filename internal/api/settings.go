@@ -3,23 +3,26 @@ package api
 import (
 	"net/http"
 	"regexp"
+	"strconv"
 
 	"github.com/maxjb-xyz/reverb/internal/store/db"
 )
 
 const (
-	keyAccentColor        = "accent_color"
-	keyDynamicBackground  = "dynamic_background"
-	keyLibraryBackendMode = "library_backend_mode"
-	defaultAccentColor    = "#F0354B"
+	keyAccentColor           = "accent_color"
+	keyDynamicBackground     = "dynamic_background"
+	keyLibraryBackendMode    = "library_backend_mode"
+	keyMaxPendingRequests    = "max_pending_requests_per_user"
+	defaultAccentColor       = "#F0354B"
 )
 
 var hexColorRE = regexp.MustCompile(`^#[0-9a-fA-F]{6}$`)
 
 type settingsDTO struct {
-	AccentColor        string `json:"accentColor"`
-	DynamicBackground  bool   `json:"dynamicBackground"`
-	LibraryBackendMode string `json:"libraryBackendMode"`
+	AccentColor               string `json:"accentColor"`
+	DynamicBackground         bool   `json:"dynamicBackground"`
+	LibraryBackendMode        string `json:"libraryBackendMode"`
+	MaxPendingRequestsPerUser int    `json:"maxPendingRequestsPerUser"`
 }
 
 func (s *Server) currentSettings(r *http.Request) settingsDTO {
@@ -36,6 +39,11 @@ func (s *Server) currentSettings(r *http.Request) settingsDTO {
 	if v, err := s.deps.Adapters.GetSetting(r.Context(), keyLibraryBackendMode); err == nil && v != "" {
 		out.LibraryBackendMode = v
 	}
+	if v, err := s.deps.Adapters.GetSetting(r.Context(), keyMaxPendingRequests); err == nil && v != "" {
+		if n, err2 := strconv.Atoi(v); err2 == nil {
+			out.MaxPendingRequestsPerUser = n
+		}
+	}
 	return out
 }
 
@@ -45,9 +53,10 @@ func (s *Server) handleGetSettings(w http.ResponseWriter, r *http.Request) {
 
 // putSettingsBody uses pointers so an omitted field is left unchanged.
 type putSettingsBody struct {
-	AccentColor        *string `json:"accentColor"`
-	DynamicBackground  *bool   `json:"dynamicBackground"`
-	LibraryBackendMode *string `json:"libraryBackendMode"`
+	AccentColor               *string `json:"accentColor"`
+	DynamicBackground         *bool   `json:"dynamicBackground"`
+	LibraryBackendMode        *string `json:"libraryBackendMode"`
+	MaxPendingRequestsPerUser *int    `json:"maxPendingRequestsPerUser"`
 }
 
 func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
@@ -87,6 +96,17 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if err := s.deps.Adapters.UpsertSetting(r.Context(), db.UpsertSettingParams{Key: keyLibraryBackendMode, Value: mode}); err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not save settings"})
+			return
+		}
+	}
+	if body.MaxPendingRequestsPerUser != nil {
+		cap := *body.MaxPendingRequestsPerUser
+		if cap < 0 {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "maxPendingRequestsPerUser must be non-negative"})
+			return
+		}
+		if err := s.deps.Adapters.UpsertSetting(r.Context(), db.UpsertSettingParams{Key: keyMaxPendingRequests, Value: strconv.Itoa(cap)}); err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not save settings"})
 			return
 		}

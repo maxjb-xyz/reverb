@@ -3,6 +3,7 @@ package api
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -722,6 +723,255 @@ func TestBatchRequestEmpty(t *testing.T) {
 }
 
 // ─── End batch request handler tests ─────────────────────────────────────────────
+
+// ─── Quota tests ─────────────────────────────────────────────────────────────────
+
+// batchRespWithQuota is the expected response shape for POST /requests/batch
+// once quota enforcement is in place.
+type batchRespWithQuota struct {
+	Created    int            `json:"created"`
+	Skipped    int            `json:"skipped"`
+	QuotaCapped int           `json:"quotaCapped"`
+	Requests   []core.Request `json:"requests"`
+}
+
+// quotaTestServer builds a Server with a real store (temp SQLite), the request
+// service, Adapters (for settings), and a download manager. Returns the store
+// (so tests can write settings), the server, and the owner cookie.
+func quotaTestServer(t *testing.T, mgr DownloadManager) (*store.Store, *Server, *http.Cookie) {
+	t.Helper()
+	st, err := store.Open(t.TempDir() + "/quota.db")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { st.Close() })
+	if err := st.Migrate(); err != nil {
+		t.Fatal(err)
+	}
+	authSvc, ownerTok := seededAuthToken(t, st)
+
+	bus := events.New()
+	reqSvc := request.NewService(st.Q(), bus, time.Now)
+
+	srv := NewServer(Deps{
+		Auth:       authSvc,
+		Downloads:  mgr,
+		Requests:   reqSvc,
+		Adapters:   st.Q(),
+		Search:     registry.NewRegistry("search"),
+		Downloader: registry.NewRegistry("downloader"),
+	})
+	return st, srv, &http.Cookie{Name: sessionCookie, Value: ownerTok}
+}
+
+// setQuotaCap is a helper to PUT the maxPendingRequestsPerUser setting.
+func setQuotaCap(t *testing.T, srv *Server, cookie *http.Cookie, cap int) {
+	t.Helper()
+	body := fmt.Sprintf(`{"maxPendingRequestsPerUser":%d}`, cap)
+	rec := doReq(t, srv, cookie, http.MethodPut, "/api/v1/settings", body)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("setQuotaCap PUT /settings = %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+// TestQuotaSingleRequest_AtCapReturns429: cap=2, requester already has 2 pending
+// → POST /requests returns 429 with limit in body.
+func TestQuotaSingleRequest_AtCapReturns429(t *testing.T) {
+	mgr := newFakeManager()
+	_, srv, ownerCookie := quotaTestServer(t, mgr)
+
+	// Set cap=2 (admin).
+	setQuotaCap(t, srv, ownerCookie, 2)
+
+	// Create a requester user.
+	rec := doReq(t, srv, ownerCookie, http.MethodPost, "/api/v1/users",
+		`{"username":"quotareq1","password":"pw","roleId":"role-requester"}`)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create user = %d: %s", rec.Code, rec.Body.String())
+	}
+	reqTok := mustLogin(t, srv, "quotareq1", "pw")
+	reqCookie := &http.Cookie{Name: sessionCookie, Value: reqTok}
+
+	// Post 2 requests (distinct) → both should succeed.
+	item1 := `{"source":"spotify","externalId":"q-sp1","title":"Song1","artist":"A","album":"Al","durationMs":200000}`
+	item2 := `{"source":"spotify","externalId":"q-sp2","title":"Song2","artist":"A","album":"Al","durationMs":200000}`
+	rec = doReq(t, srv, reqCookie, http.MethodPost, "/api/v1/requests", item1)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("request 1 = %d: %s", rec.Code, rec.Body.String())
+	}
+	rec = doReq(t, srv, reqCookie, http.MethodPost, "/api/v1/requests", item2)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("request 2 = %d: %s", rec.Code, rec.Body.String())
+	}
+
+	// 3rd distinct request → 429 (quota reached).
+	item3 := `{"source":"spotify","externalId":"q-sp3","title":"Song3","artist":"A","album":"Al","durationMs":200000}`
+	rec = doReq(t, srv, reqCookie, http.MethodPost, "/api/v1/requests", item3)
+	if rec.Code != http.StatusTooManyRequests {
+		t.Fatalf("at-cap request = %d, want 429: %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Error string `json:"error"`
+		Limit int    `json:"limit"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode 429 body: %v", err)
+	}
+	if body.Limit != 2 {
+		t.Fatalf("429 body limit = %d, want 2", body.Limit)
+	}
+	if body.Error == "" {
+		t.Fatal("429 body error must not be empty")
+	}
+}
+
+// TestQuotaSingleRequest_BelowCapSucceeds: cap=2, requester has 1 pending → still creates.
+func TestQuotaSingleRequest_BelowCapSucceeds(t *testing.T) {
+	mgr := newFakeManager()
+	_, srv, ownerCookie := quotaTestServer(t, mgr)
+
+	setQuotaCap(t, srv, ownerCookie, 2)
+
+	rec := doReq(t, srv, ownerCookie, http.MethodPost, "/api/v1/users",
+		`{"username":"quotareq2","password":"pw","roleId":"role-requester"}`)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create user = %d: %s", rec.Code, rec.Body.String())
+	}
+	reqTok := mustLogin(t, srv, "quotareq2", "pw")
+	reqCookie := &http.Cookie{Name: sessionCookie, Value: reqTok}
+
+	// Post 1 request.
+	item1 := `{"source":"spotify","externalId":"q2-sp1","title":"Song1","artist":"A","album":"Al","durationMs":200000}`
+	rec = doReq(t, srv, reqCookie, http.MethodPost, "/api/v1/requests", item1)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("request 1 = %d: %s", rec.Code, rec.Body.String())
+	}
+
+	// 2nd request → below cap (1 < 2) → still succeeds.
+	item2 := `{"source":"spotify","externalId":"q2-sp2","title":"Song2","artist":"A","album":"Al","durationMs":200000}`
+	rec = doReq(t, srv, reqCookie, http.MethodPost, "/api/v1/requests", item2)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("request 2 (below cap) = %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+// TestQuotaZeroMeansUnlimited: cap=0 → no quota check, creates any number.
+func TestQuotaZeroMeansUnlimited(t *testing.T) {
+	mgr := newFakeManager()
+	_, srv, ownerCookie := quotaTestServer(t, mgr)
+
+	// cap=0 (default unlimited).
+	setQuotaCap(t, srv, ownerCookie, 0)
+
+	rec := doReq(t, srv, ownerCookie, http.MethodPost, "/api/v1/users",
+		`{"username":"quotareq3","password":"pw","roleId":"role-requester"}`)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create user = %d: %s", rec.Code, rec.Body.String())
+	}
+	reqTok := mustLogin(t, srv, "quotareq3", "pw")
+	reqCookie := &http.Cookie{Name: sessionCookie, Value: reqTok}
+
+	// Post 5 distinct requests → all should succeed (no cap).
+	for i := 0; i < 5; i++ {
+		body := fmt.Sprintf(`{"source":"spotify","externalId":"q3-sp%d","title":"Song%d","artist":"A","album":"Al","durationMs":200000}`, i, i)
+		rec = doReq(t, srv, reqCookie, http.MethodPost, "/api/v1/requests", body)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("request %d with cap=0 = %d: %s", i, rec.Code, rec.Body.String())
+		}
+	}
+}
+
+// TestQuotaAutoApproveNotChecked: auto_approve user (owner) ignores quota even with cap=2
+// and 5 prior approved requests.
+func TestQuotaAutoApproveNotChecked(t *testing.T) {
+	mgr := newFakeManager()
+	_, srv, ownerCookie := quotaTestServer(t, mgr)
+
+	setQuotaCap(t, srv, ownerCookie, 2)
+
+	// Owner has auto_approve — post 5 requests, all should succeed.
+	for i := 0; i < 5; i++ {
+		body := fmt.Sprintf(`{"source":"spotify","externalId":"aa-sp%d","title":"Song%d","artist":"A","album":"Al","durationMs":200000}`, i, i)
+		rec := doReq(t, srv, ownerCookie, http.MethodPost, "/api/v1/requests", body)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("auto_approve request %d = %d: %s", i, rec.Code, rec.Body.String())
+		}
+	}
+}
+
+// TestQuotaBatch_CapEnforced: cap=2, non-auto_approve user, 0 pending, batch of 4 distinct
+// → created==2, quotaCapped==2.
+func TestQuotaBatch_CapEnforced(t *testing.T) {
+	mgr := newFakeManager()
+	_, srv, ownerCookie := quotaTestServer(t, mgr)
+
+	setQuotaCap(t, srv, ownerCookie, 2)
+
+	rec := doReq(t, srv, ownerCookie, http.MethodPost, "/api/v1/users",
+		`{"username":"batchquota1","password":"pw","roleId":"role-requester"}`)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create user = %d: %s", rec.Code, rec.Body.String())
+	}
+	reqTok := mustLogin(t, srv, "batchquota1", "pw")
+	reqCookie := &http.Cookie{Name: sessionCookie, Value: reqTok}
+
+	bItem1 := `{"source":"lidarr","externalId":"bq-a1","title":"Album A1","artist":"Ar","album":"Al A1","kind":"album"}`
+	bItem2 := `{"source":"lidarr","externalId":"bq-a2","title":"Album A2","artist":"Ar","album":"Al A2","kind":"album"}`
+	bItem3 := `{"source":"lidarr","externalId":"bq-a3","title":"Album A3","artist":"Ar","album":"Al A3","kind":"album"}`
+	bItem4 := `{"source":"lidarr","externalId":"bq-a4","title":"Album A4","artist":"Ar","album":"Al A4","kind":"album"}`
+
+	body := batchBody(bItem1, bItem2, bItem3, bItem4)
+	rec = doReq(t, srv, reqCookie, http.MethodPost, "/api/v1/requests/batch", body)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("POST /requests/batch = %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var resp batchRespWithQuota
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode batch response: %v", err)
+	}
+	if resp.Created != 2 {
+		t.Fatalf("want created=2, got %d", resp.Created)
+	}
+	if resp.QuotaCapped != 2 {
+		t.Fatalf("want quotaCapped=2, got %d", resp.QuotaCapped)
+	}
+	if resp.Skipped != 0 {
+		t.Fatalf("want skipped=0, got %d", resp.Skipped)
+	}
+}
+
+// TestQuotaBatch_AutoApproveNotCapped: auto_approve user batch of 4 → all created, quotaCapped==0.
+func TestQuotaBatch_AutoApproveNotCapped(t *testing.T) {
+	mgr := newFakeManager()
+	_, srv, ownerCookie := quotaTestServer(t, mgr)
+
+	setQuotaCap(t, srv, ownerCookie, 2)
+
+	bItem1 := `{"source":"lidarr","externalId":"bq-aa1","title":"Album AA1","artist":"Ar","album":"Al AA1","kind":"album"}`
+	bItem2 := `{"source":"lidarr","externalId":"bq-aa2","title":"Album AA2","artist":"Ar","album":"Al AA2","kind":"album"}`
+	bItem3 := `{"source":"lidarr","externalId":"bq-aa3","title":"Album AA3","artist":"Ar","album":"Al AA3","kind":"album"}`
+	bItem4 := `{"source":"lidarr","externalId":"bq-aa4","title":"Album AA4","artist":"Ar","album":"Al AA4","kind":"album"}`
+
+	body := batchBody(bItem1, bItem2, bItem3, bItem4)
+	rec := doReq(t, srv, ownerCookie, http.MethodPost, "/api/v1/requests/batch", body)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("POST /requests/batch (auto_approve) = %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var resp batchRespWithQuota
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if resp.Created != 4 {
+		t.Fatalf("want created=4, got %d", resp.Created)
+	}
+	if resp.QuotaCapped != 0 {
+		t.Fatalf("want quotaCapped=0 for auto_approve, got %d", resp.QuotaCapped)
+	}
+}
+
+// ─── End quota tests ──────────────────────────────────────────────────────────────
 
 // TestDownloadReqFromItemTrackKind verifies that a track/empty Kind yields GranularityTrack.
 func TestDownloadReqFromItemTrackKind(t *testing.T) {

@@ -10,6 +10,17 @@ import (
 	"database/sql"
 )
 
+const countPendingRequestsByUser = `-- name: CountPendingRequestsByUser :one
+SELECT COUNT(*) FROM requests WHERE requested_by = ? AND status = 'pending'
+`
+
+func (q *Queries) CountPendingRequestsByUser(ctx context.Context, requestedBy string) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countPendingRequestsByUser, requestedBy)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createRequest = `-- name: CreateRequest :exec
 INSERT INTO requests (id, requested_by, source, external_id, title, artist, album, isrc, duration_ms, cover_art_id, cover_url, kind, track_count, status)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
