@@ -34,7 +34,10 @@ func (s *Server) createOneRequest(ctx context.Context, cu auth.CurrentUser, item
 			}
 		}
 		if cap > 0 {
-			n, _ := s.deps.Requests.CountPending(ctx, cu.ID)
+			n, err := s.deps.Requests.CountPending(ctx, cu.ID)
+			if err != nil {
+				log.Printf("quota: count pending for %s: %v", cu.ID, err)
+			}
 			if int(n) >= cap {
 				return core.Request{}, false, errQuotaReached
 			}
