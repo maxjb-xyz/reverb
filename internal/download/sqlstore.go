@@ -252,6 +252,27 @@ func (s *sqlStore) UpdateRef(ctx context.Context, id string, ref string) error {
 	return s.q.UpdateDownloadJobRef(ctx, db.UpdateDownloadJobRefParams{DownloaderRef: ref, ID: id})
 }
 
+// GetRequest retrieves the originating DownloadRequest for the given job id
+// by decoding the row's request_json column. Returns (req, true, nil) on hit,
+// (zero, false, nil) if no row exists, and (zero, false, err) on decode error.
+func (s *sqlStore) GetRequest(ctx context.Context, id string) (core.DownloadRequest, bool, error) {
+	r, err := s.q.GetDownloadJob(ctx, id)
+	if err == sql.ErrNoRows {
+		return core.DownloadRequest{}, false, nil
+	}
+	if err != nil {
+		return core.DownloadRequest{}, false, err
+	}
+	if r.RequestJson == "" {
+		return core.DownloadRequest{}, false, nil
+	}
+	var req core.DownloadRequest
+	if err := jsonUnmarshal(r.RequestJson, &req); err != nil {
+		return core.DownloadRequest{}, false, fmt.Errorf("download job %s: decode request_json: %w", id, err)
+	}
+	return req, true, nil
+}
+
 func nullString(s string) sql.NullString {
 	if s == "" {
 		return sql.NullString{}

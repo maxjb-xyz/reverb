@@ -56,6 +56,11 @@ type JobStore interface {
 	// UpdateRef persists the downloader-internal ref (e.g. Lidarr album id) for a
 	// job, used by async downloaders after Submit.
 	UpdateRef(ctx context.Context, id string, ref string) error
+	// GetRequest retrieves the originating DownloadRequest (from request_json) for
+	// the given job id. Returns (req, true, nil) on hit, (zero, false, nil) if the
+	// job exists but has no persisted request, and (zero, false, err) on error.
+	// Used by the !haveReq reconstruction to recover Granularity after a restart.
+	GetRequest(ctx context.Context, id string) (core.DownloadRequest, bool, error)
 }
 
 // ScanController is the library slice the Manager needs (StartScan + ScanStatus).
@@ -665,17 +670,18 @@ func (m *Manager) process(id string) {
 	// Use !haveReq as the sole sentinel: a map hit is always valid even when
 	// ExternalID=="" (non-Spotify jobs have a real request with an empty ExternalID).
 	if !haveReq {
-		// Granularity defaults to track here. On the normal enqueue path m.reqs always
-		// has the full request (including Granularity), so this branch is only reached
-		// on cross-restart recovery — deferred via SeedRequest (not yet wired). At that
-		// point only track-granularity sync jobs are persisted; album sync jobs (e.g.
-		// spotDL album) run on the reconciler lane and are re-enqueued fresh, so the
-		// track default is correct for the !haveReq path until SeedRequest is wired.
+		// Recover Granularity from the persisted request_json so that a cross-restart
+		// album sync job (e.g. spotDL album mode) uses AlbumJobTimeout and the correct
+		// /album/ URL rather than silently defaulting to track. Other fields (artist,
+		// title, album, ISRC, etc.) are already denormalized onto the job row; only
+		// Granularity is absent from the flat columns and must be read from request_json.
+		stored, _, _ := m.store.GetRequest(ctx, id)
 		req = core.DownloadRequest{
 			Source: job.Source, ExternalID: job.ExternalID, Artist: job.Artist,
 			Title: job.Title, Album: job.Album, ISRC: job.ISRC,
-			PlayWhenReady: job.PlayWhenReady,
+			PlayWhenReady:   job.PlayWhenReady,
 			AddToPlaylistID: job.AddToPlaylistID,
+			Granularity:     stored.Granularity,
 		}
 	}
 	m.mu.Lock()
@@ -1055,6 +1061,11 @@ func (m *Manager) Cancel(ctx context.Context, jobID string) error {
 // When manualURL is non-empty it is stored on the job's DownloadRequest so the
 // spotDL adapter can use the pipe syntax (or direct URL) on the next attempt.
 // A plain retry (manualURL=="") behaves exactly as before.
+//
+// Dispatch mirrors Enqueue: async downloaders (e.g. Lidarr) are re-submitted via
+// submitAsync (not the sync worker channel) so a failed album job is re-queued on
+// the async lane rather than routing to Start (which returns an error for async
+// downloaders). Sync downloaders continue to use the worker channel as before.
 func (m *Manager) Retry(ctx context.Context, jobID string, manualURL string) (core.DownloadJob, error) {
 	job, ok, err := m.store.Get(ctx, jobID)
 	if err != nil {
@@ -1083,10 +1094,15 @@ func (m *Manager) Retry(ctx context.Context, jobID string, manualURL string) (co
 		// Use !haveReq as the sole sentinel — a map hit is always valid even when
 		// ExternalID=="" (non-Spotify jobs have an empty ExternalID but a real request).
 		if !haveReq {
+			// Recover Granularity from request_json; fall back to job fields for the
+			// remaining metadata. This ensures a ManualURL retry on a cross-restart job
+			// also gets the correct granularity (album vs track).
+			stored, _, _ := m.store.GetRequest(ctx, job.ID)
 			req = core.DownloadRequest{
 				Source: job.Source, ExternalID: job.ExternalID, Artist: job.Artist,
 				Title: job.Title, Album: job.Album, ISRC: job.ISRC,
 				PlayWhenReady: job.PlayWhenReady,
+				Granularity:   stored.Granularity,
 			}
 		}
 		req.ManualURL = manualURL
@@ -1098,7 +1114,38 @@ func (m *Manager) Retry(ctx context.Context, jobID string, manualURL string) (co
 			// Non-fatal: the in-memory path still works for the no-restart fast path.
 		}
 	}
+
+	// Ensure the in-memory request is seeded for dispatch. If it's not already in
+	// m.reqs (cross-restart case or plain retry with no prior SeedRequest), reconstruct
+	// it from the job fields and recover Granularity from the persisted request_json.
+	// This guarantees the async-routing branch below and submitAsync both receive a
+	// request with the correct Granularity (album vs track).
+	m.mu.Lock()
+	req, haveReq := m.reqs[job.ID]
+	if !haveReq {
+		stored, _, _ := m.store.GetRequest(ctx, job.ID)
+		req = core.DownloadRequest{
+			Source: job.Source, ExternalID: job.ExternalID, Artist: job.Artist,
+			Title: job.Title, Album: job.Album, ISRC: job.ISRC,
+			PlayWhenReady:   job.PlayWhenReady,
+			AddToPlaylistID: job.AddToPlaylistID,
+			Granularity:     stored.Granularity,
+		}
+		m.reqs[job.ID] = req
+	}
+	m.mu.Unlock()
+
 	m.publishEvent(TopicQueued, job, "")
+
+	// Mirror Enqueue's dispatch routing: async downloaders go via the async lane
+	// (Submit → reconciler advances); sync downloaders go to the worker channel.
+	// Before this fix, ALL retries pushed to the worker channel — causing async
+	// (album/Lidarr) jobs to call Start, which returns "Start is not used (async
+	// downloader)" and immediately fails the retried job.
+	if async := m.asyncFor(job.DownloaderName); async != nil {
+		go m.submitAsync(ctx, job, req, async)
+		return job, nil
+	}
 	select {
 	case m.queue <- job.ID:
 	case <-m.stopCh:
