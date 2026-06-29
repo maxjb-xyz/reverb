@@ -1,10 +1,14 @@
 import { useState, useMemo, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useArtistDetail } from '../lib/coverageApi'
 import { useCoverageStream } from '../lib/coverageStore'
 import { postBatchDownload } from '../lib/downloadApi'
 import { useDownloads } from '../lib/downloadStore'
 import { coverUrl } from '../lib/libraryApi'
+import { postBatchRequest } from '../lib/requestApi'
+import { useAuthStore } from '../lib/authStore'
+import { useToastStore } from '../lib/toastStore'
 import { Cover, Skeleton, EmptyState, MediaCard } from '../components/ui'
 import { Chip } from '../components/ui/Chip'
 import { Button } from '../components/ui/Button'
@@ -94,6 +98,9 @@ export default function Artist() {
   const coverage = useCoverageStream(source, id, detail?.resolved === true)
   const navigate = useNavigate()
   const [filter, setFilter] = useState<KindFilter>('all')
+  const canRequest = useAuthStore((s) => s.can('request'))
+  const canAutoApprove = useAuthStore((s) => s.can('auto_approve'))
+  const [requestAllOpen, setRequestAllOpen] = useState(false)
 
   // Aggregate all missing tracks across all albums for "Download all missing".
   // Hoisted above the early returns so the hook order stays stable across renders
@@ -103,6 +110,30 @@ export default function Artist() {
     () => Object.values(coverage).flatMap((c) => c.missingTracks),
     [coverage],
   )
+
+  // Build the list of not-fully-owned albums for "Request all".
+  // An album is not fully owned when: no coverage entry, or ownedCount < totalCount.
+  const notOwnedRequestItems = useMemo(() => {
+    if (!detail) return []
+    return detail.albums
+      .filter((album) => {
+        const cov = coverage[album.externalId]
+        if (!cov) return true // no coverage → treat as not owned
+        const total = cov.totalCount > 0 ? cov.totalCount : album.totalTracks
+        return cov.ownedCount < total
+      })
+      .map((album) => ({
+        kind: 'album' as const,
+        source: album.source,
+        externalId: album.externalId,
+        title: album.name,
+        album: album.name,
+        artist: detail.name,
+        coverUrl: album.coverUrl,
+        trackCount: album.totalTracks,
+      }))
+  }, [detail, coverage])
+
   const palette = useAlbumPalette(detail?.coverArtId ? coverUrl(detail.coverArtId, 300) : detail?.coverUrl)
 
   if (isLoading) {
@@ -223,25 +254,38 @@ export default function Artist() {
 
             {/* Action row — only when there are missing tracks. Guarded by a confirm
                 so a stray click can't enqueue a large batch (spec §10). */}
-            {detail.resolved && allMissingTracks.length > 0 && (
-              <div className="mt-4">
-                <Button
-                  variant="secondary"
-                  size="md"
-                  onClick={() => {
-                    if (
-                      window.confirm(
-                        `Download ${allMissingTracks.length} missing tracks?`,
-                      )
-                    ) {
-                      postBatchDownload(allMissingTracks)
-                    }
-                  }}
-                >
-                  Download all missing · {allMissingTracks.length}
-                </Button>
+            {(detail.resolved && allMissingTracks.length > 0) || (canRequest && notOwnedRequestItems.length > 0) ? (
+              <div className="mt-4 flex items-center gap-3">
+                {detail.resolved && allMissingTracks.length > 0 && (
+                  <Button
+                    variant="secondary"
+                    size="md"
+                    onClick={() => {
+                      if (
+                        window.confirm(
+                          `Download ${allMissingTracks.length} missing tracks?`,
+                        )
+                      ) {
+                        postBatchDownload(allMissingTracks)
+                      }
+                    }}
+                  >
+                    Download all missing · {allMissingTracks.length}
+                  </Button>
+                )}
+                {canRequest && (
+                  <Button
+                    variant="secondary"
+                    size="md"
+                    disabled={notOwnedRequestItems.length === 0}
+                    aria-label="Request all"
+                    onClick={() => setRequestAllOpen(true)}
+                  >
+                    Request all · {notOwnedRequestItems.length}
+                  </Button>
+                )}
               </div>
-            )}
+            ) : null}
           </div>
         </header>
       </div>
@@ -304,6 +348,65 @@ export default function Artist() {
           <EmptyState icon="browse" title="No albums" />
         )}
       </section>
+
+      {/* Request all disclosure modal */}
+      {requestAllOpen &&
+        createPortal(
+          <>
+            <div
+              className="fixed inset-0 z-40"
+              aria-hidden="true"
+              onClick={() => setRequestAllOpen(false)}
+            />
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-label="Request all albums"
+              className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-80 max-w-[calc(100vw-2rem)] rounded-xl border border-border-subtle bg-raised p-4 shadow-pop"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <p className="text-sm font-bold text-text-primary">
+                Request all {notOwnedRequestItems.length} album{notOwnedRequestItems.length === 1 ? '' : 's'} by {detail.name} not in your library?
+              </p>
+              <p className="mt-1 text-xs text-text-secondary">
+                Each album will be queued for download once approved.
+              </p>
+              <div className="mt-3 flex justify-end gap-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  aria-label="Cancel"
+                  onClick={() => setRequestAllOpen(false)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  aria-label="Confirm request all"
+                  onClick={() => {
+                    setRequestAllOpen(false)
+                    postBatchRequest(notOwnedRequestItems)
+                      .then((result) => {
+                        const skippedNote = result.skipped > 0 ? ` (${result.skipped} already requested)` : ''
+                        const msg = canAutoApprove
+                          ? `Requested ${result.created} album${result.created === 1 ? '' : 's'}${skippedNote}`
+                          : `Requested ${result.created} album${result.created === 1 ? '' : 's'} — pending approval${skippedNote}`
+                        useToastStore.getState().push(msg, 'success')
+                      })
+                      .catch((err) => {
+                        console.error('[Artist] postBatchRequest failed:', err)
+                        useToastStore.getState().push("Couldn't file your requests", 'error')
+                      })
+                  }}
+                >
+                  Confirm
+                </Button>
+              </div>
+            </div>
+          </>,
+          document.body,
+        )}
     </div>
   )
 }

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { postRequest, getMyRequests, getAllRequests, approveRequest, denyRequest, cancelRequest } from './requestApi'
+import { postRequest, getMyRequests, getAllRequests, approveRequest, denyRequest, cancelRequest, postBatchRequest } from './requestApi'
 import { useRequestStore } from './requestApi'
 import type { Request } from './requestApi'
 
@@ -74,6 +74,25 @@ describe('requestApi HTTP calls', () => {
   it('cancelRequest POSTs /api/v1/requests/{id}/cancel', async () => {
     await cancelRequest('r1')
     expect(fetch).toHaveBeenCalledWith('/api/v1/requests/r1/cancel', expect.objectContaining({ method: 'POST' }))
+  })
+
+  it('postBatchRequest POSTs /api/v1/requests/batch with { items }', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        new Response(JSON.stringify({ created: 2, skipped: 0, requests: [] }), { status: 200 }),
+      ),
+    )
+    const items = [
+      { source: 'spotify', externalId: 'al1', kind: 'album' as const, title: 'Kid A', artist: 'Radiohead', album: 'Kid A', trackCount: 10 },
+      { source: 'spotify', externalId: 'al2', kind: 'album' as const, title: 'OK Computer', artist: 'Radiohead', album: 'OK Computer', trackCount: 12 },
+    ]
+    const result = await postBatchRequest(items)
+    const call = (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls.at(-1)!
+    expect(call[0]).toBe('/api/v1/requests/batch')
+    expect((call[1] as RequestInit).method).toBe('POST')
+    expect(JSON.parse((call[1] as RequestInit).body as string)).toEqual({ items })
+    expect(result).toEqual({ created: 2, skipped: 0, requests: [] })
   })
 })
 

@@ -21,6 +21,15 @@ vi.mock('../lib/downloadApi', () => ({
   postBatchDownload: vi.fn().mockResolvedValue([]),
 }))
 
+vi.mock('../lib/requestApi', () => ({
+  postBatchRequest: vi.fn().mockResolvedValue({ created: 2, skipped: 0, requests: [] }),
+}))
+
+vi.mock('../lib/authStore', () => ({
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  useAuthStore: vi.fn((selector: (s: any) => unknown) => selector({ can: () => false })),
+}))
+
 // Mock downloadStore so we can control which jobs are active per test.
 // Default: empty jobs map → no active downloads.
 vi.mock('../lib/downloadStore', () => ({
@@ -46,7 +55,9 @@ vi.mock('react-router-dom', async (importOriginal) => {
 import { useArtistDetail } from '../lib/coverageApi'
 import { useCoverageStream } from '../lib/coverageStore'
 import { postBatchDownload } from '../lib/downloadApi'
+import { postBatchRequest } from '../lib/requestApi'
 import { useDownloads } from '../lib/downloadStore'
+import { useAuthStore } from '../lib/authStore'
 import { useAlbumPalette } from '../lib/useAlbumPalette'
 import { useNavigate } from 'react-router-dom'
 
@@ -120,6 +131,14 @@ function wrapper(ui: React.ReactElement) {
 // ---------------------------------------------------------------------------
 
 describe('Artist page', () => {
+  // Helper: configure can('request') / can('auto_approve') per-test
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  function setAuth(caps: string[]) {
+    vi.mocked(useAuthStore).mockImplementation((selector: (s: any) => unknown) =>
+      selector({ can: (cap: string) => caps.includes(cap) }),
+    )
+  }
+
   beforeEach(() => {
     vi.mocked(useArtistDetail).mockReturnValue({
       data: STUB_DETAIL,
@@ -130,10 +149,14 @@ describe('Artist page', () => {
     vi.mocked(useCoverageStream).mockReturnValue(STUB_COVERAGE)
 
     vi.mocked(postBatchDownload).mockClear()
+    vi.mocked(postBatchRequest).mockClear()
 
     // Default: no active downloads
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     vi.mocked(useDownloads).mockImplementation((selector: (s: any) => unknown) => selector({ jobs: {} }))
+
+    // Default: user without request permission
+    setAuth([])
   })
 
   it('renders loading skeleton while fetching', () => {
@@ -462,5 +485,91 @@ describe('Artist page', () => {
     wrapper(<Artist />)
     expect(screen.queryByTestId('library-albums-section')).not.toBeInTheDocument()
     expect(screen.queryByText('In your library')).not.toBeInTheDocument()
+  })
+
+  // ---------------------------------------------------------------------------
+  // "Request all" button
+  // ---------------------------------------------------------------------------
+
+  it('user with request permission sees "Request all" button when discography has not-fully-owned albums', () => {
+    setAuth(['request'])
+    // STUB_COVERAGE: AL partial (7/10), S1 has no coverage → both not fully owned
+    wrapper(<Artist />)
+    expect(screen.getByRole('button', { name: /request all/i })).toBeInTheDocument()
+  })
+
+  it('user WITHOUT request permission does not see "Request all" button', () => {
+    setAuth([]) // no 'request' cap
+    wrapper(<Artist />)
+    expect(screen.queryByRole('button', { name: /request all/i })).not.toBeInTheDocument()
+  })
+
+  it('"Request all" button is disabled/absent when every album is fully owned', () => {
+    setAuth(['request'])
+    // Override coverage so both albums are fully owned
+    vi.mocked(useCoverageStream).mockReturnValue({
+      AL: { source: 'spotify', externalAlbumId: 'AL', state: 'full' as const, ownedCount: 10, totalCount: 10, missingTracks: [] },
+      S1: { source: 'spotify', externalAlbumId: 'S1', state: 'full' as const, ownedCount: 1, totalCount: 1, missingTracks: [] },
+    })
+    wrapper(<Artist />)
+    // Button should be absent or disabled when nothing to request
+    const btn = screen.queryByRole('button', { name: /request all/i })
+    expect(!btn || (btn as HTMLButtonElement).disabled).toBe(true)
+  })
+
+  it('clicking "Request all" → disclosure dialog shows album count and artist name', () => {
+    setAuth(['request'])
+    wrapper(<Artist />)
+    fireEvent.click(screen.getByRole('button', { name: /request all/i }))
+    // Dialog should appear with artist name and count of not-fully-owned albums
+    const dialog = screen.getByRole('dialog')
+    expect(dialog).toBeInTheDocument()
+    expect(dialog).toHaveTextContent(/radiohead/i)
+    expect(dialog).toHaveTextContent(/2/)
+  })
+
+  it('confirming "Request all" disclosure calls postBatchRequest with one item per not-fully-owned album', async () => {
+    setAuth(['request'])
+    // STUB_COVERAGE: AL partial 7/10 → not owned; S1 has no coverage → not owned
+    wrapper(<Artist />)
+    fireEvent.click(screen.getByRole('button', { name: /request all/i }))
+    fireEvent.click(screen.getByRole('button', { name: /confirm/i }))
+    // Give the promise a tick to resolve
+    await Promise.resolve()
+    expect(vi.mocked(postBatchRequest)).toHaveBeenCalledTimes(1)
+    const [items] = vi.mocked(postBatchRequest).mock.calls[0]
+    expect(items).toHaveLength(2)
+    // Both items must be kind:'album'
+    expect(items.every((i) => i.kind === 'album')).toBe(true)
+    // Kid A
+    const kidA = items.find((i) => i.externalId === 'AL')
+    expect(kidA).toMatchObject({
+      kind: 'album',
+      source: 'spotify',
+      externalId: 'AL',
+      title: 'Kid A',
+      album: 'Kid A',
+      artist: 'Radiohead',
+      trackCount: 10,
+    })
+    // Creep
+    const creep = items.find((i) => i.externalId === 'S1')
+    expect(creep).toMatchObject({
+      kind: 'album',
+      source: 'spotify',
+      externalId: 'S1',
+      title: 'Creep',
+      album: 'Creep',
+      artist: 'Radiohead',
+      trackCount: 1,
+    })
+  })
+
+  it('cancelling "Request all" disclosure does NOT call postBatchRequest', () => {
+    setAuth(['request'])
+    wrapper(<Artist />)
+    fireEvent.click(screen.getByRole('button', { name: /request all/i }))
+    fireEvent.click(screen.getByRole('button', { name: /cancel/i }))
+    expect(vi.mocked(postBatchRequest)).not.toHaveBeenCalled()
   })
 })

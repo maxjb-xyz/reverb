@@ -51,6 +51,16 @@ export function postRequest(item: CreateRequestItem): Promise<Request> {
   return api.post<Request>('/requests', item)
 }
 
+export interface BatchRequestResult {
+  created: number
+  skipped: number
+  requests: Request[]
+}
+
+export function postBatchRequest(items: CreateRequestItem[]): Promise<BatchRequestResult> {
+  return api.post<BatchRequestResult>('/requests/batch', { items })
+}
+
 export function getMyRequests(): Promise<Request[]> {
   return api.get<Request[]>('/requests/mine')
 }
