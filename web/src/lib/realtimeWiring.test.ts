@@ -6,10 +6,12 @@ import { useRealtime } from './realtimeWiring'
 import { useDownloads } from './downloadStore'
 import { useLibraryRevision } from './libraryRevisionStore'
 import { useRequestStore } from './requestApi'
+import { useNotificationStore } from './notificationApi'
 import { useAuthStore } from './authStore'
 import { useToastStore } from './toastStore'
 import type { WebSocketLike } from './realtime'
 import type { Request } from './requestApi'
+import type { Notification } from './notificationApi'
 
 // Player spy: usePlayer((s) => s.playTrackList) must return our spy.
 const playTrackList = vi.fn()
@@ -33,6 +35,17 @@ vi.mock('./requestApi', async (importOriginal) => {
     ...actual,
     getMyRequests: () => (mockGetMyRequests as () => Promise<Request[]>)(),
     getAllRequests: (status?: string) => (mockGetAllRequests as (s?: string) => Promise<Request[]>)(status),
+  }
+})
+
+// notificationApi: mock only the API fetch function; real store is kept.
+type GetNotificationsResult = { notifications: Notification[]; unread: number }
+const mockGetNotifications = vi.fn() as ReturnType<typeof vi.fn> & { mockResolvedValue(v: GetNotificationsResult): void; mockReset(): void }
+vi.mock('./notificationApi', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./notificationApi')>()
+  return {
+    ...actual,
+    getNotifications: () => (mockGetNotifications as () => Promise<GetNotificationsResult>)(),
   }
 })
 
@@ -68,9 +81,11 @@ describe('useRealtime', () => {
     playTrackList.mockClear()
     mockGetMyRequests.mockReset()
     mockGetAllRequests.mockReset()
+    mockGetNotifications.mockReset()
     useDownloads.setState({ jobs: {} })
     useLibraryRevision.setState({ revision: 0 })
     useRequestStore.setState({ byId: {} })
+    useNotificationStore.setState({ byId: {}, unread: 0 })
     useAuthStore.setState({ me: null, loading: false })
     useToastStore.setState({ toasts: [] })
     qc = new QueryClient()
@@ -266,6 +281,7 @@ describe('useRealtime', () => {
     }
     mockGetMyRequests.mockResolvedValue([myReq])
     mockGetAllRequests.mockResolvedValue([])
+    mockGetNotifications.mockResolvedValue({ notifications: [], unread: 0 })
 
     // Set up a user who has the 'request' capability but NOT 'manage_requests'.
     useAuthStore.setState({
@@ -298,6 +314,7 @@ describe('useRealtime', () => {
     }
     mockGetMyRequests.mockResolvedValue([myReq])
     mockGetAllRequests.mockResolvedValue([queueReq])
+    mockGetNotifications.mockResolvedValue({ notifications: [], unread: 0 })
 
     useAuthStore.setState({
       me: { id: 'u99', username: 'manager', roleId: 'r2', roleName: 'Manager', isOwner: false, capabilities: ['request', 'manage_requests'], createdAt: 1 },
@@ -321,6 +338,7 @@ describe('useRealtime', () => {
   it('onOpen: user with neither cap fires no request fetches', async () => {
     mockGetMyRequests.mockResolvedValue([])
     mockGetAllRequests.mockResolvedValue([])
+    mockGetNotifications.mockResolvedValue({ notifications: [], unread: 0 })
 
     useAuthStore.setState({
       me: { id: 'u7', username: 'noperms', roleId: 'r3', roleName: 'ReadOnly', isOwner: false, capabilities: [], createdAt: 1 },
@@ -335,5 +353,83 @@ describe('useRealtime', () => {
 
     expect(mockGetMyRequests).not.toHaveBeenCalled()
     expect(mockGetAllRequests).not.toHaveBeenCalled()
+  })
+
+  // --- onOpen notification hydration ---
+
+  it('onOpen: getNotifications is always fetched and populates the notification store', async () => {
+    const notif: Notification = {
+      id: 'notif1',
+      userId: 'u42',
+      type: 'request.approved',
+      title: 'Approved',
+      body: 'Your request was approved',
+      read: false,
+      createdAt: 9000,
+    }
+    mockGetNotifications.mockResolvedValue({ notifications: [notif], unread: 1 })
+    mockGetMyRequests.mockResolvedValue([])
+    mockGetAllRequests.mockResolvedValue([])
+
+    // Even a user with no special caps gets notifications hydrated
+    useAuthStore.setState({
+      me: { id: 'u42', username: 'alice', roleId: 'r1', roleName: 'User', isOwner: false, capabilities: [], createdAt: 1 },
+      loading: false,
+    })
+
+    renderHook(() => useRealtime((url) => new StubSocket(url)), { wrapper })
+    await act(async () => {
+      sockets[0].onopen?.()
+      await Promise.resolve()
+    })
+
+    expect(mockGetNotifications).toHaveBeenCalledTimes(1)
+    expect(useNotificationStore.getState().byId['notif1']).toBeDefined()
+    expect(useNotificationStore.getState().unread).toBe(1)
+  })
+
+  // --- notification WS event ---
+
+  it('a notification WS frame calls add and makes the notification available in the store', async () => {
+    mockGetNotifications.mockResolvedValue({ notifications: [], unread: 0 })
+
+    renderHook(() => useRealtime((url) => new StubSocket(url)), { wrapper })
+    const s = sockets[0]
+
+    const notif: Notification = {
+      id: 'notif2',
+      userId: 'u1',
+      type: 'request.denied',
+      title: 'Denied',
+      body: 'Your request was denied',
+      read: false,
+      createdAt: 5000,
+    }
+    s.onmessage?.(frame('notification', { notification: notif }))
+
+    expect(useNotificationStore.getState().byId['notif2']).toBeDefined()
+    expect(useNotificationStore.getState().byId['notif2'].title).toBe('Denied')
+    expect(useNotificationStore.getState().unread).toBe(1)
+  })
+
+  it('a notification WS frame for a read notification does not bump unread', async () => {
+    mockGetNotifications.mockResolvedValue({ notifications: [], unread: 0 })
+
+    renderHook(() => useRealtime((url) => new StubSocket(url)), { wrapper })
+    const s = sockets[0]
+
+    const notif: Notification = {
+      id: 'notif3',
+      userId: 'u1',
+      type: 'request.approved',
+      title: 'Approved',
+      body: 'Your request was approved',
+      read: true,
+      createdAt: 5000,
+    }
+    s.onmessage?.(frame('notification', { notification: notif }))
+
+    expect(useNotificationStore.getState().byId['notif3']).toBeDefined()
+    expect(useNotificationStore.getState().unread).toBe(0)
   })
 })

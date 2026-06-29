@@ -6,6 +6,7 @@ import { useLibraryRevision } from './libraryRevisionStore'
 import { getDownloads, getQueueState } from './downloadApi'
 import { usePlayer } from './playerStore'
 import { getMyRequests, getAllRequests, useRequestStore, type RequestEventPayload } from './requestApi'
+import { getNotifications, useNotificationStore, type Notification } from './notificationApi'
 import { useAuthStore } from './authStore'
 import { useToastStore } from './toastStore'
 import type { DownloadEvent, DownloadRemovedEvent, LibraryUpdatedEvent, QueueStateEvent, RealtimeEvent, Track } from './types'
@@ -104,6 +105,10 @@ export function useRealtime(makeSocket?: (url: string) => WebSocketLike): void {
           useRequestStore.getState().applyRequestEvent(frame.payload as RequestEventPayload)
           break
         }
+        case 'notification': {
+          useNotificationStore.getState().add((frame.payload as { notification: Notification }).notification)
+          break
+        }
         case 'request.updated': {
           const payload = frame.payload as RequestEventPayload
           useRequestStore.getState().applyRequestEvent(payload)
@@ -143,6 +148,10 @@ export function useRealtime(makeSocket?: (url: string) => WebSocketLike): void {
           .then((r) => useRequestStore.getState().setQueue(r))
           .catch(() => {})
       }
+      // Hydrate notifications for all authed users — no cap gate.
+      void getNotifications()
+        .then((r) => useNotificationStore.getState().setAll(r.notifications, r.unread))
+        .catch(() => {})
     }
 
     const conn = new RealtimeConnection({ onEvent, onOpen }, makeSocket)
