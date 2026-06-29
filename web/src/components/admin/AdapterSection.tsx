@@ -15,6 +15,8 @@ interface AdapterSectionProps {
   onToggle: (instance: AdapterInstance) => void
   onRemove: (id: string) => void
   onReorder?: (instance: AdapterInstance, delta: number) => void
+  /** Downloader-only: swap the order value for granularity `g` between adjacent instances in a column. */
+  onMoveInColumn?: (column: AdapterInstance[], index: number, direction: 'up' | 'down', g: string) => void
 }
 
 const EMPTY_MESSAGES: Record<string, string> = {
@@ -38,10 +40,9 @@ function sortInstances(type: string, instances: AdapterInstance[]): AdapterInsta
 }
 
 /**
- * Downloader chain order is controlled by granularity settings in
- * Settings → Downloaders. The Admin priority reorder has no effect on
- * downloaders when granularities are configured (which they are after any
- * Settings edit). Only library and search adapters use priority for ordering.
+ * Downloader chain order is controlled via the two-column granularity ordering
+ * rendered below the management list. The priority reorder arrows are suppressed
+ * for downloader type — granularity order is what matters.
  */
 const REORDER_DISABLED_TYPES = new Set(['downloader'])
 
@@ -56,12 +57,28 @@ export function AdapterSection({
   onToggle,
   onRemove,
   onReorder,
+  onMoveInColumn,
 }: AdapterSectionProps) {
   const ordered = sortInstances(type, instances)
   const showOrder = type === 'search' || type === 'downloader'
-  // Downloaders are ordered via granularity settings in Settings → Downloaders,
-  // not by Admin priority arrows. Suppress reorder controls for downloader type.
+  // Downloaders are ordered via the two-column granularity ordering below the
+  // management list. Suppress priority reorder arrows for downloader type.
   const reorderDisabled = REORDER_DISABLED_TYPES.has(type)
+
+  // Downloader two-column ordering: enabled instances with granularities data.
+  const enabledDownloaders =
+    type === 'downloader'
+      ? instances.filter((a) => a.enabled && a.granularities != null)
+      : []
+  const songDownloaders = enabledDownloaders
+    .filter((a) => 'track' in (a.granularities ?? {}))
+    .slice()
+    .sort((a, b) => (a.granularities!['track'] ?? 0) - (b.granularities!['track'] ?? 0))
+  const albumDownloaders = enabledDownloaders
+    .filter((a) => 'album' in (a.granularities ?? {}))
+    .slice()
+    .sort((a, b) => (a.granularities!['album'] ?? 0) - (b.granularities!['album'] ?? 0))
+  const anyGranularityDownloaders = songDownloaders.length > 0 || albumDownloaders.length > 0
   const emptyMessage = EMPTY_MESSAGES[type] ?? 'No providers configured'
   const typeLabel = TYPE_LABEL[type] ?? type
   const addLabel = `Add ${typeLabel}`
@@ -105,9 +122,6 @@ export function AdapterSection({
         <h2 className="text-lg font-extrabold tracking-tight text-text-primary">{title}</h2>
         <span className="text-xs font-bold text-text-muted">{instances.length}</span>
         {subtitle && <span className="text-xs text-text-muted">{subtitle}</span>}
-        {reorderDisabled && instances.length > 0 && (
-          <span className="text-xs text-text-muted italic">Order in Settings → Downloaders.</span>
-        )}
         <div className="ml-auto">
           <Button
             size="sm"
@@ -217,6 +231,97 @@ export function AdapterSection({
             </li>
           ))}
         </ul>
+      )}
+
+      {/* Downloader two-column ordering — Song | Album, each independently reorderable */}
+      {type === 'downloader' && anyGranularityDownloaders && onMoveInColumn && (
+        <div className="space-y-3 pt-2">
+          <div>
+            <h3 className="text-sm font-extrabold tracking-tight text-text-primary">Fallback order</h3>
+            <p className="text-xs text-text-muted mt-0.5">
+              Fallback chain per granularity — tried in order. Reorder each column independently.
+            </p>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            {/* Song column */}
+            <div data-testid="downloaders-song-col">
+              <div className="text-xs font-bold uppercase tracking-widest text-text-secondary mb-2">
+                Song
+              </div>
+              <div className="divide-y divide-border-subtle rounded-lg border border-border-subtle bg-surface">
+                {songDownloaders.map((dl, i) => (
+                  <div key={dl.id} className="flex items-center gap-3 px-3 py-2">
+                    <div className="flex-1 min-w-0">
+                      <span
+                        data-testid="downloader-name"
+                        className="text-sm font-semibold text-text-primary"
+                      >
+                        {dl.name}
+                      </span>
+                    </div>
+                    <div className="flex gap-1">
+                      <button
+                        aria-label="Move up"
+                        disabled={i === 0}
+                        onClick={() => onMoveInColumn(songDownloaders, i, 'up', 'track')}
+                        className="rounded p-1 text-text-secondary hover:text-text-primary disabled:opacity-30 disabled:cursor-not-allowed"
+                      >
+                        &#8593;
+                      </button>
+                      <button
+                        aria-label="Move down"
+                        disabled={i === songDownloaders.length - 1}
+                        onClick={() => onMoveInColumn(songDownloaders, i, 'down', 'track')}
+                        className="rounded p-1 text-text-secondary hover:text-text-primary disabled:opacity-30 disabled:cursor-not-allowed"
+                      >
+                        &#8595;
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Album column */}
+            <div data-testid="downloaders-album-col">
+              <div className="text-xs font-bold uppercase tracking-widest text-text-secondary mb-2">
+                Album
+              </div>
+              <div className="divide-y divide-border-subtle rounded-lg border border-border-subtle bg-surface">
+                {albumDownloaders.map((dl, i) => (
+                  <div key={dl.id} className="flex items-center gap-3 px-3 py-2">
+                    <div className="flex-1 min-w-0">
+                      <span
+                        data-testid="downloader-name"
+                        className="text-sm font-semibold text-text-primary"
+                      >
+                        {dl.name}
+                      </span>
+                    </div>
+                    <div className="flex gap-1">
+                      <button
+                        aria-label="Move up"
+                        disabled={i === 0}
+                        onClick={() => onMoveInColumn(albumDownloaders, i, 'up', 'album')}
+                        className="rounded p-1 text-text-secondary hover:text-text-primary disabled:opacity-30 disabled:cursor-not-allowed"
+                      >
+                        &#8593;
+                      </button>
+                      <button
+                        aria-label="Move down"
+                        disabled={i === albumDownloaders.length - 1}
+                        onClick={() => onMoveInColumn(albumDownloaders, i, 'down', 'album')}
+                        className="rounded p-1 text-text-secondary hover:text-text-primary disabled:opacity-30 disabled:cursor-not-allowed"
+                      >
+                        &#8595;
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </section>
   )

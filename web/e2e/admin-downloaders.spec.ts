@@ -7,13 +7,13 @@ import {
   type DownloaderAdapterInstance,
 } from './mocks'
 
-// Hermetic e2e for the two-column Downloaders Settings section.
+// Hermetic e2e for the two-column Downloaders ordering section in Admin → Providers.
 //
 // The adapters mock exposes:
 //   - spotDL: supportedGranularities ["track","album"], granularities {track:0, album:0}
 //   - Lidarr:  supportedGranularities ["album"],        granularities {album:1}
 //
-// The Settings page renders a two-column grid:
+// The Admin Providers tab renders a two-column grid:
 //   Song column  (data-testid="downloaders-song-col"):  spotDL only
 //   Album column (data-testid="downloaders-album-col"): spotDL (order 0), then Lidarr (order 1)
 //
@@ -23,8 +23,8 @@ import {
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
-/** Stub the /settings GET+PUT routes (needed by the Settings page). */
-async function stubSettingsRoute(page: import('@playwright/test').Page) {
+/** Stub the /settings GET+PUT and /library/status routes (needed by the Admin page). */
+async function stubAdminRoutes(page: import('@playwright/test').Page) {
   await page.route('**/api/v1/settings', (route) => {
     if (route.request().method() === 'GET') {
       return route.fulfill({
@@ -42,46 +42,80 @@ async function stubSettingsRoute(page: import('@playwright/test').Page) {
     }
     return route.continue()
   })
+
+  await page.route('**/api/v1/library/status', (route) => {
+    if (route.request().method() === 'GET') {
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ mode: 'built-in', healthy: true }),
+      })
+    }
+    return route.continue()
+  })
+
+  await page.route('**/api/v1/adapters/available', (route) => {
+    if (route.request().method() === 'GET') {
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify([
+          {
+            type: 'downloader',
+            name: 'spotdl',
+            configSchema: { fields: [] },
+            capabilities: [],
+          },
+          {
+            type: 'downloader',
+            name: 'lidarr',
+            configSchema: { fields: [] },
+            capabilities: [],
+          },
+        ]),
+      })
+    }
+    return route.continue()
+  })
 }
 
-/** Land on the Settings page as an authenticated owner. */
-async function goToSettings(page: import('@playwright/test').Page) {
+/** Land on the Admin → Providers page as an authenticated owner. */
+async function goToAdmin(page: import('@playwright/test').Page) {
   const authed = { value: true }
   await installApiMocks(page, authed, { me: ownerMe })
   const dl = await installDownloadersMocks(page)
+  await stubAdminRoutes(page)
 
-  // The Settings page calls GET /settings; stub it with minimal valid data.
-  await stubSettingsRoute(page)
-
-  await page.goto('/settings')
+  await page.goto('/admin')
   await expect(page.getByTestId('app-shell-root')).toBeVisible()
-  await expect(page.getByRole('heading', { name: 'Settings' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Admin' })).toBeVisible()
+  // Admin defaults to the Providers tab — verify it's active.
+  await expect(page.getByTestId('downloaders-song-col')).toBeVisible()
 
   return dl
 }
 
-/** Land on the Settings page with a custom adapter seed. */
-async function goToSettingsWithSeed(
+/** Land on the Admin → Providers page with a custom adapter seed. */
+async function goToAdminWithSeed(
   page: import('@playwright/test').Page,
   seed: DownloaderAdapterInstance[],
 ) {
   const authed = { value: true }
   await installApiMocks(page, authed, { me: ownerMe })
   const dl = await installDownloadersMocksWithSeed(page, seed)
+  await stubAdminRoutes(page)
 
-  await stubSettingsRoute(page)
-
-  await page.goto('/settings')
+  await page.goto('/admin')
   await expect(page.getByTestId('app-shell-root')).toBeVisible()
-  await expect(page.getByRole('heading', { name: 'Settings' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Admin' })).toBeVisible()
 
   return dl
 }
 
 // ── 1) Column layout: Song has spotDL only; Album has spotDL then Lidarr ─────
 
-test('downloaders: Song column shows spotDL only', async ({ page }) => {
-  await goToSettings(page)
+test('admin-downloaders: Song column shows spotDL only', async ({ page }) => {
+  await goToAdmin(page)
 
   const songCol = page.getByTestId('downloaders-song-col')
   await expect(songCol).toBeVisible()
@@ -92,8 +126,8 @@ test('downloaders: Song column shows spotDL only', async ({ page }) => {
   await expect(names.first()).toHaveText('spotdl')
 })
 
-test('downloaders: Album column shows spotDL first, then Lidarr', async ({ page }) => {
-  await goToSettings(page)
+test('admin-downloaders: Album column shows spotDL first, then Lidarr', async ({ page }) => {
+  await goToAdmin(page)
 
   const albumCol = page.getByTestId('downloaders-album-col')
   await expect(albumCol).toBeVisible()
@@ -107,11 +141,10 @@ test('downloaders: Album column shows spotDL first, then Lidarr', async ({ page 
 
 // ── 2) Disabled controls: first-row up and last-row down are disabled ─────────
 
-test('downloaders: Album column first-row Move up is disabled, last-row Move down is disabled', async ({ page }) => {
-  await goToSettings(page)
+test('admin-downloaders: Album column first-row Move up is disabled, last-row Move down is disabled', async ({ page }) => {
+  await goToAdmin(page)
 
   const albumCol = page.getByTestId('downloaders-album-col')
-  const rows = albumCol.locator('[data-testid="downloader-name"]').locator('..')
 
   // Get the move buttons scoped inside the album column
   const moveUps = albumCol.getByRole('button', { name: 'Move up' })
@@ -126,15 +159,12 @@ test('downloaders: Album column first-row Move up is disabled, last-row Move dow
   const songCol = page.getByTestId('downloaders-song-col')
   await expect(songCol.getByRole('button', { name: 'Move up' })).toBeDisabled()
   await expect(songCol.getByRole('button', { name: 'Move down' })).toBeDisabled()
-
-  // Suppress unused variable warning
-  void rows
 })
 
 // ── 3) Reorder Album column: clicking "Move down" on spotDL swaps album orders ──
 
-test('downloaders: clicking Move down on spotDL in Album column issues PUT with swapped album granularities and leaves Song column unchanged', async ({ page }) => {
-  const dl = await goToSettings(page)
+test('admin-downloaders: clicking Move down on spotDL in Album column issues PUT with swapped album granularities and leaves Song column unchanged', async ({ page }) => {
+  const dl = await goToAdmin(page)
 
   const albumCol = page.getByTestId('downloaders-album-col')
 
@@ -153,12 +183,10 @@ test('downloaders: clicking Move down on spotDL in Album column issues PUT with 
   })
 
   // Click "Move down" on the FIRST row of the Album column (spotDL, i=0).
-  // The button is the second button in the row's flex gap (Move up, Move down).
   const firstRowMoveDown = albumCol.getByRole('button', { name: 'Move down' }).first()
   await expect(firstRowMoveDown).toBeEnabled()
 
   // Await both PUTs deterministically: moveInColumn fires two concurrent PUTs.
-  // We start listening before the click and resolve once both have responded.
   const put1 = page.waitForResponse(
     (r) => /\/api\/v1\/adapters\//.test(r.url()) && r.request().method() === 'PUT',
   )
@@ -200,8 +228,6 @@ test('downloaders: clicking Move down on spotDL in Album column issues PUT with 
   expect(lidarrGranularities.track).toBeUndefined()
 
   // UI-level independence: the Song column still renders exactly 1 row, still spotDL.
-  // This proves the Album reorder did NOT add/remove/resort the Song column at the
-  // rendered-DOM level — not just that mock state is unchanged.
   const songCol = page.getByTestId('downloaders-song-col')
   const songNames = songCol.getByTestId('downloader-name')
   await expect(songNames).toHaveCount(1)
@@ -210,18 +236,11 @@ test('downloaders: clicking Move down on spotDL in Album column issues PUT with 
 
 // ── 4) Toggle-off: spotDL with album granularity disabled is absent from Album column ──
 //
-// Brief requirement: "toggle album off spotDL removes it from the Album column."
-// Driving the Admin AdapterForm cross-page is impractical in this hermetic harness
-// (the form is unit-tested in Task 6). Instead we seed spotDL with
-// granularities:{track:0} (no album key) — the state that would result AFTER saving
-// the form with Album unchecked — and assert the rendered columns derive correctly.
-// This is a column-derivation assertion, not a form-drive. (Note: form checkbox
-// behaviour is covered by unit tests in Task 6.)
+// Seed spotDL with granularities:{track:0} (no album key) — the state that would
+// result AFTER saving the form with Album unchecked — and assert the rendered columns
+// derive correctly.
 
-test('downloaders: when spotDL has no album granularity, Album column shows only Lidarr and Song column still shows spotDL', async ({ page }) => {
-  // Seed: spotDL supports track+album but only has track granularity active (album
-  // checkbox was unchecked and saved, so config.granularities has no album key).
-  // Lidarr has album only (unchanged).
+test('admin-downloaders: when spotDL has no album granularity, Album column shows only Lidarr and Song column still shows spotDL', async ({ page }) => {
   const seed: DownloaderAdapterInstance[] = [
     {
       id: 'spotdl-1',
@@ -247,7 +266,7 @@ test('downloaders: when spotDL has no album granularity, Album column shows only
     },
   ]
 
-  await goToSettingsWithSeed(page, seed)
+  await goToAdminWithSeed(page, seed)
 
   // Album column: only Lidarr (spotDL has no album granularity entry).
   const albumCol = page.getByTestId('downloaders-album-col')
@@ -262,4 +281,11 @@ test('downloaders: when spotDL has no album granularity, Album column shows only
   const songNames = songCol.getByTestId('downloader-name')
   await expect(songNames).toHaveCount(1)
   await expect(songNames.first()).toHaveText('spotdl')
+})
+
+// ── 5) "Order in Settings" hint is gone from Admin Downloaders section ──
+
+test('admin-downloaders: the "Order in Settings → Downloaders" hint is NOT present', async ({ page }) => {
+  await goToAdmin(page)
+  await expect(page.getByText(/order in settings/i)).not.toBeVisible()
 })

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import type { ReactElement } from 'react'
-import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import Settings from './Settings'
 import type { AdapterInstance } from '../lib/adaptersApi'
@@ -90,8 +90,9 @@ describe('Settings default downloader', () => {
   })
 })
 
-describe('Settings Downloaders — two-column layout', () => {
-  // spotDL: both track and album; Lidarr: album only
+describe('Settings Downloaders — REMOVED (moved to Admin)', () => {
+  // spotDL: both track and album; Lidarr: album only — adapters present but
+  // the Downloaders section must NOT render in Settings any more.
   const mockAdapters: AdapterInstance[] = [
     {
       id: 'dl-1',
@@ -127,87 +128,18 @@ describe('Settings Downloaders — two-column layout', () => {
     vi.clearAllMocks()
   })
 
-  it('renders a Downloaders heading', () => {
+  it('does NOT render a Downloaders heading in Settings', () => {
     wrap(<Settings />)
-    expect(screen.getByRole('heading', { name: /downloaders/i })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: /downloaders/i })).not.toBeInTheDocument()
   })
 
-  it('renders a Song column heading and an Album column heading', () => {
+  it('does NOT render the Song column (downloaders-song-col) in Settings', () => {
     wrap(<Settings />)
-    expect(screen.getAllByText(/song/i).length).toBeGreaterThan(0)
-    expect(screen.getAllByText(/album/i).length).toBeGreaterThan(0)
+    expect(screen.queryByTestId('downloaders-song-col')).not.toBeInTheDocument()
   })
 
-  it('Song column contains only spotdl (has track granularity)', () => {
+  it('does NOT render the Album column (downloaders-album-col) in Settings', () => {
     wrap(<Settings />)
-    const songCol = screen.getByTestId('downloaders-song-col')
-    expect(within(songCol).getByText('spotdl')).toBeInTheDocument()
-    expect(within(songCol).queryByText('lidarr')).toBeNull()
-  })
-
-  it('Album column contains spotdl then lidarr (sorted by album granularity order)', () => {
-    wrap(<Settings />)
-    const albumCol = screen.getByTestId('downloaders-album-col')
-    expect(within(albumCol).getByText('spotdl')).toBeInTheDocument()
-    expect(within(albumCol).getByText('lidarr')).toBeInTheDocument()
-    // spotdl (album:0) should come before lidarr (album:1)
-    const names = within(albumCol).getAllByTestId('downloader-name').map((el) => el.textContent)
-    expect(names).toEqual(['spotdl', 'lidarr'])
-  })
-
-  it('a downloader with both track and album granularities appears in both columns', () => {
-    wrap(<Settings />)
-    // spotdl has both track and album
-    const songCol = screen.getByTestId('downloaders-song-col')
-    const albumCol = screen.getByTestId('downloaders-album-col')
-    expect(within(songCol).getByText('spotdl')).toBeInTheDocument()
-    expect(within(albumCol).getByText('spotdl')).toBeInTheDocument()
-  })
-
-  it('first-row up button is disabled in Song column', () => {
-    wrap(<Settings />)
-    const songCol = screen.getByTestId('downloaders-song-col')
-    const upButtons = within(songCol).getAllByRole('button', { name: /move up/i })
-    expect(upButtons[0]).toBeDisabled()
-  })
-
-  it('last-row down button is disabled in Album column', () => {
-    wrap(<Settings />)
-    const albumCol = screen.getByTestId('downloaders-album-col')
-    const downButtons = within(albumCol).getAllByRole('button', { name: /move down/i })
-    expect(downButtons[downButtons.length - 1]).toBeDisabled()
-  })
-
-  it('clicking down on spotdl in Album column swaps album order — writes config.granularities with swapped album values', async () => {
-    wrap(<Settings />)
-    const albumCol = screen.getByTestId('downloaders-album-col')
-    // spotdl is row 0 in Album column; click its "down" button
-    const downButtons = within(albumCol).getAllByRole('button', { name: /move down/i })
-    fireEvent.click(downButtons[0])
-    await waitFor(() => expect(mockUpdateAdapter).toHaveBeenCalledTimes(2))
-
-    const calls = mockUpdateAdapter.mock.calls as unknown as Array<[string, { name: string; enabled: boolean; priority: number; config: Record<string, unknown> }]>
-    const spotdlCall = calls.find((c) => c[0] === 'dl-1')
-    const lidarrCall = calls.find((c) => c[0] === 'dl-2')
-
-    // spotdl should now have album:1 (swapped from lidarr's album:1)
-    expect((spotdlCall?.[1].config as Record<string, unknown>)['granularities']).toEqual({ track: 0, album: 1 })
-    // lidarr should now have album:0 (swapped from spotdl's album:0)
-    expect((lidarrCall?.[1].config as Record<string, unknown>)['granularities']).toEqual({ album: 0 })
-  })
-
-  it('reordering Album column does NOT change spotdl track order (Song column independent)', async () => {
-    wrap(<Settings />)
-    const albumCol = screen.getByTestId('downloaders-album-col')
-    const downButtons = within(albumCol).getAllByRole('button', { name: /move down/i })
-    fireEvent.click(downButtons[0])
-    await waitFor(() => expect(mockUpdateAdapter).toHaveBeenCalledTimes(2))
-
-    const calls = mockUpdateAdapter.mock.calls as unknown as Array<[string, { config: Record<string, unknown> }]>
-    const spotdlCall = calls.find((c) => c[0] === 'dl-1')
-
-    // track order must still be 0 — unchanged
-    const granularities = (spotdlCall?.[1].config as Record<string, unknown>)['granularities'] as Record<string, number>
-    expect(granularities['track']).toBe(0)
+    expect(screen.queryByTestId('downloaders-album-col')).not.toBeInTheDocument()
   })
 })

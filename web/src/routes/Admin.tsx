@@ -89,6 +89,38 @@ export default function Admin() {
     refresh()
   }
 
+  /**
+   * Swap the order value for granularity `g` between two adjacent downloader instances in a column.
+   * Only the `g`-key in each instance's granularities map is mutated; all other keys are untouched.
+   */
+  async function moveInColumn(
+    column: AdapterInstance[],
+    index: number,
+    direction: 'up' | 'down',
+    g: string,
+  ) {
+    const swapIndex = direction === 'up' ? index - 1 : index + 1
+    const a = column[index]
+    const b = column[swapIndex]
+    const aNewGranularities = { ...a.granularities, [g]: b.granularities![g] }
+    const bNewGranularities = { ...b.granularities, [g]: a.granularities![g] }
+    await Promise.all([
+      updateAdapter(a.id, {
+        name: a.name,
+        enabled: a.enabled,
+        priority: a.priority,
+        config: { ...a.config, granularities: aNewGranularities },
+      }),
+      updateAdapter(b.id, {
+        name: b.name,
+        enabled: b.enabled,
+        priority: b.priority,
+        config: { ...b.config, granularities: bNewGranularities },
+      }),
+    ])
+    void qc.invalidateQueries({ queryKey: ['adapters', 'list'] })
+  }
+
   const list = adapters.data ?? []
   const avail = available.data ?? []
   const isLoading = adapters.isLoading || available.isLoading
@@ -269,6 +301,7 @@ export default function Admin() {
                 onToggle={(inst) => void onToggle(inst)}
                 onRemove={(id) => void onRemove(id)}
                 onReorder={(inst, delta) => void onReorder(inst, delta)}
+                onMoveInColumn={(col, idx, dir, g) => void moveInColumn(col, idx, dir, g)}
               />
             </>
           )}

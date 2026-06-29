@@ -1,4 +1,4 @@
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { AdapterSection } from './AdapterSection'
 import type { AdapterInstance, AvailableAdapter } from '../../lib/adaptersApi'
@@ -125,7 +125,7 @@ describe('AdapterSection', () => {
     expect(screen.queryByRole('button', { name: /move spotdl down/i })).not.toBeInTheDocument()
   })
 
-  it('downloader section shows "Order in Settings → Downloaders." hint when instances exist', () => {
+  it('downloader section does NOT show the "Order in Settings" hint (ordering is now here in Admin)', () => {
     const instances = [makeInstance({ id: 'dl-1', name: 'spotdl', type: 'downloader' })]
     render(
       <AdapterSection
@@ -133,22 +133,152 @@ describe('AdapterSection', () => {
         type="downloader"
         instances={instances}
         available={[makeAvailable({ type: 'downloader', name: 'spotdl' })]}
-        {...handlers}
-      />,
-    )
-    expect(screen.getByText(/order in settings/i)).toBeInTheDocument()
-  })
-
-  it('downloader section does NOT show the hint when there are no instances', () => {
-    render(
-      <AdapterSection
-        title="Downloaders"
-        type="downloader"
-        instances={[]}
-        available={[makeAvailable({ type: 'downloader', name: 'spotdl' })]}
+        onMoveInColumn={vi.fn()}
         {...handlers}
       />,
     )
     expect(screen.queryByText(/order in settings/i)).not.toBeInTheDocument()
+  })
+})
+
+// spotDL: track+album (granularities {track:0,album:0}); Lidarr: album only (granularities {album:1})
+const dlSpotdl = makeInstance({
+  id: 'dl-1',
+  type: 'downloader',
+  name: 'spotdl',
+  granularities: { track: 0, album: 0 },
+  supportedGranularities: ['track', 'album'],
+})
+const dlLidarr = makeInstance({
+  id: 'dl-2',
+  type: 'downloader',
+  name: 'lidarr',
+  granularities: { album: 1 },
+  supportedGranularities: ['album'],
+})
+
+describe('AdapterSection downloader — two-column ordering (moved from Settings)', () => {
+  const onMoveInColumn = vi.fn().mockResolvedValue(undefined)
+  const handlers = {
+    onCreate: vi.fn().mockResolvedValue(undefined),
+    onUpdate: vi.fn().mockResolvedValue(undefined),
+    onToggle: vi.fn(),
+    onRemove: vi.fn(),
+  }
+
+  beforeEach(() => {
+    onMoveInColumn.mockClear()
+    Object.values(handlers).forEach((fn) => fn.mockClear())
+  })
+
+  it('renders a Song column with only spotdl (has track granularity)', () => {
+    render(
+      <AdapterSection
+        title="Downloaders"
+        type="downloader"
+        instances={[dlSpotdl, dlLidarr]}
+        available={[makeAvailable({ type: 'downloader', name: 'spotdl' }), makeAvailable({ type: 'downloader', name: 'lidarr' })]}
+        onMoveInColumn={onMoveInColumn}
+        {...handlers}
+      />,
+    )
+    const songCol = screen.getByTestId('downloaders-song-col')
+    expect(within(songCol).getByText('spotdl')).toBeInTheDocument()
+    expect(within(songCol).queryByText('lidarr')).toBeNull()
+  })
+
+  it('renders an Album column with spotdl first then lidarr (sorted by album granularity order)', () => {
+    render(
+      <AdapterSection
+        title="Downloaders"
+        type="downloader"
+        instances={[dlSpotdl, dlLidarr]}
+        available={[makeAvailable({ type: 'downloader', name: 'spotdl' }), makeAvailable({ type: 'downloader', name: 'lidarr' })]}
+        onMoveInColumn={onMoveInColumn}
+        {...handlers}
+      />,
+    )
+    const albumCol = screen.getByTestId('downloaders-album-col')
+    const names = within(albumCol).getAllByTestId('downloader-name').map((el) => el.textContent)
+    expect(names).toEqual(['spotdl', 'lidarr'])
+  })
+
+  it('first-row up button is disabled in Song column', () => {
+    render(
+      <AdapterSection
+        title="Downloaders"
+        type="downloader"
+        instances={[dlSpotdl, dlLidarr]}
+        available={[makeAvailable({ type: 'downloader', name: 'spotdl' }), makeAvailable({ type: 'downloader', name: 'lidarr' })]}
+        onMoveInColumn={onMoveInColumn}
+        {...handlers}
+      />,
+    )
+    const songCol = screen.getByTestId('downloaders-song-col')
+    const upButtons = within(songCol).getAllByRole('button', { name: /move up/i })
+    expect(upButtons[0]).toBeDisabled()
+  })
+
+  it('last-row down button is disabled in Album column', () => {
+    render(
+      <AdapterSection
+        title="Downloaders"
+        type="downloader"
+        instances={[dlSpotdl, dlLidarr]}
+        available={[makeAvailable({ type: 'downloader', name: 'spotdl' }), makeAvailable({ type: 'downloader', name: 'lidarr' })]}
+        onMoveInColumn={onMoveInColumn}
+        {...handlers}
+      />,
+    )
+    const albumCol = screen.getByTestId('downloaders-album-col')
+    const downButtons = within(albumCol).getAllByRole('button', { name: /move down/i })
+    expect(downButtons[downButtons.length - 1]).toBeDisabled()
+  })
+
+  it('clicking down on spotdl in Album column calls onMoveInColumn with album column + index 0 + down + "album"', async () => {
+    render(
+      <AdapterSection
+        title="Downloaders"
+        type="downloader"
+        instances={[dlSpotdl, dlLidarr]}
+        available={[makeAvailable({ type: 'downloader', name: 'spotdl' }), makeAvailable({ type: 'downloader', name: 'lidarr' })]}
+        onMoveInColumn={onMoveInColumn}
+        {...handlers}
+      />,
+    )
+    const albumCol = screen.getByTestId('downloaders-album-col')
+    const downButtons = within(albumCol).getAllByRole('button', { name: /move down/i })
+    fireEvent.click(downButtons[0])
+    await waitFor(() => expect(onMoveInColumn).toHaveBeenCalledTimes(1))
+    // Called with (column, 0, 'down', 'album')
+    const [colArg, idxArg, dirArg, gArg] = onMoveInColumn.mock.calls[0] as [unknown[], number, string, string]
+    expect(idxArg).toBe(0)
+    expect(dirArg).toBe('down')
+    expect(gArg).toBe('album')
+    // The column passed must be the album-sorted array: spotdl then lidarr
+    expect(Array.isArray(colArg)).toBe(true)
+    const colNames = (colArg as Array<{ name: string }>).map((a) => a.name)
+    expect(colNames).toEqual(['spotdl', 'lidarr'])
+  })
+
+  it('reordering Album column does NOT affect Song column (independence)', async () => {
+    render(
+      <AdapterSection
+        title="Downloaders"
+        type="downloader"
+        instances={[dlSpotdl, dlLidarr]}
+        available={[makeAvailable({ type: 'downloader', name: 'spotdl' }), makeAvailable({ type: 'downloader', name: 'lidarr' })]}
+        onMoveInColumn={onMoveInColumn}
+        {...handlers}
+      />,
+    )
+    const albumCol = screen.getByTestId('downloaders-album-col')
+    const downButtons = within(albumCol).getAllByRole('button', { name: /move down/i })
+    fireEvent.click(downButtons[0])
+    await waitFor(() => expect(onMoveInColumn).toHaveBeenCalledTimes(1))
+    // The Song column must still render with spotdl only
+    const songCol = screen.getByTestId('downloaders-song-col')
+    expect(within(songCol).getByText('spotdl')).toBeInTheDocument()
+    expect(within(songCol).queryByText('lidarr')).toBeNull()
   })
 })
