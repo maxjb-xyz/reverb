@@ -21,6 +21,7 @@ type RequestItem struct {
 	CoverArtID string `json:"coverArtId,omitempty"`
 	CoverUrl   string `json:"coverUrl,omitempty"`
 	Kind       string `json:"kind,omitempty"`
+	TrackCount int    `json:"trackCount,omitempty"`
 }
 
 // Request is the persisted domain entity for a user's download request.
@@ -37,6 +38,7 @@ type Request struct {
 	CoverArtID    string `json:"coverArtId,omitempty"`
 	CoverUrl      string `json:"coverUrl,omitempty"`
 	Kind          string `json:"kind,omitempty"`
+	TrackCount    int    `json:"trackCount,omitempty"`
 	Status        string `json:"status"`
 	CreatedAt     int64  `json:"createdAt"`
 	DecidedBy     string `json:"decidedBy,omitempty"`

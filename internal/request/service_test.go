@@ -467,6 +467,42 @@ func TestCreateKindAlbumRoundTrip(t *testing.T) {
 	}
 }
 
+// TestCreateTrackCountRoundTrip verifies that TrackCount:12 is persisted and read back.
+func TestCreateTrackCountRoundTrip(t *testing.T) {
+	svc, _, userID := newTestService(t)
+	ctx := context.Background()
+
+	albumItem := core.RequestItem{
+		Source:     "lidarr",
+		ExternalID: "album-tc",
+		Title:      "Dark Side of the Moon",
+		Artist:     "Pink Floyd",
+		Album:      "Dark Side of the Moon",
+		Kind:       "album",
+		TrackCount: 12,
+	}
+
+	req, existed, err := svc.Create(ctx, userID, albumItem)
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if existed {
+		t.Fatal("want existed=false for new request")
+	}
+	if req.TrackCount != 12 {
+		t.Fatalf("want TrackCount=12, got %d", req.TrackCount)
+	}
+
+	// Also verify via a fresh Get
+	fetched, err := svc.Get(ctx, req.ID)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if fetched.TrackCount != 12 {
+		t.Fatalf("Get: want TrackCount=12, got %d", fetched.TrackCount)
+	}
+}
+
 // TestCreateEmptyKindDefaultsToTrack verifies that an empty Kind is stored as "track".
 func TestCreateEmptyKindDefaultsToTrack(t *testing.T) {
 	svc, _, userID := newTestService(t)

@@ -105,7 +105,7 @@ function MyRequestRow({ req, userId }: { req: MusicRequest; userId: string }) {
           <span className="truncate min-w-0">{req.artist}</span>
           {req.kind === 'album' && (
             <span className="ml-1 rounded px-1 py-px text-[10px] font-semibold uppercase tracking-wide bg-surface-raised text-text-muted">
-              Album
+              {req.trackCount && req.trackCount > 0 ? `Album · ${req.trackCount} tracks` : 'Album'}
             </span>
           )}
         </div>
@@ -179,7 +179,7 @@ function ApprovalRow({ req }: { req: MusicRequest }) {
             <span className="truncate min-w-0">{req.artist}</span>
             {req.kind === 'album' && (
               <span className="rounded px-1 py-px text-[10px] font-semibold uppercase tracking-wide bg-surface-raised text-text-muted">
-                Album
+                {req.trackCount && req.trackCount > 0 ? `Album · ${req.trackCount} tracks` : 'Album'}
               </span>
             )}
             {' · '}<span className="text-text-muted">by {req.requestedBy}</span>

@@ -318,6 +318,73 @@ describe('Requests page — album kind cue', () => {
   })
 })
 
+describe('Requests page — album track count cue', () => {
+  beforeEach(() => {
+    useRequestStore.setState({ byId: {} })
+    useAuthStore.setState({ me: null, loading: false })
+    mockNavigate.mockReset()
+  })
+
+  it('MyRequestRow shows "Album · 12 tracks" when kind=album and trackCount=12', async () => {
+    setMe('u1', ['request'])
+    useRequestStore.setState({
+      byId: { r1: makeRequest({ requestedBy: 'u1', status: 'pending', kind: 'album', trackCount: 12 }) },
+    })
+    renderRequests()
+    await waitFor(() => expect(screen.getByText('Test Song')).toBeInTheDocument())
+    expect(screen.getByText('Album · 12 tracks')).toBeInTheDocument()
+  })
+
+  it('MyRequestRow shows just "Album" when kind=album and trackCount=0', async () => {
+    setMe('u1', ['request'])
+    useRequestStore.setState({
+      byId: { r1: makeRequest({ requestedBy: 'u1', status: 'pending', kind: 'album', trackCount: 0 }) },
+    })
+    renderRequests()
+    await waitFor(() => expect(screen.getByText('Test Song')).toBeInTheDocument())
+    expect(screen.getByText('Album')).toBeInTheDocument()
+    expect(screen.queryByText(/tracks/i)).not.toBeInTheDocument()
+  })
+
+  it('MyRequestRow shows just "Album" when kind=album and trackCount is absent', async () => {
+    setMe('u1', ['request'])
+    useRequestStore.setState({
+      byId: { r1: makeRequest({ requestedBy: 'u1', status: 'pending', kind: 'album' }) },
+    })
+    renderRequests()
+    await waitFor(() => expect(screen.getByText('Test Song')).toBeInTheDocument())
+    expect(screen.getByText('Album')).toBeInTheDocument()
+    expect(screen.queryByText(/tracks/i)).not.toBeInTheDocument()
+  })
+
+  it('ApprovalRow shows "Album · 12 tracks" when kind=album and trackCount=12', async () => {
+    setMe('u2', ['request', 'manage_requests'])
+    useRequestStore.setState({
+      byId: {
+        r2: makeRequest({ id: 'r2', requestedBy: 'u3', status: 'pending', title: 'Queue Album', kind: 'album', trackCount: 12 }),
+      },
+    })
+    renderRequests()
+    fireEvent.click(screen.getByRole('tab', { name: /approval/i }))
+    await waitFor(() => expect(screen.getByText('Queue Album')).toBeInTheDocument())
+    expect(screen.getByText('Album · 12 tracks')).toBeInTheDocument()
+  })
+
+  it('ApprovalRow shows just "Album" when kind=album and trackCount=0', async () => {
+    setMe('u2', ['request', 'manage_requests'])
+    useRequestStore.setState({
+      byId: {
+        r2: makeRequest({ id: 'r2', requestedBy: 'u3', status: 'pending', title: 'Queue Album', kind: 'album', trackCount: 0 }),
+      },
+    })
+    renderRequests()
+    fireEvent.click(screen.getByRole('tab', { name: /approval/i }))
+    await waitFor(() => expect(screen.getByText('Queue Album')).toBeInTheDocument())
+    expect(screen.getByText('Album')).toBeInTheDocument()
+    expect(screen.queryByText(/tracks/i)).not.toBeInTheDocument()
+  })
+})
+
 describe('TopBar — Requests nav entry', () => {
   beforeEach(() => {
     useAuthStore.setState({ me: null, loading: false })

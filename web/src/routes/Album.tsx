@@ -259,6 +259,7 @@ export default function Album() {
                       album: album.name,
                       coverArtId: album.coverArtId,
                       coverUrl: album.coverUrl,
+                      trackCount: album.totalCount,
                     })
                       .then((req) => useRequestStore.getState().upsert(req))
                       .catch((err) => console.error('[Album] postRequest failed:', err))

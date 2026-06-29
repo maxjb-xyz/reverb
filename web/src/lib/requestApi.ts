@@ -16,6 +16,7 @@ export interface Request {
   durationMs?: number
   coverArtId?: string
   coverUrl?: string
+  trackCount?: number
   status: RequestStatus
   createdAt: number // unix seconds
   decidedBy?: string
@@ -35,6 +36,7 @@ export interface CreateRequestItem {
   durationMs?: number
   coverArtId?: string
   coverUrl?: string
+  trackCount?: number
 }
 
 export interface RequestEventPayload {

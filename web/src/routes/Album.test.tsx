@@ -480,6 +480,20 @@ describe('Album page', () => {
       )
     })
 
+    it('confirming the disclosure posts trackCount equal to album.totalCount', async () => {
+      setCaps(['request'])
+      await renderLoaded()
+      fireEvent.click(screen.getByRole('button', { name: /request album/i }))
+      const confirmBtn = screen.getByRole('button', { name: /confirm/i })
+      fireEvent.click(confirmBtn)
+      await waitFor(() => expect(mockPostRequest).toHaveBeenCalledTimes(1))
+      expect(mockPostRequest).toHaveBeenCalledWith(
+        expect.objectContaining({
+          trackCount: 3, // partialAlbum.totalCount === 3
+        }),
+      )
+    })
+
     it('cancelling the disclosure does NOT call postRequest', async () => {
       setCaps(['request'])
       await renderLoaded()

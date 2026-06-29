@@ -118,6 +118,7 @@ type Request struct {
 	DenyReason    sql.NullString `json:"deny_reason"`
 	CoverUrl      sql.NullString `json:"cover_url"`
 	Kind          string         `json:"kind"`
+	TrackCount    int64          `json:"track_count"`
 }
 
 type Role struct {
