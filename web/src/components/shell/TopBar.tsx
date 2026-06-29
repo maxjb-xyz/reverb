@@ -7,6 +7,7 @@ import { useDownloads } from '../../lib/downloadStore'
 import { useSearch } from '../../lib/searchStore'
 import { useAuthStore, isManagerCaps } from '../../lib/authStore'
 import { useRequestStore } from '../../lib/requestApi'
+import { NotificationBell } from '../NotificationBell'
 
 export function TopBar() {
   const navigate = useNavigate()
@@ -191,6 +192,9 @@ export function TopBar() {
             )}
           </div>
         )}
+
+        {/* Notification bell */}
+        <NotificationBell />
 
         {/* Avatar / account menu */}
         <div ref={menuRef} className="relative">
