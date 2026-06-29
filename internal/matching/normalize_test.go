@@ -75,6 +75,24 @@ func TestNormalizeAgainstFixtures(t *testing.T) {
 	}
 }
 
+// TestNormalizeQualifierForms documents how Normalize treats the three
+// version-qualifier forms. Fingerprint relies on this contract: paren form
+// keeps its parens, dash/bracket forms yield a bare token.
+func TestNormalizeQualifierForms(t *testing.T) {
+	// Paren form: parentheses are preserved by Normalize.
+	if got := Normalize("Song (Live)"); got != "song (live)" {
+		t.Errorf("paren form: got %q", got)
+	}
+	// Dash form: dash is stripped, yielding a bare "live" token.
+	if got := Normalize("Song - Live"); got != "song live" {
+		t.Errorf("dash form: got %q", got)
+	}
+	// Bracket form: brackets are stripped, yielding a bare "live" token.
+	if got := Normalize("Song [Live]"); got != "song live" {
+		t.Errorf("bracket form: got %q", got)
+	}
+}
+
 func TestNormalizeEdgeCases(t *testing.T) {
 	cases := map[string]string{
 		"":                         "",
