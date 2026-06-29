@@ -5,7 +5,8 @@ import { useDownloads } from './downloadStore'
 import { useLibraryRevision } from './libraryRevisionStore'
 import { getDownloads, getQueueState } from './downloadApi'
 import { usePlayer } from './playerStore'
-import { useRequestStore, type RequestEventPayload } from './requestApi'
+import { getMyRequests, getAllRequests, useRequestStore, type RequestEventPayload } from './requestApi'
+import { useAuthStore } from './authStore'
 import { useToastStore } from './toastStore'
 import type { DownloadEvent, DownloadRemovedEvent, LibraryUpdatedEvent, QueueStateEvent, RealtimeEvent, Track } from './types'
 
@@ -128,6 +129,20 @@ export function useRealtime(makeSocket?: (url: string) => WebSocketLike): void {
       void getQueueState()
         .then((q) => useDownloads.getState().setPaused(q.paused))
         .catch(() => {})
+      // Hydrate the request store for the capabilities the user has, so the
+      // pending-count nav badge and track "Requested" affordance are correct on
+      // load — not only after visiting /requests.
+      const auth = useAuthStore.getState()
+      if (auth.can('request')) {
+        void getMyRequests()
+          .then((r) => useRequestStore.getState().setMine(r))
+          .catch(() => {})
+      }
+      if (auth.can('manage_requests')) {
+        void getAllRequests('pending')
+          .then((r) => useRequestStore.getState().setQueue(r))
+          .catch(() => {})
+      }
     }
 
     const conn = new RealtimeConnection({ onEvent, onOpen }, makeSocket)
