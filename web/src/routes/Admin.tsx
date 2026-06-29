@@ -43,6 +43,8 @@ export default function Admin() {
   // The mode the user has picked in the dropdown but not yet applied. null = no
   // pending pick (the dropdown reflects the saved mode).
   const [pickedMode, setPickedMode] = useState<'built-in' | 'external' | null>(null)
+  // Pending quota value — null means no uncommitted edit.
+  const [pendingQuota, setPendingQuota] = useState<number | null>(null)
 
   function refresh() {
     void qc.invalidateQueries({ queryKey: ['adapters', 'list'] })
@@ -266,6 +268,40 @@ export default function Admin() {
                 </span>
               </div>
             )}
+          </section>
+
+          {/* Request quota — max pending requests per user */}
+          <section className="rounded-lg border border-border-subtle bg-raised p-6 space-y-3">
+            <div>
+              <h2 className="text-lg font-extrabold tracking-tight text-text-primary">Request quota</h2>
+              <p className="text-xs text-text-secondary mt-0.5">
+                Limit how many pending requests a single user can have at once.
+              </p>
+            </div>
+            <div className="flex items-center gap-4">
+              <label htmlFor="max-pending-requests" className="text-sm font-semibold text-text-primary whitespace-nowrap">
+                Max pending requests per user
+              </label>
+              <div className="flex flex-col gap-1">
+                <input
+                  id="max-pending-requests"
+                  type="number"
+                  min={0}
+                  value={pendingQuota ?? (settings.data?.maxPendingRequestsPerUser ?? 0)}
+                  onChange={(e) => setPendingQuota(Math.max(0, parseInt(e.target.value, 10) || 0))}
+                  onBlur={() => {
+                    if (pendingQuota !== null) {
+                      updateSettings.mutate(
+                        { maxPendingRequestsPerUser: pendingQuota },
+                        { onSuccess: () => setPendingQuota(null) },
+                      )
+                    }
+                  }}
+                  className="w-24 rounded-lg border border-border-subtle bg-surface px-2.5 py-1.5 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-accent"
+                />
+                <span className="text-xs text-text-muted">0 = unlimited</span>
+              </div>
+            </div>
           </section>
 
           {isLoading ? (

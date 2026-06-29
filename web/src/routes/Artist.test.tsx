@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import Artist from './Artist'
 
@@ -22,7 +22,7 @@ vi.mock('../lib/downloadApi', () => ({
 }))
 
 vi.mock('../lib/requestApi', () => ({
-  postBatchRequest: vi.fn().mockResolvedValue({ created: 2, skipped: 0, requests: [] }),
+  postBatchRequest: vi.fn().mockResolvedValue({ created: 2, skipped: 0, quotaCapped: 0, requests: [] }),
 }))
 
 vi.mock('../lib/authStore', () => ({
@@ -60,6 +60,7 @@ import { useDownloads } from '../lib/downloadStore'
 import { useAuthStore } from '../lib/authStore'
 import { useAlbumPalette } from '../lib/useAlbumPalette'
 import { useNavigate } from 'react-router-dom'
+import { useToastStore } from '../lib/toastStore'
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -571,5 +572,46 @@ describe('Artist page', () => {
     fireEvent.click(screen.getByRole('button', { name: /request all/i }))
     fireEvent.click(screen.getByRole('button', { name: /cancel/i }))
     expect(vi.mocked(postBatchRequest)).not.toHaveBeenCalled()
+  })
+
+  // ── Task 2: quotaCapped in batch toast ────────────────────────────────────
+
+  it('quotaCapped > 0: success toast notes "N not requested (limit reached)"', async () => {
+    setAuth(['request'])
+    vi.mocked(postBatchRequest).mockResolvedValueOnce({
+      created: 1,
+      skipped: 0,
+      quotaCapped: 2,
+      requests: [],
+    })
+    useToastStore.setState({ toasts: [] })
+    wrapper(<Artist />)
+    fireEvent.click(screen.getByRole('button', { name: /request all/i }))
+    fireEvent.click(screen.getByRole('button', { name: /confirm/i }))
+    await waitFor(() => {
+      const toasts = useToastStore.getState().toasts
+      expect(toasts.some((t) =>
+        t.kind === 'success' && /2 not requested \(limit reached\)/i.test(t.message),
+      )).toBe(true)
+    })
+  })
+
+  it('quotaCapped = 0: success toast does NOT mention "limit reached"', async () => {
+    setAuth(['request'])
+    vi.mocked(postBatchRequest).mockResolvedValueOnce({
+      created: 2,
+      skipped: 0,
+      quotaCapped: 0,
+      requests: [],
+    })
+    useToastStore.setState({ toasts: [] })
+    wrapper(<Artist />)
+    fireEvent.click(screen.getByRole('button', { name: /request all/i }))
+    fireEvent.click(screen.getByRole('button', { name: /confirm/i }))
+    await waitFor(() => {
+      const toasts = useToastStore.getState().toasts
+      expect(toasts.some((t) => t.kind === 'success')).toBe(true)
+      expect(toasts.some((t) => /limit reached/i.test(t.message))).toBe(false)
+    })
   })
 })

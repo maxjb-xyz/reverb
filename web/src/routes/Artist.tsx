@@ -389,9 +389,10 @@ export default function Artist() {
                     postBatchRequest(notOwnedRequestItems)
                       .then((result) => {
                         const skippedNote = result.skipped > 0 ? ` (${result.skipped} already requested)` : ''
+                        const cappedNote = result.quotaCapped > 0 ? ` — ${result.quotaCapped} not requested (limit reached)` : ''
                         const msg = canAutoApprove
-                          ? `Requested ${result.created} album${result.created === 1 ? '' : 's'}${skippedNote}`
-                          : `Requested ${result.created} album${result.created === 1 ? '' : 's'} — pending approval${skippedNote}`
+                          ? `Requested ${result.created} album${result.created === 1 ? '' : 's'}${skippedNote}${cappedNote}`
+                          : `Requested ${result.created} album${result.created === 1 ? '' : 's'} — pending approval${skippedNote}${cappedNote}`
                         useToastStore.getState().push(msg, 'success')
                       })
                       .catch((err) => {

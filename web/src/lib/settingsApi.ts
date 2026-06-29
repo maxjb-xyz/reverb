@@ -5,6 +5,7 @@ export interface AppSettings {
   accentColor: string
   dynamicBackground: boolean
   libraryBackendMode: string // 'built-in' | 'external'
+  maxPendingRequestsPerUser: number // 0 = unlimited
 }
 
 const DEFAULT_ACCENT_CHANNELS = '240 53 75' // #F0354B

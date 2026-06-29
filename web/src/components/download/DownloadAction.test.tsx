@@ -5,6 +5,7 @@ import { useDownloads } from '../../lib/downloadStore'
 import { useAuthStore } from '../../lib/authStore'
 import { useRequestStore } from '../../lib/requestApi'
 import { useToastStore } from '../../lib/toastStore'
+import { ApiError } from '../../lib/api'
 import type { ExternalResult, DownloadJob } from '../../lib/types'
 import type { Request } from '../../lib/requestApi'
 
@@ -609,6 +610,37 @@ describe('DownloadAction', () => {
     fireEvent.click(screen.getByRole('button', { name: /^request$/i }))
 
     await waitFor(() => expect(postRequestMock).toHaveBeenCalledTimes(1))
+    await waitFor(() => {
+      const { toasts } = useToastStore.getState()
+      expect(toasts.some((t) => t.kind === 'error' && t.message === "Couldn't file your request")).toBe(true)
+    })
+  })
+
+  // ── Task 2: 429 quota error handling ─────────────────────────────────────
+
+  it('request cap only: 429 ApiError shows the server error message (NOT the generic toast)', async () => {
+    setCaps(['request'])
+    const err = new ApiError('POST', '/requests', 429, { error: 'Quota exceeded', limit: 3 })
+    postRequestMock.mockRejectedValueOnce(err)
+    render(<DownloadAction result={makeResult()} onPlay={onPlay} />)
+
+    fireEvent.click(screen.getByRole('button', { name: /^request$/i }))
+
+    await waitFor(() => {
+      const { toasts } = useToastStore.getState()
+      expect(toasts.some((t) => t.kind === 'error' && t.message === 'Quota exceeded')).toBe(true)
+      expect(toasts.some((t) => t.message === "Couldn't file your request")).toBe(false)
+    })
+  })
+
+  it('request cap only: non-429 error shows the generic toast (not the server body)', async () => {
+    setCaps(['request'])
+    const err = new ApiError('POST', '/requests', 500, { error: 'Internal Server Error' })
+    postRequestMock.mockRejectedValueOnce(err)
+    render(<DownloadAction result={makeResult()} onPlay={onPlay} />)
+
+    fireEvent.click(screen.getByRole('button', { name: /^request$/i }))
+
     await waitFor(() => {
       const { toasts } = useToastStore.getState()
       expect(toasts.some((t) => t.kind === 'error' && t.message === "Couldn't file your request")).toBe(true)

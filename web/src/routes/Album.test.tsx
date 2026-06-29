@@ -8,6 +8,7 @@ import type { AlbumDetail, ExternalTrackRef } from '../lib/types'
 import { useAlbumPalette } from '../lib/useAlbumPalette'
 import { useAuthStore } from '../lib/authStore'
 import { useToastStore } from '../lib/toastStore'
+import { ApiError } from '../lib/api'
 
 // ── useAlbumPalette mock ───────────────────────────────────────────────────────
 vi.mock('../lib/useAlbumPalette', () => ({ useAlbumPalette: vi.fn(() => null) }))
@@ -515,6 +516,23 @@ describe('Album page', () => {
       await waitFor(() => {
         const { toasts } = useToastStore.getState()
         expect(toasts.some((t) => t.kind === 'error' && t.message === "Couldn't file your request")).toBe(true)
+      })
+    })
+
+    it('a 429 ApiError on postRequest shows the server message (NOT the generic toast)', async () => {
+      setCaps(['request'])
+      useToastStore.setState({ toasts: [] })
+      mockPostRequest.mockRejectedValueOnce(
+        new ApiError('POST', '/requests', 429, { error: 'Request quota reached', limit: 2 }),
+      )
+      await renderLoaded()
+      fireEvent.click(screen.getByRole('button', { name: /request album/i }))
+      fireEvent.click(screen.getByRole('button', { name: /confirm/i }))
+      await waitFor(() => expect(mockPostRequest).toHaveBeenCalledTimes(1))
+      await waitFor(() => {
+        const { toasts } = useToastStore.getState()
+        expect(toasts.some((t) => t.kind === 'error' && t.message === 'Request quota reached')).toBe(true)
+        expect(toasts.some((t) => t.message === "Couldn't file your request")).toBe(false)
       })
     })
   })

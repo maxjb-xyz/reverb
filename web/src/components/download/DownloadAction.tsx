@@ -7,6 +7,7 @@ import { postRequest, useRequestStore } from '../../lib/requestApi'
 import { useToastStore } from '../../lib/toastStore'
 import { useAdapters } from '../../lib/adaptersApi'
 import { useAuthStore } from '../../lib/authStore'
+import { ApiError } from '../../lib/api'
 import type { ExternalResult } from '../../lib/types'
 
 interface Props {
@@ -174,7 +175,11 @@ export function DownloadAction({ result, onPlay }: Props) {
               .then((req) => useRequestStore.getState().upsert(req))
               .catch((err) => {
                 console.error('[DownloadAction] postRequest failed:', err)
-                useToastStore.getState().push("Couldn't file your request", 'error')
+                if (err instanceof ApiError && err.status === 429 && typeof err.body?.error === 'string') {
+                  useToastStore.getState().push(err.body.error, 'error')
+                } else {
+                  useToastStore.getState().push("Couldn't file your request", 'error')
+                }
               })
           }}
           className="inline-flex items-center gap-1 rounded-full border border-border-subtle px-2.5 py-1 text-xs font-bold text-text-primary transition-colors hover:bg-raised-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent active:opacity-80"

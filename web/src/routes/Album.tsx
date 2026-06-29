@@ -8,6 +8,7 @@ import { DownloadAction } from '../components/download/DownloadAction'
 import { postBatchDownload } from '../lib/downloadApi'
 import { postRequest, useRequestStore } from '../lib/requestApi'
 import { useToastStore } from '../lib/toastStore'
+import { ApiError } from '../lib/api'
 import { formatDuration } from '../lib/types'
 import type { AlbumDetailTrack, ExternalResult, ExternalTrackRef, Track } from '../lib/types'
 import { usePlayer } from '../lib/playerStore'
@@ -265,7 +266,11 @@ export default function Album() {
                       .then((req) => useRequestStore.getState().upsert(req))
                       .catch((err) => {
                         console.error('[Album] postRequest failed:', err)
-                        useToastStore.getState().push("Couldn't file your request", 'error')
+                        if (err instanceof ApiError && err.status === 429 && typeof err.body?.error === 'string') {
+                          useToastStore.getState().push(err.body.error, 'error')
+                        } else {
+                          useToastStore.getState().push("Couldn't file your request", 'error')
+                        }
                       })
                   }}
                 >

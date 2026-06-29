@@ -54,6 +54,7 @@ export function postRequest(item: CreateRequestItem): Promise<Request> {
 export interface BatchRequestResult {
   created: number
   skipped: number
+  quotaCapped: number
   requests: Request[]
 }
 

@@ -60,8 +60,8 @@ vi.mock('../lib/usersApi', () => ({
   deleteInvite: vi.fn(),
 }))
 
-const settingsData = (libraryBackendMode: string) => ({
-  data: { accentColor: '#F0354B', dynamicBackground: true, libraryBackendMode },
+const settingsData = (libraryBackendMode: string, maxPendingRequestsPerUser = 0) => ({
+  data: { accentColor: '#F0354B', dynamicBackground: true, libraryBackendMode, maxPendingRequestsPerUser },
 })
 
 // ── Default mock return values ────────────────────────────────────────────────
@@ -339,5 +339,34 @@ describe('Admin', () => {
     expect(screen.getByLabelText(/path/i)).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: /cancel/i }))
     expect(screen.queryByLabelText(/path/i)).toBeNull()
+  })
+
+  // ── Request quota field ───────────────────────────────────────────────────────
+  it('Providers tab renders "Max pending requests per user" number input with "0 = unlimited" helper', () => {
+    wrap(<Admin />)
+    const input = screen.getByLabelText(/max pending requests per user/i)
+    expect(input).toBeInTheDocument()
+    expect(input).toHaveAttribute('type', 'number')
+    expect(screen.getByText(/0 = unlimited/i)).toBeInTheDocument()
+  })
+
+  it('quota input reflects the saved maxPendingRequestsPerUser value from settings', () => {
+    mockUseSettings.mockReturnValue(settingsData('built-in', 5))
+    wrap(<Admin />)
+    const input = screen.getByLabelText(/max pending requests per user/i) as HTMLInputElement
+    expect(input.value).toBe('5')
+  })
+
+  it('changing quota input and saving calls updateSettings.mutate with maxPendingRequestsPerUser', async () => {
+    wrap(<Admin />)
+    const input = screen.getByLabelText(/max pending requests per user/i)
+    fireEvent.change(input, { target: { value: '3' } })
+    fireEvent.blur(input)
+    await waitFor(() =>
+      expect(mockUpdateSettingsMutate).toHaveBeenCalledWith(
+        { maxPendingRequestsPerUser: 3 },
+        expect.anything(),
+      ),
+    )
   })
 })

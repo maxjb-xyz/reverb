@@ -94,6 +94,23 @@ describe('requestApi HTTP calls', () => {
     expect(JSON.parse((call[1] as RequestInit).body as string)).toEqual({ items })
     expect(result).toEqual({ created: 2, skipped: 0, requests: [] })
   })
+
+  it('postBatchRequest parses quotaCapped from the response', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        new Response(
+          JSON.stringify({ created: 1, skipped: 0, quotaCapped: 3, requests: [] }),
+          { status: 200 },
+        ),
+      ),
+    )
+    const items = [
+      { source: 'spotify', externalId: 'al1', kind: 'album' as const, title: 'Kid A', artist: 'Radiohead', album: 'Kid A', trackCount: 10 },
+    ]
+    const result = await postBatchRequest(items)
+    expect(result.quotaCapped).toBe(3)
+  })
 })
 
 // --- Store tests ---
