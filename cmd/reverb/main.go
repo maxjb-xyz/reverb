@@ -21,6 +21,7 @@ import (
 	"github.com/maxjb-xyz/reverb/internal/events"
 	"github.com/maxjb-xyz/reverb/internal/library/embedded"
 	"github.com/maxjb-xyz/reverb/internal/library/subsonic"
+	"github.com/maxjb-xyz/reverb/internal/notification"
 	"github.com/maxjb-xyz/reverb/internal/playlistsync"
 	"github.com/maxjb-xyz/reverb/internal/registry"
 	"github.com/maxjb-xyz/reverb/internal/request"
@@ -101,6 +102,13 @@ func main() {
 	tracker := request.NewTracker(reqSvc, bus)
 	tracker.Start(ctx)
 	defer tracker.Stop()
+
+	// Notification system: service + notifier. The notifier listens on the same bus
+	// for request lifecycle events and fans out in-app notifications.
+	notifSvc := notification.NewService(st.Q(), time.Now)
+	notifier := notification.NewNotifier(bus, notifSvc, &authManagerLister{svc: authSvc})
+	notifier.Start(ctx)
+	defer notifier.Stop()
 
 	dirty := &atomicDirty{}
 
@@ -216,4 +224,37 @@ func main() {
 	}); err != nil {
 		log.Fatal(err)
 	}
+}
+
+// authManagerLister adapts auth.Service to notification.AuthLister.
+// It enumerates users whose role carries the manage_requests capability.
+type authManagerLister struct {
+	svc *auth.Service
+}
+
+func (a *authManagerLister) ListManagerIDs(ctx context.Context) ([]string, error) {
+	roles, err := a.svc.ListRoles(ctx)
+	if err != nil {
+		return nil, err
+	}
+	managerRoles := make(map[string]bool)
+	for _, r := range roles {
+		for _, cap := range r.Capabilities {
+			if cap == auth.CapManageRequests {
+				managerRoles[r.ID] = true
+				break
+			}
+		}
+	}
+	users, err := a.svc.ListUsers(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var ids []string
+	for _, u := range users {
+		if !u.Disabled && managerRoles[u.RoleID] {
+			ids = append(ids, u.ID)
+		}
+	}
+	return ids, nil
 }
