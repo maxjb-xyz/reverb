@@ -44,6 +44,37 @@ type ArtistExternalMap struct {
 	CreatedAt        int64   `json:"created_at"`
 }
 
+type BackendBinding struct {
+	CatalogID       string `json:"catalog_id"`
+	LibraryIdentity string `json:"library_identity"`
+	BackendID       string `json:"backend_id"`
+	CoverArtID      string `json:"cover_art_id"`
+	KnownAbsent     int64  `json:"known_absent"`
+	BindingEpoch    int64  `json:"binding_epoch"`
+	ResolvedAt      int64  `json:"resolved_at"`
+}
+
+type CatalogAlias struct {
+	AliasKind  string `json:"alias_kind"`
+	AliasValue string `json:"alias_value"`
+	CatalogID  string `json:"catalog_id"`
+	CreatedAt  int64  `json:"created_at"`
+}
+
+type CatalogEntity struct {
+	ID         string `json:"id"`
+	Kind       string `json:"kind"`
+	Title      string `json:"title"`
+	Artist     string `json:"artist"`
+	Album      string `json:"album"`
+	DurationMs int64  `json:"duration_ms"`
+	Isrc       string `json:"isrc"`
+	Mbid       string `json:"mbid"`
+	Source     string `json:"source"`
+	ExternalID string `json:"external_id"`
+	CreatedAt  int64  `json:"created_at"`
+}
+
 type DiscographyCache struct {
 	Source           string `json:"source"`
 	ExternalArtistID string `json:"external_artist_id"`
