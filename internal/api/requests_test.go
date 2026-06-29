@@ -569,6 +569,160 @@ func TestAlbumRequestDedup(t *testing.T) {
 
 // ─── End album handler tests ────────────────────────────────────────────────────
 
+// ─── Batch request handler tests ────────────────────────────────────────────────
+
+const batchAlbumItem1 = `{"source":"lidarr","externalId":"album-a1","title":"Album One","artist":"Artist A","album":"Album One","kind":"album"}`
+const batchAlbumItem2 = `{"source":"lidarr","externalId":"album-a2","title":"Album Two","artist":"Artist B","album":"Album Two","kind":"album"}`
+
+// batchBody builds the JSON body for POST /requests/batch.
+func batchBody(items ...string) string {
+	var buf bytes.Buffer
+	buf.WriteString(`{"items":[`)
+	for i, item := range items {
+		if i > 0 {
+			buf.WriteByte(',')
+		}
+		buf.WriteString(item)
+	}
+	buf.WriteString(`]}`)
+	return buf.String()
+}
+
+// batchResp is the response shape for POST /requests/batch.
+type batchResp struct {
+	Created  int            `json:"created"`
+	Skipped  int            `json:"skipped"`
+	Requests []core.Request `json:"requests"`
+}
+
+// TestBatchRequestAutoApprove: auto_approve user sends 2 distinct album items →
+// both enqueued (GranularityAlbum), created==2, skipped==0.
+func TestBatchRequestAutoApprove(t *testing.T) {
+	mgr := newFakeManager()
+	_, srv, ownerCookie := requestTestServer(t, mgr)
+
+	body := batchBody(batchAlbumItem1, batchAlbumItem2)
+	rec := doReq(t, srv, ownerCookie, http.MethodPost, "/api/v1/requests/batch", body)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("POST /requests/batch (auto_approve) = %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp batchResp
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatal(err)
+	}
+	if resp.Created != 2 {
+		t.Fatalf("want created=2, got %d", resp.Created)
+	}
+	if resp.Skipped != 0 {
+		t.Fatalf("want skipped=0, got %d", resp.Skipped)
+	}
+	if mgr.enqueueCalls != 2 {
+		t.Fatalf("want 2 Enqueue calls, got %d", mgr.enqueueCalls)
+	}
+	if mgr.lastReq.Granularity != core.GranularityAlbum {
+		t.Fatalf("last enqueue Granularity = %q, want album", mgr.lastReq.Granularity)
+	}
+	if len(resp.Requests) != 2 {
+		t.Fatalf("want 2 requests in response, got %d", len(resp.Requests))
+	}
+}
+
+// TestBatchRequestPendingUser: request-only user sends 2 distinct album items →
+// 2 pending requests, 0 enqueues, created==2, skipped==0.
+func TestBatchRequestPendingUser(t *testing.T) {
+	mgr := newFakeManager()
+	_, srv, ownerCookie := requestTestServer(t, mgr)
+
+	// Create a requester user.
+	rec := doReq(t, srv, ownerCookie, http.MethodPost, "/api/v1/users",
+		`{"username":"batchreq1","password":"pw","roleId":"role-requester"}`)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create user = %d: %s", rec.Code, rec.Body.String())
+	}
+	reqTok := mustLogin(t, srv, "batchreq1", "pw")
+	reqCookie := &http.Cookie{Name: sessionCookie, Value: reqTok}
+
+	body := batchBody(batchAlbumItem1, batchAlbumItem2)
+	rec = doReq(t, srv, reqCookie, http.MethodPost, "/api/v1/requests/batch", body)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("POST /requests/batch (requester) = %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp batchResp
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatal(err)
+	}
+	if resp.Created != 2 {
+		t.Fatalf("want created=2, got %d", resp.Created)
+	}
+	if resp.Skipped != 0 {
+		t.Fatalf("want skipped=0, got %d", resp.Skipped)
+	}
+	if mgr.enqueueCalls != 0 {
+		t.Fatalf("want 0 Enqueue calls for pending user, got %d", mgr.enqueueCalls)
+	}
+	for _, r := range resp.Requests {
+		if r.Status != core.RequestPending {
+			t.Fatalf("want status=pending, got %q for request %s", r.Status, r.ID)
+		}
+	}
+}
+
+// TestBatchRequestDedup: batch includes an item that duplicates an already-open
+// album request → that item skipped (counted), not re-enqueued; the new one created.
+func TestBatchRequestDedup(t *testing.T) {
+	mgr := newFakeManager()
+	_, srv, ownerCookie := requestTestServer(t, mgr)
+
+	// Pre-create the first album request via single endpoint.
+	rec := doReq(t, srv, ownerCookie, http.MethodPost, "/api/v1/requests", batchAlbumItem1)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("pre-create = %d: %s", rec.Code, rec.Body.String())
+	}
+	callsAfterFirst := mgr.enqueueCalls // 1 from auto-approve
+
+	// Now batch with the same item (dup) + a new item.
+	body := batchBody(batchAlbumItem1, batchAlbumItem2)
+	rec = doReq(t, srv, ownerCookie, http.MethodPost, "/api/v1/requests/batch", body)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("POST /requests/batch (dedup) = %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp batchResp
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatal(err)
+	}
+	// album-a1 is a dup → skipped; album-a2 is new → created
+	if resp.Skipped != 1 {
+		t.Fatalf("want skipped=1, got %d", resp.Skipped)
+	}
+	if resp.Created != 1 {
+		t.Fatalf("want created=1, got %d", resp.Created)
+	}
+	// Only the new item should trigger an additional Enqueue.
+	if mgr.enqueueCalls != callsAfterFirst+1 {
+		t.Fatalf("want %d Enqueue calls total, got %d", callsAfterFirst+1, mgr.enqueueCalls)
+	}
+}
+
+// TestBatchRequestEmpty: empty items list → {created:0, skipped:0, requests:[]}.
+func TestBatchRequestEmpty(t *testing.T) {
+	mgr := newFakeManager()
+	_, srv, ownerCookie := requestTestServer(t, mgr)
+
+	rec := doReq(t, srv, ownerCookie, http.MethodPost, "/api/v1/requests/batch", `{"items":[]}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("POST /requests/batch (empty) = %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp batchResp
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatal(err)
+	}
+	if resp.Created != 0 || resp.Skipped != 0 {
+		t.Fatalf("want created=0 skipped=0, got created=%d skipped=%d", resp.Created, resp.Skipped)
+	}
+}
+
+// ─── End batch request handler tests ─────────────────────────────────────────────
+
 // TestDownloadReqFromItemTrackKind verifies that a track/empty Kind yields GranularityTrack.
 func TestDownloadReqFromItemTrackKind(t *testing.T) {
 	item := core.RequestItem{

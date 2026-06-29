@@ -285,10 +285,11 @@ func (s *Server) routes() {
 				cr.Put("/playlists/{id}/tracks/order", s.handleReorderSyncedTracks)
 			})
 
-			// request music: create/list own/cancel.
+			// request music: create/list own/cancel/batch.
 			pr.Group(func(rr chi.Router) {
 				rr.Use(s.requireCapability(auth.CapRequest))
 				rr.Post("/requests", s.handleCreateRequest)
+				rr.Post("/requests/batch", s.handleBatchCreateRequests)
 				rr.Get("/requests/mine", s.handleListMyRequests)
 				rr.Post("/requests/{id}/cancel", s.handleCancelRequest)
 			})
