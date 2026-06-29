@@ -1188,6 +1188,155 @@ export async function installRequestWsMock(page: Page): Promise<RequestWsTrigger
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Artist "Request all" flow mocks (Task 3): artist with 2 albums — one partial
+// (ownedCount < totalCount) and one fully owned — so "Request all" only batches
+// the partial album. POST /requests/batch is captured for body assertions.
+//
+// FULLY ISOLATED state: private closure. Does NOT touch the core-loop
+// `downloadState` or any other spec's state. installArtistRequestAllMocks is
+// registered AFTER installApiMocks so its handlers win (most-recently-registered-first).
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const requestAllArtistId = 'art-reqall-1'
+export const requestAllPartialAlbumId = 'al-partial-1'
+export const requestAllFullAlbumId = 'al-full-1'
+export const requestAllArtistName = 'Request Artist'
+export const requestAllPartialAlbumName = 'Partial Album'
+export const requestAllFullAlbumName = 'Full Album'
+
+// The artist detail with 2 albums in the discography.
+function requestAllArtistDetail() {
+  return {
+    source: 'spotify',
+    id: requestAllArtistId,
+    name: requestAllArtistName,
+    resolved: true,
+    albums: [
+      {
+        source: 'spotify',
+        externalId: requestAllPartialAlbumId,
+        name: requestAllPartialAlbumName,
+        year: 2021,
+        kind: 'album',
+        totalTracks: 3,
+        coverUrl: '',
+      },
+      {
+        source: 'spotify',
+        externalId: requestAllFullAlbumId,
+        name: requestAllFullAlbumName,
+        year: 2019,
+        kind: 'album',
+        totalTracks: 2,
+        coverUrl: '',
+      },
+    ],
+  }
+}
+
+// Coverage SSE frames for the artist:
+//   - al-partial-1: partial (1 owned of 3)
+//   - al-full-1:    full  (2 owned of 2)
+function requestAllCoverageFrames() {
+  return [
+    {
+      source: 'spotify',
+      externalAlbumId: requestAllPartialAlbumId,
+      state: 'partial',
+      ownedCount: 1,
+      totalCount: 3,
+      libraryAlbumId: '',
+      missingTracks: [
+        { source: 'spotify', externalId: 'ext-ra-miss-1', title: 'Missing 1', durationMs: 180_000 },
+        { source: 'spotify', externalId: 'ext-ra-miss-2', title: 'Missing 2', durationMs: 160_000 },
+      ],
+    },
+    {
+      source: 'spotify',
+      externalAlbumId: requestAllFullAlbumId,
+      state: 'full',
+      ownedCount: 2,
+      totalCount: 2,
+      libraryAlbumId: 'lib-al-full-1',
+      missingTracks: [],
+    },
+  ]
+}
+
+type ArtistRequestAllState = {
+  lastBatchBody: { items?: unknown[] } | null
+  batchRequests: unknown[]
+}
+
+let artistRequestAllStateRef: ArtistRequestAllState | null = null
+
+export async function installArtistRequestAllMocks(
+  page: Page,
+): Promise<{ getLastBatchBody: () => { items?: unknown[] } | null }> {
+  const state: ArtistRequestAllState = { lastBatchBody: null, batchRequests: [] }
+  artistRequestAllStateRef = state
+
+  // Artist detail
+  await page.route(
+    `**/api/v1/artist/spotify/${requestAllArtistId}`,
+    (route: Route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(requestAllArtistDetail()),
+      }),
+  )
+
+  // Coverage SSE — served-once-then-204 (mirrors everywhere-search + completeness mocks)
+  let coverageServed = false
+  await page.route(
+    `**/api/v1/artist/spotify/${requestAllArtistId}/coverage`,
+    (route: Route) => {
+      if (coverageServed) return route.fulfill({ status: 204, body: '' })
+      coverageServed = true
+      // Multi-frame SSE: two data lines, one per album.
+      const frames = requestAllCoverageFrames()
+      const body = frames.map((f) => `data: ${JSON.stringify(f)}\n\n`).join('')
+      return route.fulfill({ status: 200, contentType: 'text/event-stream', body })
+    },
+  )
+
+  // POST /requests/batch — capture body, respond with BatchRequestResult
+  await page.route('**/api/v1/requests/batch', async (route: Route) => {
+    if (route.request().method() === 'POST') {
+      const raw = route.request().postData() ?? '{}'
+      try {
+        state.lastBatchBody = JSON.parse(raw) as { items?: unknown[] }
+      } catch {
+        state.lastBatchBody = null
+      }
+      const items = (state.lastBatchBody?.items ?? []) as Array<{ externalId: string; title: string; artist: string; kind: string }>
+      const requests = items.map((item, i) => ({
+        id: `req-batch-${i + 1}`,
+        requestedBy: 'user-owner',
+        kind: item.kind,
+        source: 'spotify',
+        externalId: item.externalId,
+        title: item.title,
+        artist: item.artist,
+        status: 'pending' as const,
+        createdAt: Date.now() / 1000,
+      }))
+      state.batchRequests = requests
+      const result = { created: requests.length, skipped: 0, requests }
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(result),
+      })
+    }
+    return route.continue()
+  })
+
+  return { getLastBatchBody: () => state.lastBatchBody }
+}
+
 // installWsMock intercepts the realtime WebSocket. On connect it does NOT send any
 // frame; instead it captures the WebSocketRoute and returns a WsTrigger. The spec
 // calls await ws.complete() ONLY AFTER clicking the Download button (which fires
