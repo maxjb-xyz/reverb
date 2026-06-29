@@ -2433,3 +2433,21 @@ func TestJobTimeoutByGranularity(t *testing.T) {
 		t.Fatalf("album granularity: want 300ms, got %v", got)
 	}
 }
+
+// TestStopWithoutStartIsNoOp asserts that calling Stop() on a Manager that was
+// never Start()ed returns promptly (no deadlock, no panic). This guards the guard
+// we added to Stop() that skips wg.Wait() / close(stopCh) when started==false.
+func TestStopWithoutStartIsNoOp(t *testing.T) {
+	m := NewManager(Config{}, wrapDownloaders(nil), newMemStore(), nil, &fakeScanner{}, nil, nil, nil, nil)
+	done := make(chan struct{})
+	go func() {
+		m.Stop()
+		close(done)
+	}()
+	select {
+	case <-done:
+		// returned promptly — pass
+	case <-time.After(2 * time.Second):
+		t.Fatal("Stop() without Start() did not return within 2s (potential deadlock)")
+	}
+}

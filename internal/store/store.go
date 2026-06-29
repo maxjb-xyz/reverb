@@ -48,8 +48,9 @@ func (s *Store) Migrate() error {
 	return goose.Up(s.sql, "migrations")
 }
 
-func (s *Store) Q() *db.Queries { return s.q }
-func (s *Store) Close() error   { return s.sql.Close() }
+func (s *Store) Q() *db.Queries   { return s.q }
+func (s *Store) Close() error      { return s.sql.Close() }
+func (s *Store) DB() *sql.DB       { return s.sql }
 
 // LibraryVersion returns the monotonic library_version from settings, returning
 // 1 when the key is absent or unparseable. A match_cache row is stale iff its

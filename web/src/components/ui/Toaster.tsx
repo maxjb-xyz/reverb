@@ -4,8 +4,10 @@ export function Toaster() {
   const toasts = useToastStore((s) => s.toasts)
   const dismiss = useToastStore((s) => s.dismiss)
 
-  if (toasts.length === 0) return null
-
+  // Always render the aria-live region so it is in the DOM before the first
+  // toast arrives — a live region must exist before content is injected for
+  // screen readers to announce changes. When toasts is empty, the container
+  // renders with no children (an empty polite live region is harmless).
   return (
     <div
       aria-live="polite"

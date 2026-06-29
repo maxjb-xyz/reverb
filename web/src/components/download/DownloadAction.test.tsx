@@ -4,6 +4,7 @@ import { DownloadAction } from './DownloadAction'
 import { useDownloads } from '../../lib/downloadStore'
 import { useAuthStore } from '../../lib/authStore'
 import { useRequestStore } from '../../lib/requestApi'
+import { useToastStore } from '../../lib/toastStore'
 import type { ExternalResult, DownloadJob } from '../../lib/types'
 import type { Request } from '../../lib/requestApi'
 
@@ -144,6 +145,7 @@ describe('DownloadAction', () => {
   beforeEach(() => {
     useDownloads.setState({ jobs: {} })
     useRequestStore.setState({ byId: {} })
+    useToastStore.setState({ toasts: [] })
     vi.clearAllMocks()
     // default: user can download, 1 enabled downloader
     setCaps(['auto_approve'])
@@ -596,5 +598,20 @@ describe('DownloadAction', () => {
     expect(screen.queryByText(/whole album/i)).not.toBeInTheDocument()
     await waitFor(() => expect(postDownloadMock).toHaveBeenCalledTimes(1))
     expect(postDownloadMock).toHaveBeenCalledWith(expect.objectContaining({ downloader: 'lidarr' }))
+  })
+
+  // ── Fix D: error toast on postRequest failure ─────────────────────────────
+  it('request cap only: rejected postRequest pushes an error toast', async () => {
+    setCaps(['request'])
+    postRequestMock.mockRejectedValueOnce(new Error('network error'))
+    render(<DownloadAction result={makeResult()} onPlay={onPlay} />)
+
+    fireEvent.click(screen.getByRole('button', { name: /^request$/i }))
+
+    await waitFor(() => expect(postRequestMock).toHaveBeenCalledTimes(1))
+    await waitFor(() => {
+      const { toasts } = useToastStore.getState()
+      expect(toasts.some((t) => t.kind === 'error' && t.message === "Couldn't file your request")).toBe(true)
+    })
   })
 })

@@ -6,7 +6,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 SELECT * FROM requests WHERE id = ?;
 
 -- name: GetOpenRequestByItem :one
-SELECT * FROM requests WHERE requested_by = ? AND source = ? AND external_id = ? AND status IN ('pending','approved') LIMIT 1;
+SELECT * FROM requests WHERE requested_by = ? AND source = ? AND external_id = ? AND status IN ('pending','approved') ORDER BY created_at DESC LIMIT 1;
 
 -- name: GetRequestByDownloadJob :one
 SELECT * FROM requests WHERE download_job_id = ?;

@@ -7,6 +7,7 @@ import { TrackRow } from '../components/ui/TrackRow'
 import { DownloadAction } from '../components/download/DownloadAction'
 import { postBatchDownload } from '../lib/downloadApi'
 import { postRequest, useRequestStore } from '../lib/requestApi'
+import { useToastStore } from '../lib/toastStore'
 import { formatDuration } from '../lib/types'
 import type { AlbumDetailTrack, ExternalResult, ExternalTrackRef, Track } from '../lib/types'
 import { usePlayer } from '../lib/playerStore'
@@ -262,7 +263,10 @@ export default function Album() {
                       trackCount: album.totalCount,
                     })
                       .then((req) => useRequestStore.getState().upsert(req))
-                      .catch((err) => console.error('[Album] postRequest failed:', err))
+                      .catch((err) => {
+                        console.error('[Album] postRequest failed:', err)
+                        useToastStore.getState().push("Couldn't file your request", 'error')
+                      })
                   }}
                 >
                   Confirm

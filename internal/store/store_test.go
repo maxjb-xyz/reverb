@@ -282,6 +282,58 @@ func TestRequestRoundTrip(t *testing.T) {
 	}
 }
 
+// TestGetOpenRequestByItemNewest asserts that GetOpenRequestByItem returns the
+// NEWEST open request (ORDER BY created_at DESC) when multiple open rows exist
+// for the same (requested_by, source, external_id).
+func TestGetOpenRequestByItemNewest(t *testing.T) {
+	st := openMigrated(t)
+	ctx := context.Background()
+	q := st.Q()
+
+	// Seed role + user (FK requirement).
+	if err := q.CreateRole(ctx, db.CreateRoleParams{ID: "role-user2", Name: "User", IsSystem: 1, Capabilities: `["can_request"]`}); err != nil {
+		t.Fatal(err)
+	}
+	if err := q.CreateUser(ctx, db.CreateUserParams{ID: "u2", Username: "bob", PasswordHash: "h", RoleID: "role-user2", IsOwner: 0}); err != nil {
+		t.Fatal(err)
+	}
+
+	// Insert an OLDER pending request (lower created_at — SQLite accepts direct insert
+	// with explicit created_at so we can craft the timestamp).
+	if err := q.CreateRequest(ctx, db.CreateRequestParams{
+		ID: "req-old", RequestedBy: "u2", Source: "spotify", ExternalID: "dup-track",
+		Title: "Old Request", Artist: "Artist", Status: "pending",
+	}); err != nil {
+		t.Fatalf("CreateRequest old: %v", err)
+	}
+	// Force the old row's created_at to a small value via raw SQL so the ordering
+	// is deterministic regardless of wall-clock resolution.
+	if _, err := st.DB().ExecContext(ctx, `UPDATE requests SET created_at = 1 WHERE id = 'req-old'`); err != nil {
+		t.Fatalf("backdate old: %v", err)
+	}
+
+	// Insert a NEWER pending request (higher created_at).
+	if err := q.CreateRequest(ctx, db.CreateRequestParams{
+		ID: "req-new", RequestedBy: "u2", Source: "spotify", ExternalID: "dup-track",
+		Title: "New Request", Artist: "Artist", Status: "pending",
+	}); err != nil {
+		t.Fatalf("CreateRequest new: %v", err)
+	}
+	if _, err := st.DB().ExecContext(ctx, `UPDATE requests SET created_at = 9999 WHERE id = 'req-new'`); err != nil {
+		t.Fatalf("set new ts: %v", err)
+	}
+
+	got, err := q.GetOpenRequestByItem(ctx, db.GetOpenRequestByItemParams{
+		RequestedBy: "u2", Source: "spotify", ExternalID: "dup-track",
+	})
+	if err != nil {
+		t.Fatalf("GetOpenRequestByItem: %v", err)
+	}
+	if got.ID != "req-new" {
+		t.Fatalf("expected newest request (req-new), got %q (title=%q)", got.ID, got.Title)
+	}
+}
+
 func TestAdapterInstanceCRUD(t *testing.T) {
 	st, err := Open(t.TempDir() + "/ai.db")
 	if err != nil {

@@ -7,6 +7,7 @@ import { makeTrack } from '../test/factories'
 import type { AlbumDetail, ExternalTrackRef } from '../lib/types'
 import { useAlbumPalette } from '../lib/useAlbumPalette'
 import { useAuthStore } from '../lib/authStore'
+import { useToastStore } from '../lib/toastStore'
 
 // ── useAlbumPalette mock ───────────────────────────────────────────────────────
 vi.mock('../lib/useAlbumPalette', () => ({ useAlbumPalette: vi.fn(() => null) }))
@@ -501,6 +502,20 @@ describe('Album page', () => {
       fireEvent.click(screen.getByRole('button', { name: /cancel/i }))
       expect(mockPostRequest).not.toHaveBeenCalled()
       expect(screen.queryByRole('dialog', { name: /request album/i })).not.toBeInTheDocument()
+    })
+
+    it('a rejected postRequest pushes an error toast', async () => {
+      setCaps(['request'])
+      useToastStore.setState({ toasts: [] })
+      mockPostRequest.mockRejectedValueOnce(new Error('server error'))
+      await renderLoaded()
+      fireEvent.click(screen.getByRole('button', { name: /request album/i }))
+      fireEvent.click(screen.getByRole('button', { name: /confirm/i }))
+      await waitFor(() => expect(mockPostRequest).toHaveBeenCalledTimes(1))
+      await waitFor(() => {
+        const { toasts } = useToastStore.getState()
+        expect(toasts.some((t) => t.kind === 'error' && t.message === "Couldn't file your request")).toBe(true)
+      })
     })
   })
 

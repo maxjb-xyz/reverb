@@ -62,7 +62,7 @@ func (q *Queries) DeleteRequest(ctx context.Context, id string) error {
 }
 
 const getOpenRequestByItem = `-- name: GetOpenRequestByItem :one
-SELECT id, requested_by, source, external_id, title, artist, album, isrc, duration_ms, cover_art_id, status, created_at, decided_by, decided_at, download_job_id, deny_reason, cover_url, kind, track_count FROM requests WHERE requested_by = ? AND source = ? AND external_id = ? AND status IN ('pending','approved') LIMIT 1
+SELECT id, requested_by, source, external_id, title, artist, album, isrc, duration_ms, cover_art_id, status, created_at, decided_by, decided_at, download_job_id, deny_reason, cover_url, kind, track_count FROM requests WHERE requested_by = ? AND source = ? AND external_id = ? AND status IN ('pending','approved') ORDER BY created_at DESC LIMIT 1
 `
 
 type GetOpenRequestByItemParams struct {

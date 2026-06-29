@@ -180,6 +180,7 @@ type Manager struct {
 	wg       sync.WaitGroup
 	stopOnce sync.Once
 	stopCh   chan struct{}
+	started  bool // set to true by Start(); guards Stop() against double-close on an unstarted Manager
 }
 
 // jobTimeout returns the per-job context timeout for the given request.
@@ -227,6 +228,9 @@ func NewManager(cfg Config, downloaders []DownloaderEntry, store JobStore, bus P
 // rematch path was in place, or whose scan-window closed before the file was indexed.
 // The backfill runs once at startup and never retries still-unmatchable jobs.
 func (m *Manager) Start() {
+	m.mu.Lock()
+	m.started = true
+	m.mu.Unlock()
 	for i := 0; i < m.cfg.Workers; i++ {
 		m.wg.Add(1)
 		go m.worker()
@@ -303,6 +307,12 @@ func (m *Manager) BackfillUnlinked() {
 // cleared it. No deadlock risk: wg.Wait() holds no lock, and workers only
 // acquire m.mu briefly inside callbacks (never blocking on Stop's lock).
 func (m *Manager) Stop() {
+	m.mu.Lock()
+	started := m.started
+	m.mu.Unlock()
+	if !started {
+		return // Start() was never called — no workers, no channel to drain
+	}
 	m.stopOnce.Do(func() { close(m.stopCh) })
 	m.wg.Wait()
 	m.mu.Lock()
