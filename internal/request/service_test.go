@@ -242,6 +242,33 @@ func TestCancelOthersForbidden(t *testing.T) {
 	}
 }
 
+// TestCancelPublishesCanceledEvent verifies that a successful Cancel publishes a
+// request.canceled event carrying the canceled request's ID.
+func TestCancelPublishesCanceledEvent(t *testing.T) {
+	svc, pub, userID := newTestService(t)
+	ctx := context.Background()
+
+	req, _, _ := svc.Create(ctx, userID, testItem)
+	if err := svc.Cancel(ctx, req.ID, userID); err != nil {
+		t.Fatalf("Cancel: %v", err)
+	}
+
+	if len(pub.events) != 1 {
+		t.Fatalf("want 1 event, got %d", len(pub.events))
+	}
+	ev := pub.events[0]
+	if ev.Topic != request.TopicCanceled {
+		t.Fatalf("want topic %q, got %q", request.TopicCanceled, ev.Topic)
+	}
+	re, ok := ev.Payload.(core.RequestEvent)
+	if !ok {
+		t.Fatalf("want core.RequestEvent payload, got %T", ev.Payload)
+	}
+	if re.Request.ID != req.ID {
+		t.Fatalf("want Request.ID=%q, got %q", req.ID, re.Request.ID)
+	}
+}
+
 // TestMarkFulfilledFlipsAndPublishes verifies approved→fulfilled transition + event,
 // and that approval metadata (decided_by, decided_at, download_job_id) is preserved.
 func TestMarkFulfilledFlipsAndPublishes(t *testing.T) {

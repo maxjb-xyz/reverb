@@ -183,9 +183,9 @@ export function NotificationBell() {
   )
 }
 
-/** Formats a Unix-ms timestamp as a human-friendly relative string. */
+/** Formats a Unix-seconds timestamp as a human-friendly relative string. */
 function relativeTime(ts: number): string {
-  const diffSec = Math.floor((Date.now() - ts) / 1000)
+  const diffSec = Math.floor(Date.now() / 1000 - ts)
   if (diffSec < 60) return 'just now'
   const diffMin = Math.floor(diffSec / 60)
   if (diffMin < 60) return `${diffMin}m ago`

@@ -47,16 +47,17 @@ func NewNotifier(bus Bus, svc *Service, auth AuthLister) *Notifier {
 	}
 }
 
-// Start subscribes to request.created and request.updated and begins processing
-// events in a background goroutine. The provided ctx controls the lifecycle
-// alongside Stop(). Safe to call only once.
+// Start subscribes to request.created, request.updated, and request.canceled
+// and begins processing events in a background goroutine. The provided ctx
+// controls the lifecycle alongside Stop(). Safe to call only once.
 func (n *Notifier) Start(ctx context.Context) {
 	ctx, cancel := context.WithCancel(ctx)
 	n.cancel = cancel
 
 	createdCh, unsubCreated := n.bus.Subscribe(request.TopicCreated)
 	updatedCh, unsubUpdated := n.bus.Subscribe(request.TopicUpdated)
-	n.unsubs = []func(){unsubCreated, unsubUpdated}
+	canceledCh, unsubCanceled := n.bus.Subscribe(request.TopicCanceled)
+	n.unsubs = []func(){unsubCreated, unsubUpdated, unsubCanceled}
 
 	go func() {
 		defer close(n.done)
@@ -74,6 +75,11 @@ func (n *Notifier) Start(ctx context.Context) {
 					return
 				}
 				n.handleUpdated(ctx, ev)
+			case ev, ok := <-canceledCh:
+				if !ok {
+					return
+				}
+				n.handleCanceled(ctx, ev)
 			}
 		}
 	}()
@@ -168,6 +174,19 @@ func (n *Notifier) handleUpdated(ctx context.Context, ev events.Event) {
 
 	if err := n.svc.ResolvePendingForRequest(ctx, req.ID); err != nil {
 		log.Printf("notifier: ResolvePendingForRequest(%q): %v", req.ID, err)
+	}
+}
+
+// handleCanceled processes a request.canceled event: resolves manager badges for
+// the canceled request. No notification is created for anyone — the requester
+// canceled themselves and does not need a notification.
+func (n *Notifier) handleCanceled(ctx context.Context, ev events.Event) {
+	re, ok := ev.Payload.(core.RequestEvent)
+	if !ok {
+		return
+	}
+	if err := n.svc.ResolvePendingForRequest(ctx, re.Request.ID); err != nil {
+		log.Printf("notifier: ResolvePendingForRequest(%q) on cancel: %v", re.Request.ID, err)
 	}
 }
 

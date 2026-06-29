@@ -50,10 +50,13 @@ export const useNotificationStore = create<NotificationStore>((set, get) => ({
   },
 
   add: (n) =>
-    set((s) => ({
-      byId: { ...s.byId, [n.id]: n },
-      unread: n.read ? s.unread : s.unread + 1,
-    })),
+    set((s) => {
+      const isNew = !s.byId[n.id]
+      return {
+        byId: { ...s.byId, [n.id]: n },
+        unread: isNew && !n.read ? s.unread + 1 : s.unread,
+      }
+    }),
 
   markRead: (ids) =>
     set((s) => {

@@ -14,8 +14,9 @@ import (
 )
 
 const (
-	TopicCreated = "request.created"
-	TopicUpdated = "request.updated"
+	TopicCreated  = "request.created"
+	TopicUpdated  = "request.updated"
+	TopicCanceled = "request.canceled"
 )
 
 var (
@@ -165,6 +166,8 @@ func (s *Service) Deny(ctx context.Context, id, approverID, reason string) (core
 
 // Cancel deletes a pending request owned by requesterID. Returns ErrForbidden if
 // requesterID is not the owner or the request is not pending.
+// On success, publishes a request.canceled event so the Notifier can resolve
+// manager badges for the deleted request.
 func (s *Service) Cancel(ctx context.Context, id, requesterID string) error {
 	row, err := s.q.GetRequest(ctx, id)
 	if err != nil {
@@ -179,7 +182,14 @@ func (s *Service) Cancel(ctx context.Context, id, requesterID string) error {
 	if row.Status != core.RequestPending {
 		return ErrForbidden
 	}
-	return s.q.DeleteRequest(ctx, id)
+	if err := s.q.DeleteRequest(ctx, id); err != nil {
+		return err
+	}
+	s.pub.Publish(events.Event{
+		Topic:   TopicCanceled,
+		Payload: core.RequestEvent{Request: fromRow(row)},
+	})
+	return nil
 }
 
 // MarkFulfilled sets status to fulfilled and publishes request.updated.

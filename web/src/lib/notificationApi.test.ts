@@ -130,6 +130,14 @@ describe('useNotificationStore', () => {
     expect(ids[1]).toBe('old')
   })
 
+  it('add called twice with the same unread id only increments unread once', () => {
+    const n = mkNotification('n1', false, 5000)
+    useNotificationStore.getState().add(n)
+    useNotificationStore.getState().add(n)
+    expect(useNotificationStore.getState().unread).toBe(1)
+    expect(Object.keys(useNotificationStore.getState().byId)).toHaveLength(1)
+  })
+
   it('markRead flips those notifications to read=true and recomputes unread', () => {
     useNotificationStore.getState().setAll(
       [mkNotification('n1', false, 1), mkNotification('n2', false, 2), mkNotification('n3', true, 3)],

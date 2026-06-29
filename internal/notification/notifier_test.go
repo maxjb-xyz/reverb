@@ -483,3 +483,84 @@ func TestNotifier_RequestUpdated_Failed_NoNotification(t *testing.T) {
 		t.Errorf("expected 0 notifications for u1 on failed status, got %d", len(ns))
 	}
 }
+
+// TestNotifier_RequestCanceled_ResolvesManagerBadges verifies that a request.canceled
+// event calls ResolvePendingForRequest (resolving manager badges) and does NOT create
+// any notification (not for requester, not for managers).
+func TestNotifier_RequestCanceled_ResolvesManagerBadges(t *testing.T) {
+	managers := []string{"m1", "m2"}
+	bus, svc, _, captured := setupNotifier(t, managers)
+	ctx := context.Background()
+
+	// Seed pending notifications for m1 and m2 for req-7.
+	pendingM1, err := svc.Create(ctx, core.Notification{
+		UserID:    "m1",
+		Type:      core.NotifyRequestPending,
+		Title:     "pending",
+		Body:      "body",
+		RequestID: "req-7",
+	})
+	if err != nil {
+		t.Fatalf("seed pending for m1: %v", err)
+	}
+	pendingM2, err := svc.Create(ctx, core.Notification{
+		UserID:    "m2",
+		Type:      core.NotifyRequestPending,
+		Title:     "pending",
+		Body:      "body",
+		RequestID: "req-7",
+	})
+	if err != nil {
+		t.Fatalf("seed pending for m2: %v", err)
+	}
+
+	req := core.Request{
+		ID:          "req-7",
+		RequestedBy: "u1",
+		Title:       "Yesterday",
+		Artist:      "The Beatles",
+		Status:      core.RequestPending,
+	}
+	// Publish request.canceled (mirrors what request.Service.Cancel does).
+	bus.Publish(events.Event{
+		Topic:   request.TopicCanceled,
+		Payload: core.RequestEvent{Request: req},
+	})
+
+	// Wait for both manager notifications to be resolved (read=true).
+	ok := pollUntilN(t, 500*time.Millisecond, func() bool {
+		m1List, _ := svc.ListForUser(ctx, "m1", 10)
+		m2List, _ := svc.ListForUser(ctx, "m2", 10)
+		m1Resolved := false
+		m2Resolved := false
+		for _, n := range m1List {
+			if n.ID == pendingM1.ID {
+				m1Resolved = n.Read
+			}
+		}
+		for _, n := range m2List {
+			if n.ID == pendingM2.ID {
+				m2Resolved = n.Read
+			}
+		}
+		return m1Resolved && m2Resolved
+	})
+	if !ok {
+		t.Error("expected both manager pending notifications to be resolved after request.canceled")
+	}
+
+	// No notification events must have been published.
+	time.Sleep(50 * time.Millisecond)
+	if captured.count() != 0 {
+		t.Errorf("expected 0 notification events for request.canceled, got %d", captured.count())
+	}
+
+	// No new notifications for u1.
+	nsU1, err := svc.ListForUser(ctx, "u1", 10)
+	if err != nil {
+		t.Fatalf("ListForUser(u1): %v", err)
+	}
+	if len(nsU1) != 0 {
+		t.Errorf("expected 0 notifications for requester on cancel, got %d", len(nsU1))
+	}
+}

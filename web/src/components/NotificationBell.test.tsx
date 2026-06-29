@@ -31,7 +31,7 @@ function makeNotification(overrides?: Partial<Notification>): Notification {
     title: 'Request approved',
     body: 'Your request for Track A was approved.',
     read: false,
-    createdAt: Date.now(),
+    createdAt: Math.floor(Date.now() / 1000),
     ...overrides,
   }
 }
@@ -259,5 +259,16 @@ describe('NotificationBell', () => {
     await waitFor(() => {
       expect(useNotificationStore.getState().unread).toBe(0)
     })
+  })
+
+  // --- Timestamp regression: createdAt is Unix SECONDS ---
+
+  it('a notification created 60 seconds ago (Unix seconds) renders "1m ago"', () => {
+    const createdAt = Math.floor(Date.now() / 1000) - 60
+    const n1 = makeNotification({ id: 'n1', read: false, createdAt })
+    useNotificationStore.setState({ byId: { n1 }, unread: 1 })
+    renderBell()
+    fireEvent.click(screen.getByRole('button', { name: /notifications/i }))
+    expect(screen.getByText('1m ago')).toBeInTheDocument()
   })
 })
