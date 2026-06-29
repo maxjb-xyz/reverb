@@ -99,6 +99,17 @@ type MatchCache struct {
 	CoverArtID     string         `json:"cover_art_id"`
 }
 
+type Notification struct {
+	ID        string         `json:"id"`
+	UserID    string         `json:"user_id"`
+	Type      string         `json:"type"`
+	Title     string         `json:"title"`
+	Body      string         `json:"body"`
+	RequestID sql.NullString `json:"request_id"`
+	Read      int64          `json:"read"`
+	CreatedAt int64          `json:"created_at"`
+}
+
 type Request struct {
 	ID            string         `json:"id"`
 	RequestedBy   string         `json:"requested_by"`
