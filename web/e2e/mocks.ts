@@ -1337,6 +1337,68 @@ export async function installArtistRequestAllMocks(
   return { getLastBatchBody: () => state.lastBatchBody }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Request-quota cap mock (Task 3 — Case B):
+// Same artist + coverage as installArtistRequestAllMocks, but POST /requests/batch
+// responds with quotaCapped: 2 (created: 1, skipped: 0) so the toast should say
+// "2 not requested (limit reached)".
+// ─────────────────────────────────────────────────────────────────────────────
+export async function installRequestQuotaCapMocks(page: Page): Promise<void> {
+  // Artist detail — same artist as installArtistRequestAllMocks.
+  await page.route(
+    `**/api/v1/artist/spotify/${requestAllArtistId}`,
+    (route: Route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(requestAllArtistDetail()),
+      }),
+  )
+
+  // Coverage SSE — served-once-then-204.
+  let coverageServed = false
+  await page.route(
+    `**/api/v1/artist/spotify/${requestAllArtistId}/coverage`,
+    (route: Route) => {
+      if (coverageServed) return route.fulfill({ status: 204, body: '' })
+      coverageServed = true
+      const frames = requestAllCoverageFrames()
+      const body = frames.map((f) => `data: ${JSON.stringify(f)}\n\n`).join('')
+      return route.fulfill({ status: 200, contentType: 'text/event-stream', body })
+    },
+  )
+
+  // POST /requests/batch — quota capped: 1 created, 2 capped.
+  await page.route('**/api/v1/requests/batch', async (route: Route) => {
+    if (route.request().method() === 'POST') {
+      const result = {
+        created: 1,
+        skipped: 0,
+        quotaCapped: 2,
+        requests: [
+          {
+            id: 'req-quota-cap-1',
+            requestedBy: 'user-owner',
+            kind: 'album',
+            source: 'spotify',
+            externalId: requestAllPartialAlbumId,
+            title: requestAllPartialAlbumName,
+            artist: requestAllArtistName,
+            status: 'pending' as const,
+            createdAt: Date.now() / 1000,
+          },
+        ],
+      }
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(result),
+      })
+    }
+    return route.continue()
+  })
+}
+
 // installWsMock intercepts the realtime WebSocket. On connect it does NOT send any
 // frame; instead it captures the WebSocketRoute and returns a WsTrigger. The spec
 // calls await ws.complete() ONLY AFTER clicking the Download button (which fires
