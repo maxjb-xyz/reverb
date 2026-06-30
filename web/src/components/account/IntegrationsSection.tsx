@@ -19,6 +19,11 @@ interface Props {
 // Sentinel used by the backend — returning it from the secret field means "keep".
 const SECRET_SENTINEL = '••••••••'
 
+// Distinct, spec-mandated copy for the two auth-url failure codes.
+const MSG_UNAVAILABLE = 'Last.fm is temporarily unavailable — try again.'
+const MSG_NOT_CONFIGURED =
+  "Last.fm isn't set up on this server yet — ask an administrator to configure it."
+
 function isAdmin(me: Me): boolean {
   return (
     me.capabilities.includes('can_manage_library') ||
@@ -33,36 +38,93 @@ interface LastfmLinkState {
   link: ScrobbleLink | null
 }
 
-type ConnectStep = 'idle' | 'pending' | 'awaiting-approval' | 'completing' | 'connected' | 'error-unavailable'
+// The widget is driven ENTIRELY by `step`. The link status only seeds the
+// initial step; once the user starts the connect flow, `step` is the single
+// source of truth so a stale `link.status` can never short-circuit a re-render.
+type ConnectStep =
+  | 'idle' // not connected — show Connect (or Reconnect when link is broken)
+  | 'pending' // auth-url request in flight
+  | 'awaiting-approval' // window opened, waiting for the user to click "I've approved"
+  | 'completing' // complete-auth request in flight
+  | 'connected' // active link
+  | 'error-unavailable' // auth-url failed transiently
+  | 'error-not-configured' // auth-url failed because the admin hasn't configured the app
+  | 'error-complete' // complete-auth rejected — recoverable
 
 interface LastfmUserWidgetProps {
-  initialState: LastfmLinkState
+  state: LastfmLinkState
 }
 
-function LastfmUserWidget({ initialState }: LastfmUserWidgetProps) {
-  const [configured] = useState(initialState.configured)
-  const [link, setLink] = useState<ScrobbleLink | null>(initialState.link)
-  const [step, setStep] = useState<ConnectStep>('idle')
+// initialStep maps a freshly-loaded link to the starting step.
+function initialStep(link: ScrobbleLink | null): ConnectStep {
+  if (link?.status === 'active') return 'connected'
+  return 'idle'
+}
+
+function LastfmUserWidget({ state }: LastfmUserWidgetProps) {
+  const { configured, link } = state
+  const broken = link?.status === 'broken'
+
+  const [step, setStep] = useState<ConnectStep>(() => initialStep(link))
   const [pendingToken, setPendingToken] = useState<string | null>(null)
-  const [connectedUsername, setConnectedUsername] = useState<string | null>(link?.username ?? null)
+  const [connectedUsername, setConnectedUsername] = useState<string | null>(
+    link?.status === 'active' ? link.username : null,
+  )
 
-  // Resolve initial connected state from link.
+  // Re-seed when the upstream link changes (e.g. parent re-fetched after a save).
+  // Only re-seed while the user is at rest (idle/connected) so an in-flight
+  // connect flow is never clobbered by a background refresh.
   useEffect(() => {
-    if (link?.status === 'active') {
-      setStep('connected')
-      setConnectedUsername(link.username)
+    if (step === 'idle' || step === 'connected') {
+      setStep(initialStep(link))
+      setConnectedUsername(link?.status === 'active' ? link.username : null)
     }
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [link?.status, link?.username])
 
+  async function handleConnect() {
+    setStep('pending')
+    try {
+      const { authUrl, token } = await lastfmAuthUrl()
+      window.open(authUrl, '_blank')
+      setPendingToken(token)
+      setStep('awaiting-approval')
+    } catch (e) {
+      if (e instanceof ScrobbleError && e.code === 'lastfm_not_configured') {
+        setStep('error-not-configured')
+        return
+      }
+      setStep('error-unavailable')
+    }
+  }
+
+  function handleComplete() {
+    if (!pendingToken) return
+    setStep('completing')
+    lastfmComplete(pendingToken)
+      .then((res) => {
+        setConnectedUsername(res.username)
+        setStep('connected')
+      })
+      .catch(() => {
+        // Don't strand the user in 'completing' — surface a recoverable error.
+        setStep('error-complete')
+      })
+  }
+
+  const busy = step === 'pending' || step === 'completing'
+
+  // ── Render by step (single source of truth) ─────────────────────────────────
+
+  // App not configured at all → admin must set the key first.
   if (!configured) {
     return (
-      <p className="text-xs text-text-secondary">
-        Last.fm is not set up on this server yet. Ask your admin to configure the app API key.
+      <p className="text-xs text-text-secondary text-right">
+        Last.fm isn&apos;t set up on this server yet. Ask an administrator to configure it.
       </p>
     )
   }
 
-  // Active link.
   if (step === 'connected' && connectedUsername) {
     return (
       <div className="flex items-center gap-3">
@@ -71,7 +133,6 @@ function LastfmUserWidget({ initialState }: LastfmUserWidgetProps) {
           variant="secondary"
           onClick={() => {
             void lastfmDisconnect().then(() => {
-              setLink(null)
               setConnectedUsername(null)
               setStep('idle')
             })
@@ -83,87 +144,77 @@ function LastfmUserWidget({ initialState }: LastfmUserWidgetProps) {
     )
   }
 
-  // Broken link.
-  if (link?.status === 'broken') {
-    return (
-      <div className="flex items-center gap-3">
-        <span className="text-xs text-text-secondary">{link.username} — needs reconnecting</span>
-        <Button
-          variant="secondary"
-          onClick={() => {
-            void handleConnect()
-          }}
-        >
-          Reconnect
-        </Button>
-      </div>
-    )
-  }
-
-  // Step: awaiting approval (window opened, user must click "I've approved").
   if (step === 'awaiting-approval') {
     return (
       <div className="flex items-center gap-3">
         <span className="text-xs text-text-secondary">
           Approve Reverb in the Last.fm tab, then click below.
         </span>
-        <Button
-          variant="secondary"
-          onClick={() => {
-            if (!pendingToken) return
-            setStep('completing')
-            void lastfmComplete(pendingToken).then((res) => {
-              setConnectedUsername(res.username)
-              setStep('connected')
-            })
-          }}
-        >
-          I&apos;ve approved
+        <Button variant="secondary" disabled={busy} onClick={handleComplete}>
+          I&apos;ve approved — finish connecting
         </Button>
       </div>
     )
   }
 
-  // Error: temporarily unavailable.
+  if (step === 'completing') {
+    return (
+      <div className="flex items-center gap-3">
+        <span className="text-xs text-text-secondary">Finishing…</span>
+        <Button variant="secondary" disabled>
+          I&apos;ve approved — finish connecting
+        </Button>
+      </div>
+    )
+  }
+
+  if (step === 'error-complete') {
+    return (
+      <div className="flex items-center gap-3">
+        <span className="text-xs text-text-secondary">
+          We couldn&apos;t finish connecting — try again.
+        </span>
+        <Button variant="secondary" onClick={() => void handleConnect()}>
+          Try again
+        </Button>
+      </div>
+    )
+  }
+
   if (step === 'error-unavailable') {
     return (
       <div className="flex items-center gap-3">
-        <span className="text-xs text-text-secondary">Last.fm is temporarily unavailable — try again later.</span>
-        <Button variant="secondary" onClick={() => setStep('idle')}>
-          Retry
+        <span className="text-xs text-text-secondary">{MSG_UNAVAILABLE}</span>
+        <Button variant="secondary" onClick={() => void handleConnect()}>
+          Try again
         </Button>
       </div>
     )
   }
 
-  // Default: not connected, show Connect button.
-  async function handleConnect() {
-    setStep('pending')
-    try {
-      const { authUrl, token } = await lastfmAuthUrl()
-      window.open(authUrl, '_blank')
-      setPendingToken(token)
-      setStep('awaiting-approval')
-    } catch (e) {
-      if (e instanceof ScrobbleError) {
-        if (e.code === 'lastfm_unavailable') {
-          setStep('error-unavailable')
-          return
-        }
-        // lastfm_not_configured — shouldn't happen if configured===true, but handle gracefully.
-        setStep('error-unavailable')
-        return
-      }
-      setStep('error-unavailable')
-    }
+  if (step === 'error-not-configured') {
+    return (
+      <p className="text-xs text-text-secondary text-right">{MSG_NOT_CONFIGURED}</p>
+    )
+  }
+
+  // step === 'idle' — Connect, or Reconnect when the existing link is broken.
+  // Guarded by step==='idle' so an in-flight flow is never short-circuited.
+  if (broken) {
+    return (
+      <div className="flex items-center gap-3">
+        <span className="text-xs text-text-secondary">
+          {link?.username} — Last.fm needs reconnecting
+        </span>
+        <Button variant="secondary" disabled={busy} onClick={() => void handleConnect()}>
+          Reconnect
+        </Button>
+      </div>
+    )
   }
 
   return (
-    <Button
-      variant="secondary"
-      disabled={step === 'pending' || step === 'completing'}
-      onClick={() => void handleConnect()}
-    >
+    <Button variant="secondary" disabled={busy} onClick={() => void handleConnect()}>
       Connect Last.fm
     </Button>
   )
@@ -171,7 +222,13 @@ function LastfmUserWidget({ initialState }: LastfmUserWidgetProps) {
 
 // ── Admin: Last.fm app configuration ─────────────────────────────────────────
 
-function LastfmAdminConfig() {
+interface LastfmAdminConfigProps {
+  // Called after a successful save so the parent can re-fetch the per-user
+  // link state (which flips `configured` from false → true).
+  onSaved: () => void
+}
+
+function LastfmAdminConfig({ onSaved }: LastfmAdminConfigProps) {
   const [apiKey, setApiKey] = useState('')
   const [apiSecret, setApiSecret] = useState('')
   const [apiSecretSet, setApiSecretSet] = useState(false)
@@ -195,11 +252,13 @@ function LastfmAdminConfig() {
     try {
       await setLastfmConfig({ apiKey, apiSecret })
       setSaved(true)
-      // Update local knowledge of secret state.
       if (apiSecret && apiSecret !== SECRET_SENTINEL) {
         setApiSecretSet(true)
       }
       setApiSecret('')
+      // Let the parent re-fetch the per-user link state so the user row flips
+      // from "ask admin" to "Connect Last.fm" without a reload.
+      onSaved()
     } finally {
       setSaving(false)
     }
@@ -260,14 +319,26 @@ function LastfmAdminConfig() {
 
 // ── IntegrationsSection ───────────────────────────────────────────────────────
 
+type LoadState =
+  | { phase: 'loading' }
+  | { phase: 'error' }
+  | { phase: 'ready'; data: LastfmLinkState }
+
 export function IntegrationsSection({ me }: Props) {
-  const [linkState, setLinkState] = useState<LastfmLinkState | null>(null)
+  const [load, setLoad] = useState<LoadState>({ phase: 'loading' })
+
+  function refreshLinks() {
+    void getLinks()
+      .then((res) => {
+        const lastfmLink = res.links.find((l) => l.provider === 'lastfm') ?? null
+        setLoad({ phase: 'ready', data: { configured: res.configured, link: lastfmLink } })
+      })
+      .catch(() => setLoad({ phase: 'error' }))
+  }
 
   useEffect(() => {
-    void getLinks().then((res) => {
-      const lastfmLink = res.links.find((l) => l.provider === 'lastfm') ?? null
-      setLinkState({ configured: res.configured, link: lastfmLink })
-    })
+    refreshLinks()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const showAdmin = isAdmin(me)
@@ -284,9 +355,13 @@ export function IntegrationsSection({ me }: Props) {
             Scrobble your listening history to Last.fm.
           </div>
         </div>
-        <div className="flex-none">
-          {linkState !== null ? (
-            <LastfmUserWidget initialState={linkState} />
+        <div className="flex-none max-w-xs">
+          {load.phase === 'ready' ? (
+            <LastfmUserWidget key={String(load.data.configured)} state={load.data} />
+          ) : load.phase === 'error' ? (
+            <span className="text-xs text-text-secondary">
+              Couldn&apos;t load your integrations.
+            </span>
           ) : (
             <span className="text-xs text-text-secondary">Loading…</span>
           )}
@@ -300,7 +375,7 @@ export function IntegrationsSection({ me }: Props) {
           <div className="text-xs text-text-secondary mb-4">
             Set the Last.fm API key and secret for this Reverb instance.
           </div>
-          <LastfmAdminConfig />
+          <LastfmAdminConfig onSaved={refreshLinks} />
         </div>
       )}
     </section>
