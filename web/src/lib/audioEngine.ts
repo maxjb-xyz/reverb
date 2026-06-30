@@ -55,6 +55,10 @@ export class AudioEngine {
   private shuffleOrder: number[] = []
   private shufflePos = -1
 
+  // stream-error recovery
+  private consecutiveErrors = 0
+  private repeatOneReloadAttempted = false
+
   constructor(
     factory: () => AudioElement = realAudioFactory,
     resolveSrc: (t: Track) => string = (t) => streamUrl(t.id),
@@ -73,6 +77,9 @@ export class AudioEngine {
     this.active.addEventListener('ended', this.onEnded)
     this.active.addEventListener('play', this.onPlayState)
     this.active.addEventListener('pause', this.onPlayState)
+    this.active.addEventListener('error', this.onError)
+    // Note: preload errors are intentionally not handled — a preload error should
+    // null/ignore the preload src silently, never advance the queue.
   }
 
   private onTime = () => {
@@ -89,7 +96,42 @@ export class AudioEngine {
 
   private onPlayState = () => {
     this.playing = !this.active.paused
+    if (!this.active.paused) {
+      // Successful play: reset error counters so isolated dead tracks don't accumulate
+      this.consecutiveErrors = 0
+      this.repeatOneReloadAttempted = false
+    }
     this.emit()
+  }
+
+  private onError = () => {
+    if (this.repeat === 'one') {
+      // Attempt ONE reload on the pinned track. If the reload itself fires another error,
+      // stop — never skip off the pinned track under repeat-one.
+      if (!this.repeatOneReloadAttempted) {
+        this.repeatOneReloadAttempted = true
+        this.active.currentTime = 0
+        void this.active.play()
+        // playing stays true; let the next error (if any) fall through to the stop branch
+        return
+      }
+      // Second failure: stop, do not advance
+      this.playing = false
+      this.emit()
+      return
+    }
+
+    this.consecutiveErrors++
+    if (this.consecutiveErrors >= 3) {
+      // Backend-down storm: stop to prevent infinite skip loop
+      this.playing = false
+      this.consecutiveErrors = 0
+      this.emit()
+      return
+    }
+
+    // Skip the dead track and autoplay the next one
+    this.advance(1, true)
   }
 
   private onEnded = () => {

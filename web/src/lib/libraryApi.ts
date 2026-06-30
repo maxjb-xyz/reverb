@@ -23,6 +23,13 @@ export function streamUrl(id: string): string {
   return `/api/v1/stream/${encodeURIComponent(id)}`
 }
 
+// Task 9 Part A — DEFERRED to SP3:
+// coverUrl(id) already accepts a canonical id in its path (no change needed for P1).
+// A `?v=<libraryVersion>` cache-bust has no consumer in P1: live views use backend ids that
+// already change on a swap, Tasks 10/11 still emit backend ids server-side, and
+// `library_version` is not threaded to the FE today.
+// Revisit in SP3 when canonical cover URLs (stats surfaces) get a real consumer.
+
 export function coverUrl(id: string, size = 300): string {
   if (!id) return ''
   return `/api/v1/cover/${encodeURIComponent(id)}?size=${size}`

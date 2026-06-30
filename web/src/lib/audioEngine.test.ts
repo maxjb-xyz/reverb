@@ -185,3 +185,66 @@ describe('AudioEngine queue + transport', () => {
     expect(notified).toBeGreaterThan(0)
   })
 })
+
+describe('AudioEngine stream-error recovery', () => {
+  let engine: AudioEngine
+  let audios: FakeAudio[]
+  beforeEach(() => {
+    ;({ engine, audios } = newEngine())
+  })
+
+  it('repeat=one + active error: stays on same track, does not infinite-loop', () => {
+    engine.playTrackList(list, 1)
+    engine.cycleRepeat() // off -> all
+    engine.cycleRepeat() // all -> one
+    expect(engine.getState().repeat).toBe('one')
+    const indexBefore = engine.getState().index
+
+    audios[0].fire('error')
+
+    // index must NOT advance
+    expect(engine.getState().index).toBe(indexBefore)
+    // second error (simulating reload also failed) should stop, not loop
+    audios[0].fire('error')
+    expect(engine.getState().playing).toBe(false)
+    expect(engine.getState().index).toBe(indexBefore)
+  })
+
+  it('repeat!==one + active error: skips to next track', () => {
+    engine.playTrackList(list, 0)
+    expect(engine.getState().repeat).toBe('off')
+
+    audios[0].fire('error')
+
+    expect(engine.getState().index).toBe(1)
+  })
+
+  it('three consecutive active errors (no successful play between): engine stops instead of skipping indefinitely', () => {
+    engine.playTrackList(list, 0)
+
+    audios[0].fire('error') // consecutiveErrors=1, skips to index 1
+    audios[0].fire('error') // consecutiveErrors=2, skips to index 2
+    audios[0].fire('error') // consecutiveErrors=3, should STOP
+
+    expect(engine.getState().playing).toBe(false)
+  })
+
+  it('successful play resets counter: 5-track queue — error, error, play, error → skip not stop', () => {
+    const longList = [track('a'), track('b'), track('c'), track('d'), track('e')]
+    engine.playTrackList(longList, 0)
+
+    audios[0].fire('error') // consecutiveErrors=1, skips → index 1
+    audios[0].fire('error') // consecutiveErrors=2, skips → index 2
+
+    // successful play resets counter
+    audios[0].paused = false
+    audios[0].fire('play')
+
+    // one more error → consecutiveErrors=1, should skip not stop
+    audios[0].fire('error')
+
+    // should have advanced (not stopped) since counter reset
+    expect(engine.getState().index).toBe(3)
+    expect(engine.getState().playing).toBe(true) // still playing (skipped to next)
+  })
+})
