@@ -17,6 +17,7 @@ import (
 	"github.com/maxjb-xyz/reverb/internal/notification"
 	"github.com/maxjb-xyz/reverb/internal/play"
 	"github.com/maxjb-xyz/reverb/internal/registry"
+	"github.com/maxjb-xyz/reverb/internal/scrobble"
 	"github.com/maxjb-xyz/reverb/internal/request"
 	"github.com/maxjb-xyz/reverb/internal/resolver"
 	"github.com/maxjb-xyz/reverb/internal/search"
@@ -138,6 +139,9 @@ type Deps struct {
 	// Stats provides per-user listening statistics. Nil in tests/legacy that
 	// don't exercise the stats boundary.
 	Stats *play.Stats
+	// Scrobble submits plays to external scrobbling providers (e.g. Last.fm).
+	// Nil in tests/legacy that don't exercise the scrobbling boundary.
+	Scrobble *scrobble.Service
 }
 
 type Server struct {
@@ -274,6 +278,12 @@ func (s *Server) routes() {
 			pr.Post("/notifications/read", s.handleMarkNotificationsRead)
 			pr.Post("/plays", s.handlePlay)
 			pr.Delete("/plays/{id}", s.handleDeletePlay)
+			// scrobbling
+			pr.Post("/scrobble/lastfm/auth-url", s.handleScrobbleAuthURL)
+			pr.Post("/scrobble/lastfm/complete", s.handleScrobbleComplete)
+			pr.Delete("/scrobble/lastfm", s.handleScrobbleUnlink)
+			pr.Get("/scrobble/links", s.handleScrobbleLinks)
+			pr.Post("/scrobble/nowplaying", s.handleScrobbleNowPlaying)
 			pr.Get("/stats/summary", s.handleStatsSummary)
 			pr.Get("/stats/top/tracks", s.handleStatsTopTracks)
 			pr.Get("/stats/top/artists", s.handleStatsTopArtists)

@@ -1,10 +1,13 @@
 package api
 
 import (
+	"log"
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/maxjb-xyz/reverb/internal/play"
+	"github.com/maxjb-xyz/reverb/internal/scrobble"
 )
 
 // handlePlay serves POST /api/v1/plays.
@@ -30,6 +33,26 @@ func (s *Server) handlePlay(w http.ResponseWriter, r *http.Request) {
 	if err := s.deps.Play.Record(r.Context(), cu.ID, in); err != nil {
 		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
 		return
+	}
+
+	// Enqueue for scrobbling if the scrobble service is wired in.
+	// Resolve played_at: use the body value when set; fall back to now.
+	if s.deps.Scrobble != nil {
+		playedAt := in.PlayedAt
+		if playedAt == 0 {
+			playedAt = time.Now().Unix()
+		}
+		if err := s.deps.Scrobble.Enqueue(r.Context(), cu.ID, scrobble.ScrobblePlay{
+			Track: scrobble.Track{
+				Title:      in.Title,
+				Artist:     in.Artist,
+				Album:      in.Album,
+				DurationMs: in.DurationMs,
+			},
+			PlayedAt: playedAt,
+		}); err != nil {
+			log.Printf("scrobble: enqueue after play user=%s: %v", cu.ID, err)
+		}
 	}
 
 	w.WriteHeader(http.StatusNoContent)

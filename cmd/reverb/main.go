@@ -29,6 +29,8 @@ import (
 	"github.com/maxjb-xyz/reverb/internal/registry"
 	"github.com/maxjb-xyz/reverb/internal/request"
 	"github.com/maxjb-xyz/reverb/internal/resolver"
+	"github.com/maxjb-xyz/reverb/internal/scrobble"
+	"github.com/maxjb-xyz/reverb/internal/scrobble/lastfm"
 	"github.com/maxjb-xyz/reverb/internal/search/spotify"
 	"github.com/maxjb-xyz/reverb/internal/store"
 	"github.com/maxjb-xyz/reverb/internal/store/db"
@@ -89,6 +91,8 @@ func main() {
 	downloaderReg := registry.NewRegistry("downloader")
 	downloaderReg.Register("spotdl", func() registry.Plugin { return spotdl.New() })
 	downloaderReg.Register("lidarr", func() registry.Plugin { return lidarr.New() })
+	scrobblerReg := registry.NewRegistry("scrobbler")
+	scrobblerReg.Register("lastfm", lastfm.Factory)
 	// Surface the async capability to the admin UI (/adapters/available).
 	registry.RegisterCapability("async", func(p registry.Plugin) bool {
 		_, ok := p.(download.AsyncDownloader)
@@ -173,6 +177,17 @@ func main() {
 	playSvc := play.NewService(st.Q(), catalogSvc, time.Now, uuid.NewString)
 	statsSvc := play.NewStats(st.Q())
 
+	// Scrobbling: cfg() reads app key/secret from settings on every call so that
+	// admin changes (Task 5 UI) take effect without a restart.
+	scrobbleCfg := func() scrobble.Creds {
+		ctx := context.Background()
+		key, _ := st.Q().GetSetting(ctx, "scrobble:lastfm:api_key")
+		secret, _ := st.Q().GetSetting(ctx, "scrobble:lastfm:api_secret")
+		return scrobble.Creds{APIKey: key, APISecret: secret}
+	}
+	scrobbleSvc := scrobble.NewService(st.Q(), lastfm.New(), scrobbleCfg, time.Now, uuid.NewString)
+	go scrobbleSvc.RunWorker(ctx, 30*time.Second)
+
 	deps := api.Deps{
 		Auth:          authSvc,
 		Library:       bundle.Library,
@@ -192,6 +207,7 @@ func main() {
 		Resolver:      resolverSvc,
 		Play:          playSvc,
 		Stats:         statsSvc,
+		Scrobble:      scrobbleSvc,
 	}
 	// Guard against the "non-nil interface wrapping a nil pointer" trap: only set
 	// the interface fields when the concrete service is actually present.

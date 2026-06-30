@@ -81,9 +81,20 @@ func NewService(q Querier, sc Scrobbler, cfg func() Creds, now func() time.Time,
 // Auth passthroughs
 // ----------------------------------------------------------------------------
 
+// IsConfigured reports whether the app-level API key and secret are both set.
+// Used by the /scrobble/links handler to populate the "configured" field.
+func (s *Service) IsConfigured() bool {
+	c := s.cfg()
+	return c.APIKey != "" && c.APISecret != ""
+}
+
 // AuthURL starts the OAuth-style token flow for the provider.
+// Returns an error if the app API key or secret are not configured.
 func (s *Service) AuthURL(ctx context.Context) (authURL, token string, err error) {
 	c := s.cfg()
+	if c.APIKey == "" || c.APISecret == "" {
+		return "", "", fmt.Errorf("lastfm not configured: api_key and api_secret required")
+	}
 	return s.sc.AuthURL(ctx, c)
 }
 
