@@ -16,6 +16,7 @@ import { useAlbumPalette } from '../lib/useAlbumPalette'
 import { trackCoverUrl } from '../lib/libraryApi'
 import { rgbToCss } from '../lib/palette'
 import { startPlayTracker } from '../lib/playTracker'
+import { startNowPlaying } from '../lib/nowPlaying'
 
 export function AppShell() {
   // One app-wide realtime WS (distinct from the SSE search stream): drives the
@@ -26,6 +27,7 @@ export function AppShell() {
   // POSTs them to /api/v1/plays.  Starts once when AppShell mounts and cleans
   // up (unsubscribes) when it unmounts.
   useEffect(() => startPlayTracker(engine), [])
+  useEffect(() => startNowPlaying(engine), [])
 
   const current = usePlayer((s) => s.current)
   const rightPanel = useUI((s) => s.rightPanel)
