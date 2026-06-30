@@ -15,6 +15,7 @@ import (
 	"github.com/maxjb-xyz/reverb/internal/events"
 	"github.com/maxjb-xyz/reverb/internal/library"
 	"github.com/maxjb-xyz/reverb/internal/notification"
+	"github.com/maxjb-xyz/reverb/internal/play"
 	"github.com/maxjb-xyz/reverb/internal/registry"
 	"github.com/maxjb-xyz/reverb/internal/request"
 	"github.com/maxjb-xyz/reverb/internal/resolver"
@@ -131,6 +132,9 @@ type Deps struct {
 	// the LIVE matcher, so it survives adapter hot-reloads (the matcher is rebuilt
 	// on each reload). Nil in tests/legacy that don't use the addressing boundary.
 	Resolver Resolver
+	// Play records user play events and mints catalog IDs. Nil in tests/legacy
+	// that don't exercise the listening-history boundary.
+	Play *play.Service
 }
 
 type Server struct {

@@ -12,8 +12,10 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/maxjb-xyz/reverb/internal/api"
 	"github.com/maxjb-xyz/reverb/internal/auth"
+	"github.com/maxjb-xyz/reverb/internal/catalog"
 	"github.com/maxjb-xyz/reverb/internal/config"
 	"github.com/maxjb-xyz/reverb/internal/download"
 	"github.com/maxjb-xyz/reverb/internal/download/lidarr"
@@ -22,6 +24,7 @@ import (
 	"github.com/maxjb-xyz/reverb/internal/library/embedded"
 	"github.com/maxjb-xyz/reverb/internal/library/subsonic"
 	"github.com/maxjb-xyz/reverb/internal/notification"
+	"github.com/maxjb-xyz/reverb/internal/play"
 	"github.com/maxjb-xyz/reverb/internal/playlistsync"
 	"github.com/maxjb-xyz/reverb/internal/registry"
 	"github.com/maxjb-xyz/reverb/internal/request"
@@ -166,6 +169,9 @@ func main() {
 	reloader.publishMatcher(bundle.Matcher)
 	resolverSvc := resolver.NewService(st.Q(), reloader.matcherProvider(), time.Now)
 
+	catalogSvc := catalog.NewService(st.Q(), time.Now, uuid.NewString)
+	playSvc := play.NewService(st.Q(), catalogSvc, time.Now, uuid.NewString)
+
 	deps := api.Deps{
 		Auth:          authSvc,
 		Library:       bundle.Library,
@@ -183,6 +189,7 @@ func main() {
 		Requests:      reqSvc,
 		Notifications: notifSvc,
 		Resolver:      resolverSvc,
+		Play:          playSvc,
 	}
 	// Guard against the "non-nil interface wrapping a nil pointer" trap: only set
 	// the interface fields when the concrete service is actually present.
