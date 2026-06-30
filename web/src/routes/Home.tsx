@@ -43,6 +43,29 @@ function trackFromJob(job: DownloadJob): Track {
   }
 }
 
+// Synthesize a minimal library Track from a recently-played row so it can be
+// played directly. row.CatalogID is a CANONICAL TRACK id (trk_…) — the stream
+// boundary resolves canonical ids, so streaming by id works and the cover
+// resolves from the same id. (It is NOT an album id; navigating to an album
+// route with it would dead-link.)
+function trackFromRecent(row: RecentRow): Track {
+  return {
+    id: row.CatalogID,
+    title: row.Title,
+    albumId: '',
+    album: row.Album,
+    artistId: '',
+    artist: row.Artist,
+    coverArtId: row.CatalogID,
+    trackNumber: 0,
+    discNumber: 0,
+    durationMs: 0,
+    bitRate: 0,
+    suffix: '',
+    contentType: '',
+  }
+}
+
 // ------------------------------------------------------------------
 // ShortcutTile — compact 2-col grid item (56px height)
 // ------------------------------------------------------------------
@@ -371,15 +394,22 @@ export default function Home() {
       ) : hasRealHistory ? (
         <div className="mb-8">
           <Carousel title="Jump back in">
-            {(recentPlays ?? []).map((row, i) => (
-              <MediaCard
-                key={`${row.CatalogID}-${i}`}
-                title={row.Title}
-                subtitle={row.Artist}
-                coverId={row.CatalogID}
-                onClick={() => navigate(`/album/library/${row.CatalogID}`)}
-              />
-            ))}
+            {(recentPlays ?? []).map((row, i) => {
+              // A recently-PLAYED track plays on click. row.CatalogID is a canonical
+              // track id (trk_…), NOT an album id — the stream boundary resolves it,
+              // so playing works; an album route would dead-link.
+              const play = () => playTrackList([trackFromRecent(row)], 0)
+              return (
+                <MediaCard
+                  key={`${row.CatalogID}-${i}`}
+                  title={row.Title}
+                  subtitle={row.Artist}
+                  coverId={row.CatalogID}
+                  onClick={play}
+                  onPlay={play}
+                />
+              )
+            })}
           </Carousel>
         </div>
       ) : jumpBackAlbums.length > 0 ? (

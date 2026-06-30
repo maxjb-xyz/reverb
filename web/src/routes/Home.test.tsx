@@ -75,11 +75,13 @@ vi.mock('../lib/syncedPlaylistApi', () => ({
   useSyncedPlaylists: vi.fn(() => ({ data: [], isLoading: false, error: null })),
 }))
 
+// Stable, capturable playTrackList so tests can assert what was played.
+const mockPlayTrackList = vi.fn()
+const mockPlayerState = { current: null, playTrackList: mockPlayTrackList }
 vi.mock('../lib/playerStore', () => ({
-  usePlayer: vi.fn((selector: (s: { current: null; playTrackList: ReturnType<typeof vi.fn> }) => unknown) => {
-    const state = { current: null, playTrackList: vi.fn() }
-    return typeof selector === 'function' ? selector(state) : state
-  }),
+  usePlayer: vi.fn((selector: (s: typeof mockPlayerState) => unknown) =>
+    typeof selector === 'function' ? selector(mockPlayerState) : mockPlayerState,
+  ),
   engine: { subscribe: vi.fn(() => () => {}), getState: vi.fn(() => ({})) },
 }))
 
@@ -345,6 +347,33 @@ describe('Home feed', () => {
     // Recent track title must appear in the carousel
     await screen.findByText('Karma Police')
     expect(screen.getByText('Karma Police')).toBeInTheDocument()
+  })
+
+  it('clicking a recently-played card PLAYS the track (id === CatalogID), not navigate to an album route', async () => {
+    const { useAlbums } = await import('../lib/libraryApi')
+
+    const album = makeAlbum({ id: 'al1', name: 'Library Album', artist: 'Library Artist' })
+    vi.mocked(useAlbums).mockReturnValue({ data: [album], isLoading: false, error: null } as unknown as UseQueryResult<Album[], Error>)
+
+    const recentRows: RecentRow[] = [
+      { CatalogID: 'trk_abc', Title: 'Karma Police', Artist: 'Radiohead', Album: 'OK Computer', PlayedAt: Date.now() / 1000 - 60 },
+    ]
+    vi.mocked(statsApi.recent).mockResolvedValue(recentRows)
+
+    render(wrap(<Home />))
+
+    const card = await screen.findByText('Karma Police')
+    mockNavigate.mockClear()
+    fireEvent.click(card)
+
+    // It must PLAY the track, not navigate to a (dead) /album/library/trk_… route
+    expect(mockPlayTrackList).toHaveBeenCalledTimes(1)
+    const [tracks, startIndex] = mockPlayTrackList.mock.calls[0]
+    expect(startIndex).toBe(0)
+    expect(tracks).toHaveLength(1)
+    expect(tracks[0].id).toBe('trk_abc')
+    expect(tracks[0].title).toBe('Karma Police')
+    expect(mockNavigate).not.toHaveBeenCalledWith('/album/library/trk_abc')
   })
 
   it('"Jump back in" carousel falls back to library recent albums when statsApi.recent is empty', async () => {
