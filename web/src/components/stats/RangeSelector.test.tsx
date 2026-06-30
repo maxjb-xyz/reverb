@@ -8,6 +8,12 @@ function makeRange(): Range {
   return presetRange('30d')
 }
 
+// Mirror of the component's private date-input formatter (local-time YYYY-MM-DD).
+function toInputDate(sec: number): string {
+  const d = new Date(sec * 1000)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
 describe('RangeSelector', () => {
   describe('preset chips', () => {
     it('renders all rolling preset chips', () => {
@@ -101,6 +107,26 @@ describe('RangeSelector', () => {
       expect(called.from).toBe(expected.from)
       expect(called.to).toBe(expected.to)
       expect(called.bucket).toBe('day')
+    })
+
+    it('initializes "from" input from value.from even when from === 0 (all preset)', () => {
+      // The 'all' preset has from === 0 (the epoch). A truthy `||` fallback would
+      // wrongly treat 0 as unset and show a 30-day-ago date. from:0 is a valid
+      // unix second and must drive the input directly.
+      const fixedNow = new Date('2024-03-15T12:00:00Z')
+      const all = presetRange('all', fixedNow)
+      expect(all.from).toBe(0)
+
+      render(<RangeSelector value={all} onChange={vi.fn()} />)
+      fireEvent.click(screen.getByRole('button', { name: /custom/i }))
+
+      const fromInput = screen.getByLabelText(/from|start/i) as HTMLInputElement
+      // The epoch in local time is 1969 or 1970 depending on TZ — never the
+      // current year. A 30-day-ago fallback would render a 2024 date.
+      const expectedFromInput = toInputDate(0)
+      expect(fromInput.value).toBe(expectedFromInput)
+      expect(fromInput.value.startsWith('19')).toBe(true)
+      expect(fromInput.value.startsWith('2024')).toBe(false)
     })
   })
 

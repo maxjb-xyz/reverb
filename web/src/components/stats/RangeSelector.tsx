@@ -37,7 +37,10 @@ function fromInputDate(s: string): Date {
  */
 export function RangeSelector({ value, onChange }: Props) {
   const [showCustom, setShowCustom] = useState(false)
-  const [fromVal, setFromVal] = useState(() => toInputDate(value.from || Math.floor(Date.now() / 1000) - 30 * 86400))
+  // value.from/value.to are always-defined numbers; from:0 (the 'all' preset) is
+  // a valid unix second, so drive the inputs from them directly — never `||`,
+  // which would treat the falsy 0 as unset and show a 30-day-ago date instead.
+  const [fromVal, setFromVal] = useState(() => toInputDate(value.from))
   const [toVal, setToVal] = useState(() => toInputDate(value.to))
 
   function selectPreset(key: PresetKey) {
