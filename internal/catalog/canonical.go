@@ -101,6 +101,32 @@ func (s *Service) CanonicalFor(ctx context.Context, id Identity) (string, error)
 	return cid, nil
 }
 
+// Lookup resolves an identity to an existing catalog ID WITHOUT minting. It runs
+// the SAME alias lookup as CanonicalFor step 1 (isrc → external → norm, with the
+// ISRC-corroboration skip), but on a miss returns ("", false, nil): it never
+// inserts a catalog_entity and never writes aliases. Used by read-only callers
+// (e.g. per-track play counts) that must not create entities for novel tracks.
+func (s *Service) Lookup(ctx context.Context, id Identity) (catalogID string, found bool, err error) {
+	for _, a := range aliasesFor(id) {
+		cid, err := s.q.GetAliasCatalogID(ctx, db.GetAliasCatalogIDParams{
+			AliasKind:  a.kind,
+			AliasValue: a.value,
+		})
+		if err == nil {
+			// For ISRC hits, require corroboration: duplicate/re-used ISRCs exist
+			// in the wild and must not fuse distinct tracks. Skip on disagreement.
+			if a.kind == "isrc" && !s.corroborates(ctx, cid, id) {
+				continue
+			}
+			return cid, true, nil
+		}
+		if !errors.Is(err, sql.ErrNoRows) {
+			return "", false, err
+		}
+	}
+	return "", false, nil
+}
+
 // attachAliases inserts any newly-supplied aliases onto cid; if an alias already
 // points at a DIFFERENT entity, that observed collision fires a merge.
 // For an isrc collision, the merge is only done if the two entities corroborate

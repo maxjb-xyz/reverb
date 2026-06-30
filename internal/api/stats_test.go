@@ -515,6 +515,130 @@ func TestStatsEntityArtist(t *testing.T) {
 	}
 }
 
+// TestStatsEntityAlbum verifies GET /stats/entity?kind=album&id&artist returns
+// album stats, disambiguated by artist.
+func TestStatsEntityAlbum(t *testing.T) {
+	srv, cookie, ownerID, playSvc := statsTestServer(t)
+
+	// Two albums sharing the title "Hits" under different artists.
+	seedPlay(t, playSvc, ownerID, "A", "Artist X", "Hits", 1_000_000, 100_000)
+	seedPlay(t, playSvc, ownerID, "B", "Artist X", "Hits", 1_000_001, 120_000)
+	seedPlay(t, playSvc, ownerID, "C", "Artist Y", "Hits", 1_000_002, 130_000)
+
+	rec := doGET(t, srv, "/api/v1/stats/entity?kind=album&id=Hits&artist=Artist+X", cookie.Value)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET /stats/entity kind=album = %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var resp struct {
+		Plays    int   `json:"Plays"`
+		MsPlayed int64 `json:"MsPlayed"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	// Only Artist X's two plays on "Hits" — Artist Y's must be disambiguated out.
+	if resp.Plays != 2 {
+		t.Errorf("entity album plays = %d, want 2 (artist Y leaked?)", resp.Plays)
+	}
+}
+
+// TestStatsEntityAlbumMissingArtist verifies kind=album without the artist param is 400.
+func TestStatsEntityAlbumMissingArtist(t *testing.T) {
+	srv, cookie, _, _ := statsTestServer(t)
+
+	rec := doGET(t, srv, "/api/v1/stats/entity?kind=album&id=Hits", cookie.Value)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("GET /stats/entity kind=album with no artist = %d, want 400", rec.Code)
+	}
+}
+
+// --- Play counts ---
+
+// TestStatsPlayCounts verifies POST /stats/play-counts returns per-track counts
+// keyed by the caller's opaque key, scoped to the session user.
+func TestStatsPlayCounts(t *testing.T) {
+	srv, cookie, ownerID, playSvc := statsTestServer(t)
+
+	// Owner plays "Hurt" twice and "Ring of Fire" once.
+	seedPlay(t, playSvc, ownerID, "Hurt", "Johnny Cash", "American IV", 1_000_000, 218_000)
+	seedPlay(t, playSvc, ownerID, "Hurt", "Johnny Cash", "American IV", 1_000_001, 218_000)
+	seedPlay(t, playSvc, ownerID, "Ring of Fire", "Johnny Cash", "Ring of Fire", 1_000_002, 157_000)
+
+	body := `{"tracks":[
+		{"key":"k1","title":"Hurt","artist":"Johnny Cash","album":"American IV","durationMs":218000},
+		{"key":"k2","title":"Ring of Fire","artist":"Johnny Cash","album":"Ring of Fire","durationMs":157000},
+		{"key":"k3","title":"Unplayed","artist":"Nobody","album":"Void","durationMs":100000}
+	]}`
+	rec := doPOST(t, srv, "/api/v1/stats/play-counts", cookie.Value, body)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("POST /stats/play-counts = %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var resp struct {
+		Counts map[string]int `json:"counts"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if resp.Counts["k1"] != 2 {
+		t.Errorf("k1 count = %d, want 2", resp.Counts["k1"])
+	}
+	if resp.Counts["k2"] != 1 {
+		t.Errorf("k2 count = %d, want 1", resp.Counts["k2"])
+	}
+	if resp.Counts["k3"] != 0 {
+		t.Errorf("k3 count = %d, want 0", resp.Counts["k3"])
+	}
+}
+
+// TestStatsPlayCountsSessionScoped is the load-bearing privacy assertion: the
+// counts for the session user must NOT include another user's plays of the same
+// track. Non-vacuous: a different user has 4 plays of the track at the DB level.
+func TestStatsPlayCountsSessionScoped(t *testing.T) {
+	srv, cookie, ownerID, playSvc := statsTestServer(t)
+
+	// Session user (owner) played "Hurt" once.
+	seedPlay(t, playSvc, ownerID, "Hurt", "Johnny Cash", "American IV", 1_000_000, 218_000)
+	// A DIFFERENT user played "Hurt" 4 times — same track identity at the DB level.
+	for i := 0; i < 4; i++ {
+		seedPlay(t, playSvc, "other-user", "Hurt", "Johnny Cash", "American IV", int64(2_000_000+i), 218_000)
+	}
+
+	body := `{"tracks":[{"key":"k","title":"Hurt","artist":"Johnny Cash","album":"American IV","durationMs":218000}]}`
+	rec := doPOST(t, srv, "/api/v1/stats/play-counts", cookie.Value, body)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("POST /stats/play-counts = %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp struct {
+		Counts map[string]int `json:"counts"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if resp.Counts["k"] != 1 {
+		t.Errorf("session-scoped count = %d, want 1 (other user's 4 plays leaked)", resp.Counts["k"])
+	}
+}
+
+// TestStatsPlayCountsRequiresAuth verifies the endpoint rejects unauthenticated requests.
+func TestStatsPlayCountsRequiresAuth(t *testing.T) {
+	srv, _, _, _ := statsTestServer(t)
+	rec := doPOST(t, srv, "/api/v1/stats/play-counts", "", `{"tracks":[]}`)
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("POST /stats/play-counts unauthenticated = %d, want 401", rec.Code)
+	}
+}
+
+// TestStatsPlayCountsBadBody verifies a malformed body is rejected with 400.
+func TestStatsPlayCountsBadBody(t *testing.T) {
+	srv, cookie, _, _ := statsTestServer(t)
+	rec := doPOST(t, srv, "/api/v1/stats/play-counts", cookie.Value, `{not json`)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("POST /stats/play-counts bad body = %d, want 400", rec.Code)
+	}
+}
+
 // --- Auth / nil-dep guards ---
 
 // TestStatsRequiresAuth verifies all stats endpoints reject unauthenticated requests.

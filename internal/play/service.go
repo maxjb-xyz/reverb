@@ -26,12 +26,15 @@ type PlayInput struct {
 type Querier interface {
 	InsertPlay(ctx context.Context, arg db.InsertPlayParams) error
 	DeletePlay(ctx context.Context, arg db.DeletePlayParams) error
+	CountPlaysByCatalog(ctx context.Context, arg db.CountPlaysByCatalogParams) (int64, error)
 }
 
-// CanonicalMinter resolves or mints a catalog ID for an identity.
+// CanonicalMinter resolves or mints a catalog ID for an identity, and resolves
+// (lookup-only, no minting) an identity to an existing catalog ID.
 // *catalog.Service satisfies this interface.
 type CanonicalMinter interface {
 	CanonicalFor(ctx context.Context, id catalog.Identity) (string, error)
+	Lookup(ctx context.Context, id catalog.Identity) (catalogID string, found bool, err error)
 }
 
 // Service records user play events.
@@ -83,6 +86,55 @@ func (s *Service) Record(ctx context.Context, userID string, in PlayInput) error
 		Completed: completed,
 		CreatedAt: s.now().Unix(),
 	})
+}
+
+// PlayCountQuery is a single track identity for which the caller wants a play
+// count. Key is an opaque caller-supplied handle echoed back in the result map.
+type PlayCountQuery struct {
+	Key        string
+	Title      string
+	Artist     string
+	Album      string
+	ISRC       string
+	DurationMs int
+}
+
+// PlayCounts returns the all-time play count for each requested track identity,
+// scoped to userID. For each item it resolves the canonical catalog id via a
+// LOOKUP-ONLY path (no minting): an identity that has never been recorded
+// resolves to no entity and counts 0. The result maps each item's Key to its
+// count. Identities build the SAME catalog.Identity that Record builds (Kind
+// "track", Source/ExternalID empty), so a played track resolves to the same
+// entity it was recorded under.
+func (s *Service) PlayCounts(ctx context.Context, userID string, items []PlayCountQuery) (map[string]int, error) {
+	out := make(map[string]int, len(items))
+	for _, it := range items {
+		cid, found, err := s.cat.Lookup(ctx, catalog.Identity{
+			Kind:       "track",
+			Title:      it.Title,
+			Artist:     it.Artist,
+			Album:      it.Album,
+			ISRC:       it.ISRC,
+			DurationMs: it.DurationMs,
+			// Source and ExternalID intentionally empty, exactly like Record.
+		})
+		if err != nil {
+			return nil, err
+		}
+		if !found {
+			out[it.Key] = 0
+			continue
+		}
+		n, err := s.q.CountPlaysByCatalog(ctx, db.CountPlaysByCatalogParams{
+			UserID:    userID,
+			CatalogID: cid,
+		})
+		if err != nil {
+			return nil, err
+		}
+		out[it.Key] = int(n)
+	}
+	return out, nil
 }
 
 // Delete removes a single play owned by userID. Owner-scoping is enforced in the

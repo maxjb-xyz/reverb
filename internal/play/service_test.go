@@ -116,6 +116,80 @@ func TestRecord_PerUserScoping(t *testing.T) {
 	}
 }
 
+// TestPlayCounts_CountsRecordedPlays verifies PlayCounts returns the per-track
+// play count for tracks the user has played (via the real Record path), 0 for a
+// never-played track, and resolves identities WITHOUT minting new entities.
+func TestPlayCounts_CountsRecordedPlays(t *testing.T) {
+	s, _ := newTestPlayService(t)
+	ctx := context.Background()
+
+	// Play "Hurt" three times, "Ring of Fire" once.
+	for i := 0; i < 3; i++ {
+		if err := s.Record(ctx, "user-1", play.PlayInput{
+			Title: "Hurt", Artist: "Johnny Cash", Album: "American IV",
+			DurationMs: 218000, MsPlayed: 200000, PlayedAt: int64(1719000000 + i),
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := s.Record(ctx, "user-1", play.PlayInput{
+		Title: "Ring of Fire", Artist: "Johnny Cash", Album: "Ring of Fire",
+		DurationMs: 157000, MsPlayed: 157000, PlayedAt: 1719100000,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	counts, err := s.PlayCounts(ctx, "user-1", []play.PlayCountQuery{
+		{Key: "k-hurt", Title: "Hurt", Artist: "Johnny Cash", Album: "American IV", DurationMs: 218000},
+		{Key: "k-ring", Title: "Ring of Fire", Artist: "Johnny Cash", Album: "Ring of Fire", DurationMs: 157000},
+		{Key: "k-novel", Title: "Never Played", Artist: "Nobody", Album: "Void", DurationMs: 100000},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if counts["k-hurt"] != 3 {
+		t.Errorf("k-hurt count = %d, want 3", counts["k-hurt"])
+	}
+	if counts["k-ring"] != 1 {
+		t.Errorf("k-ring count = %d, want 1", counts["k-ring"])
+	}
+	if counts["k-novel"] != 0 {
+		t.Errorf("k-novel count = %d, want 0 (never played)", counts["k-novel"])
+	}
+}
+
+// TestPlayCounts_PerUserScoped is the load-bearing privacy assertion: PlayCounts
+// for user-1 must NOT include user-2's plays of the same track.
+func TestPlayCounts_PerUserScoped(t *testing.T) {
+	s, _ := newTestPlayService(t)
+	ctx := context.Background()
+
+	// Both users play the SAME track.
+	in := play.PlayInput{
+		Title: "Hurt", Artist: "Johnny Cash", Album: "American IV",
+		DurationMs: 218000, MsPlayed: 200000, PlayedAt: 1719000000,
+	}
+	if err := s.Record(ctx, "user-1", in); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 5; i++ {
+		in.PlayedAt = int64(1719200000 + i)
+		if err := s.Record(ctx, "user-2", in); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	counts, err := s.PlayCounts(ctx, "user-1", []play.PlayCountQuery{
+		{Key: "k", Title: "Hurt", Artist: "Johnny Cash", Album: "American IV", DurationMs: 218000},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if counts["k"] != 1 {
+		t.Errorf("user-1 count = %d, want 1 (user-2's 5 plays leaked?)", counts["k"])
+	}
+}
+
 func TestDelete_RemovesOwnersPlay(t *testing.T) {
 	s, q := newTestPlayService(t)
 	ctx := context.Background()

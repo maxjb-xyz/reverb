@@ -3,7 +3,33 @@ package api
 import (
 	"net/http"
 	"strconv"
+
+	"github.com/maxjb-xyz/reverb/internal/play"
 )
+
+// playCountsRequest is the POST /stats/play-counts request body. The FE sends
+// library-track identities (it has no catalog ids); the server resolves each
+// WITHOUT minting. The user is taken from the session, NEVER from this body.
+type playCountsRequest struct {
+	Tracks []playCountTrack `json:"tracks"`
+}
+
+// playCountTrack is one track identity in a play-counts request. Key is an opaque
+// caller handle echoed back as the key in the response counts map.
+type playCountTrack struct {
+	Key        string `json:"key"`
+	Title      string `json:"title"`
+	Artist     string `json:"artist"`
+	Album      string `json:"album"`
+	ISRC       string `json:"isrc"`
+	DurationMs int    `json:"durationMs"`
+}
+
+// playCountsResponse is the POST /stats/play-counts response: counts maps each
+// request track's key to its all-time play count for the session user.
+type playCountsResponse struct {
+	Counts map[string]int `json:"counts"`
+}
 
 const (
 	// defaultTo is a far-future unix-second sentinel used when the caller omits
@@ -226,11 +252,60 @@ func (s *Server) handleStatsEntity(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "kind and id are required"})
 		return
 	}
+	// An album is identified by NAME (id) + ARTIST, because album titles collide
+	// across artists, so kind=album requires the additional "artist" query param.
+	artist := r.URL.Query().Get("artist")
+	if kind == "album" && artist == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "artist is required for kind=album"})
+		return
+	}
 	from, to := parseFrom(r), parseTo(r)
-	result, err := s.deps.Stats.Entity(r.Context(), cu.ID, kind, id, from, to)
+	result, err := s.deps.Stats.Entity(r.Context(), cu.ID, kind, id, artist, from, to)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
 	writeJSON(w, http.StatusOK, result)
+}
+
+// handlePlayCounts serves POST /api/v1/stats/play-counts.
+// It resolves each requested track identity to a play count scoped to the
+// SESSION user (cu.ID, never the body) and responds {"counts":{<key>:<count>}}.
+// Identities are resolved lookup-only — a never-played track counts 0 and no
+// catalog entity is minted.
+func (s *Server) handlePlayCounts(w http.ResponseWriter, r *http.Request) {
+	if s.deps.Play == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "play service unavailable"})
+		return
+	}
+	cu, ok := currentUser(r)
+	if !ok {
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+		return
+	}
+
+	var req playCountsRequest
+	if err := decode(r, &req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+		return
+	}
+
+	items := make([]play.PlayCountQuery, len(req.Tracks))
+	for i, t := range req.Tracks {
+		items[i] = play.PlayCountQuery{
+			Key:        t.Key,
+			Title:      t.Title,
+			Artist:     t.Artist,
+			Album:      t.Album,
+			ISRC:       t.ISRC,
+			DurationMs: t.DurationMs,
+		}
+	}
+
+	counts, err := s.deps.Play.PlayCounts(r.Context(), cu.ID, items)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, playCountsResponse{Counts: counts})
 }

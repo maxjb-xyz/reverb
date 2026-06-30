@@ -76,8 +76,10 @@ type StatsQuerier interface {
 	StatsPlaysInWindow(ctx context.Context, arg db.StatsPlaysInWindowParams) ([]db.StatsPlaysInWindowRow, error)
 	ListRecentPlays(ctx context.Context, arg db.ListRecentPlaysParams) ([]db.ListRecentPlaysRow, error)
 	StatsEntityArtist(ctx context.Context, arg db.StatsEntityArtistParams) (db.StatsEntityArtistRow, error)
+	StatsEntityAlbum(ctx context.Context, arg db.StatsEntityAlbumParams) (db.StatsEntityAlbumRow, error)
 	StatsEntityTrack(ctx context.Context, arg db.StatsEntityTrackParams) (db.StatsEntityTrackRow, error)
 	StatsTopTracksByArtist(ctx context.Context, arg db.StatsTopTracksByArtistParams) ([]db.StatsTopTracksByArtistRow, error)
+	StatsTopTracksByAlbum(ctx context.Context, arg db.StatsTopTracksByAlbumParams) ([]db.StatsTopTracksByAlbumRow, error)
 	StatsTopTracksByCatalogID(ctx context.Context, arg db.StatsTopTracksByCatalogIDParams) ([]db.StatsTopTracksByCatalogIDRow, error)
 }
 
@@ -337,9 +339,12 @@ func (s *Stats) Recent(ctx context.Context, userID string, before int64, limit i
 	return out, nil
 }
 
-// Entity returns aggregate statistics for a single artist or track.
-// kind must be "artist" or "track"; id is the artist name or catalog_id.
-func (s *Stats) Entity(ctx context.Context, userID, kind, id string, from, to int64) (EntityStats, error) {
+// Entity returns aggregate statistics for a single artist, album, or track.
+// kind must be "artist", "album", or "track". id is the artist name (artist),
+// the album name (album), or the catalog_id (track). artist is used ONLY for
+// kind="album" (an album is identified by NAME + ARTIST because album titles
+// collide across artists); it is ignored for kind="artist" and kind="track".
+func (s *Stats) Entity(ctx context.Context, userID, kind, id, artist string, from, to int64) (EntityStats, error) {
 	const topLimit = 5
 	switch kind {
 	case "artist":
@@ -368,6 +373,38 @@ func (s *Stats) Entity(ctx context.Context, userID, kind, id string, from, to in
 			FirstPlayed: interfaceToInt64(row.FirstPlayed),
 			LastPlayed:  interfaceToInt64(row.LastPlayed),
 			TopTracks:   topTracksByArtistToTopRow(topRows),
+		}, nil
+
+	case "album":
+		// An album is identified by album NAME (id) + artist NAME, because album
+		// titles collide across artists.
+		row, err := s.q.StatsEntityAlbum(ctx, db.StatsEntityAlbumParams{
+			UserID:     userID,
+			Album:      id,
+			Artist:     artist,
+			PlayedAt:   from,
+			PlayedAt_2: to,
+		})
+		if err != nil {
+			return EntityStats{}, err
+		}
+		topRows, err := s.q.StatsTopTracksByAlbum(ctx, db.StatsTopTracksByAlbumParams{
+			UserID:     userID,
+			Album:      id,
+			Artist:     artist,
+			PlayedAt:   from,
+			PlayedAt_2: to,
+			Limit:      topLimit,
+		})
+		if err != nil {
+			return EntityStats{}, err
+		}
+		return EntityStats{
+			Plays:       int(row.Plays),
+			MsPlayed:    interfaceToInt64(row.MsPlayed),
+			FirstPlayed: interfaceToInt64(row.FirstPlayed),
+			LastPlayed:  interfaceToInt64(row.LastPlayed),
+			TopTracks:   topTracksByAlbumToTopRow(topRows),
 		}, nil
 
 	case "track":
@@ -399,11 +436,26 @@ func (s *Stats) Entity(ctx context.Context, userID, kind, id string, from, to in
 		}, nil
 
 	default:
-		return EntityStats{}, fmt.Errorf("entity kind %q unknown; must be artist or track", kind)
+		return EntityStats{}, fmt.Errorf("entity kind %q unknown; must be artist, album, or track", kind)
 	}
 }
 
 func topTracksByArtistToTopRow(rows []db.StatsTopTracksByArtistRow) []TopRow {
+	out := make([]TopRow, len(rows))
+	for i, r := range rows {
+		out[i] = TopRow{
+			CatalogID: r.CatalogID,
+			Title:     r.Title,
+			Artist:    r.Artist,
+			Album:     r.Album,
+			Plays:     int(r.Plays),
+			MsPlayed:  nullFloat64Int64(r.MsPlayed),
+		}
+	}
+	return out
+}
+
+func topTracksByAlbumToTopRow(rows []db.StatsTopTracksByAlbumRow) []TopRow {
 	out := make([]TopRow, len(rows))
 	for i, r := range rows {
 		out[i] = TopRow{

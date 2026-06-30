@@ -10,6 +10,22 @@ import (
 	"database/sql"
 )
 
+const countPlaysByCatalog = `-- name: CountPlaysByCatalog :one
+SELECT COUNT(*) FROM plays WHERE user_id = ? AND catalog_id = ?
+`
+
+type CountPlaysByCatalogParams struct {
+	UserID    string `json:"user_id"`
+	CatalogID string `json:"catalog_id"`
+}
+
+func (q *Queries) CountPlaysByCatalog(ctx context.Context, arg CountPlaysByCatalogParams) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countPlaysByCatalog, arg.UserID, arg.CatalogID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const deletePlay = `-- name: DeletePlay :exec
 DELETE FROM plays WHERE id = ? AND user_id = ?
 `
@@ -116,6 +132,49 @@ type RepointPlaysParams struct {
 func (q *Queries) RepointPlays(ctx context.Context, arg RepointPlaysParams) error {
 	_, err := q.db.ExecContext(ctx, repointPlays, arg.CatalogID, arg.CatalogID_2)
 	return err
+}
+
+const statsEntityAlbum = `-- name: StatsEntityAlbum :one
+SELECT
+    COUNT(*)         AS plays,
+    COALESCE(SUM(p.ms_played), 0) AS ms_played,
+    MIN(p.played_at) AS first_played,
+    MAX(p.played_at) AS last_played
+FROM plays p JOIN catalog_entity e ON e.id = p.catalog_id
+WHERE p.user_id = ? AND e.album = ? AND e.artist = ? AND p.played_at >= ? AND p.played_at < ?
+`
+
+type StatsEntityAlbumParams struct {
+	UserID     string `json:"user_id"`
+	Album      string `json:"album"`
+	Artist     string `json:"artist"`
+	PlayedAt   int64  `json:"played_at"`
+	PlayedAt_2 int64  `json:"played_at_2"`
+}
+
+type StatsEntityAlbumRow struct {
+	Plays       int64       `json:"plays"`
+	MsPlayed    interface{} `json:"ms_played"`
+	FirstPlayed interface{} `json:"first_played"`
+	LastPlayed  interface{} `json:"last_played"`
+}
+
+func (q *Queries) StatsEntityAlbum(ctx context.Context, arg StatsEntityAlbumParams) (StatsEntityAlbumRow, error) {
+	row := q.db.QueryRowContext(ctx, statsEntityAlbum,
+		arg.UserID,
+		arg.Album,
+		arg.Artist,
+		arg.PlayedAt,
+		arg.PlayedAt_2,
+	)
+	var i StatsEntityAlbumRow
+	err := row.Scan(
+		&i.Plays,
+		&i.MsPlayed,
+		&i.FirstPlayed,
+		&i.LastPlayed,
+	)
+	return i, err
 }
 
 const statsEntityArtist = `-- name: StatsEntityArtist :one
@@ -437,6 +496,76 @@ func (q *Queries) StatsTopTracks(ctx context.Context, arg StatsTopTracksParams) 
 	var items []StatsTopTracksRow
 	for rows.Next() {
 		var i StatsTopTracksRow
+		if err := rows.Scan(
+			&i.CatalogID,
+			&i.Title,
+			&i.Artist,
+			&i.Album,
+			&i.Plays,
+			&i.MsPlayed,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const statsTopTracksByAlbum = `-- name: StatsTopTracksByAlbum :many
+SELECT
+    p.catalog_id,
+    e.title,
+    e.artist,
+    e.album,
+    COUNT(*)          AS plays,
+    SUM(p.ms_played)  AS ms_played
+FROM plays p JOIN catalog_entity e ON e.id = p.catalog_id
+WHERE p.user_id = ? AND e.album = ? AND e.artist = ? AND p.played_at >= ? AND p.played_at < ?
+GROUP BY p.catalog_id
+ORDER BY COUNT(*) DESC, SUM(p.ms_played) DESC
+LIMIT ?
+`
+
+type StatsTopTracksByAlbumParams struct {
+	UserID     string `json:"user_id"`
+	Album      string `json:"album"`
+	Artist     string `json:"artist"`
+	PlayedAt   int64  `json:"played_at"`
+	PlayedAt_2 int64  `json:"played_at_2"`
+	Limit      int64  `json:"limit"`
+}
+
+type StatsTopTracksByAlbumRow struct {
+	CatalogID string          `json:"catalog_id"`
+	Title     string          `json:"title"`
+	Artist    string          `json:"artist"`
+	Album     string          `json:"album"`
+	Plays     int64           `json:"plays"`
+	MsPlayed  sql.NullFloat64 `json:"ms_played"`
+}
+
+func (q *Queries) StatsTopTracksByAlbum(ctx context.Context, arg StatsTopTracksByAlbumParams) ([]StatsTopTracksByAlbumRow, error) {
+	rows, err := q.db.QueryContext(ctx, statsTopTracksByAlbum,
+		arg.UserID,
+		arg.Album,
+		arg.Artist,
+		arg.PlayedAt,
+		arg.PlayedAt_2,
+		arg.Limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []StatsTopTracksByAlbumRow
+	for rows.Next() {
+		var i StatsTopTracksByAlbumRow
 		if err := rows.Scan(
 			&i.CatalogID,
 			&i.Title,

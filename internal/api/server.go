@@ -282,6 +282,7 @@ func (s *Server) routes() {
 			pr.Get("/stats/clock", s.handleStatsClock)
 			pr.Get("/stats/recent", s.handleStatsRecent)
 			pr.Get("/stats/entity", s.handleStatsEntity)
+			pr.Post("/stats/play-counts", s.handlePlayCounts)
 
 			// manage library & integrations: adapter CRUD + server settings.
 			pr.Group(func(mr chi.Router) {

@@ -871,7 +871,7 @@ func TestEntity_ArtistAggregation(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	es, err := stats.Entity(ctx, "u1", "artist", "Artist X", winFrom, winTo)
+	es, err := stats.Entity(ctx, "u1", "artist", "Artist X", "", winFrom, winTo)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -924,7 +924,7 @@ func TestEntity_TrackAggregation(t *testing.T) {
 	}
 	catalogID := recent[0].CatalogID
 
-	es, err := stats.Entity(ctx, "u1", "track", catalogID, winFrom, winTo)
+	es, err := stats.Entity(ctx, "u1", "track", catalogID, "", winFrom, winTo)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -962,7 +962,7 @@ func TestEntity_WindowExclusion(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	es, err := stats.Entity(ctx, "u1", "artist", "Artist X", winFrom, winTo)
+	es, err := stats.Entity(ctx, "u1", "artist", "Artist X", "", winFrom, winTo)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -989,7 +989,7 @@ func TestEntity_PerUserIsolation(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	es, err := stats.Entity(ctx, "u1", "artist", "Artist X", winFrom, winTo)
+	es, err := stats.Entity(ctx, "u1", "artist", "Artist X", "", winFrom, winTo)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -998,5 +998,160 @@ func TestEntity_PerUserIsolation(t *testing.T) {
 	}
 	if es.MsPlayed != 100000 {
 		t.Errorf("user isolation: want ms=100000 got %d", es.MsPlayed)
+	}
+}
+
+func TestEntity_AlbumAggregation(t *testing.T) {
+	stats, svc := newTestStatsHarness(t)
+	ctx := context.Background()
+
+	// 2 plays on "Album 1" by Artist X, 1 play on "Album 2" by Artist X.
+	for i, ts := range []int64{1100, 1200} {
+		if err := svc.Record(ctx, "u1", play.PlayInput{
+			Title: fmt.Sprintf("A1-Track%d", i), Artist: "Artist X", Album: "Album 1",
+			DurationMs: 100000, MsPlayed: int(30000 + i*10000), PlayedAt: ts,
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := svc.Record(ctx, "u1", play.PlayInput{
+		Title: "A2-Track", Artist: "Artist X", Album: "Album 2",
+		DurationMs: 100000, MsPlayed: 99000, PlayedAt: 1300,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	es, err := stats.Entity(ctx, "u1", "album", "Album 1", "Artist X", winFrom, winTo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if es.Plays != 2 {
+		t.Errorf("album Plays: want 2 got %d", es.Plays)
+	}
+	wantMs := int64(30000 + 40000)
+	if es.MsPlayed != wantMs {
+		t.Errorf("album MsPlayed: want %d got %d", wantMs, es.MsPlayed)
+	}
+	if es.FirstPlayed != 1100 {
+		t.Errorf("FirstPlayed: want 1100 got %d", es.FirstPlayed)
+	}
+	if es.LastPlayed != 1200 {
+		t.Errorf("LastPlayed: want 1200 got %d", es.LastPlayed)
+	}
+	if len(es.TopTracks) == 0 {
+		t.Error("TopTracks must be non-empty for album entity")
+	}
+	for _, tr := range es.TopTracks {
+		if tr.Album != "Album 1" {
+			t.Errorf("TopTracks contain non-Album-1 track: %+v", tr)
+		}
+	}
+}
+
+// TestEntity_AlbumDisambiguatesByArtist is the load-bearing assertion that an
+// album is identified by NAME + ARTIST: the same album title under two distinct
+// artists must yield SEPARATE stats. Non-vacuous: both albums have plays.
+func TestEntity_AlbumDisambiguatesByArtist(t *testing.T) {
+	stats, svc := newTestStatsHarness(t)
+	ctx := context.Background()
+
+	// "Greatest Hits" by Artist X — 3 plays.
+	for i, ts := range []int64{1100, 1150, 1200} {
+		if err := svc.Record(ctx, "u1", play.PlayInput{
+			Title: fmt.Sprintf("X-Track%d", i), Artist: "Artist X", Album: "Greatest Hits",
+			DurationMs: 100000, MsPlayed: 50000, PlayedAt: ts,
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// "Greatest Hits" by Artist Y — 1 play (SAME album title, different artist).
+	if err := svc.Record(ctx, "u1", play.PlayInput{
+		Title: "Y-Track", Artist: "Artist Y", Album: "Greatest Hits",
+		DurationMs: 100000, MsPlayed: 70000, PlayedAt: 1250,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	x, err := stats.Entity(ctx, "u1", "album", "Greatest Hits", "Artist X", winFrom, winTo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if x.Plays != 3 {
+		t.Errorf("Artist X 'Greatest Hits' Plays: want 3 got %d (album title collision leaked)", x.Plays)
+	}
+	if x.MsPlayed != 150000 {
+		t.Errorf("Artist X MsPlayed: want 150000 got %d", x.MsPlayed)
+	}
+
+	y, err := stats.Entity(ctx, "u1", "album", "Greatest Hits", "Artist Y", winFrom, winTo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if y.Plays != 1 {
+		t.Errorf("Artist Y 'Greatest Hits' Plays: want 1 got %d (album title collision leaked)", y.Plays)
+	}
+	if y.MsPlayed != 70000 {
+		t.Errorf("Artist Y MsPlayed: want 70000 got %d", y.MsPlayed)
+	}
+	for _, tr := range x.TopTracks {
+		if tr.Artist != "Artist X" {
+			t.Errorf("Artist X TopTracks leaked a different artist: %+v", tr)
+		}
+	}
+}
+
+func TestEntity_AlbumWindowExclusion(t *testing.T) {
+	stats, svc := newTestStatsHarness(t)
+	ctx := context.Background()
+
+	// Play outside window (before).
+	if err := svc.Record(ctx, "u1", play.PlayInput{
+		Title: "T", Artist: "Artist X", Album: "Alb", DurationMs: 100000, MsPlayed: 100000, PlayedAt: 999,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	// Play inside window.
+	if err := svc.Record(ctx, "u1", play.PlayInput{
+		Title: "T", Artist: "Artist X", Album: "Alb", DurationMs: 100000, MsPlayed: 50000, PlayedAt: 1500,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	es, err := stats.Entity(ctx, "u1", "album", "Alb", "Artist X", winFrom, winTo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if es.Plays != 1 {
+		t.Errorf("album window exclusion: want 1 play got %d", es.Plays)
+	}
+	if es.MsPlayed != 50000 {
+		t.Errorf("album window exclusion: want ms=50000 got %d", es.MsPlayed)
+	}
+}
+
+func TestEntity_AlbumPerUserIsolation(t *testing.T) {
+	stats, svc := newTestStatsHarness(t)
+	ctx := context.Background()
+
+	if err := svc.Record(ctx, "u1", play.PlayInput{
+		Title: "T", Artist: "Artist X", Album: "Alb", DurationMs: 100000, MsPlayed: 100000, PlayedAt: 1500,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.Record(ctx, "u2", play.PlayInput{
+		Title: "T", Artist: "Artist X", Album: "Alb", DurationMs: 100000, MsPlayed: 200000, PlayedAt: 1600,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	es, err := stats.Entity(ctx, "u1", "album", "Alb", "Artist X", winFrom, winTo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if es.Plays != 1 {
+		t.Errorf("album user isolation: want 1 play for u1 got %d", es.Plays)
+	}
+	if es.MsPlayed != 100000 {
+		t.Errorf("album user isolation: want ms=100000 got %d", es.MsPlayed)
 	}
 }
