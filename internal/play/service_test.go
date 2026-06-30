@@ -75,26 +75,26 @@ func TestRecord_PerUserScoping(t *testing.T) {
 
 	// user-1 records a play
 	if err := s.Record(ctx, "user-1", play.PlayInput{
-		Title:    "Hurt",
-		Artist:   "Johnny Cash",
-		Album:    "American IV",
+		Title:      "Hurt",
+		Artist:     "Johnny Cash",
+		Album:      "American IV",
 		DurationMs: 218000,
-		MsPlayed: 140000,
-		Completed: true,
-		PlayedAt: 1719000000,
+		MsPlayed:   140000,
+		Completed:  true,
+		PlayedAt:   1719000000,
 	}); err != nil {
 		t.Fatal(err)
 	}
 
 	// user-2 records a different play
 	if err := s.Record(ctx, "user-2", play.PlayInput{
-		Title:    "Ring of Fire",
-		Artist:   "Johnny Cash",
-		Album:    "Ring of Fire",
+		Title:      "Ring of Fire",
+		Artist:     "Johnny Cash",
+		Album:      "Ring of Fire",
 		DurationMs: 157000,
-		MsPlayed: 157000,
-		Completed: true,
-		PlayedAt: 1719001000,
+		MsPlayed:   157000,
+		Completed:  true,
+		PlayedAt:   1719001000,
 	}); err != nil {
 		t.Fatal(err)
 	}

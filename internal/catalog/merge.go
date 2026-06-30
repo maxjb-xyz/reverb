@@ -145,4 +145,3 @@ func (s *Service) repointBindingForLibID(ctx context.Context, loser, winner, lib
 	// Otherwise keep winner's binding as-is (winner already wins by default).
 	return nil
 }
-

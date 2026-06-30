@@ -615,19 +615,21 @@ func TestTimeline_WeekBucket(t *testing.T) {
 // with tzOffsetMin=+60 shifts to 2000-01-07 00:30:00 local (Friday, hour 0).
 //
 // UTC epoch for 2000-01-06 23:30:00:
-//   946000000 was 1999-12-23; let's compute precisely:
-//   2000-01-01 00:00:00 UTC = 946684800
-//   + 5 days = 946684800 + 5*86400 = 947116800 = 2000-01-06 00:00:00 UTC
-//   + 23*3600 + 30*60 = 82800 + 1800 = 84600
-//   = 947116800 + 84600 = 947201400
+//
+//	946000000 was 1999-12-23; let's compute precisely:
+//	2000-01-01 00:00:00 UTC = 946684800
+//	+ 5 days = 946684800 + 5*86400 = 947116800 = 2000-01-06 00:00:00 UTC
+//	+ 23*3600 + 30*60 = 82800 + 1800 = 84600
+//	= 947116800 + 84600 = 947201400
 //
 // With tzOffsetMin=+60 (UTC+1):
-//   localSec = 947201400 + 60*60 = 947201400 + 3600 = 947205000
-//   localDays = 947205000 / 86400 = 10963 (integer division)
-//   947205000 % 86400 = 947205000 - 10963*86400 = 947205000 - 947203200 = 1800
-//   hour = 1800 / 3600 = 0  ✓ (00:30)
-//   weekday: (10963 + 4) % 7 = 10967 % 7 = 10967 - 1566*7 = 10967 - 10962 = 5
-//   0=Sun,1=Mon,2=Tue,3=Wed,4=Thu,5=Fri  ✓
+//
+//	localSec = 947201400 + 60*60 = 947201400 + 3600 = 947205000
+//	localDays = 947205000 / 86400 = 10963 (integer division)
+//	947205000 % 86400 = 947205000 - 10963*86400 = 947205000 - 947203200 = 1800
+//	hour = 1800 / 3600 = 0  ✓ (00:30)
+//	weekday: (10963 + 4) % 7 = 10967 % 7 = 10967 - 1566*7 = 10967 - 10962 = 5
+//	0=Sun,1=Mon,2=Tue,3=Wed,4=Thu,5=Fri  ✓
 func TestClock_TzOffset(t *testing.T) {
 	stats, svc := newTestStatsHarness(t)
 	ctx := context.Background()
@@ -673,8 +675,8 @@ func TestClock_AggregatesGrid(t *testing.T) {
 	// 2000-01-03 10:00:00 UTC = 946944000 + 36000 = 946980000 (Monday 10:00 UTC)
 	// 2000-01-03 14:00:00 UTC = 946944000 + 50400 = 946994400 (Monday 14:00 UTC)
 	// With tzOffsetMin=0 these map to Mon(1),10 and Mon(1),14.
-	t1 := int64(946980000) // Mon 10:00 UTC → with tz=0: weekday=1,hour=10
-	t2 := int64(946994400) // Mon 14:00 UTC → with tz=0: weekday=1,hour=14
+	t1 := int64(946980000)      // Mon 10:00 UTC → with tz=0: weekday=1,hour=10
+	t2 := int64(946994400)      // Mon 14:00 UTC → with tz=0: weekday=1,hour=14
 	t3 := int64(946980000 + 10) // same cell as t1
 
 	for _, ts := range []int64{t1, t2, t3} {
