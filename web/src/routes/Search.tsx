@@ -5,6 +5,7 @@ import { usePlayer } from '../lib/playerStore'
 import { useSearch } from '../lib/searchStore'
 import { postDownload, reqFromResult } from '../lib/downloadApi'
 import { useDownloads } from '../lib/downloadStore'
+import { useAuthStore } from '../lib/authStore'
 import { DownloadAction } from '../components/download/DownloadAction'
 import {
   Segmented,
@@ -120,6 +121,10 @@ export default function Search() {
   const playTrackList = usePlayer((s) => s.playTrackList)
   const currentTrackId = usePlayer((s) => s.current?.id)
   const navigate = useNavigate()
+  // The bulk album "Download all" is a direct download — gated on auto_approve.
+  // Search has no bulk-request path; a user without auto_approve simply sees no
+  // bulk download (per-item acquisition on the track rows is unaffected).
+  const canAutoApprove = useAuthStore((s) => s.can('auto_approve'))
 
   // Library mode: TanStack Query REST call
   const lib = useLibrarySearch(mode === 'library' ? q : '')
@@ -354,7 +359,7 @@ export default function Search() {
                         <Badge kind="in-library">
                           In Library
                         </Badge>
-                      ) : (
+                      ) : canAutoApprove ? (
                         <Button
                           variant="secondary"
                           size="sm"
@@ -373,7 +378,7 @@ export default function Search() {
                           <Icon name="dl" className="text-xs" />
                           Download all
                         </Button>
-                      )
+                      ) : undefined
                     }
                   />
                 ))}

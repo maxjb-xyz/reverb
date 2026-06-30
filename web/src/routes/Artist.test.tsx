@@ -208,6 +208,7 @@ describe('Artist page', () => {
   })
 
   it('"Download all missing" button calls postBatchDownload when confirmed', () => {
+    setAuth(['auto_approve'])
     const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
     wrapper(<Artist />)
     const dlBtn = screen.getByRole('button', { name: /download all missing/i })
@@ -218,6 +219,7 @@ describe('Artist page', () => {
   })
 
   it('"Download all missing" does NOT download when confirm is cancelled', () => {
+    setAuth(['auto_approve'])
     const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
     wrapper(<Artist />)
     const dlBtn = screen.getByRole('button', { name: /download all missing/i })
@@ -225,6 +227,36 @@ describe('Artist page', () => {
     expect(confirmSpy).toHaveBeenCalled()
     expect(postBatchDownload).not.toHaveBeenCalled()
     confirmSpy.mockRestore()
+  })
+
+  // ── Acquisition-button gating (capability-driven, mutually exclusive) ────────
+
+  it('auto_approve user sees "Download all missing" and NOT "Request all"', () => {
+    setAuth(['auto_approve'])
+    wrapper(<Artist />)
+    expect(screen.getByRole('button', { name: /download all missing/i })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /request all/i })).not.toBeInTheDocument()
+  })
+
+  it('requester (request, no auto_approve) sees "Request all" and NOT "Download all missing"', () => {
+    setAuth(['request'])
+    wrapper(<Artist />)
+    expect(screen.getByRole('button', { name: /request all/i })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /download all missing/i })).not.toBeInTheDocument()
+  })
+
+  it('user with BOTH caps sees ONLY "Download all missing" (auto_approve branch wins)', () => {
+    setAuth(['auto_approve', 'request'])
+    wrapper(<Artist />)
+    expect(screen.getByRole('button', { name: /download all missing/i })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /request all/i })).not.toBeInTheDocument()
+  })
+
+  it('user with NEITHER cap sees neither acquisition button', () => {
+    setAuth([])
+    wrapper(<Artist />)
+    expect(screen.queryByRole('button', { name: /download all missing/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /request all/i })).not.toBeInTheDocument()
   })
 
   it('shows EmptyState when artist not found', () => {

@@ -283,11 +283,16 @@ export default function Artist() {
               </p>
             )}
 
-            {/* Action row — only when there are missing tracks. Guarded by a confirm
-                so a stray click can't enqueue a large batch (spec §10). */}
-            {(detail.resolved && allMissingTracks.length > 0) || (canRequest && notOwnedRequestItems.length > 0) ? (
+            {/* Acquisition action row — ONE capability-gated, mutually-exclusive
+                button. auto_approve → "Download all missing" (direct); else request
+                → "Request all" (pending); else neither. A user with both caps sees
+                only Download (the auto_approve branch wins). The download path is
+                guarded by a confirm so a stray click can't enqueue a large batch
+                (spec §10). */}
+            {(canAutoApprove && detail.resolved && allMissingTracks.length > 0) ||
+            (!canAutoApprove && canRequest && notOwnedRequestItems.length > 0) ? (
               <div className="mt-4 flex items-center gap-3">
-                {detail.resolved && allMissingTracks.length > 0 && (
+                {canAutoApprove && detail.resolved && allMissingTracks.length > 0 && (
                   <Button
                     variant="secondary"
                     size="md"
@@ -304,11 +309,10 @@ export default function Artist() {
                     Download all missing · {allMissingTracks.length}
                   </Button>
                 )}
-                {canRequest && (
+                {!canAutoApprove && canRequest && notOwnedRequestItems.length > 0 && (
                   <Button
                     variant="secondary"
                     size="md"
-                    disabled={notOwnedRequestItems.length === 0}
                     aria-label="Request all"
                     onClick={() => setRequestAllOpen(true)}
                   >

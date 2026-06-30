@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import Search from './Search'
 import { engine } from '../lib/playerStore'
 import { useSearch } from '../lib/searchStore'
+import { useAuthStore } from '../lib/authStore'
 import { makeTrack, makeAlbum } from '../test/factories'
 
 // Search query/mode now live in a shared store; reset it before every test so
@@ -308,6 +309,11 @@ describe('Search (everywhere mode)', () => {
   })
 
   it('C2 — non-in-library album shows a Download-all control that calls postDownload with album fields', async () => {
+    // The bulk album Download-all button is gated on the auto_approve capability.
+    useAuthStore.setState({
+      me: { id: 'u1', username: 'u1', roleId: 'r', roleName: 'R', isOwner: false, capabilities: ['auto_approve'], createdAt: 0 },
+      loading: false,
+    })
     let inst: { onmessage: ((ev: { data: string }) => void) | null; close(): void } | null = null
     class StubES {
       onmessage: ((ev: { data: string }) => void) | null = null
@@ -344,6 +350,64 @@ describe('Search (everywhere mode)', () => {
     expect(postDownloadMock).toHaveBeenCalledWith(
       expect.objectContaining({ source: 'spotify', externalId: 'alb1', artist: 'Band', title: 'Blue Album', album: 'Blue Album' }),
     )
+    useAuthStore.setState({ me: null, loading: false })
+    vi.unstubAllGlobals()
+  })
+
+  // ── Bulk album "Download all" gating (auto_approve capability) ──────────────
+  // Emits a single not-in-library album envelope, then asserts on the bulk
+  // Download-all control. No bulk-request path exists for Search — a user without
+  // auto_approve simply sees no bulk download button (per-item acquisition stays
+  // on the track rows via DownloadAction).
+  function emitAlbum(caps: string[]): void {
+    useAuthStore.setState({
+      me: { id: 'u1', username: 'u1', roleId: 'r', roleName: 'R', isOwner: false, capabilities: caps, createdAt: 0 },
+      loading: false,
+    })
+    let inst: { onmessage: ((ev: { data: string }) => void) | null; close(): void } | null = null
+    class StubES {
+      onmessage: ((ev: { data: string }) => void) | null = null
+      onerror: (() => void) | null = null
+      url: string
+      constructor(url: string) {
+        this.url = url
+        // eslint-disable-next-line @typescript-eslint/no-this-alias
+        inst = this
+      }
+      close() {}
+    }
+    vi.stubGlobal('EventSource', StubES as unknown as typeof EventSource)
+
+    render(wrap(<Search />))
+    fireEvent.change(screen.getByPlaceholderText(/search/i), { target: { value: 'blues' } })
+    clickTab(/everywhere/i)
+
+    act(() => {
+      inst!.onmessage?.({
+        data: JSON.stringify({
+          source: 'spotify',
+          status: 'ok',
+          results: [
+            { source: 'spotify', externalId: 'alb1', title: 'Blue Album', artist: 'Band', album: 'Blue Album', durationMs: 0, type: 'album', match: { status: 'not_in_library' } },
+          ],
+        }),
+      })
+    })
+  }
+
+  it('a user WITHOUT auto_approve does NOT see the bulk "Download all" album button', async () => {
+    emitAlbum(['request']) // request-only: no bulk download path in Search
+    // The album card still renders (its title appears) but the bulk control does not.
+    await waitFor(() => expect(screen.getByText('Blue Album')).toBeInTheDocument())
+    expect(screen.queryByRole('button', { name: /download all of Blue Album/i })).not.toBeInTheDocument()
+    useAuthStore.setState({ me: null, loading: false })
+    vi.unstubAllGlobals()
+  })
+
+  it('an auto_approve user DOES see the bulk "Download all" album button', async () => {
+    emitAlbum(['auto_approve'])
+    await waitFor(() => expect(screen.getByRole('button', { name: /download all of Blue Album/i })).toBeInTheDocument())
+    useAuthStore.setState({ me: null, loading: false })
     vi.unstubAllGlobals()
   })
 

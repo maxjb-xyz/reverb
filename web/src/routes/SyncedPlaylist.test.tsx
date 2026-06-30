@@ -6,6 +6,7 @@ import SyncedPlaylist from './SyncedPlaylist'
 import { makeTrack } from '../test/factories'
 import type { SyncedPlaylistDetail, AlbumDetailTrack, Track } from '../lib/types'
 import { useAlbumPalette } from '../lib/useAlbumPalette'
+import { useAuthStore } from '../lib/authStore'
 
 // ── useAlbumPalette mock ───────────────────────────────────────────────────────
 vi.mock('../lib/useAlbumPalette', () => ({ useAlbumPalette: vi.fn(() => null) }))
@@ -158,8 +159,17 @@ async function renderLoaded() {
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 describe('SyncedPlaylist page', () => {
+  // Helper: configure the current user's capabilities on the real auth store.
+  function setCaps(caps: string[]) {
+    useAuthStore.setState({
+      me: { id: 'u1', username: 'u1', roleId: 'r', roleName: 'R', isOwner: false, capabilities: caps, createdAt: 0 },
+      loading: false,
+    })
+  }
+
   beforeEach(() => {
     vi.clearAllMocks()
+    useAuthStore.setState({ me: null, loading: false })
     mockSyncedPlayerState.current = null
     mockRemoveSyncedTrack.mockReset()
     mockRemoveSyncedTrack.mockResolvedValue({})
@@ -356,14 +366,17 @@ describe('SyncedPlaylist page', () => {
   })
 
   it('"Download all missing" button calls downloadMissingForPlaylist with the playlist id', async () => {
+    setCaps(['auto_approve'])
     await renderLoaded()
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: /download all missing/i }))
     })
     expect(mockDownloadMissingForPlaylist).toHaveBeenCalledWith('sp1')
+    useAuthStore.setState({ me: null, loading: false })
   })
 
   it('"Download all missing" button is hidden when nothing is missing', async () => {
+    setCaps(['auto_approve'])
     mockUseSyncedPlaylist.mockReturnValue({
       data: {
         ...mockDetail,
@@ -379,6 +392,25 @@ describe('SyncedPlaylist page', () => {
       expect(screen.getByRole('heading', { name: 'Test Synced Playlist' })).toBeInTheDocument(),
     )
     expect(screen.queryByRole('button', { name: /download all missing/i })).not.toBeInTheDocument()
+    useAuthStore.setState({ me: null, loading: false })
+  })
+
+  // ── "Download all missing" gating (auto_approve capability) ─────────────────
+  // No bulk-request path exists for synced playlists. A user without auto_approve
+  // simply sees no bulk-download button; per-item DownloadAction on missing rows
+  // is unaffected.
+  it('a user WITHOUT auto_approve does NOT see the "Download all missing" button', async () => {
+    setCaps(['request']) // request-only: no bulk-download path here
+    await renderLoaded()
+    expect(screen.queryByRole('button', { name: /download all missing/i })).not.toBeInTheDocument()
+    useAuthStore.setState({ me: null, loading: false })
+  })
+
+  it('an auto_approve user DOES see the "Download all missing" button', async () => {
+    setCaps(['auto_approve'])
+    await renderLoaded()
+    expect(screen.getByRole('button', { name: /download all missing/i })).toBeInTheDocument()
+    useAuthStore.setState({ me: null, loading: false })
   })
 
   // ── Schedule settings ──────────────────────────────────────────────────────

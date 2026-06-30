@@ -19,6 +19,7 @@ import { Button, IconButton, Cover, Skeleton, EmptyState, Badge, Toggle, Select,
 import { PortalMenu } from '../components/PortalMenu'
 import type { ExternalResult, ExternalTrackRef, AlbumDetailTrack, Track } from '../lib/types'
 import { usePlayer } from '../lib/playerStore'
+import { useAuthStore } from '../lib/authStore'
 import { useAlbumPalette } from '../lib/useAlbumPalette'
 import { rgbToCss } from '../lib/palette'
 
@@ -89,6 +90,10 @@ export default function SyncedPlaylist() {
   const playTrackList = usePlayer((s) => s.playTrackList)
   const currentTrack = usePlayer((s) => s.current)
   const isPlaying = usePlayer((s) => s.playing)
+  // "Download all missing" is a direct download — gated on auto_approve. There is
+  // no bulk-request path here; a user without auto_approve sees no bulk-download
+  // button (per-item DownloadAction on missing rows is unaffected).
+  const canAutoApprove = useAuthStore((s) => s.can('auto_approve'))
 
   // "…" menu state
   const [menuOpen, setMenuOpen] = useState(false)
@@ -425,7 +430,7 @@ export default function SyncedPlaylist() {
               >
                 Play
               </Button>
-              {missingCount > 0 && (
+              {canAutoApprove && missingCount > 0 && (
                 <Button
                   variant="secondary"
                   size="md"

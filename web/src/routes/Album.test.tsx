@@ -242,10 +242,15 @@ describe('Album page', () => {
   })
 
   it('"Download missing · 1" button calls postBatchDownload with the missing externalRef', async () => {
+    useAuthStore.setState({
+      me: { id: 'u1', username: 'u1', roleId: 'r', roleName: 'R', isOwner: false, capabilities: ['auto_approve'], createdAt: 0 },
+      loading: false,
+    })
     await renderLoaded()
     const btn = screen.getByRole('button', { name: /download missing/i })
     fireEvent.click(btn)
     expect(mockPostBatchDownload).toHaveBeenCalledWith([missingRef])
+    useAuthStore.setState({ me: null, loading: false })
   })
 
   it('missing track row renders a download affordance', async () => {
@@ -655,6 +660,47 @@ describe('Album page', () => {
       // (Each owned row now shows an "In Library" right-slot badge — those are distinct.)
       const header = screen.getByRole('heading', { name: 'Kid A' }).closest('header')!
       expect(header.querySelector('.text-accent')).not.toBeInTheDocument()
+    })
+  })
+
+  describe('acquisition-button gating (capability-driven, mutually exclusive)', () => {
+    function setCaps(caps: string[]) {
+      useAuthStore.setState({
+        me: { id: 'u1', username: 'u1', roleId: 'r', roleName: 'R', isOwner: false, capabilities: caps, createdAt: 0 },
+        loading: false,
+      })
+    }
+
+    afterEach(() => {
+      useAuthStore.setState({ me: null, loading: false })
+    })
+
+    it('auto_approve user sees "Download missing" and NOT "Request album"', async () => {
+      setCaps(['auto_approve'])
+      await renderLoaded()
+      expect(screen.getByRole('button', { name: /download missing/i })).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: /request album/i })).not.toBeInTheDocument()
+    })
+
+    it('requester (request, no auto_approve) sees "Request album" and NOT "Download missing"', async () => {
+      setCaps(['request'])
+      await renderLoaded()
+      expect(screen.getByRole('button', { name: /request album/i })).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: /download missing/i })).not.toBeInTheDocument()
+    })
+
+    it('user with BOTH caps sees ONLY "Download missing" (auto_approve branch wins)', async () => {
+      setCaps(['auto_approve', 'request'])
+      await renderLoaded()
+      expect(screen.getByRole('button', { name: /download missing/i })).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: /request album/i })).not.toBeInTheDocument()
+    })
+
+    it('user with NEITHER cap sees neither acquisition button', async () => {
+      setCaps([])
+      await renderLoaded()
+      expect(screen.queryByRole('button', { name: /download missing/i })).not.toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: /request album/i })).not.toBeInTheDocument()
     })
   })
 })

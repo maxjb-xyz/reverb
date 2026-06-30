@@ -71,6 +71,7 @@ export default function Album() {
   const isPlaying = usePlayer((s) => s.playing)
   const palette = useAlbumPalette(album?.coverArtId ? coverUrl(album.coverArtId, 300) : album?.coverUrl)
   const canRequest = useAuthStore((s) => s.can('request'))
+  const canAutoApprove = useAuthStore((s) => s.can('auto_approve'))
   const [requestDisclosureOpen, setRequestDisclosureOpen] = useState(false)
 
   // ── Listening-history stats ──────────────────────────────────────────────────
@@ -253,7 +254,11 @@ export default function Album() {
                 }}
                 disabled={ownedTracks.length === 0}
               />
-              {hasMissing && (
+              {/* Acquisition action — ONE capability-gated, mutually-exclusive
+                  button. auto_approve → "Download missing" (direct); else request
+                  → "Request album" (pending); else neither. A user with both caps
+                  sees only Download (the auto_approve branch wins). */}
+              {canAutoApprove && hasMissing && (
                 <Button
                   variant="secondary"
                   size="md"
@@ -264,7 +269,7 @@ export default function Album() {
                 </Button>
               )}
               <IconButton name="heart" label={`Like ${album.name}`} />
-              {canRequest && (
+              {!canAutoApprove && canRequest && (
                 <Button
                   variant="secondary"
                   size="md"
