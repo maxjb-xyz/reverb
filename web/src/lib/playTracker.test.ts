@@ -1,7 +1,8 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest'
 import { startPlayTracker } from './playTracker'
 import type { PlayerState } from './audioEngine'
 import type { Track } from './types'
+import type { PlayInput } from './playApi'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -80,10 +81,10 @@ function playFromTo(
 // ---------------------------------------------------------------------------
 
 describe('playTracker', () => {
-  let recordFn: ReturnType<typeof vi.fn>
+  let recordFn: Mock<(input: PlayInput) => Promise<void>>
 
   beforeEach(() => {
-    recordFn = vi.fn().mockResolvedValue(undefined)
+    recordFn = vi.fn<(input: PlayInput) => Promise<void>>().mockResolvedValue(undefined)
   })
 
   // ── Test 1 ────────────────────────────────────────────────────────────────

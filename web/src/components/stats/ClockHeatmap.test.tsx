@@ -48,7 +48,6 @@ describe('ClockHeatmap', () => {
   describe('intensity scaling', () => {
     it('the busiest cell has the highest fill opacity', () => {
       const { container } = render(<ClockHeatmap data={SPARSE_DATA} />)
-      const cells = Array.from(container.querySelectorAll('[data-cell]'))
 
       // Wednesday=3 hour=14 is the busiest (20 plays)
       // Find the cell by data-weekday and data-hour attributes
