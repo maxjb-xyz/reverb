@@ -206,6 +206,30 @@ func insertQueueRow(t *testing.T, q Querier, id, userID string, nextAttemptAt in
 	}
 }
 
+// insertQueueRowTitled seeds a due pending queue row with a distinguishable title,
+// so tests can map a captured Scrobble call's play back to the user that owns it.
+func insertQueueRowTitled(t *testing.T, q Querier, id, userID, title string, nextAttemptAt int64) {
+	t.Helper()
+	err := q.InsertScrobbleQueue(context.Background(), db.InsertScrobbleQueueParams{
+		ID:            id,
+		UserID:        userID,
+		Provider:      "lastfm",
+		CatalogID:     "",
+		Title:         title,
+		Artist:        "Artist",
+		Album:         "Album",
+		DurationMs:    180000,
+		PlayedAt:      999_000,
+		Status:        "pending",
+		Attempts:      0,
+		NextAttemptAt: nextAttemptAt,
+		CreatedAt:     999_000,
+	})
+	if err != nil {
+		t.Fatalf("insertQueueRowTitled: %v", err)
+	}
+}
+
 // queueRowStatus fetches a row's status+attempts directly via raw DB.
 // Because Querier only exposes the sqlc methods, we need to reach db.Queries
 // which implements the real *db.Queries — cast it.
@@ -501,6 +525,13 @@ func TestDrainOnce_ErrAuth_SetsLinkBrokenAndEnqueueNoops(t *testing.T) {
 // (e) Per-user isolation: user A's row is scrobbled with A's sessionKey
 // ----------------------------------------------------------------------------
 
+// TestDrainOnce_PerUserIsolation exercises the per-user grouping under
+// contention: BOTH users have an active link AND a due queue row. The drain
+// must produce two independent Scrobble calls, each carrying ONLY its own
+// user's session key. We map each call's play (by its distinct title) back to
+// the session key the adapter was handed, then assert the keys line up. A
+// grouping bug that handed user B's key to user A's scrobble (or batched both
+// users into one call) would fail this test.
 func TestDrainOnce_PerUserIsolation(t *testing.T) {
 	q := openTestDB(t)
 	sc := &fakeScrobbler{}
@@ -508,12 +539,13 @@ func TestDrainOnce_PerUserIsolation(t *testing.T) {
 	svc := newTestService(t, q, sc, func() time.Time { return now })
 	ctx := context.Background()
 
-	// Two users with different session keys.
+	// Two users with different session keys — BOTH active.
 	insertLink(t, q, "userA", "lastfm", "sk-A", "alice", "active")
 	insertLink(t, q, "userB", "lastfm", "sk-B", "bob", "active")
 
-	// Only user A has a due row.
-	insertQueueRow(t, q, "row-A", "userA", now.Unix()-1, 0)
+	// Each user has a DUE pending row with a distinguishable title.
+	insertQueueRowTitled(t, q, "row-A", "userA", "TrackA", now.Unix()-1)
+	insertQueueRowTitled(t, q, "row-B", "userB", "TrackB", now.Unix()-1)
 
 	if err := svc.drainOnce(ctx, 50); err != nil {
 		t.Fatalf("drainOnce: %v", err)
@@ -523,15 +555,29 @@ func TestDrainOnce_PerUserIsolation(t *testing.T) {
 	calls := sc.scrobbleCalls
 	sc.mu.Unlock()
 
-	if len(calls) != 1 {
-		t.Fatalf("expected exactly 1 Scrobble call, got %d", len(calls))
+	// One Scrobble call per user — never a single merged call across users.
+	if len(calls) != 2 {
+		t.Fatalf("expected exactly 2 Scrobble calls (one per user), got %d", len(calls))
 	}
-	// Must use A's session key, never B's.
-	if calls[0].Creds.SessionKey != "sk-A" {
-		t.Fatalf("wrong sessionKey: got %q, want sk-A", calls[0].Creds.SessionKey)
+
+	// Map each play's title → the session key the adapter was handed for that
+	// call. Each call must carry exactly one user's plays.
+	titleToKey := make(map[string]string)
+	for _, call := range calls {
+		for _, p := range call.Plays {
+			if existing, ok := titleToKey[p.Title]; ok {
+				t.Fatalf("title %q appeared in two calls (keys %q and %q)", p.Title, existing, call.Creds.SessionKey)
+			}
+			titleToKey[p.Title] = call.Creds.SessionKey
+		}
 	}
-	if calls[0].Creds.SessionKey == "sk-B" {
-		t.Fatalf("used B's sessionKey for A's row!")
+
+	// The call carrying A's play must use A's key; B's play must use B's key.
+	if got := titleToKey["TrackA"]; got != "sk-A" {
+		t.Fatalf("TrackA was scrobbled with session key %q, want sk-A", got)
+	}
+	if got := titleToKey["TrackB"]; got != "sk-B" {
+		t.Fatalf("TrackB was scrobbled with session key %q, want sk-B", got)
 	}
 }
 
