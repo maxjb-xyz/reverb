@@ -12,9 +12,10 @@ const RANGE: Range = {
   label: 'Test range',
 }
 
-/** Capture URLs that api.get / api.del are called with, without actually fetching. */
+/** Capture URLs/bodies that api.get / api.del / api.post are called with, without actually fetching. */
 let capturedUrl: string | null = null
 let capturedMethod: string | null = null
+let capturedBody: unknown = null
 
 vi.mock('./api', () => ({
   api: {
@@ -28,12 +29,19 @@ vi.mock('./api', () => ({
       capturedMethod = 'DELETE'
       return Promise.resolve(null)
     }),
+    post: vi.fn((path: string, body: unknown) => {
+      capturedUrl = path
+      capturedMethod = 'POST'
+      capturedBody = body
+      return Promise.resolve({ counts: {} })
+    }),
   },
 }))
 
 beforeEach(() => {
   capturedUrl = null
   capturedMethod = null
+  capturedBody = null
 })
 
 afterEach(() => {
@@ -79,6 +87,63 @@ describe('statsApi.entity()', () => {
     expect(capturedUrl).toMatch(/^\/stats\/entity\?/)
     expect(capturedUrl).toContain('kind=track')
     expect(capturedUrl).toContain('id=trk_abc123')
+  })
+
+  it('appends &artist= (URL-encoded) when an artist is supplied for kind=album', async () => {
+    await statsApi.entity('album', 'OK Computer', RANGE, 'Radiohead').catch(() => {})
+    expect(capturedUrl).toMatch(/^\/stats\/entity\?/)
+    expect(capturedUrl).toContain('kind=album')
+    expect(capturedUrl).toContain('id=OK+Computer')
+    expect(capturedUrl).toContain('artist=Radiohead')
+  })
+
+  it('URL-encodes the album artist name', async () => {
+    await statsApi.entity('album', 'Ágætis byrjun', RANGE, 'Sigur Rós').catch(() => {})
+    // "Sigur Rós" → artist=Sigur+R%C3%B3s
+    expect(capturedUrl).toContain('artist=Sigur')
+    expect(capturedUrl).toContain('%C3%B3s')
+  })
+
+  it('does NOT append &artist= when no artist is supplied (artist/track callers unchanged)', async () => {
+    await statsApi.entity('artist', 'Radiohead', RANGE).catch(() => {})
+    expect(capturedUrl).not.toContain('artist=')
+  })
+})
+
+// ── playCounts: per-track lookup (POST /stats/play-counts) ────────────────────
+
+describe('statsApi.playCounts()', () => {
+  it('POSTs to /stats/play-counts', async () => {
+    await statsApi.playCounts([
+      { key: 'L1', title: 'Kid A', artist: 'Radiohead', album: 'Kid A', durationMs: 2000 },
+    ]).catch(() => {})
+    expect(capturedMethod).toBe('POST')
+    expect(capturedUrl).toBe('/stats/play-counts')
+  })
+
+  it('sends the body with the exact backend json keys (tracks/key/title/artist/album/durationMs)', async () => {
+    await statsApi.playCounts([
+      { key: 'L1', title: 'Kid A', artist: 'Radiohead', album: 'Kid A', durationMs: 2000, isrc: 'GBABC1234567' },
+    ]).catch(() => {})
+    expect(capturedBody).toEqual({
+      tracks: [
+        { key: 'L1', title: 'Kid A', artist: 'Radiohead', album: 'Kid A', durationMs: 2000, isrc: 'GBABC1234567' },
+      ],
+    })
+  })
+
+  it('returns the counts map from the response', async () => {
+    const { api } = await import('./api')
+    vi.mocked(api.post).mockResolvedValueOnce({ counts: { L1: 7, L2: 0 } })
+    const counts = await statsApi.playCounts([
+      { key: 'L1', title: 'Kid A', artist: 'Radiohead', album: 'Kid A', durationMs: 2000 },
+    ])
+    expect(counts).toEqual({ L1: 7, L2: 0 })
+  })
+
+  it('sends an empty tracks array unchanged', async () => {
+    await statsApi.playCounts([]).catch(() => {})
+    expect(capturedBody).toEqual({ tracks: [] })
   })
 })
 

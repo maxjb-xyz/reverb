@@ -61,6 +61,24 @@ vi.mock('../components/download/DownloadAction', () => ({
   ),
 }))
 
+// ── statsApi mock ──────────────────────────────────────────────────────────────
+// entity() drives the aggregate stat strip; playCounts() drives the per-track
+// "Played N×" captions. Default: no history (strip hidden, all counts 0).
+const mockEntity = vi.fn()
+const mockPlayCounts = vi.fn()
+vi.mock('../lib/statsApi', () => ({
+  entity: (...args: unknown[]) => mockEntity(...args),
+  playCounts: (...args: unknown[]) => mockPlayCounts(...args),
+}))
+
+const emptyEntity = {
+  Plays: 0,
+  MsPlayed: 0,
+  FirstPlayed: 0,
+  LastPlayed: 0,
+  TopTracks: [],
+}
+
 // ── react-router params ───────────────────────────────────────────────────────
 vi.mock('react-router-dom', async (importOriginal) => {
   const actual = await importOriginal<typeof import('react-router-dom')>()
@@ -151,6 +169,9 @@ describe('Album page', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockPlayerState.current = null
+    // Default: no listening history → strip hidden, all per-track counts 0.
+    mockEntity.mockResolvedValue(emptyEntity)
+    mockPlayCounts.mockResolvedValue({})
   })
   afterEach(() => {
     vi.restoreAllMocks()
@@ -534,6 +555,63 @@ describe('Album page', () => {
         expect(toasts.some((t) => t.kind === 'error' && t.message === 'Request quota reached')).toBe(true)
         expect(toasts.some((t) => t.message === "Couldn't file your request")).toBe(false)
       })
+    })
+  })
+
+  describe('listening-history stat surfaces', () => {
+    it('renders the aggregate stat strip with plays + listened time when entity returns history', async () => {
+      mockEntity.mockResolvedValue({
+        Plays: 42,
+        MsPlayed: 3_600_000, // 60 min → "1h"
+        FirstPlayed: 1_600_000_000, // 2020
+        LastPlayed: 1_700_000_000,
+        TopTracks: [],
+      })
+      await renderLoaded()
+      const strip = await screen.findByTestId('album-stat-strip')
+      expect(strip).toHaveTextContent(/42 plays/)
+      expect(strip).toHaveTextContent(/1h/)
+      expect(strip).toHaveTextContent(/since 2020/)
+    })
+
+    it('passes the album name AND artist to entity for kind=album', async () => {
+      await renderLoaded()
+      await waitFor(() => expect(mockEntity).toHaveBeenCalled())
+      // entity('album', <albumName>, <range>, <albumArtist>)
+      expect(mockEntity).toHaveBeenCalledWith('album', 'Kid A', expect.anything(), 'Radiohead')
+    })
+
+    it('HIDES the stat strip when Plays === 0 (no history)', async () => {
+      mockEntity.mockResolvedValue(emptyEntity)
+      await renderLoaded()
+      // Give the resolved promise a tick to settle, then assert absence.
+      await waitFor(() => expect(mockEntity).toHaveBeenCalled())
+      expect(screen.queryByTestId('album-stat-strip')).not.toBeInTheDocument()
+    })
+
+    it('renders "Played N×" on a track whose play count > 0', async () => {
+      mockPlayCounts.mockResolvedValue({ L1: 5, L2: 0 })
+      await renderLoaded()
+      expect(await screen.findByText(/Played 5×/)).toBeInTheDocument()
+    })
+
+    it('does NOT render "Played N×" on a track whose play count is 0', async () => {
+      mockPlayCounts.mockResolvedValue({ L1: 5, L2: 0 })
+      await renderLoaded()
+      // L1 (count 5) shows; L2 (count 0) must not produce a "Played 0×" caption.
+      await screen.findByText(/Played 5×/)
+      expect(screen.queryByText(/Played 0×/)).not.toBeInTheDocument()
+    })
+
+    it('requests play counts keyed on the owned track library ids', async () => {
+      mockPlayCounts.mockResolvedValue({})
+      await renderLoaded()
+      await waitFor(() => expect(mockPlayCounts).toHaveBeenCalled())
+      const tracks = mockPlayCounts.mock.calls[0][0] as Array<{ key: string }>
+      const keys = tracks.map((t) => t.key)
+      // The 2 owned tracks (L1, L2) are looked up by their library id.
+      expect(keys).toContain('L1')
+      expect(keys).toContain('L2')
     })
   })
 

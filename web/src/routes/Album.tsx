@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { Link, useParams } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
 import { useAlbumDetail } from '../lib/coverageApi'
 import { coverUrl } from '../lib/libraryApi'
 import { TrackRow } from '../components/ui/TrackRow'
@@ -16,6 +17,9 @@ import { useAuthStore } from '../lib/authStore'
 import { Button, IconButton, Cover, Skeleton, EmptyState, Badge, Icon } from '../components/ui'
 import { useAlbumPalette } from '../lib/useAlbumPalette'
 import { rgbToCss } from '../lib/palette'
+import * as statsApi from '../lib/statsApi'
+import type { EntityStats, PlayCountTrack } from '../lib/statsApi'
+import { presetRange, msToHuman } from '../lib/range'
 
 // ── Local helpers ─────────────────────────────────────────────────────────────
 
@@ -68,6 +72,46 @@ export default function Album() {
   const palette = useAlbumPalette(album?.coverArtId ? coverUrl(album.coverArtId, 300) : album?.coverUrl)
   const canRequest = useAuthStore((s) => s.can('request'))
   const [requestDisclosureOpen, setRequestDisclosureOpen] = useState(false)
+
+  // ── Listening-history stats ──────────────────────────────────────────────────
+  // Hooks must run on every render (before the loading/error early returns), so
+  // their inputs are derived defensively from the (possibly undefined) album.
+
+  // Aggregate stat strip — fetched once the album name + artist are known. Album
+  // titles collide across artists, so the artist is REQUIRED server-side.
+  const [entityStats, setEntityStats] = useState<EntityStats | null>(null)
+  const albumName = album?.name
+  const albumArtistName = album?.artist
+  useEffect(() => {
+    if (!albumName || !albumArtistName) return
+    statsApi
+      .entity('album', albumName, presetRange('all'), albumArtistName)
+      .then(setEntityStats)
+      .catch(() => setEntityStats(null))
+  }, [albumName, albumArtistName])
+
+  // Per-track play counts — keyed on the owned tracks' library ids so the
+  // "Played N×" caption can render. Lookup-only (never-played → 0).
+  const playCountTracks = useMemo<PlayCountTrack[]>(
+    () =>
+      (album?.tracks ?? [])
+        .filter((t) => t.state === 'full' && t.libraryTrack)
+        .map((t) => ({
+          key: t.libraryTrack!.id,
+          title: t.title,
+          artist: t.artist,
+          album: t.album ?? album?.name ?? '',
+          durationMs: t.durationMs,
+          ...(t.libraryTrack!.isrc ? { isrc: t.libraryTrack!.isrc } : {}),
+        })),
+    [album?.tracks, album?.name],
+  )
+  const playCountKeys = playCountTracks.map((t) => t.key).join(',')
+  const { data: playCounts } = useQuery({
+    queryKey: ['album-play-counts', source, id, playCountKeys],
+    queryFn: () => statsApi.playCounts(playCountTracks),
+    enabled: playCountTracks.length > 0,
+  })
 
   if (isLoading) {
     return (
@@ -170,6 +214,25 @@ export default function Album() {
                 <span className="text-accent">· {album.ownedCount} of {album.totalCount} in library</span>
               ) : null}
             </div>
+
+            {/* Listening-history stat strip — hidden when Plays === 0 / no history */}
+            {entityStats !== null && entityStats.Plays > 0 && (
+              <p
+                className="mt-1 text-xs text-text-secondary flex flex-wrap items-center gap-x-1"
+                data-testid="album-stat-strip"
+              >
+                <span>{entityStats.Plays} plays</span>
+                <span className="text-text-muted">·</span>
+                <span>{msToHuman(entityStats.MsPlayed)} listened</span>
+                {entityStats.FirstPlayed > 0 && (
+                  <>
+                    <span className="text-text-muted">·</span>
+                    <span>since {new Date(entityStats.FirstPlayed * 1000).getFullYear()}</span>
+                  </>
+                )}
+              </p>
+            )}
+
             <div className="mt-4 flex items-center gap-3">
               <Button
                 variant="primary"
@@ -288,6 +351,7 @@ export default function Album() {
           if (t.state === 'full' && t.libraryTrack) {
             const ownedIdx = ownedIndexMap.get(t.libraryTrack.id) ?? 0
             const isActive = currentTrack?.id === t.libraryTrack.id
+            const playCount = playCounts?.[t.libraryTrack.id] ?? 0
             return (
               <TrackRow
                 key={t.libraryTrack.id}
@@ -299,6 +363,7 @@ export default function Album() {
                 coverSrc={t.libraryTrack.coverArtId ? undefined : t.coverUrl}
                 artistTo={t.artistExternalId ? `/artist/spotify/${t.artistExternalId}` : undefined}
                 albumTo={t.albumExternalId ? `/album/spotify/${t.albumExternalId}` : undefined}
+                caption={playCount > 0 ? `Played ${playCount}×` : undefined}
                 right={
                   <Badge kind="in-library">
                     <Icon name="check" className="text-xs" />

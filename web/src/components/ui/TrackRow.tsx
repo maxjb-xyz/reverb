@@ -31,9 +31,11 @@ interface TrackRowProps {
   artistTo?: string
   /** Override the album link destination. When provided, replaces /album/library/:albumId. */
   albumTo?: string
+  /** Small muted caption appended to the artist line (e.g. "Played 5×"). Layout-stable. */
+  caption?: ReactNode
 }
 
-export function TrackRow({ track, index, active = false, playing, onPlay, right, coverSrc, rightWidth = 'auto', artistNode, albumNode, artistTo, albumTo }: TrackRowProps) {
+export function TrackRow({ track, index, active = false, playing, onPlay, right, coverSrc, rightWidth = 'auto', artistNode, albumNode, artistTo, albumTo, caption }: TrackRowProps) {
   // coverSrc overrides (external Spotify images); otherwise use album cover directly
   // (album art reliably resolves; per-song embedded art is usually absent).
   const src = coverSrc ?? trackCoverUrl(track, 80)
@@ -111,6 +113,12 @@ export function TrackRow({ track, index, active = false, playing, onPlay, right,
           ) : (
             track.artist
           ))}
+          {caption ? (
+            <span className="text-text-muted">
+              <span aria-hidden="true"> · </span>
+              {caption}
+            </span>
+          ) : null}
         </span>
       </span>
 

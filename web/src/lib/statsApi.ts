@@ -53,6 +53,24 @@ export interface EntityStats {
   TopTracks: TopRow[]
 }
 
+// ── play-counts request/response ──────────────────────────────────────────────
+// These match the backend's EXPLICIT lowercase json tags exactly. A casing
+// mismatch silently yields zero counts (the backend keys the response map on the
+// request item's `key`, so the request `key` and response keys must round-trip).
+
+export interface PlayCountTrack {
+  key: string
+  title: string
+  artist: string
+  album: string
+  durationMs: number
+  isrc?: string
+}
+
+export interface PlayCountsResponse {
+  counts: Record<string, number>
+}
+
 // ── Query string helpers ──────────────────────────────────────────────────────
 
 function rangeParams(r: Range): URLSearchParams {
@@ -108,11 +126,22 @@ export function recent(before: number, limit = 20): Promise<RecentRow[]> {
   return api.get<RecentRow[]>(`/stats/recent${qs(p)}`)
 }
 
-export function entity(kind: string, id: string, r: Range): Promise<EntityStats> {
+// entity fetches per-entity listening stats. For kind="album" the album's
+// artist is REQUIRED server-side (album titles collide across artists), so pass
+// it via the optional `artist` arg; artist/track callers omit it unchanged.
+export function entity(kind: string, id: string, r: Range, artist?: string): Promise<EntityStats> {
   const p = rangeParams(r)
   p.set('kind', kind)
   p.set('id', id)
+  if (artist) p.set('artist', artist)
   return api.get<EntityStats>(`/stats/entity${qs(p)}`)
+}
+
+// playCounts looks up per-track play counts for the current user. Lookup-only:
+// never-played tracks resolve to 0 and no entity is minted. Returns the counts
+// map keyed by each request item's `key`.
+export function playCounts(tracks: PlayCountTrack[]): Promise<Record<string, number>> {
+  return api.post<PlayCountsResponse>('/stats/play-counts', { tracks }).then((r) => r.counts)
 }
 
 // deletePlay removes a single play OWNED BY the current user. Owner-scoping is
