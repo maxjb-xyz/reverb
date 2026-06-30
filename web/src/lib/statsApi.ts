@@ -109,5 +109,7 @@ export function recent(before: number, limit = 20): Promise<RecentRow[]> {
 
 export function entity(kind: string, id: string, r: Range): Promise<EntityStats> {
   const p = rangeParams(r)
-  return api.get<EntityStats>(`/stats/entity/${encodeURIComponent(kind)}/${encodeURIComponent(id)}${qs(p)}`)
+  p.set('kind', kind)
+  p.set('id', id)
+  return api.get<EntityStats>(`/stats/entity${qs(p)}`)
 }

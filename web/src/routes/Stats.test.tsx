@@ -35,6 +35,13 @@ vi.mock('react-router-dom', async (importOriginal) => {
   return { ...actual, useNavigate: () => mockNavigate }
 })
 
+// ── playerStore mock ──────────────────────────────────────────────────────────
+const mockPlayTrackList = vi.fn()
+vi.mock('../lib/playerStore', () => ({
+  usePlayer: (sel: (s: { playTrackList: typeof mockPlayTrackList }) => unknown) =>
+    sel({ playTrackList: mockPlayTrackList }),
+}))
+
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 const SUMMARY: SummaryStats = {
   Plays: 42,
@@ -49,12 +56,14 @@ const TOP_TRACKS: TopRow[] = [
   { CatalogID: 'cat-2', Title: 'Digital Rain', Artist: 'Cyber Trio', Album: 'Matrix OST', Plays: 8, MsPlayed: 1_600_000 },
 ]
 
+// Real API shape: TopArtists → Artist field is the name, Title is empty.
 const TOP_ARTISTS: TopRow[] = [
-  { CatalogID: '', Title: 'Synthwave Inc', Artist: '', Album: '', Plays: 20, MsPlayed: 4_000_000 },
+  { CatalogID: '', Title: '', Artist: 'Radiohead', Album: '', Plays: 20, MsPlayed: 4_000_000 },
 ]
 
+// Real API shape: TopAlbums → Album field is the name, Artist is also populated, Title is empty.
 const TOP_ALBUMS: TopRow[] = [
-  { CatalogID: '', Title: 'Retrowave', Artist: 'Synthwave Inc', Album: '', Plays: 15, MsPlayed: 3_000_000 },
+  { CatalogID: '', Title: '', Artist: 'Radiohead', Album: 'OK Computer', Plays: 15, MsPlayed: 3_000_000 },
 ]
 
 const RECENT: RecentRow[] = [
@@ -88,6 +97,7 @@ describe('Stats page', () => {
     mockTopArtists.mockResolvedValue(TOP_ARTISTS)
     mockTopAlbums.mockResolvedValue(TOP_ALBUMS)
     mockRecent.mockResolvedValue(RECENT)
+    mockPlayTrackList.mockReturnValue(undefined)
   })
 
   // ── Summary cards ─────────────────────────────────────────────────────────
@@ -158,19 +168,59 @@ describe('Stats page', () => {
 
   // ── Top artists list ──────────────────────────────────────────────────────
 
-  it('renders top artist name', async () => {
+  // B2 contract guard: TopArtists rows have Artist as the display name, Title is empty.
+  // This test RED'd before the B2 fix (TopList was rendering row.Title which is '' for artists,
+  // so the artist name would never appear in the primary name slot).
+  it('renders top artist name in the primary slot (Artist field, not blank Title)', async () => {
     renderStats()
     await waitFor(() => {
-      const els = screen.getAllByText('Synthwave Inc')
+      // TOP_ARTISTS fixture: { Artist: 'Radiohead', Title: '' }
+      // After B2 fix, the primary label div (font-semibold text-primary) must contain 'Radiohead'.
+      // Use getAllByText because 'Radiohead' may appear in multiple slots.
+      const els = screen.getAllByText('Radiohead')
       expect(els.length).toBeGreaterThan(0)
+      // At least one must be in the bold primary-name slot
+      const primaryEls = els.filter((el) =>
+        el.className.includes('font-semibold') && el.className.includes('text-primary')
+      )
+      expect(primaryEls.length).toBeGreaterThan(0)
     })
   })
 
   // ── Top albums list ───────────────────────────────────────────────────────
 
-  it('renders top album name', async () => {
+  // B2 contract guard: TopAlbums rows have Album as the display name, Title is empty.
+  // This test RED'd before the B2 fix (TopList was rendering row.Title which is '' for albums).
+  it('renders top album name from Album field (not Title)', async () => {
     renderStats()
-    await waitFor(() => expect(screen.getByText('Retrowave')).toBeInTheDocument())
+    // TOP_ALBUMS fixture: { Album: 'OK Computer', Title: '' }
+    // After B2 fix, the primary label comes from row.Album for kind==='album'
+    await waitFor(() => expect(screen.getByText('OK Computer')).toBeInTheDocument())
+  })
+
+  // B3 contract guard: clicking a top-TRACK row must call playTrackList, NOT navigate
+  // to an album route using a canonical track id (trk_…) — that dead-links (404).
+  // This test RED'd before the B3 fix (entityPath returned '/album/library/cat-1').
+  it('clicking a top-track row calls playTrackList (not navigate)', async () => {
+    renderStats()
+    // Wait for the top-tracks list to appear
+    await waitFor(() => expect(screen.getAllByText('Neon Night').length).toBeGreaterThan(0))
+
+    // TOP_TRACKS[0]: { CatalogID: 'cat-1', Title: 'Neon Night', Artist: 'Synthwave Inc', Album: 'Retrowave' }
+    const trackBtn = screen.getByRole('button', { name: /neon night by synthwave inc/i })
+    fireEvent.click(trackBtn)
+
+    // playTrackList must have been called; navigate must NOT have been called with a trk_ album path
+    await waitFor(() => {
+      expect(mockPlayTrackList).toHaveBeenCalledTimes(1)
+      const [tracks, idx] = mockPlayTrackList.mock.calls[0]
+      expect(idx).toBe(0)
+      expect(tracks[0].id).toBe('cat-1')
+      expect(tracks[0].title).toBe('Neon Night')
+      expect(tracks[0].artist).toBe('Synthwave Inc')
+    })
+    // Navigate must NOT have been called with the dead album/trk_ path
+    expect(mockNavigate).not.toHaveBeenCalledWith(expect.stringContaining('/album/library/cat-1'))
   })
 
   // ── Recently played ───────────────────────────────────────────────────────
