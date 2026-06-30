@@ -100,3 +100,17 @@ export function customRange(startDate: Date, endDate: Date): Range {
 function formatDate(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
+
+/**
+ * msToHuman converts milliseconds into a human-readable "Xh Ym" string.
+ * Under an hour it returns "Ym"; zero returns "0m".
+ */
+export function msToHuman(ms: number): string {
+  const totalMin = Math.floor(ms / 60_000)
+  if (totalMin === 0) return '0m'
+  const h = Math.floor(totalMin / 60)
+  const m = totalMin % 60
+  if (h === 0) return `${m}m`
+  if (m === 0) return `${h}h`
+  return `${h}h ${m}m`
+}

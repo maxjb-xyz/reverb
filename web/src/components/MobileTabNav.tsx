@@ -9,6 +9,7 @@ const tabs: { to: string; label: string; icon: IconName; end?: boolean }[] = [
   { to: '/', label: 'Home', icon: 'home', end: true },
   { to: '/search', label: 'Search', icon: 'search' },
   { to: '/library', label: 'Library', icon: 'browse' },
+  { to: '/stats', label: 'Stats', icon: 'heart' },
 ]
 
 export function MobileTabNav() {

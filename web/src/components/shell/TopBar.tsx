@@ -145,6 +145,21 @@ export function TopBar() {
 
       {/* Right — downloads + avatar */}
       <div className="flex items-center gap-3 flex-none">
+        {/* Stats link (desktop only) */}
+        <div className="hidden md:block">
+          <Button
+            variant="ghost"
+            size="sm"
+            aria-label="Stats"
+            onClick={() => navigate('/stats')}
+          >
+            <span className="flex items-center gap-1.5">
+              <Icon name="heart" className="w-4 h-4" />
+              <span>Stats</span>
+            </span>
+          </Button>
+        </div>
+
         {/* Downloads button with badge (desktop only; mobile uses the bottom nav) */}
         <div className="relative hidden md:block">
           <Button
