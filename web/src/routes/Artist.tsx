@@ -29,10 +29,11 @@ interface AlbumCardProps {
   album: DiscographyAlbum
   cov: AlbumCoverage | undefined
   resolved: boolean
+  canAutoApprove: boolean
   onNavigate: () => void
 }
 
-function AlbumCard({ album, cov, resolved, onNavigate }: AlbumCardProps) {
+function AlbumCard({ album, cov, resolved, canAutoApprove, onNavigate }: AlbumCardProps) {
   const [optimistic, setOptimistic] = useState(false)
 
   // Build the set of externalIds for this album's missing tracks so we can
@@ -88,7 +89,7 @@ function AlbumCard({ album, cov, resolved, onNavigate }: AlbumCardProps) {
             }
           : undefined
       }
-      onDownload={hasMissing && !downloadState.active ? handleDownload : undefined}
+      onDownload={canAutoApprove && hasMissing && !downloadState.active ? handleDownload : undefined}
       downloadProgress={downloadState.active ? downloadState : undefined}
       onClick={onNavigate}
     />
@@ -369,6 +370,7 @@ export default function Artist() {
                 album={al}
                 cov={coverage[al.externalId]}
                 resolved={detail.resolved}
+                canAutoApprove={canAutoApprove}
                 onNavigate={() =>
                 navigate(
                   al.libraryAlbumId

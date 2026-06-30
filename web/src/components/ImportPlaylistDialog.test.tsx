@@ -21,8 +21,15 @@ vi.mock('../lib/libraryApi', () => ({
   importPlaylistOnce: vi.fn(),
 }))
 
+// Default: user with no capabilities. Tests can override via setAuth().
+vi.mock('../lib/authStore', () => ({
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  useAuthStore: vi.fn((selector: (s: any) => unknown) => selector({ can: () => false })),
+}))
+
 import { importPlaylist } from '../lib/syncedPlaylistApi'
 import { importPlaylistOnce } from '../lib/libraryApi'
+import { useAuthStore } from '../lib/authStore'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -62,10 +69,22 @@ function wrap(ui: React.ReactNode) {
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 describe('ImportPlaylistDialog', () => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  function setAuth(caps: string[]) {
+    vi.mocked(useAuthStore).mockImplementation((selector: (s: any) => unknown) =>
+      selector({ can: (cap: string) => caps.includes(cap) }),
+    )
+  }
+
   beforeEach(() => {
     vi.mocked(importPlaylist).mockReset()
     vi.mocked(importPlaylistOnce).mockReset()
     mockNavigate.mockReset()
+    // Reset to no-caps default
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    vi.mocked(useAuthStore).mockImplementation((selector: (s: any) => unknown) =>
+      selector({ can: () => false }),
+    )
   })
   afterEach(() => vi.clearAllMocks())
 
@@ -80,7 +99,8 @@ describe('ImportPlaylistDialog', () => {
     expect(screen.getByText(/import from spotify/i)).toBeInTheDocument()
   })
 
-  it('renders URL input, toggle, Import and Cancel buttons', () => {
+  it('renders URL input, toggle, Import and Cancel buttons (auto_approve user)', () => {
+    setAuth(['auto_approve'])
     render(wrap(<ImportPlaylistDialog open onClose={vi.fn()} />))
     expect(screen.getByLabelText(/playlist url/i)).toBeInTheDocument()
     expect(screen.getByRole('switch', { name: /download missing now/i })).toBeInTheDocument()
@@ -102,6 +122,7 @@ describe('ImportPlaylistDialog', () => {
   })
 
   it('calls importPlaylist(url, downloadMissing) and navigates to /playlist/:id on success', async () => {
+    setAuth(['auto_approve'])
     const detail = makeDetail({ id: 'sp-xyz' })
     vi.mocked(importPlaylist).mockResolvedValue(detail)
     const onClose = vi.fn()
@@ -112,7 +133,7 @@ describe('ImportPlaylistDialog', () => {
       target: { value: 'https://open.spotify.com/playlist/xyz' },
     })
 
-    // Toggle "Download missing now"
+    // Toggle "Download missing now" (only visible for auto_approve users)
     fireEvent.click(screen.getByRole('switch', { name: /download missing now/i }))
 
     fireEvent.click(screen.getByRole('button', { name: /^import$/i }))
@@ -273,5 +294,20 @@ describe('ImportPlaylistDialog', () => {
     render(wrap(<ImportPlaylistDialog open onClose={vi.fn()} />))
     fireEvent.click(screen.getByRole('tab', { name: /one-time/i }))
     expect(screen.queryByRole('switch', { name: /download missing now/i })).not.toBeInTheDocument()
+  })
+
+  // ── "Download missing now" capability gating (Fix 2) ─────────────────────
+
+  it('request-only user (no auto_approve) does NOT see the "Download missing now" toggle in sync mode', () => {
+    setAuth(['request', 'create_playlists']) // can import, cannot auto_approve
+    render(wrap(<ImportPlaylistDialog open onClose={vi.fn()} />))
+    // Sync mode is the default — toggle must be absent for non-auto_approve user
+    expect(screen.queryByRole('switch', { name: /download missing now/i })).not.toBeInTheDocument()
+  })
+
+  it('auto_approve user sees the "Download missing now" toggle in sync mode', () => {
+    setAuth(['auto_approve', 'create_playlists'])
+    render(wrap(<ImportPlaylistDialog open onClose={vi.fn()} />))
+    expect(screen.getByRole('switch', { name: /download missing now/i })).toBeInTheDocument()
   })
 })

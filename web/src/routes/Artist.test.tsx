@@ -690,4 +690,21 @@ describe('Artist page', () => {
     await new Promise((r) => setTimeout(r, 10))
     expect(screen.queryByText(/plays/i)).not.toBeInTheDocument()
   })
+
+  // ── Per-album-card download gating (Fix 1) ────────────────────────────────
+
+  it('request-only user (no auto_approve) sees NO per-card "Download" button for a missing-coverage album', () => {
+    setAuth(['request']) // request but NOT auto_approve
+    // STUB_COVERAGE has AL with 1 missing track → hasMissing=true
+    wrapper(<Artist />)
+    // The per-card button label is "Download <albumTitle>" (aria-label from MediaCard)
+    expect(screen.queryByRole('button', { name: /download kid a/i })).not.toBeInTheDocument()
+  })
+
+  it('auto_approve user sees a per-card "Download" button for a missing-coverage album', () => {
+    setAuth(['auto_approve'])
+    // STUB_COVERAGE has AL with 1 missing track → hasMissing=true
+    wrapper(<Artist />)
+    expect(screen.getByRole('button', { name: /download kid a/i })).toBeInTheDocument()
+  })
 })
