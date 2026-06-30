@@ -182,6 +182,31 @@ type Role struct {
 	UpdatedAt    int64  `json:"updated_at"`
 }
 
+type ScrobbleLink struct {
+	UserID     string `json:"user_id"`
+	Provider   string `json:"provider"`
+	SessionKey string `json:"session_key"`
+	Username   string `json:"username"`
+	Status     string `json:"status"`
+	CreatedAt  int64  `json:"created_at"`
+}
+
+type ScrobbleQueue struct {
+	ID            string `json:"id"`
+	UserID        string `json:"user_id"`
+	Provider      string `json:"provider"`
+	CatalogID     string `json:"catalog_id"`
+	Title         string `json:"title"`
+	Artist        string `json:"artist"`
+	Album         string `json:"album"`
+	DurationMs    int64  `json:"duration_ms"`
+	PlayedAt      int64  `json:"played_at"`
+	Status        string `json:"status"`
+	Attempts      int64  `json:"attempts"`
+	NextAttemptAt int64  `json:"next_attempt_at"`
+	CreatedAt     int64  `json:"created_at"`
+}
+
 type Session struct {
 	ID        string         `json:"id"`
 	TokenHash string         `json:"token_hash"`
