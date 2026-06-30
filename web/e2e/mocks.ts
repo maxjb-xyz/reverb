@@ -205,6 +205,24 @@ export async function installApiMocks(
       body: JSON.stringify({ notifications: [], unread: 0 }),
     }),
   )
+
+  // Default listening-history/stats endpoints (SP3-3a). The playTracker POSTs
+  // /plays from the AppShell on every page, Home fetches /stats/recent for its
+  // "Jump back in" carousel, and the Artist page fetches /stats/entity — so these
+  // must resolve without error on every page. Specs that exercise the /stats
+  // dashboard OVERRIDE these by registering their own handlers AFTER
+  // installApiMocks (Playwright matches most-recently-registered-first).
+  await page.route('**/api/v1/plays', (route: Route) => route.fulfill({ status: 204, body: '' }))
+  await page.route('**/api/v1/stats/recent**', (route: Route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([]) }),
+  )
+  await page.route('**/api/v1/stats/entity**', (route: Route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ Plays: 0, MsPlayed: 0, FirstPlayed: 0, LastPlayed: 0, TopTracks: [] }),
+    }),
+  )
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
