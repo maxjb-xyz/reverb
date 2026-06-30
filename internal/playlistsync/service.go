@@ -164,19 +164,33 @@ func (s *Service) Detail(ctx context.Context, id string) (core.SyncedPlaylistDet
 		dt := core.AlbumDetailTrack{Title: tr.Title, Artist: tr.Artist, Album: tr.Album, TrackNumber: i + 1, DurationMs: tr.DurationMs, CoverURL: tr.CoverURL,
 			ArtistExternalID: tr.ArtistExternalID, AlbumExternalID: tr.AlbumExternalID}
 		if tr.Source == "library" {
-			// Directly-added library track: no matching needed — treat as owned.
-			// CoverArtID is carried from the stored entry so migrated tracks show covers.
-			det.OwnedCount++
-			dt.State = core.CoverageFull
-			dt.LibraryTrack = &core.Track{
-				ID:         tr.ExternalID,
-				Title:      tr.Title,
-				Artist:     tr.Artist,
-				Album:      tr.Album,
-				DurationMs: tr.DurationMs,
-				CoverArtID: tr.CoverArtID,
+			// Re-resolve by durable metadata at read time so cover/playback survive a
+			// backend swap. The stored ExternalID was the old backend's volatile id; the
+			// matcher re-locates the track by title/artist/album/isrc against the LIVE
+			// backend and returns fresh ids. We set Type = EntityTrack to pass the
+			// matcher's type guard (entries written before P1 may omit it).
+			// P2/SP3 note: routing through the resolver's binding cache (minting a
+			// catalog_id at add time and binding it here) is deliberately deferred;
+			// the matcher's fuzzy rung already gives churn-resilient re-resolution.
+			probe := tr
+			probe.Type = core.EntityTrack
+			res, mErr := s.match.Match(ctx, probe)
+			if mErr != nil {
+				return core.SyncedPlaylistDetail{}, mErr
 			}
-			dt.Key = &core.TrackKey{Source: tr.Source, ExternalID: tr.ExternalID}
+			if res.Status == core.MatchInLibrary && res.LibraryTrackID != "" {
+				det.OwnedCount++
+				dt.State = core.CoverageFull
+				dt.LibraryTrack = &core.Track{ID: res.LibraryTrackID, Title: tr.Title, Artist: tr.Artist, Album: tr.Album, DurationMs: tr.DurationMs, ArtistID: res.ArtistID, AlbumID: res.AlbumID, CoverArtID: res.CoverArtID}
+				dt.Key = &core.TrackKey{Source: tr.Source, ExternalID: tr.ExternalID}
+			} else {
+				// Track is genuinely gone (backend swap): degrade safely — do NOT emit
+				// the frozen dead id as a playable target.
+				dt.State = core.CoverageNone
+				ref := core.ExternalTrackRef{Source: tr.Source, ExternalID: tr.ExternalID, Title: tr.Title, Artist: tr.Artist, Album: tr.Album, ISRC: tr.ISRC, DurationMs: tr.DurationMs}
+				dt.ExternalRef = &ref
+				dt.Key = &core.TrackKey{Source: tr.Source, ExternalID: tr.ExternalID}
+			}
 		} else {
 			res, mErr := s.match.Match(ctx, tr)
 			if mErr != nil {

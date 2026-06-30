@@ -743,18 +743,21 @@ func TestImportOnce_BadURL(t *testing.T) {
 	}
 }
 
-// TestDetailLibrarySourceTrack asserts that Detail treats a stored entry with
-// Source=="library" as already-owned (no matching call needed).
+// TestDetailLibrarySourceTrack asserts that Detail re-resolves a stored
+// Source=="library" track via the matcher at read time and returns the library
+// track ID returned by the matcher (not the frozen stored ExternalID).
 func TestDetailLibrarySourceTrack(t *testing.T) {
+	const storedID = "lib-track-99"
 	libraryEntry := core.ExternalResult{
-		Source: "library", ExternalID: "lib-track-99", Title: "Local Track",
+		Source: "library", ExternalID: storedID, Title: "Local Track",
 		Artist: "Local Artist", Album: "Local Album", DurationMs: 200000,
+		Type: core.EntityTrack,
 	}
 	src := &fakeSource{playlists: map[string]core.ExternalPlaylist{
 		"PL": {Source: "spotify", ExternalID: "PL", Name: "Mixed", Tracks: []core.ExternalResult{libraryEntry}},
 	}}
-	// Matcher that would fail if called (should not be called for library entries).
-	m := fakeMatcher{}
+	// Matcher confirms the track exists in the library (same id — same backend).
+	m := fakeMatcher{owned: map[string]string{storedID: storedID}}
 	store := newMemStore()
 	svc := NewService(src, m, &fakeDownloader{}, store, nil, func() int64 { return 100 }, seqID())
 	det, err := svc.Import(context.Background(), "spotify:playlist:PL", false)
@@ -768,7 +771,7 @@ func TestDetailLibrarySourceTrack(t *testing.T) {
 	if tr.State != core.CoverageFull {
 		t.Fatalf("library-source track State = %v, want CoverageFull", tr.State)
 	}
-	if tr.LibraryTrack == nil || tr.LibraryTrack.ID != "lib-track-99" {
+	if tr.LibraryTrack == nil || tr.LibraryTrack.ID != storedID {
 		t.Fatalf("library-source track LibraryTrack = %+v", tr.LibraryTrack)
 	}
 }
@@ -1013,9 +1016,20 @@ func TestMigrateLibraryPlaylistsMigratesAll(t *testing.T) {
 	}
 	ss := newFakeSettings()
 	store := newMemStore()
+	// Matcher must know about all migrated track IDs so Detail re-resolves them as owned.
+	// This mirrors the real scenario: the live backend still has these tracks, so the
+	// matcher returns MatchInLibrary with the same IDs and the correct CoverArtIDs.
+	migrateMatcher := fakeMatcher{
+		owned: map[string]string{"t1": "t1", "t2": "t2", "t3": "t3"},
+		meta: map[string]core.Track{
+			"t1": {CoverArtID: "cov-1"},
+			"t2": {CoverArtID: "cov-2"},
+			"t3": {CoverArtID: "cov-3"},
+		},
+	}
 	svc := NewService(
 		&fakeSource{playlists: map[string]core.ExternalPlaylist{}},
-		fakeMatcher{},
+		migrateMatcher,
 		&fakeDownloader{},
 		store,
 		nil,
@@ -1074,7 +1088,7 @@ func TestMigrateLibraryPlaylistsMigratesAll(t *testing.T) {
 	if det.OwnedCount != 2 {
 		t.Fatalf("Favorites OwnedCount = %d, want 2 (all owned library tracks)", det.OwnedCount)
 	}
-	// Check first track carries CoverArtID.
+	// Check first track: CoverArtID comes from matcher (re-resolved, not frozen stored value).
 	tr0 := det.Tracks[0]
 	if tr0.LibraryTrack == nil {
 		t.Fatal("Tracks[0].LibraryTrack is nil")
@@ -1350,7 +1364,8 @@ func TestDetailSetsKeyOnAllRows(t *testing.T) {
 		"PL": {Source: "spotify", ExternalID: "PL", Name: "Key Test",
 			Tracks: []core.ExternalResult{libraryTrack, matchedTrack, missingTrack}},
 	}}
-	m := fakeMatcher{owned: map[string]string{"sp-t2": "lib-match-1"}}
+	// lib-t1 must also be in the matcher so the library-source re-resolve succeeds.
+	m := fakeMatcher{owned: map[string]string{"lib-t1": "lib-t1", "sp-t2": "lib-match-1"}}
 	store := newMemStore()
 	svc := NewService(src, m, &fakeDownloader{}, store, nil, func() int64 { return 100 }, seqID())
 	det, err := svc.Import(context.Background(), "spotify:playlist:PL", false)
@@ -1361,7 +1376,7 @@ func TestDetailSetsKeyOnAllRows(t *testing.T) {
 		t.Fatalf("expected 3 tracks, got %d", len(det.Tracks))
 	}
 
-	// Library-source track.
+	// Library-source track: re-resolved via matcher, Key preserves stored source+externalID.
 	libRow := det.Tracks[0]
 	if libRow.State != core.CoverageFull {
 		t.Fatalf("Tracks[0] expected CoverageFull, got %v", libRow.State)
@@ -1432,23 +1447,32 @@ func TestDetailEmptyPlaylistHasNonNilTracks(t *testing.T) {
 	}
 }
 
-// TestDetailLibrarySourceTrackCoverArtID asserts that Detail carries CoverArtID
-// from a stored library-source entry onto the synthesized LibraryTrack.
+// TestDetailLibrarySourceTrackCoverArtID asserts that Detail re-resolves a
+// library-source entry via the matcher and returns the matcher's CoverArtID
+// on the synthesized LibraryTrack (not the frozen stored CoverArtID).
 func TestDetailLibrarySourceTrackCoverArtID(t *testing.T) {
+	const storedID = "lib-track-55"
+	const wantCoverArtID = "cover-art-xyz"
 	libraryEntry := core.ExternalResult{
 		Source:     "library",
-		ExternalID: "lib-track-55",
+		ExternalID: storedID,
 		Title:      "Local Track With Cover",
 		Artist:     "Artist",
 		Album:      "Album",
 		DurationMs: 200000,
-		CoverArtID: "cover-art-xyz",
+		CoverArtID: wantCoverArtID, // stored cover (same backend — matcher returns it)
+		Type:       core.EntityTrack,
 	}
 	src := &fakeSource{playlists: map[string]core.ExternalPlaylist{
 		"PL": {Source: "spotify", ExternalID: "PL", Name: "Cover Test", Tracks: []core.ExternalResult{libraryEntry}},
 	}}
 	store := newMemStore()
-	svc := NewService(src, fakeMatcher{}, &fakeDownloader{}, store, nil, func() int64 { return 100 }, seqID())
+	// Matcher confirms the track and returns the same CoverArtID (same backend, same id).
+	m := fakeMatcher{
+		owned: map[string]string{storedID: storedID},
+		meta:  map[string]core.Track{storedID: {CoverArtID: wantCoverArtID}},
+	}
+	svc := NewService(src, m, &fakeDownloader{}, store, nil, func() int64 { return 100 }, seqID())
 	det, err := svc.Import(context.Background(), "spotify:playlist:PL", false)
 	if err != nil {
 		t.Fatal(err)
@@ -1463,7 +1487,148 @@ func TestDetailLibrarySourceTrackCoverArtID(t *testing.T) {
 	if tr.LibraryTrack == nil {
 		t.Fatal("LibraryTrack is nil")
 	}
-	if tr.LibraryTrack.CoverArtID != "cover-art-xyz" {
-		t.Fatalf("LibraryTrack.CoverArtID = %q, want 'cover-art-xyz'", tr.LibraryTrack.CoverArtID)
+	if tr.LibraryTrack.CoverArtID != wantCoverArtID {
+		t.Fatalf("LibraryTrack.CoverArtID = %q, want %q", tr.LibraryTrack.CoverArtID, wantCoverArtID)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Task 10: library-source re-resolution at read time
+// ---------------------------------------------------------------------------
+
+// TestDetail_LibrarySourceResolvesAtRead asserts that Detail re-resolves a
+// stored library-source track via the matcher at read time, returning FRESH
+// library IDs from the live backend — NOT the frozen (potentially stale) IDs
+// stored in TracksJSON. This proves the backend-swap safety guarantee: even if
+// the stored ExternalID and CoverArtID are dead (old backend), the matcher
+// re-locates the track by its durable metadata (title/artist/album/isrc) and
+// returns the current IDs.
+func TestDetail_LibrarySourceResolvesAtRead(t *testing.T) {
+	const oldID = "old-backend-track-id"
+	const oldCover = "old-cover-art-id"
+	const freshID = "new-backend-track-id"
+	const freshCover = "new-cover-art-id"
+	const freshArtistID = "new-artist-id"
+	const freshAlbumID = "new-album-id"
+
+	// Stored entry carries the OLD (now-dead) backend IDs.
+	storedEntry := core.ExternalResult{
+		Source:     "library",
+		ExternalID: oldID,
+		Title:      "Resilient Track",
+		Artist:     "Some Artist",
+		Album:      "Some Album",
+		DurationMs: 200000,
+		CoverArtID: oldCover,
+		Type:       core.EntityTrack,
+	}
+
+	store := newMemStore()
+	// Seed the playlist directly with the stored (stale) entry.
+	tj, _ := json.Marshal([]core.ExternalResult{storedEntry})
+	store.rows["pl-1"] = &memRow{SyncedRow{
+		ID: "pl-1", Source: "local", ExternalID: "pl-1",
+		Name: "Test Playlist", Mode: "once", TracksJSON: string(tj),
+	}}
+	store.index["local:pl-1"] = "pl-1"
+
+	// Fake matcher: resolves the OLD ExternalID to FRESH IDs (simulates post-swap re-match).
+	m := fakeMatcher{
+		owned: map[string]string{oldID: freshID},
+		meta:  map[string]core.Track{oldID: {ArtistID: freshArtistID, AlbumID: freshAlbumID, CoverArtID: freshCover}},
+	}
+
+	svc := NewService(nil, m, &fakeDownloader{}, store, nil, func() int64 { return 100 }, seqID())
+	det, err := svc.Detail(context.Background(), "pl-1")
+	if err != nil {
+		t.Fatalf("Detail: %v", err)
+	}
+	if len(det.Tracks) != 1 {
+		t.Fatalf("expected 1 track, got %d", len(det.Tracks))
+	}
+
+	tr := det.Tracks[0]
+	if tr.State != core.CoverageFull {
+		t.Fatalf("State = %v, want CoverageFull", tr.State)
+	}
+	if tr.LibraryTrack == nil {
+		t.Fatal("LibraryTrack is nil")
+	}
+	// Must use FRESH IDs, NOT frozen old ones.
+	if tr.LibraryTrack.ID != freshID {
+		t.Fatalf("LibraryTrack.ID = %q, want fresh %q (got frozen old id)", tr.LibraryTrack.ID, freshID)
+	}
+	if tr.LibraryTrack.CoverArtID != freshCover {
+		t.Fatalf("LibraryTrack.CoverArtID = %q, want fresh %q (got frozen old cover)", tr.LibraryTrack.CoverArtID, freshCover)
+	}
+	if tr.LibraryTrack.ArtistID != freshArtistID {
+		t.Fatalf("LibraryTrack.ArtistID = %q, want %q", tr.LibraryTrack.ArtistID, freshArtistID)
+	}
+	if tr.LibraryTrack.AlbumID != freshAlbumID {
+		t.Fatalf("LibraryTrack.AlbumID = %q, want %q", tr.LibraryTrack.AlbumID, freshAlbumID)
+	}
+	if det.OwnedCount != 1 {
+		t.Fatalf("OwnedCount = %d, want 1", det.OwnedCount)
+	}
+}
+
+// TestDetail_LibrarySourceNoMatch_DegradesToMissing asserts that when a stored
+// library-source track fails re-resolution (matcher returns NotInLibrary — the
+// track is genuinely gone after a backend swap), Detail degrades it safely to
+// CoverageNone with an ExternalRef rather than emitting a dead playable ID.
+// OwnedCount must NOT include the unresolved track.
+func TestDetail_LibrarySourceNoMatch_DegradesToMissing(t *testing.T) {
+	const storedID = "gone-track-id"
+
+	// Stored entry: library source, but the backend no longer has it.
+	storedEntry := core.ExternalResult{
+		Source:     "library",
+		ExternalID: storedID,
+		Title:      "Gone Track",
+		Artist:     "Some Artist",
+		Album:      "Some Album",
+		DurationMs: 180000,
+		CoverArtID: "dead-cover-id",
+		Type:       core.EntityTrack,
+	}
+
+	store := newMemStore()
+	tj, _ := json.Marshal([]core.ExternalResult{storedEntry})
+	store.rows["pl-2"] = &memRow{SyncedRow{
+		ID: "pl-2", Source: "local", ExternalID: "pl-2",
+		Name: "Test Playlist", Mode: "once", TracksJSON: string(tj),
+	}}
+	store.index["local:pl-2"] = "pl-2"
+
+	// Fake matcher: nothing matches (backend swap, track is gone).
+	m := fakeMatcher{owned: map[string]string{}}
+
+	svc := NewService(nil, m, &fakeDownloader{}, store, nil, func() int64 { return 100 }, seqID())
+	det, err := svc.Detail(context.Background(), "pl-2")
+	if err != nil {
+		t.Fatalf("Detail: %v", err)
+	}
+	if len(det.Tracks) != 1 {
+		t.Fatalf("expected 1 track, got %d", len(det.Tracks))
+	}
+
+	tr := det.Tracks[0]
+	// Must degrade to CoverageNone — not emit a dead playable id.
+	if tr.State != core.CoverageNone {
+		t.Fatalf("State = %v, want CoverageNone (track gone after swap)", tr.State)
+	}
+	if tr.LibraryTrack != nil {
+		t.Fatalf("LibraryTrack must be nil for degraded track, got %+v", tr.LibraryTrack)
+	}
+	// ExternalRef must be set so the FE can show a download option.
+	if tr.ExternalRef == nil {
+		t.Fatal("ExternalRef must be non-nil for degraded (no-match) library track")
+	}
+	if tr.ExternalRef.Source != "library" || tr.ExternalRef.ExternalID != storedID {
+		t.Fatalf("ExternalRef = %+v, want {library, %s}", tr.ExternalRef, storedID)
+	}
+	// OwnedCount must not include this track.
+	if det.OwnedCount != 0 {
+		t.Fatalf("OwnedCount = %d, want 0 (degraded track must not count as owned)", det.OwnedCount)
 	}
 }
