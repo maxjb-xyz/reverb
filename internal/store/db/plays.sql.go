@@ -10,6 +10,20 @@ import (
 	"database/sql"
 )
 
+const deletePlay = `-- name: DeletePlay :exec
+DELETE FROM plays WHERE id = ? AND user_id = ?
+`
+
+type DeletePlayParams struct {
+	ID     string `json:"id"`
+	UserID string `json:"user_id"`
+}
+
+func (q *Queries) DeletePlay(ctx context.Context, arg DeletePlayParams) error {
+	_, err := q.db.ExecContext(ctx, deletePlay, arg.ID, arg.UserID)
+	return err
+}
+
 const insertPlay = `-- name: InsertPlay :exec
 INSERT INTO plays (id, user_id, catalog_id, played_at, ms_played, completed, created_at)
 VALUES (?,?,?,?,?,?,?)

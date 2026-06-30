@@ -273,6 +273,7 @@ func (s *Server) routes() {
 			pr.Get("/notifications", s.handleListNotifications)
 			pr.Post("/notifications/read", s.handleMarkNotificationsRead)
 			pr.Post("/plays", s.handlePlay)
+			pr.Delete("/plays/{id}", s.handleDeletePlay)
 			pr.Get("/stats/summary", s.handleStatsSummary)
 			pr.Get("/stats/top/tracks", s.handleStatsTopTracks)
 			pr.Get("/stats/top/artists", s.handleStatsTopArtists)

@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/maxjb-xyz/reverb/internal/auth"
 	"github.com/maxjb-xyz/reverb/internal/catalog"
 	"github.com/maxjb-xyz/reverb/internal/play"
 	"github.com/maxjb-xyz/reverb/internal/registry"
@@ -158,6 +159,142 @@ func TestHandlePlay_IgnoresBodyUserID(t *testing.T) {
 	}
 	if len(attackerRows) != 0 {
 		t.Fatalf("expected 0 plays for body-supplied user %q, got %d: %+v", attackerID, len(attackerRows), attackerRows)
+	}
+}
+
+// newAuthedUser creates a second, distinct user in the shared store and returns
+// a session cookie for them. Used to exercise cross-user privacy boundaries.
+func newAuthedUser(t *testing.T, srv *Server, st *store.Store, username, password string) *http.Cookie {
+	t.Helper()
+	ctx := context.Background()
+	authSvc := auth.NewService(st.Q(), time.Now)
+	uid, err := authSvc.CreateUser(ctx, username, password, "role-requester")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tok, err := authSvc.CreateSession(ctx, uid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return &http.Cookie{Name: sessionCookie, Value: tok}
+}
+
+// recordAndGetPlayID records a play for the owner via POST /plays, then reads
+// its id back via ListRecentPlays. Returns the play id.
+func recordAndGetPlayID(t *testing.T, srv *Server, cookie *http.Cookie, st *store.Store, ownerID string) string {
+	t.Helper()
+	body := `{
+		"Title": "Hurt",
+		"Artist": "Johnny Cash",
+		"Album": "American IV",
+		"DurationMs": 218000,
+		"MsPlayed": 218000,
+		"Completed": true,
+		"PlayedAt": 1719000000
+	}`
+	rec := do(t, srv, cookie, http.MethodPost, "/api/v1/plays", body)
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("POST /plays = %d, want 204; body: %s", rec.Code, rec.Body.String())
+	}
+	rows, err := st.Q().ListRecentPlays(context.Background(), db.ListRecentPlaysParams{
+		UserID:   ownerID,
+		PlayedAt: 9999999999,
+		Limit:    10,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("expected exactly 1 play for owner, got %d", len(rows))
+	}
+	return rows[0].ID
+}
+
+// countPlays returns how many plays userID owns.
+func countPlays(t *testing.T, st *store.Store, userID string) int {
+	t.Helper()
+	rows, err := st.Q().ListRecentPlays(context.Background(), db.ListRecentPlaysParams{
+		UserID:   userID,
+		PlayedAt: 9999999999,
+		Limit:    10,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return len(rows)
+}
+
+// TestHandleDeletePlay_OwnerDeletes verifies that the owner can DELETE their own
+// play: the response is 204 and the play is gone.
+func TestHandleDeletePlay_OwnerDeletes(t *testing.T) {
+	srv, cookie, ownerID, st := playsTestServer(t)
+	playID := recordAndGetPlayID(t, srv, cookie, st, ownerID)
+
+	rec := do(t, srv, cookie, http.MethodDelete, "/api/v1/plays/"+playID, "")
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("DELETE /plays/%s = %d, want 204; body: %s", playID, rec.Code, rec.Body.String())
+	}
+
+	if n := countPlays(t, st, ownerID); n != 0 {
+		t.Fatalf("expected 0 plays after owner delete, got %d", n)
+	}
+}
+
+// TestHandleDeletePlay_CrossUserNoOp is the load-bearing privacy assertion at the
+// HTTP layer: a DIFFERENT authed user calling DELETE /plays/{ownerPlayId} gets
+// 204 (idempotent, no existence leak) BUT the owner's play STILL EXISTS — the
+// cross-user delete was a no-op.
+func TestHandleDeletePlay_CrossUserNoOp(t *testing.T) {
+	srv, ownerCookie, ownerID, st := playsTestServer(t)
+	playID := recordAndGetPlayID(t, srv, ownerCookie, st, ownerID)
+
+	// Create a second, different authenticated user and log them in.
+	attackerCookie := newAuthedUser(t, srv, st, "attacker", "attacker-pass-12345")
+
+	rec := do(t, srv, attackerCookie, http.MethodDelete, "/api/v1/plays/"+playID, "")
+	// Idempotent / no existence leak: the attacker gets 204, not 403/404.
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("DELETE /plays/%s as attacker = %d, want 204; body: %s", playID, rec.Code, rec.Body.String())
+	}
+
+	// The owner's play MUST still exist — the cross-user delete was a no-op.
+	if n := countPlays(t, st, ownerID); n != 1 {
+		t.Fatalf("cross-user delete leaked: expected owner to still have 1 play, got %d", n)
+	}
+}
+
+// TestHandleDeletePlay_UnauthenticatedReturns401 verifies that the route is
+// guarded by requireAuth and returns 401 for unauthenticated requests.
+func TestHandleDeletePlay_UnauthenticatedReturns401(t *testing.T) {
+	srv, _, _, _ := playsTestServer(t)
+	rec := do(t, srv, &http.Cookie{Name: sessionCookie, Value: ""}, http.MethodDelete, "/api/v1/plays/some-id", "")
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("DELETE /plays/{id} unauthenticated = %d, want 401", rec.Code)
+	}
+}
+
+// TestHandleDeletePlay_NilServiceReturns503 verifies that when s.deps.Play is nil
+// the handler returns 503 Service Unavailable.
+func TestHandleDeletePlay_NilServiceReturns503(t *testing.T) {
+	st, err := store.Open(t.TempDir() + "/plays-del-nil.db")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { st.Close() })
+	if err := st.Migrate(); err != nil {
+		t.Fatal(err)
+	}
+	authSvc, tok := seededAuthToken(t, st)
+	srv := NewServer(Deps{
+		Auth:       authSvc,
+		Search:     registry.NewRegistry("search"),
+		Downloader: registry.NewRegistry("downloader"),
+		// Play intentionally nil.
+	})
+	cookie := &http.Cookie{Name: sessionCookie, Value: tok}
+	rec := do(t, srv, cookie, http.MethodDelete, "/api/v1/plays/some-id", "")
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("DELETE /plays/{id} with nil Play = %d, want 503", rec.Code)
 	}
 }
 

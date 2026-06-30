@@ -5,6 +5,9 @@ VALUES (?,?,?,?,?,?,?);
 -- name: RepointPlays :exec
 UPDATE plays SET catalog_id = ? WHERE catalog_id = ?;
 
+-- name: DeletePlay :exec
+DELETE FROM plays WHERE id = ? AND user_id = ?;
+
 -- name: ListRecentPlays :many
 SELECT p.id, p.catalog_id, p.played_at, e.title, e.artist, e.album
 FROM plays p JOIN catalog_entity e ON e.id = p.catalog_id

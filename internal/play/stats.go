@@ -49,6 +49,7 @@ type ClockCell struct {
 
 // RecentRow is a single row in the recent-plays feed.
 type RecentRow struct {
+	ID        string
 	CatalogID string
 	Title     string
 	Artist    string
@@ -325,6 +326,7 @@ func (s *Stats) Recent(ctx context.Context, userID string, before int64, limit i
 	out := make([]RecentRow, len(rows))
 	for i, r := range rows {
 		out[i] = RecentRow{
+			ID:        r.ID,
 			CatalogID: r.CatalogID,
 			Title:     r.Title,
 			Artist:    r.Artist,

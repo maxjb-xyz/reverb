@@ -25,6 +25,7 @@ type PlayInput struct {
 // Querier is the narrow persistence slice play needs. *db.Queries satisfies it.
 type Querier interface {
 	InsertPlay(ctx context.Context, arg db.InsertPlayParams) error
+	DeletePlay(ctx context.Context, arg db.DeletePlayParams) error
 }
 
 // CanonicalMinter resolves or mints a catalog ID for an identity.
@@ -82,4 +83,11 @@ func (s *Service) Record(ctx context.Context, userID string, in PlayInput) error
 		Completed: completed,
 		CreatedAt: s.now().Unix(),
 	})
+}
+
+// Delete removes a single play owned by userID. Owner-scoping is enforced in the
+// query (WHERE id = ? AND user_id = ?): a request for another user's play id
+// matches zero rows and is a no-op — a user can NEVER delete another user's play.
+func (s *Service) Delete(ctx context.Context, userID, playID string) error {
+	return s.q.DeletePlay(ctx, db.DeletePlayParams{ID: playID, UserID: userID})
 }

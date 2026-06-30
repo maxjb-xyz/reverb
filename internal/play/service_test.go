@@ -115,3 +115,104 @@ func TestRecord_PerUserScoping(t *testing.T) {
 		t.Fatalf("expected 'Hurt' for user-1, got %q", rows[0].Title)
 	}
 }
+
+func TestDelete_RemovesOwnersPlay(t *testing.T) {
+	s, q := newTestPlayService(t)
+	ctx := context.Background()
+
+	if err := s.Record(ctx, "user-1", play.PlayInput{
+		Title:      "Hurt",
+		Artist:     "Johnny Cash",
+		Album:      "American IV",
+		DurationMs: 218000,
+		MsPlayed:   140000,
+		Completed:  true,
+		PlayedAt:   1719000000,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	rows, err := q.ListRecentPlays(ctx, db.ListRecentPlaysParams{
+		UserID:   "user-1",
+		PlayedAt: 9999999999,
+		Limit:    10,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("expected 1 play to delete, got %d", len(rows))
+	}
+	playID := rows[0].ID
+
+	if err := s.Delete(ctx, "user-1", playID); err != nil {
+		t.Fatal(err)
+	}
+
+	after, err := q.ListRecentPlays(ctx, db.ListRecentPlaysParams{
+		UserID:   "user-1",
+		PlayedAt: 9999999999,
+		Limit:    10,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(after) != 0 {
+		t.Fatalf("expected 0 plays after delete, got %d: %+v", len(after), after)
+	}
+}
+
+// TestDelete_OwnerScoped is the load-bearing privacy assertion: a user must
+// NEVER be able to delete another user's play. user-2 attempting to delete
+// user-1's play id is a no-op — the row REMAINS.
+func TestDelete_OwnerScoped(t *testing.T) {
+	s, q := newTestPlayService(t)
+	ctx := context.Background()
+
+	if err := s.Record(ctx, "user-1", play.PlayInput{
+		Title:      "Hurt",
+		Artist:     "Johnny Cash",
+		Album:      "American IV",
+		DurationMs: 218000,
+		MsPlayed:   140000,
+		Completed:  true,
+		PlayedAt:   1719000000,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	rows, err := q.ListRecentPlays(ctx, db.ListRecentPlaysParams{
+		UserID:   "user-1",
+		PlayedAt: 9999999999,
+		Limit:    10,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("expected 1 play for user-1, got %d", len(rows))
+	}
+	ownerPlayID := rows[0].ID
+
+	// user-2 tries to delete user-1's play. The query's WHERE id=? AND user_id=?
+	// matches 0 rows, so this is a no-op (no error, idempotent).
+	if err := s.Delete(ctx, "user-2", ownerPlayID); err != nil {
+		t.Fatal(err)
+	}
+
+	// user-1's play MUST still exist.
+	after, err := q.ListRecentPlays(ctx, db.ListRecentPlaysParams{
+		UserID:   "user-1",
+		PlayedAt: 9999999999,
+		Limit:    10,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(after) != 1 {
+		t.Fatalf("cross-user delete leaked: expected 1 play still for user-1, got %d: %+v", len(after), after)
+	}
+	if after[0].ID != ownerPlayID {
+		t.Fatalf("expected play %q to remain, got %q", ownerPlayID, after[0].ID)
+	}
+}
