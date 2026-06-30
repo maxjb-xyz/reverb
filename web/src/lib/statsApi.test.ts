@@ -12,13 +12,20 @@ const RANGE: Range = {
   label: 'Test range',
 }
 
-/** Capture URLs that api.get is called with, without actually fetching. */
+/** Capture URLs that api.get / api.del are called with, without actually fetching. */
 let capturedUrl: string | null = null
+let capturedMethod: string | null = null
 
 vi.mock('./api', () => ({
   api: {
     get: vi.fn((path: string) => {
       capturedUrl = path
+      capturedMethod = 'GET'
+      return Promise.resolve(null)
+    }),
+    del: vi.fn((path: string) => {
+      capturedUrl = path
+      capturedMethod = 'DELETE'
       return Promise.resolve(null)
     }),
   },
@@ -26,6 +33,7 @@ vi.mock('./api', () => ({
 
 beforeEach(() => {
   capturedUrl = null
+  capturedMethod = null
 })
 
 afterEach(() => {
@@ -91,5 +99,21 @@ describe('statsApi other endpoints', () => {
   it('topAlbums builds /stats/top/albums', async () => {
     await statsApi.topAlbums(RANGE).catch(() => {})
     expect(capturedUrl).toMatch(/^\/stats\/top\/albums\?/)
+  })
+})
+
+// ── deletePlay: owner-scoped delete primitive ─────────────────────────────────
+
+describe('statsApi.deletePlay()', () => {
+  it('issues DELETE /plays/{id}', async () => {
+    await statsApi.deletePlay('p1').catch(() => {})
+    expect(capturedMethod).toBe('DELETE')
+    expect(capturedUrl).toBe('/plays/p1')
+  })
+
+  it('URL-encodes the play id', async () => {
+    await statsApi.deletePlay('a/b c').catch(() => {})
+    expect(capturedMethod).toBe('DELETE')
+    expect(capturedUrl).toBe('/plays/a%2Fb%20c')
   })
 })

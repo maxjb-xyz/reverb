@@ -334,8 +334,8 @@ describe('Home feed', () => {
     vi.mocked(useAlbums).mockReturnValue({ data: [album], isLoading: false, error: null } as unknown as UseQueryResult<Album[], Error>)
 
     const recentRows: RecentRow[] = [
-      { CatalogID: 'cat1', Title: 'Karma Police', Artist: 'Radiohead', Album: 'OK Computer', PlayedAt: Date.now() / 1000 - 60 },
-      { CatalogID: 'cat2', Title: 'Let Down', Artist: 'Radiohead', Album: 'OK Computer', PlayedAt: Date.now() / 1000 - 120 },
+      { ID: 'p1', CatalogID: 'cat1', Title: 'Karma Police', Artist: 'Radiohead', Album: 'OK Computer', PlayedAt: Date.now() / 1000 - 60 },
+      { ID: 'p2', CatalogID: 'cat2', Title: 'Let Down', Artist: 'Radiohead', Album: 'OK Computer', PlayedAt: Date.now() / 1000 - 120 },
     ]
     vi.mocked(statsApi.recent).mockResolvedValue(recentRows)
 
@@ -356,7 +356,7 @@ describe('Home feed', () => {
     vi.mocked(useAlbums).mockReturnValue({ data: [album], isLoading: false, error: null } as unknown as UseQueryResult<Album[], Error>)
 
     const recentRows: RecentRow[] = [
-      { CatalogID: 'trk_abc', Title: 'Karma Police', Artist: 'Radiohead', Album: 'OK Computer', PlayedAt: Date.now() / 1000 - 60 },
+      { ID: 'p1', CatalogID: 'trk_abc', Title: 'Karma Police', Artist: 'Radiohead', Album: 'OK Computer', PlayedAt: Date.now() / 1000 - 60 },
     ]
     vi.mocked(statsApi.recent).mockResolvedValue(recentRows)
 

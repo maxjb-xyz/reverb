@@ -67,8 +67,8 @@ const TOP_ALBUMS: TopRow[] = [
 ]
 
 const RECENT: RecentRow[] = [
-  { CatalogID: 'cat-1', Title: 'Neon Night', Artist: 'Synthwave Inc', Album: 'Retrowave', PlayedAt: Math.floor(Date.now() / 1000) - 120 },
-  { CatalogID: 'cat-2', Title: 'Digital Rain', Artist: 'Cyber Trio', Album: 'Matrix OST', PlayedAt: Math.floor(Date.now() / 1000) - 3700 },
+  { ID: 'p1', CatalogID: 'cat-1', Title: 'Neon Night', Artist: 'Synthwave Inc', Album: 'Retrowave', PlayedAt: Math.floor(Date.now() / 1000) - 120 },
+  { ID: 'p2', CatalogID: 'cat-2', Title: 'Digital Rain', Artist: 'Cyber Trio', Album: 'Matrix OST', PlayedAt: Math.floor(Date.now() / 1000) - 3700 },
 ]
 
 // ── Test helpers ──────────────────────────────────────────────────────────────

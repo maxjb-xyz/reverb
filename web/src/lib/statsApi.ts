@@ -37,6 +37,7 @@ export interface ClockCell {
 }
 
 export interface RecentRow {
+  ID: string
   CatalogID: string
   Title: string
   Artist: string
@@ -112,4 +113,11 @@ export function entity(kind: string, id: string, r: Range): Promise<EntityStats>
   p.set('kind', kind)
   p.set('id', id)
   return api.get<EntityStats>(`/stats/entity${qs(p)}`)
+}
+
+// deletePlay removes a single play OWNED BY the current user. Owner-scoping is
+// enforced server-side (the backend keys the delete on the session user id);
+// this primitive only carries the play id. Resolves on 204.
+export function deletePlay(id: string): Promise<void> {
+  return api.del(`/plays/${encodeURIComponent(id)}`)
 }
