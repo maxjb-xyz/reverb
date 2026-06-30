@@ -223,6 +223,19 @@ export async function installApiMocks(
       body: JSON.stringify({ Plays: 0, MsPlayed: 0, FirstPlayed: 0, LastPlayed: 0, TopTracks: [] }),
     }),
   )
+
+  // Default Last.fm scrobbling endpoints (SP3-3b). The now-playing tracker POSTs
+  // /scrobble/nowplaying on track change (AppShell, every page), and the Account
+  // Integrations section fetches /scrobble/links. Default to "not configured" so no
+  // page errors; specs that exercise the Integrations flow OVERRIDE these after
+  // installApiMocks. Scrobbling is fire-and-forget — these never affect playback.
+  await page.route('**/api/v1/scrobble/nowplaying', (route: Route) => route.fulfill({ status: 204, body: '' }))
+  await page.route('**/api/v1/scrobble/links', (route: Route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ configured: false, links: [] }) }),
+  )
+  await page.route('**/api/v1/admin/integrations/lastfm', (route: Route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ apiKey: '', apiSecretSet: false }) }),
+  )
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
