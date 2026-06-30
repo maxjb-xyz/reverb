@@ -146,7 +146,13 @@ func (s *Service) Match(ctx context.Context, ext core.ExternalResult) (core.Matc
 	}
 
 	// 1. Cache-first: serve fresh cached rows without querying the library.
-	if s.cache != nil {
+	// Pure-library entities have Source="" and ExternalID="" — an empty key would
+	// collide all such entities onto a single ("","") cache row, cross-contaminating
+	// their resolved backend ids. Skip match_cache entirely when the external key is
+	// degenerate; the resolver's backend_binding still caches per catalog_id so
+	// there is no performance regression.
+	nonDegenerateKey := ext.Source != "" && ext.ExternalID != ""
+	if s.cache != nil && nonDegenerateKey {
 		row, cerr := s.cache.GetMatchCache(ctx, db.GetMatchCacheParams{
 			Source:     ext.Source,
 			ExternalID: ext.ExternalID,
@@ -189,7 +195,10 @@ func (s *Service) Match(ctx context.Context, ext core.ExternalResult) (core.Matc
 	}
 
 	// 5. Write-through cache (positive and negative).
-	if s.cache != nil {
+	// Only cache when the external key is non-degenerate: skip if Source="" or
+	// ExternalID="" to avoid the ("","") collision that would share one cache row
+	// across all pure-library entities.
+	if s.cache != nil && nonDegenerateKey {
 		ltid := sql.NullString{}
 		if result.Status == core.MatchInLibrary {
 			ltid = sql.NullString{String: result.LibraryTrackID, Valid: true}

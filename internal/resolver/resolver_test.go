@@ -139,6 +139,78 @@ func TestResolve_UnknownCatalogIDIsNotFound(t *testing.T) {
 	}
 }
 
+// seedLibraryEntity inserts a pure-library catalog_entity (source="", external_id="")
+// with an explicit catalogID so callers can distinguish multiple pure-library rows.
+func seedLibraryEntity(t *testing.T, q *db.Queries, catalogID, title, artist, album string, durationMs int64) string {
+	t.Helper()
+	err := q.InsertCatalogEntity(context.Background(), db.InsertCatalogEntityParams{
+		ID:         catalogID,
+		Kind:       "track",
+		Title:      title,
+		Artist:     artist,
+		Album:      album,
+		DurationMs: durationMs,
+		Isrc:       "",
+		Mbid:       "",
+		Source:     "",
+		ExternalID: "",
+		CreatedAt:  time.Now().Unix(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return catalogID
+}
+
+// titleMatcher returns a LibraryTrackID derived from the ext.Title so distinct
+// entities produce distinct backend ids. If match_cache collides on ("",""), a
+// second resolution would return the FIRST entity's backend id — observable as
+// ra.BackendID == rb.BackendID.
+type titleMatcher struct{}
+
+func (titleMatcher) Match(_ context.Context, ext core.ExternalResult) (core.MatchResult, error) {
+	return core.MatchResult{
+		Status:         core.MatchInLibrary,
+		LibraryTrackID: "nav-" + ext.Title,
+	}, nil
+}
+
+// TestResolve_PureLibraryEntitiesDoNotCollide proves that two distinct pure-library
+// entities (source="", external_id="") resolve to different backend ids. The
+// authoritative assertion of the match_cache non-collision is in
+// matching.TestMatch_EmptyExternalDoesNotCollideInCache; this test confirms the
+// resolver surfaces the correct per-entity result end-to-end.
+func TestResolve_PureLibraryEntitiesDoNotCollide(t *testing.T) {
+	st := openStore(t)
+	q := st.Q()
+	// titleMatcher returns a per-title backend id — distinct entities must produce
+	// distinct backend ids. If match_cache collapses them onto ("",""), the second
+	// Resolve would return the first entity's backend id.
+	s := NewService(q, func() Rematcher { return titleMatcher{} }, time.Now)
+	ctx := context.Background()
+
+	a := seedLibraryEntity(t, q, "lib-entity-a", "SongA", "Artist", "Album", 200000)
+	b := seedLibraryEntity(t, q, "lib-entity-b", "SongB", "Artist", "Album", 200000)
+
+	ra, err := s.Resolve(ctx, a)
+	if err != nil {
+		t.Fatalf("Resolve(a) error: %v", err)
+	}
+	rb, err := s.Resolve(ctx, b)
+	if err != nil {
+		t.Fatalf("Resolve(b) error: %v", err)
+	}
+	if ra.BackendID == rb.BackendID {
+		t.Fatalf("pure-library entities must not collide: both resolved to %q", ra.BackendID)
+	}
+	if ra.BackendID != "nav-SongA" {
+		t.Fatalf("SongA: want nav-SongA, got %q", ra.BackendID)
+	}
+	if rb.BackendID != "nav-SongB" {
+		t.Fatalf("SongB: want nav-SongB, got %q", rb.BackendID)
+	}
+}
+
 // cancelObservingMatcher cancels the supplied func the moment Match is entered,
 // then records whether the context handed to it was already cancelled. This
 // proves the singleflight closure runs on a DETACHED context: the resolver must

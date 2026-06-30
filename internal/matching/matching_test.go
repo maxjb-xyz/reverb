@@ -496,3 +496,83 @@ func TestMatchNegativeIsCached(t *testing.T) {
 		t.Fatalf("cached negative should have NULL library_track_id: %+v", row)
 	}
 }
+
+// titleLib returns a single-track candidate set keyed by the search query so that
+// a query for "SongA" returns only SongA and a query for "SongB" returns only SongB.
+// This gives the fuzzy rung the right candidate per entity.
+type titleLib struct {
+	tracks map[string]core.Track // title → track
+}
+
+func (tl titleLib) Search(_ context.Context, q string, _ []core.EntityType) (core.SearchResults, error) {
+	if t, ok := tl.tracks[q]; ok {
+		return core.SearchResults{Tracks: []core.Track{t}}, nil
+	}
+	return core.SearchResults{}, nil
+}
+
+// TestMatch_EmptyExternalDoesNotCollideInCache proves that two distinct pure-library
+// entities (Source="", ExternalID="") resolved via Match do NOT share a match_cache
+// row. Before the fix, both calls wrote to key ("","") so the second call got the
+// first entity's result — a silent cross-entity collision.
+func TestMatch_EmptyExternalDoesNotCollideInCache(t *testing.T) {
+	lib := titleLib{tracks: map[string]core.Track{
+		"SongA": {ID: "nav-SongA", Title: "SongA", Artist: "Artist", Album: "Album", DurationMs: 200000},
+		"SongB": {ID: "nav-SongB", Title: "SongB", Artist: "Artist", Album: "Album", DurationMs: 200000},
+	}}
+	cache := newMemCache()
+	svc := NewService(lib, cache, func(context.Context) (int64, error) { return 1, nil })
+
+	extA := core.ExternalResult{Source: "", ExternalID: "", Title: "SongA", Artist: "Artist", Album: "Album", DurationMs: 200000, Type: core.EntityTrack}
+	extB := core.ExternalResult{Source: "", ExternalID: "", Title: "SongB", Artist: "Artist", Album: "Album", DurationMs: 200000, Type: core.EntityTrack}
+
+	ra, err := svc.Match(context.Background(), extA)
+	if err != nil {
+		t.Fatalf("Match(SongA) error: %v", err)
+	}
+	rb, err := svc.Match(context.Background(), extB)
+	if err != nil {
+		t.Fatalf("Match(SongB) error: %v", err)
+	}
+
+	if ra.LibraryTrackID != "nav-SongA" {
+		t.Fatalf("SongA: want nav-SongA, got %q", ra.LibraryTrackID)
+	}
+	if rb.LibraryTrackID != "nav-SongB" {
+		t.Fatalf("SongB: want nav-SongB, got %q (collision with SongA?)", rb.LibraryTrackID)
+	}
+	if ra.LibraryTrackID == rb.LibraryTrackID {
+		t.Fatalf("pure-library entities collide in match_cache: both got %q", ra.LibraryTrackID)
+	}
+
+	// Guard: empty-external matches must NOT write to match_cache (cache must be empty).
+	_, errA := cache.GetMatchCache(context.Background(), db.GetMatchCacheParams{Source: "", ExternalID: ""})
+	if errA == nil {
+		t.Fatal("match_cache must not have a row for empty (source, external_id)")
+	}
+}
+
+// TestMatch_EmptyExternalDoesNotWriteMatchCache asserts that when Source="" and
+// ExternalID="", Match computes the result fresh each time and never writes a
+// match_cache row — so the cache cannot be stale or collide.
+func TestMatch_EmptyExternalDoesNotWriteMatchCache(t *testing.T) {
+	lib := titleLib{tracks: map[string]core.Track{
+		"Solo": {ID: "nav-solo", Title: "Solo", Artist: "Art", DurationMs: 180000},
+	}}
+	cache := newMemCache()
+	svc := NewService(lib, cache, func(context.Context) (int64, error) { return 1, nil })
+
+	ext := core.ExternalResult{Source: "", ExternalID: "", Title: "Solo", Artist: "Art", DurationMs: 180000, Type: core.EntityTrack}
+	res, err := svc.Match(context.Background(), ext)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Status != core.MatchInLibrary || res.LibraryTrackID != "nav-solo" {
+		t.Fatalf("expected match to nav-solo, got %+v", res)
+	}
+
+	// No cache row must have been written.
+	if len(cache.rows) != 0 {
+		t.Fatalf("match_cache must be empty for empty-external match, got %d rows: %v", len(cache.rows), cache.rows)
+	}
+}
