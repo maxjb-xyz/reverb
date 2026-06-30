@@ -150,5 +150,14 @@ describe('ClockHeatmap', () => {
       expect(container.innerHTML).not.toMatch(/\btext-black\b/)
       expect(container.innerHTML).not.toMatch(/\btext-white\b/)
     })
+
+    it('wraps the accent token in rgb() — bare var(--color-accent) is raw channels and renders black', () => {
+      const { container } = render(<ClockHeatmap data={SPARSE_DATA} />)
+      const cell = container.querySelector('[data-cell]')
+      // --color-accent is "240 53 75" (channels); fill MUST be rgb(var(...)) or
+      // the value is invalid and the browser falls back to black.
+      expect(cell!.getAttribute('fill')).toBe('rgb(var(--color-accent))')
+      expect(container.innerHTML).not.toMatch(/fill="var\(--color-accent/)
+    })
   })
 })

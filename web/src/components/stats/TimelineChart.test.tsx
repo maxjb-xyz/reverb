@@ -112,5 +112,15 @@ describe('TimelineChart', () => {
       expect(container.innerHTML).not.toMatch(/\btext-black\b/)
       expect(container.innerHTML).not.toMatch(/\btext-white\b/)
     })
+
+    it('wraps the accent token in rgb() — bare var(--color-accent) is raw channels and renders black', () => {
+      const { container } = render(<TimelineChart data={THREE_BUCKETS} />)
+      const stops = container.querySelectorAll('stop')
+      expect(stops.length).toBeGreaterThan(0)
+      // --color-accent is "240 53 75" (channels); stop-color MUST be rgb(var(...))
+      // or the gradient is invalid and the bars render black.
+      stops.forEach((s) => expect(s.getAttribute('stop-color')).toBe('rgb(var(--color-accent))'))
+      expect(container.innerHTML).not.toMatch(/stop-color="var\(--color-accent/)
+    })
   })
 })

@@ -145,7 +145,7 @@ export function ClockHeatmap({ data }: Props) {
                     width={CELL_W}
                     height={CELL_H}
                     rx={3}
-                    fill="var(--color-accent, currentColor)"
+                    fill="rgb(var(--color-accent))"
                     fillOpacity={opacity}
                     style={{
                       cursor: plays > 0 ? 'default' : 'default',
