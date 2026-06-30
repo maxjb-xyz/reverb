@@ -38,6 +38,9 @@ type Querier interface {
 	GetBackendBinding(ctx context.Context, arg db.GetBackendBindingParams) (db.BackendBinding, error)
 	UpsertBackendBinding(ctx context.Context, arg db.UpsertBackendBindingParams) error
 	DeleteBindingsForCatalog(ctx context.Context, catalogID string) error
+	// plays is the first stored consumer reference the foundation design anticipated:
+	// repointing it on merge keeps listening history consolidated under the winner.
+	RepointPlays(ctx context.Context, arg db.RepointPlaysParams) error
 }
 
 // Service mints and resolves catalog IDs.

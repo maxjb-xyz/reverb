@@ -49,7 +49,17 @@ func (s *Service) merge(ctx context.Context, loser, winner string) error {
 		return err
 	}
 
-	// 3. Delete the loser entity.
+	// 3. Repoint plays from loser → winner (FK-safe: must precede the delete below).
+	//    plays is the first stored consumer reference the foundation design anticipated:
+	//    repointing it on merge keeps listening history consolidated under the winner.
+	if err := s.q.RepointPlays(ctx, db.RepointPlaysParams{
+		CatalogID:   winner,
+		CatalogID_2: loser,
+	}); err != nil {
+		return err
+	}
+
+	// 4. Delete the loser entity.
 	return s.q.DeleteCatalogEntity(ctx, loser)
 }
 
