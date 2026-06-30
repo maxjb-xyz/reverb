@@ -121,6 +121,24 @@ func TestResolve_NegativeCacheBoundsRematch(t *testing.T) {
 	}
 }
 
+func TestResolve_UnknownCatalogIDIsNotFound(t *testing.T) {
+	s, _, fm := newTestResolver(t)
+	ctx := context.Background()
+	// Never seeded → no catalog_entity row. An unknown canonical id must be
+	// treated as not-found (→ boundary 404), not a hard error (→ 502), and the
+	// matcher must not be consulted (there is nothing to match).
+	addr, err := s.Resolve(ctx, "trk_does_not_exist")
+	if err != nil {
+		t.Fatalf("unknown catalog id must not error (404 not 502): %v", err)
+	}
+	if addr.Found {
+		t.Fatalf("unknown catalog id must be Found:false, got %+v", addr)
+	}
+	if fm.calls != 0 {
+		t.Fatalf("matcher must not be called for a nonexistent entity, got %d", fm.calls)
+	}
+}
+
 // cancelObservingMatcher cancels the supplied func the moment Match is entered,
 // then records whether the context handed to it was already cancelled. This
 // proves the singleflight closure runs on a DETACHED context: the resolver must

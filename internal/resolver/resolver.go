@@ -137,6 +137,13 @@ func (s *Service) Resolve(ctx context.Context, catalogID string) (Addressing, er
 func (s *Service) rematchAndStore(ctx context.Context, catalogID, identity string, epoch int64) (Addressing, error) {
 	e, err := s.q.GetCatalogEntity(ctx, catalogID)
 	if err != nil {
+		// Unknown canonical id (entity never minted, or deleted): there is no
+		// entity to resolve, so report not-found rather than a hard error. The
+		// addressing boundary maps Found:false → 404, not 502. Nothing to bind
+		// (backend_binding FKs catalog_entity), so we write no binding.
+		if errors.Is(err, sql.ErrNoRows) {
+			return Addressing{Found: false}, nil
+		}
 		return Addressing{}, err
 	}
 
