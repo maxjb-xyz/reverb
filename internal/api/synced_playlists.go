@@ -151,6 +151,14 @@ func (s *Server) handleImportSyncedPlaylist(w http.ResponseWriter, r *http.Reque
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "url is required"})
 		return
 	}
+	// Silently strip downloadMissing if the caller lacks auto_approve: the
+	// import itself is allowed under CapCreatePlaylists, but auto-triggering
+	// downloads requires auto_approve.
+	if body.DownloadMissing {
+		if cu, ok := currentUser(r); !ok || !cu.Has(auth.CapAutoApprove) {
+			body.DownloadMissing = false
+		}
+	}
 	det, err := svc.Import(r.Context(), body.URL, body.DownloadMissing)
 	if err != nil {
 		// A malformed playlist URL is a bad request; a fetch failure is unprocessable.
@@ -248,6 +256,13 @@ func (s *Server) handleSyncedDownloadMissing(w http.ResponseWriter, r *http.Requ
 	svc := s.sync()
 	if svc == nil {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "playlist sync unavailable"})
+		return
+	}
+	// This endpoint's sole purpose is triggering downloads: require auto_approve.
+	// Check capability before ownership so the gate is visible regardless of
+	// whether the playlist exists in the DB.
+	if cu, ok := currentUser(r); !ok || !cu.Has(auth.CapAutoApprove) {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "auto_approve capability required to trigger downloads"})
 		return
 	}
 	if !s.playlistAccessAllowed(r, chi.URLParam(r, "id")) {

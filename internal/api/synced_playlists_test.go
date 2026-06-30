@@ -1015,3 +1015,98 @@ func TestRenameSyncedPlaylistNotFound(t *testing.T) {
 		t.Fatalf("expected 404, got %d", rr.Code)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// auto_approve gate: download-triggering endpoints must require auto_approve
+// ---------------------------------------------------------------------------
+
+// syncTestServerWithRoles returns a syncTestServer plus a session token for a
+// second user assigned to the given role. The admin (owner) token is also
+// returned so that callers can verify admin-level access still works.
+func syncTestServerWithRoles(t *testing.T, svc SyncService, secondUserRole string) (srv *Server, adminCookie *http.Cookie, secondTok string) {
+	t.Helper()
+	srv, adminCookie = syncTestServer(t, svc)
+	// The admin creates a second user with the specified role.
+	doPOST(t, srv, "/api/v1/users", adminCookie.Value,
+		`{"username":"limited","password":"limitedpw1","roleId":"`+secondUserRole+`"}`)
+	secondTok = mustLogin(t, srv, "limited", "limitedpw1")
+	return srv, adminCookie, secondTok
+}
+
+// TestDownloadMissingRequiresAutoApprove: a user with can_create_playlists but
+// without auto_approve must receive 403 on POST /playlists/{id}/download-missing.
+// The auto_approve check must fire before ownership/404, so the capability gate
+// is visible even when no playlist exists in the DB.
+// The fake service must NOT be called — no downloads triggered.
+func TestDownloadMissingRequiresAutoApprove(t *testing.T) {
+	svc := &fakeSync{jobs: []core.DownloadJob{{ID: "j1"}}}
+	srv, _, requesterTok := syncTestServerWithRoles(t, svc, "role-requester")
+
+	rec := doPOST(t, srv, "/api/v1/playlists/pl1/download-missing", requesterTok, "")
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("requester download-missing = %d, want 403: %s", rec.Code, rec.Body.String())
+	}
+	// The service must not have been called — no downloads triggered.
+	if svc.lastID != "" {
+		t.Fatalf("DownloadMissing should not have been called, but lastID = %q", svc.lastID)
+	}
+}
+
+// TestDownloadMissingAllowedWithAutoApprove: the admin (who has auto_approve)
+// must succeed on POST /playlists/{id}/download-missing (regression guard).
+// Using the owner/admin cookie because admin bypasses ownership and has auto_approve.
+func TestDownloadMissingAllowedWithAutoApprove(t *testing.T) {
+	svc := &fakeSync{jobs: []core.DownloadJob{{ID: "j1"}, {ID: "j2"}}}
+	srv, adminCookie := syncTestServer(t, svc)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/playlists/any-pl/download-missing", nil)
+	req.AddCookie(adminCookie)
+	srv.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("admin (auto_approve) download-missing = %d, want 200: %s", rec.Code, rec.Body.String())
+	}
+	if svc.lastID != "any-pl" {
+		t.Fatalf("expected DownloadMissing called with 'any-pl', got %q", svc.lastID)
+	}
+}
+
+// TestImportSyncedDownloadMissingStrippedWithoutAutoApprove: a user with
+// can_create_playlists but without auto_approve sends downloadMissing=true.
+// The import must succeed (200) but downloads must NOT be triggered
+// (the flag is silently stripped to false before calling the service).
+func TestImportSyncedDownloadMissingStrippedWithoutAutoApprove(t *testing.T) {
+	svc := &fakeSync{detail: core.SyncedPlaylistDetail{
+		SyncedPlaylist: core.SyncedPlaylist{ID: "pl-new", Name: "My Mix"},
+	}}
+	srv, _, requesterTok := syncTestServerWithRoles(t, svc, "role-requester")
+
+	body := `{"url":"https://open.spotify.com/playlist/ABC","downloadMissing":true}`
+	rec := doPOST(t, srv, "/api/v1/playlists/import-synced", requesterTok, body)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("import-synced status = %d, want 200: %s", rec.Code, rec.Body.String())
+	}
+	// The service must have been called with downloadMissing=false (stripped).
+	if svc.lastDL {
+		t.Fatalf("import-synced: downloadMissing should have been stripped to false for non-auto_approve user, but service was called with downloadMissing=true")
+	}
+}
+
+// TestImportSyncedDownloadMissingAllowedWithAutoApprove: a user with auto_approve
+// sends downloadMissing=true and the service must receive it unchanged (regression guard).
+func TestImportSyncedDownloadMissingAllowedWithAutoApprove(t *testing.T) {
+	svc := &fakeSync{detail: core.SyncedPlaylistDetail{
+		SyncedPlaylist: core.SyncedPlaylist{ID: "pl-new", Name: "My Mix"},
+	}}
+	// role-user has auto_approve + can_create_playlists
+	srv, _, userTok := syncTestServerWithRoles(t, svc, "role-user")
+
+	body := `{"url":"https://open.spotify.com/playlist/DEF","downloadMissing":true}`
+	rec := doPOST(t, srv, "/api/v1/playlists/import-synced", userTok, body)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("import-synced status = %d, want 200: %s", rec.Code, rec.Body.String())
+	}
+	if !svc.lastDL {
+		t.Fatalf("import-synced: auto_approve user's downloadMissing=true should have been passed through, but service received false")
+	}
+}
