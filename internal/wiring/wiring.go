@@ -301,6 +301,25 @@ func libraryIdentity(mode embedded.Mode, instances []db.AdapterInstance) string 
 // reconcileLibraryIdentity bumps library_version (invalidating the match + coverage
 // caches) when the active library backend's identity differs from the last boot,
 // so matches from a previous backend (with different track IDs) are not reused.
+// On the identity-CHANGED path it also bumps binding_epoch:<identity> for the
+// NEW identity, causing all resolver bindings for that identity to be treated as
+// stale on the next Resolve. This handles the "returning to a previously-used
+// backend whose IDs may have changed while away" case; for a never-seen identity
+// the bump is harmless (epoch goes 1→2, and was never read at 1 anyway).
+//
+// The epoch bump is done directly via b.queries (the settings table) rather than
+// via resolver.Service.BumpEpoch because the resolver Service is constructed
+// AFTER Builder.Build returns — wiring it in here would create a construction
+// cycle. resolver.BumpEpoch is the shared helper that ensures the key format is
+// identical to what the Service reads.
+//
+// DEFERRED (P2/SP3): runScan targeted binding refresh (piece 2) and async
+// post-swap sweep (piece 3) are intentionally NOT wired here. They are
+// best-effort pre-warming, not a correctness dependency — the resolver lazily
+// re-resolves on a binding miss. In P1 there is NO canonical-keyed consumer to
+// refresh yet (download jobs become canonical-keyed in Task 11, plays in SP3).
+// Revisit pre-warming in P2/SP3 once consumers are canonical-keyed.
+//
 // No-op when the identity is unchanged.
 func (b *Builder) reconcileLibraryIdentity(ctx context.Context, identity string) error {
 	if stored, err := b.queries.GetSetting(ctx, settingLibraryIdentity); err == nil && stored == identity {
@@ -311,6 +330,12 @@ func (b *Builder) reconcileLibraryIdentity(ctx context.Context, identity string)
 		return err
 	}
 	if err := b.version.SetLibraryVersion(ctx, cur+1); err != nil {
+		return err
+	}
+	// Bump the per-identity binding epoch so the resolver treats all cached
+	// bindings for this identity as stale. Uses the shared resolver.BumpEpoch
+	// helper to guarantee the key format matches what the resolver reads.
+	if err := resolver.BumpEpoch(ctx, b.queries, identity); err != nil {
 		return err
 	}
 	return b.queries.UpsertSetting(ctx, db.UpsertSettingParams{Key: settingLibraryIdentity, Value: identity})

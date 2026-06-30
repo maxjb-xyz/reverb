@@ -71,9 +71,10 @@ func (s *Service) identity(ctx context.Context) (string, error) {
 }
 
 // epoch returns the current binding epoch for the given identity. Defaults to
-// 1 when the key is absent or unparseable.
+// 1 when the key is absent or unparseable. Uses epochKey so the read path is
+// always in sync with the write path in BumpEpoch.
 func (s *Service) epoch(ctx context.Context, identity string) int64 {
-	v, err := s.q.GetSetting(ctx, "binding_epoch:"+identity)
+	v, err := s.q.GetSetting(ctx, epochKey(identity))
 	if err != nil {
 		return 1
 	}
@@ -180,12 +181,10 @@ func (s *Service) rematchAndStore(ctx context.Context, catalogID, identity strin
 
 // BumpEpoch increments the per-identity epoch, causing all bindings for that
 // identity to be treated as stale on the next Resolve. Called on library swap.
+// Delegates to the package-level BumpEpoch so Service and wiring share one
+// implementation of the key format and read-increment-write logic.
 func (s *Service) BumpEpoch(ctx context.Context, identity string) error {
-	next := s.epoch(ctx, identity) + 1
-	return s.q.UpsertSetting(ctx, db.UpsertSettingParams{
-		Key:   "binding_epoch:" + identity,
-		Value: strconv.FormatInt(next, 10),
-	})
+	return BumpEpoch(ctx, s.q, identity)
 }
 
 // RefreshLinked forces a re-resolve for each given catalog ID at the current
