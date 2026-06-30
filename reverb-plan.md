@@ -331,6 +331,7 @@ ui:
 - Search feature searches spotify playlists
 - Listening Parties with other users
 - Federated features
+- Discord integration
 
 ---
 
