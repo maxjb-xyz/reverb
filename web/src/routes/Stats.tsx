@@ -2,11 +2,13 @@ import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { presetRange } from '../lib/range'
 import type { Range } from '../lib/range'
-import { summary, topTracks, topArtists, topAlbums, recent } from '../lib/statsApi'
+import { summary, topTracks, topArtists, topAlbums, recent, timeline, clock } from '../lib/statsApi'
 import { RangeSelector } from '../components/stats/RangeSelector'
 import { SummaryCards } from '../components/stats/SummaryCards'
 import { TopList } from '../components/stats/TopList'
 import { RecentList } from '../components/stats/RecentList'
+import { TimelineChart } from '../components/stats/TimelineChart'
+import { ClockHeatmap } from '../components/stats/ClockHeatmap'
 import { Skeleton } from '../components/ui/Skeleton'
 
 function rangeKey(r: Range): [number, number] {
@@ -46,11 +48,25 @@ export default function Stats() {
     staleTime: 60_000,
   })
 
+  const timelineQ = useQuery({
+    queryKey: ['stats', 'timeline', ...rangeKey(range)],
+    queryFn: () => timeline(range),
+    staleTime: 60_000,
+  })
+
+  const clockQ = useQuery({
+    queryKey: ['stats', 'clock', ...rangeKey(range)],
+    queryFn: () => clock(range),
+    staleTime: 60_000,
+  })
+
   const summaryData = summaryQ.data
   const tracks = topTracksQ.data ?? []
   const artists = topArtistsQ.data ?? []
   const albums = topAlbumsQ.data ?? []
   const recentRows = recentQ.data ?? []
+  const timelineBuckets = timelineQ.data ?? []
+  const clockCells = clockQ.data ?? []
 
   const isLoading = summaryQ.isLoading
 
@@ -92,6 +108,22 @@ export default function Stats() {
         <div className="space-y-8">
           {/* Summary cards */}
           <SummaryCards data={summaryData} />
+
+          {/* Listening over time */}
+          <section aria-label="Listening over time">
+            <h2 className="text-base font-bold text-primary mb-3">Listening over time</h2>
+            <div className="rounded-lg bg-raised px-4 pt-4 pb-2">
+              <TimelineChart data={timelineBuckets} metric="plays" />
+            </div>
+          </section>
+
+          {/* When you listen heatmap */}
+          <section aria-label="When you listen">
+            <h2 className="text-base font-bold text-primary mb-3">When you listen</h2>
+            <div className="rounded-lg bg-raised px-4 py-4">
+              <ClockHeatmap data={clockCells} />
+            </div>
+          </section>
 
           {/* Top content: tracks / artists / albums side by side on wide screens */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
