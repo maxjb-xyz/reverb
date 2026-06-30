@@ -305,6 +305,8 @@ func (s *Server) routes() {
 				mr.Post("/adapters/test", s.handleTestAdapter)
 				mr.Get("/settings", s.handleGetSettings)
 				mr.Put("/settings", s.handlePutSettings)
+				mr.Get("/admin/integrations/lastfm", s.handleGetLastfmIntegration)
+				mr.Put("/admin/integrations/lastfm", s.handlePutLastfmIntegration)
 			})
 
 			// download tracks: enqueue create + batch.

@@ -3,6 +3,7 @@ import { Button } from '../components/ui'
 import { useAuthStore } from '../lib/authStore'
 import { changePassword, logoutAll } from '../lib/accountApi'
 import { ApiError } from '../lib/api'
+import { IntegrationsSection } from '../components/account/IntegrationsSection'
 
 export default function Account() {
   const me = useAuthStore((s) => s.me)
@@ -226,6 +227,9 @@ export default function Account() {
           </div>
         </div>
       </section>
+
+      {/* ── Integrations section ─────────────────────────────────────────────── */}
+      <IntegrationsSection me={me} />
     </div>
   )
 }

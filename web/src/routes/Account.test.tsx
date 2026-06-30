@@ -29,6 +29,24 @@ vi.mock('../lib/accountApi', () => ({
   logoutAll: (...args: unknown[]) => mockLogoutAll(...args),
 }))
 
+// ── Mock scrobbleApi (used by IntegrationsSection) ────────────────────────────
+vi.mock('../lib/scrobbleApi', () => ({
+  getLinks: vi.fn(async () => ({ configured: false, links: [] })),
+  lastfmAuthUrl: vi.fn(async () => ({ authUrl: '', token: '' })),
+  lastfmComplete: vi.fn(async () => ({ username: '' })),
+  lastfmDisconnect: vi.fn(async () => undefined),
+  getLastfmConfig: vi.fn(async () => ({ apiKey: '', apiSecretSet: false })),
+  setLastfmConfig: vi.fn(async () => undefined),
+  ScrobbleError: class ScrobbleError extends Error {
+    code: string
+    constructor(code: string, message: string) {
+      super(message)
+      this.name = 'ScrobbleError'
+      this.code = code
+    }
+  },
+}))
+
 import Account from './Account'
 
 function wrap(ui: ReactElement) {
@@ -108,6 +126,12 @@ describe('Account page', () => {
     fireEvent.change(screen.getByLabelText(/confirm.*password/i), { target: { value: 'newpass1' } })
     fireEvent.click(screen.getByRole('button', { name: /change password/i }))
     expect(await screen.findByText(/password changed/i)).toBeInTheDocument()
+  })
+
+  // ── Integrations section ──────────────────────────────────────────────────
+  it('renders the Integrations section heading', () => {
+    wrap(<Account />)
+    expect(screen.getByRole('heading', { name: /integrations/i })).toBeInTheDocument()
   })
 
   // ── Sessions ──────────────────────────────────────────────────────────────
