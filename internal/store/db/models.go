@@ -141,6 +141,16 @@ type Notification struct {
 	CreatedAt int64          `json:"created_at"`
 }
 
+type Play struct {
+	ID        string `json:"id"`
+	UserID    string `json:"user_id"`
+	CatalogID string `json:"catalog_id"`
+	PlayedAt  int64  `json:"played_at"`
+	MsPlayed  int64  `json:"ms_played"`
+	Completed int64  `json:"completed"`
+	CreatedAt int64  `json:"created_at"`
+}
+
 type Request struct {
 	ID            string         `json:"id"`
 	RequestedBy   string         `json:"requested_by"`
