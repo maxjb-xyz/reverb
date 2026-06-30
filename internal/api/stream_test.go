@@ -66,10 +66,16 @@ func TestCoverProxy(t *testing.T) {
 // --- sentinel routing tests ---
 
 // stubLibrary is a minimal library.LibraryAdapter whose CoverArt and Stream
-// return a caller-configured error (or a trivial success value when nil).
+// return a caller-configured error (or a trivial success value when nil). The
+// call counters and lastCoverSize let tests directly assert the load-bearing
+// boundary guards (adapter never reached on a tri-state 404; ?size= threaded).
 type stubLibrary struct {
 	coverErr  error
 	streamErr error
+
+	coverCalls    atomic.Int32
+	streamCalls   atomic.Int32
+	lastCoverSize int
 }
 
 // Satisfy registry.Plugin.
@@ -105,13 +111,16 @@ func (s *stubLibrary) StartScan(_ context.Context) error { return nil }
 func (s *stubLibrary) ScanStatus(_ context.Context) (core.ScanStatus, error) {
 	return core.ScanStatus{}, nil
 }
-func (s *stubLibrary) CoverArt(_ context.Context, _ string, _ int) (core.CoverArt, error) {
+func (s *stubLibrary) CoverArt(_ context.Context, _ string, size int) (core.CoverArt, error) {
+	s.coverCalls.Add(1)
+	s.lastCoverSize = size
 	if s.coverErr != nil {
 		return core.CoverArt{}, s.coverErr
 	}
 	return core.CoverArt{Body: io.NopCloser(strings.NewReader("img")), ContentType: "image/jpeg"}, nil
 }
 func (s *stubLibrary) Stream(_ context.Context, _ string, _ core.StreamOpts, _ string) (core.StreamHandle, error) {
+	s.streamCalls.Add(1)
 	if s.streamErr != nil {
 		return core.StreamHandle{}, s.streamErr
 	}
@@ -280,6 +289,9 @@ func TestHandleCover_CanonicalKnownAbsent404sWithoutBackendCall(t *testing.T) {
 	if n := res.calls.Load(); n != 1 {
 		t.Fatalf("resolver must be called exactly once; got %d call(s)", n)
 	}
+	if n := lib.coverCalls.Load(); n != 0 {
+		t.Fatalf("adapter must not be called on known-absent, got %d", n)
+	}
 }
 
 // TestHandleCover_CanonicalResolvesThenServes verifies that a canonical id with
@@ -299,6 +311,9 @@ func TestHandleCover_CanonicalResolvesThenServes(t *testing.T) {
 	}
 	if n := res.calls.Load(); n != 1 {
 		t.Fatalf("resolver must be called exactly once; got %d call(s)", n)
+	}
+	if lib.lastCoverSize != 300 {
+		t.Fatalf("?size= not threaded to adapter; got %d, want 300", lib.lastCoverSize)
 	}
 }
 
@@ -332,6 +347,9 @@ func TestHandleStream_CanonicalKnownAbsent404sWithoutBackendCall(t *testing.T) {
 	}
 	if n := res.calls.Load(); n != 1 {
 		t.Fatalf("resolver must be called exactly once; got %d call(s)", n)
+	}
+	if n := lib.streamCalls.Load(); n != 0 {
+		t.Fatalf("adapter must not be called on known-absent, got %d", n)
 	}
 }
 
