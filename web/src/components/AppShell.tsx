@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { Outlet } from 'react-router-dom'
 import { TopBar } from './shell/TopBar'
 import { LibraryRail } from './shell/LibraryRail'
@@ -9,16 +10,22 @@ import { MiniPlayer } from './MiniPlayer'
 import { NowPlayingOverlay } from './NowPlayingOverlay'
 import { Toaster } from './ui/Toaster'
 import { useRealtime } from '../lib/realtimeWiring'
-import { usePlayer } from '../lib/playerStore'
+import { usePlayer, engine } from '../lib/playerStore'
 import { useUI } from '../lib/uiStore'
 import { useAlbumPalette } from '../lib/useAlbumPalette'
 import { trackCoverUrl } from '../lib/libraryApi'
 import { rgbToCss } from '../lib/palette'
+import { startPlayTracker } from '../lib/playTracker'
 
 export function AppShell() {
   // One app-wide realtime WS (distinct from the SSE search stream): drives the
   // download store, TanStack invalidation, and play-when-ready auto-play.
   useRealtime()
+
+  // One app-wide play tracker: scores qualified plays off the audio engine and
+  // POSTs them to /api/v1/plays.  Starts once when AppShell mounts and cleans
+  // up (unsubscribes) when it unmounts.
+  useEffect(() => startPlayTracker(engine), [])
 
   const current = usePlayer((s) => s.current)
   const rightPanel = useUI((s) => s.rightPanel)
