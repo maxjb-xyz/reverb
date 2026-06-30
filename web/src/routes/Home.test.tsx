@@ -6,6 +6,7 @@ import type { UseQueryResult } from '@tanstack/react-query'
 import Home from './Home'
 import { useDownloads } from '../lib/downloadStore'
 import type { Album, DownloadJob, SyncedPlaylist } from '../lib/types'
+import type { RecentRow } from '../lib/statsApi'
 
 // ------------------------------------------------------------------
 // Helpers
@@ -88,6 +89,10 @@ vi.mock('../lib/api', () => ({
   },
 }))
 
+vi.mock('../lib/statsApi', () => ({
+  recent: vi.fn(async () => [] as RecentRow[]),
+}))
+
 const mockNavigate = vi.fn()
 vi.mock('react-router-dom', async (importOriginal) => {
   const actual = await importOriginal<typeof import('react-router-dom')>()
@@ -96,6 +101,8 @@ vi.mock('react-router-dom', async (importOriginal) => {
     useNavigate: () => mockNavigate,
   }
 })
+
+import * as statsApi from '../lib/statsApi'
 
 // ------------------------------------------------------------------
 // Suites
@@ -313,5 +320,49 @@ describe('Home feed', () => {
     mockNavigate.mockClear()
     fireEvent.click(screen.getByRole('button', { name: 'Classical' }))
     expect(mockNavigate).toHaveBeenCalledWith('/playlist/sp1')
+  })
+
+  // ── Task 13: Real recently-played carousel ──────────────────────────────────
+
+  it('"Jump back in" carousel renders tracks from statsApi.recent when history exists', async () => {
+    const { useAlbums } = await import('../lib/libraryApi')
+
+    // Provide an album so the page isn't in empty/first-run state
+    const album = makeAlbum({ id: 'al1', name: 'Library Album', artist: 'Library Artist' })
+    vi.mocked(useAlbums).mockReturnValue({ data: [album], isLoading: false, error: null } as unknown as UseQueryResult<Album[], Error>)
+
+    const recentRows: RecentRow[] = [
+      { CatalogID: 'cat1', Title: 'Karma Police', Artist: 'Radiohead', Album: 'OK Computer', PlayedAt: Date.now() / 1000 - 60 },
+      { CatalogID: 'cat2', Title: 'Let Down', Artist: 'Radiohead', Album: 'OK Computer', PlayedAt: Date.now() / 1000 - 120 },
+    ]
+    vi.mocked(statsApi.recent).mockResolvedValue(recentRows)
+
+    render(wrap(<Home />))
+
+    // "Jump back in" heading must be present
+    expect(screen.getByRole('heading', { name: /jump back in/i })).toBeInTheDocument()
+
+    // Recent track title must appear in the carousel
+    await screen.findByText('Karma Police')
+    expect(screen.getByText('Karma Police')).toBeInTheDocument()
+  })
+
+  it('"Jump back in" carousel falls back to library recent albums when statsApi.recent is empty', async () => {
+    const { useAlbums } = await import('../lib/libraryApi')
+
+    const albums = [
+      makeAlbum({ id: 'al1', name: 'Fallback Album', artist: 'Fallback Artist' }),
+    ]
+    vi.mocked(useAlbums).mockReturnValue({ data: albums, isLoading: false, error: null } as unknown as UseQueryResult<Album[], Error>)
+
+    // recent returns empty — should fall back to library albums (no empty carousel)
+    vi.mocked(statsApi.recent).mockResolvedValue([])
+
+    render(wrap(<Home />))
+
+    // The carousel heading is still visible (fallback, not empty)
+    expect(screen.getByRole('heading', { name: /jump back in/i })).toBeInTheDocument()
+    // The library album name appears somewhere in the page (fallback source active)
+    expect(screen.getAllByText('Fallback Album').length).toBeGreaterThan(0)
   })
 })

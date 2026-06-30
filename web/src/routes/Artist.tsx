@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react'
+import { useState, useMemo, useCallback, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useArtistDetail } from '../lib/coverageApi'
@@ -15,6 +15,9 @@ import { Button } from '../components/ui/Button'
 import type { AlbumCoverage, DiscographyAlbum } from '../lib/types'
 import { useAlbumPalette } from '../lib/useAlbumPalette'
 import { rgbToCss } from '../lib/palette'
+import * as statsApi from '../lib/statsApi'
+import type { EntityStats } from '../lib/statsApi'
+import { presetRange, msToHuman } from '../lib/range'
 
 type KindFilter = 'all' | 'album' | 'single'
 
@@ -101,6 +104,17 @@ export default function Artist() {
   const canRequest = useAuthStore((s) => s.can('request'))
   const canAutoApprove = useAuthStore((s) => s.can('auto_approve'))
   const [requestAllOpen, setRequestAllOpen] = useState(false)
+
+  // Per-entity listening stats — fetched once detail.name is known
+  // DEFERRED: album-page strip needs backend entity kind="album"; per-track "played N×"
+  //   needs a per-track-counts endpoint. Both are small follow-ups outside this task.
+  const [entityStats, setEntityStats] = useState<EntityStats | null>(null)
+  useEffect(() => {
+    if (!detail?.name) return
+    statsApi.entity('artist', detail.name, presetRange('all'))
+      .then(setEntityStats)
+      .catch(() => setEntityStats(null))
+  }, [detail?.name])
 
   // Aggregate all missing tracks across all albums for "Download all missing".
   // Hoisted above the early returns so the hook order stays stable across renders
@@ -251,6 +265,23 @@ export default function Artist() {
                 </>
               )}
             </p>
+
+            {/* Listening history stat strip — hidden when Plays === 0 */}
+            {entityStats !== null && entityStats.Plays > 0 && (
+              <p className="mt-1 text-xs text-text-secondary flex flex-wrap items-center gap-x-1" data-testid="artist-stat-strip">
+                <span>you</span>
+                <span className="text-text-muted">·</span>
+                <span>{entityStats.Plays} plays</span>
+                <span className="text-text-muted">·</span>
+                <span>{msToHuman(entityStats.MsPlayed)} listened</span>
+                {entityStats.FirstPlayed > 0 && (
+                  <>
+                    <span className="text-text-muted">·</span>
+                    <span>since {new Date(entityStats.FirstPlayed * 1000).getFullYear()}</span>
+                  </>
+                )}
+              </p>
+            )}
 
             {/* Action row — only when there are missing tracks. Guarded by a confirm
                 so a stray click can't enqueue a large batch (spec §10). */}

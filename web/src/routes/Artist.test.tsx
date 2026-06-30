@@ -13,6 +13,16 @@ vi.mock('../lib/coverageApi', () => ({
   useArtistDetail: vi.fn(),
 }))
 
+vi.mock('../lib/statsApi', () => ({
+  entity: vi.fn(async () => ({
+    Plays: 0,
+    MsPlayed: 0,
+    FirstPlayed: 0,
+    LastPlayed: 0,
+    TopTracks: [],
+  })),
+}))
+
 vi.mock('../lib/coverageStore', () => ({
   useCoverageStream: vi.fn(),
 }))
@@ -61,6 +71,7 @@ import { useAuthStore } from '../lib/authStore'
 import { useAlbumPalette } from '../lib/useAlbumPalette'
 import { useNavigate } from 'react-router-dom'
 import { useToastStore } from '../lib/toastStore'
+import * as statsApi from '../lib/statsApi'
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -613,5 +624,38 @@ describe('Artist page', () => {
       expect(toasts.some((t) => t.kind === 'success')).toBe(true)
       expect(toasts.some((t) => /limit reached/i.test(t.message))).toBe(false)
     })
+  })
+
+  // ── Task 13: Artist per-entity stat strip ──────────────────────────────────
+
+  it('stat strip renders play count and listened time when artist has history', async () => {
+    vi.mocked(statsApi.entity).mockResolvedValue({
+      Plays: 42,
+      MsPlayed: 9_000_000, // 2h 30m
+      FirstPlayed: 1_700_000_000,
+      LastPlayed: 1_750_000_000,
+      TopTracks: [],
+    })
+    wrapper(<Artist />)
+
+    await screen.findByText(/42 plays/i)
+    expect(screen.getByText(/42 plays/i)).toBeInTheDocument()
+    // msToHuman(9_000_000) = "2h 30m"
+    expect(screen.getByText(/2h 30m/i)).toBeInTheDocument()
+  })
+
+  it('stat strip is hidden when artist has no play history (Plays === 0)', async () => {
+    vi.mocked(statsApi.entity).mockResolvedValue({
+      Plays: 0,
+      MsPlayed: 0,
+      FirstPlayed: 0,
+      LastPlayed: 0,
+      TopTracks: [],
+    })
+    wrapper(<Artist />)
+
+    // Give async data time to load and settle
+    await new Promise((r) => setTimeout(r, 10))
+    expect(screen.queryByText(/plays/i)).not.toBeInTheDocument()
   })
 })

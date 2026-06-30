@@ -1,10 +1,12 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { useAlbums, coverUrl } from '../lib/libraryApi'
 import { useSyncedPlaylists } from '../lib/syncedPlaylistApi'
 import { useDownloads } from '../lib/downloadStore'
 import { usePlayer } from '../lib/playerStore'
 import { api } from '../lib/api'
+import * as statsApi from '../lib/statsApi'
+import type { RecentRow } from '../lib/statsApi'
 import {
   Chip,
   Carousel,
@@ -133,6 +135,24 @@ export default function Home() {
   const [activeChip, setActiveChip] = useState<FilterChip>('All')
   const navigate = useNavigate()
 
+  // Real recently-played rows from the stats API
+  const [recentPlays, setRecentPlays] = useState<RecentRow[] | null>(null)
+
+  useEffect(() => {
+    statsApi.recent(Date.now() / 1000, 20)
+      .then((rows) => {
+        // De-duplicate consecutive entries with the same CatalogID
+        const deduped: RecentRow[] = []
+        for (const row of rows) {
+          if (deduped.length === 0 || deduped[deduped.length - 1].CatalogID !== row.CatalogID) {
+            deduped.push(row)
+          }
+        }
+        setRecentPlays(deduped)
+      })
+      .catch(() => setRecentPlays([]))
+  }, [])
+
   // Data hooks
   const newestQuery = useAlbums('newest')
   const recentQuery = useAlbums('recent')
@@ -165,17 +185,21 @@ export default function Home() {
   const newestAlbums: Album[] = newestQuery.data ?? []
   const heroAlbum = newestAlbums[0] ?? null
 
-  // "Jump back in" carousel: recent albums
+  // "Jump back in" carousel: use real play history when loaded and non-empty;
+  // fall back to library-recent-albums as an approximation.
+  // recentPlays===null means the fetch is in-flight; we defer to fallback in that case.
+  const hasRealHistory = recentPlays !== null && recentPlays.length > 0
   const jumpBackAlbums = recentAlbums
 
   // First-run / nothing-to-show: no library content and no downloads yet. This is
   // the common state before a library provider is connected or anything is
   // downloaded — guide the user instead of rendering an empty void.
+  const jumpBackVisible = hasRealHistory || jumpBackAlbums.length > 0
   const isEmpty =
     !isLoading &&
     shortcutItems.length === 0 &&
     !heroAlbum &&
-    jumpBackAlbums.length === 0 &&
+    !jumpBackVisible &&
     completedJobs.length === 0 &&
     syncedPlaylists.length === 0
 
@@ -338,12 +362,26 @@ export default function Home() {
         </div>
       )}
 
-      {/* "Jump back in" carousel */}
+      {/* "Jump back in" carousel — real play history (with library-recent fallback) */}
       {isLoading ? (
         <section className="mb-8">
           <Skeleton className="h-7 w-36 mb-4" />
           <SkeletonCardRow />
         </section>
+      ) : hasRealHistory ? (
+        <div className="mb-8">
+          <Carousel title="Jump back in">
+            {(recentPlays ?? []).map((row, i) => (
+              <MediaCard
+                key={`${row.CatalogID}-${i}`}
+                title={row.Title}
+                subtitle={row.Artist}
+                coverId={row.CatalogID}
+                onClick={() => navigate(`/album/library/${row.CatalogID}`)}
+              />
+            ))}
+          </Carousel>
+        </div>
       ) : jumpBackAlbums.length > 0 ? (
         <div className="mb-8">
           <Carousel title="Jump back in">
