@@ -11,11 +11,13 @@ import (
 	"github.com/maxjb-xyz/reverb/internal/play"
 	"github.com/maxjb-xyz/reverb/internal/registry"
 	"github.com/maxjb-xyz/reverb/internal/store"
+	"github.com/maxjb-xyz/reverb/internal/store/db"
 )
 
 // playsTestServer builds a Server with a real play.Service wired in.
-// Returns: the Server, a session cookie for the owner, and the owner's user ID.
-func playsTestServer(t *testing.T) (*Server, *http.Cookie, string) {
+// Returns: the Server, a session cookie for the owner, the owner's user ID, and
+// the store handle so tests can query recorded plays directly.
+func playsTestServer(t *testing.T) (*Server, *http.Cookie, string, *store.Store) {
 	t.Helper()
 	st, err := store.Open(t.TempDir() + "/plays.db")
 	if err != nil {
@@ -54,13 +56,14 @@ func playsTestServer(t *testing.T) (*Server, *http.Cookie, string) {
 		Downloader: registry.NewRegistry("downloader"),
 		Play:       playSvc,
 	})
-	return srv, &http.Cookie{Name: sessionCookie, Value: tok}, ownerID
+	return srv, &http.Cookie{Name: sessionCookie, Value: tok}, ownerID, st
 }
 
 // TestHandlePlay_RecordsForSessionUser verifies that an authenticated POST /plays
 // with a valid body returns 204 and records the play scoped to the session user.
 func TestHandlePlay_RecordsForSessionUser(t *testing.T) {
-	srv, cookie, ownerID := playsTestServer(t)
+	srv, cookie, ownerID, st := playsTestServer(t)
+	ctx := context.Background()
 
 	body := `{
 		"LibraryTrackID": "lib-track-1",
@@ -79,10 +82,23 @@ func TestHandlePlay_RecordsForSessionUser(t *testing.T) {
 		t.Fatalf("POST /plays = %d, want 204; body: %s", rec.Code, rec.Body.String())
 	}
 
-	// Verify the play was recorded scoped to the session user (ownerID), not
-	// an arbitrary body-supplied user ID. We do this by querying the store
-	// directly; a play exists for ownerID.
-	_ = ownerID // structurally verified: the service's Record(ctx, ownerID, in) is called
+	// Assert DB-level user attribution: exactly one play was recorded, and it is
+	// scoped to the SESSION user (ownerID). A regression that misroutes the user
+	// would leave ownerID with zero plays and fail here.
+	rows, err := st.Q().ListRecentPlays(ctx, db.ListRecentPlaysParams{
+		UserID:   ownerID,
+		PlayedAt: 9999999999,
+		Limit:    10,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("expected exactly 1 play for session user %q, got %d: %+v", ownerID, len(rows), rows)
+	}
+	if rows[0].Title != "Hurt" {
+		t.Fatalf("recorded play title = %q, want %q", rows[0].Title, "Hurt")
+	}
 }
 
 // TestHandlePlay_IgnoresBodyUserID verifies that the recorded userID is always
@@ -90,12 +106,15 @@ func TestHandlePlay_RecordsForSessionUser(t *testing.T) {
 // PlayInput has no UserID field, so this is structurally guaranteed: whatever
 // the body supplies, the handler extracts userID from currentUser(r).ID.
 func TestHandlePlay_IgnoresBodyUserID(t *testing.T) {
-	srv, cookie, _ := playsTestServer(t)
+	srv, cookie, ownerID, st := playsTestServer(t)
+	ctx := context.Background()
+
+	const attackerID = "attacker-user-999"
 
 	// Body includes a stray "UserID" field — it should be silently ignored since
 	// play.PlayInput has no such field; the handler reads userID from the session.
 	body := `{
-		"UserID": "attacker-user-999",
+		"UserID": "` + attackerID + `",
 		"Title": "Ring of Fire",
 		"Artist": "Johnny Cash",
 		"Album": "Ring of Fire",
@@ -110,12 +129,42 @@ func TestHandlePlay_IgnoresBodyUserID(t *testing.T) {
 	if rec.Code != http.StatusNoContent {
 		t.Fatalf("POST /plays with stray UserID = %d, want 204; body: %s", rec.Code, rec.Body.String())
 	}
+
+	// The play must be recorded under the SESSION user, not the body-supplied id.
+	ownerRows, err := st.Q().ListRecentPlays(ctx, db.ListRecentPlaysParams{
+		UserID:   ownerID,
+		PlayedAt: 9999999999,
+		Limit:    10,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ownerRows) != 1 {
+		t.Fatalf("expected exactly 1 play for session user %q, got %d: %+v", ownerID, len(ownerRows), ownerRows)
+	}
+	if ownerRows[0].Title != "Ring of Fire" {
+		t.Fatalf("recorded play title = %q, want %q", ownerRows[0].Title, "Ring of Fire")
+	}
+
+	// The body-supplied user id must own ZERO plays. If a UserID field were ever
+	// added to PlayInput and wired through, this assertion would catch it.
+	attackerRows, err := st.Q().ListRecentPlays(ctx, db.ListRecentPlaysParams{
+		UserID:   attackerID,
+		PlayedAt: 9999999999,
+		Limit:    10,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(attackerRows) != 0 {
+		t.Fatalf("expected 0 plays for body-supplied user %q, got %d: %+v", attackerID, len(attackerRows), attackerRows)
+	}
 }
 
 // TestHandlePlay_UnauthenticatedReturns401 verifies that the route is guarded by
 // requireAuth and returns 401 for unauthenticated requests.
 func TestHandlePlay_UnauthenticatedReturns401(t *testing.T) {
-	srv, _, _ := playsTestServer(t)
+	srv, _, _, _ := playsTestServer(t)
 
 	body := `{"Title":"Hurt","Artist":"Johnny Cash","DurationMs":218000,"MsPlayed":218000}`
 	rec := do(t, srv, &http.Cookie{Name: sessionCookie, Value: ""}, http.MethodPost, "/api/v1/plays", body)
