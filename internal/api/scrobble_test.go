@@ -375,6 +375,24 @@ func TestAuthURL_ReturnsAuthUrlAndToken(t *testing.T) {
 	}
 }
 
+// TestAuthURL_ConfiguredButTransientError_Returns5xx asserts that a CONFIGURED
+// deployment whose adapter's AuthURL fails transiently (e.g. Last.fm outage) gets
+// a 5xx — NOT 400 lastfm_not_configured. Conflating the two would tell the user to
+// ask their admin when it is actually a provider outage.
+func TestAuthURL_ConfiguredButTransientError_Returns5xx(t *testing.T) {
+	fs := &fakeScrobbler{authURLErr: fmt.Errorf("lastfm: http: connection refused")}
+	srv, cookie, _, _ := scrobbleTestServer(t, fs, cfgConfigured)
+
+	rec := do(t, srv, cookie, http.MethodPost, "/api/v1/scrobble/lastfm/auth-url", "")
+	if rec.Code < 500 || rec.Code >= 600 {
+		t.Fatalf("auth-url configured+transient = %d, want 5xx; body: %s", rec.Code, rec.Body.String())
+	}
+	body := rec.Body.String()
+	if strings.Contains(body, "lastfm_not_configured") {
+		t.Fatalf("configured-but-transient error must NOT report lastfm_not_configured; body: %s", body)
+	}
+}
+
 // TestAuthURL_Unauth verifies 401.
 func TestAuthURL_Unauth(t *testing.T) {
 	fs := &fakeScrobbler{}

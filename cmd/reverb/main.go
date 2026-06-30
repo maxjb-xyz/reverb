@@ -91,8 +91,6 @@ func main() {
 	downloaderReg := registry.NewRegistry("downloader")
 	downloaderReg.Register("spotdl", func() registry.Plugin { return spotdl.New() })
 	downloaderReg.Register("lidarr", func() registry.Plugin { return lidarr.New() })
-	scrobblerReg := registry.NewRegistry("scrobbler")
-	scrobblerReg.Register("lastfm", lastfm.Factory)
 	// Surface the async capability to the admin UI (/adapters/available).
 	registry.RegisterCapability("async", func(p registry.Plugin) bool {
 		_, ok := p.(download.AsyncDownloader)

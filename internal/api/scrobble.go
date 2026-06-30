@@ -8,24 +8,25 @@ import (
 )
 
 // handleScrobbleAuthURL serves POST /api/v1/scrobble/lastfm/auth-url.
-// Starts the Last.fm OAuth-style token flow for the session user.
-// Returns 400 with {"error":"lastfm_not_configured"} when the app API
-// key or secret are absent in settings. Returns {"authUrl","token"} on success.
+// Starts the Last.fm OAuth-style token flow. On error it distinguishes the two
+// failure modes so the FE can react correctly:
+//   - app API key/secret unset → 400 {"error":"lastfm_not_configured"} (admin must configure)
+//   - configured but the provider call failed → 502 {"error":"lastfm_unavailable"} (transient)
+//
+// Returns {"authUrl","token"} on success.
 func (s *Server) handleScrobbleAuthURL(w http.ResponseWriter, r *http.Request) {
 	if s.deps.Scrobble == nil {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "scrobble service unavailable"})
 		return
 	}
-	_, ok := currentUser(r)
-	if !ok {
-		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
-		return
-	}
 
 	authURL, token, err := s.deps.Scrobble.AuthURL(r.Context())
 	if err != nil {
-		// Propagate unconfigured as a distinct FE-detectable code rather than a 500.
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "lastfm_not_configured"})
+		if !s.deps.Scrobble.IsConfigured() {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "lastfm_not_configured"})
+		} else {
+			writeJSON(w, http.StatusBadGateway, map[string]string{"error": "lastfm_unavailable"})
+		}
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{
