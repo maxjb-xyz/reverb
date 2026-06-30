@@ -23,6 +23,14 @@ const QUALIFY_THRESHOLD_MS = 240_000
 const COMPLETE_WITHIN_MS = 1_500
 // currentTimeMs threshold for detecting a repeat-one re-loop back to near-0.
 const RELOOP_NEAR_ZERO_MS = 3_000
+// Maximum single-tick forward delta to accrue. The real audio engine fires
+// timeupdate ~4×/s so genuine listening produces deltas of ~250 ms; a delta
+// at or above this cap is a FORWARD SEEK (the user skipped ahead), and the
+// skipped span was never listened to, so it must NOT count toward msPlayed.
+// This is orthogonal to the backward-seek guard (which prevents *double*-
+// counting replayed seconds): the forward cap prevents counting *skipped*
+// seconds as listened ones.
+const MAX_DELTA_MS = 5_000
 
 function qualify(state: TrackState): boolean {
   const { durationMs, msPlayed } = state
@@ -35,10 +43,13 @@ function qualify(state: TrackState): boolean {
  * qualified play event.  Returns an unsubscribe function.
  *
  * Qualification rules:
- *  - Track must have durationMs > 30 000 ms (settled from the engine).
+ *  - Track must have durationMs > 30 000 ms.
  *  - msPlayed must reach durationMs/2 OR 240 000 ms — whichever comes first.
- *  - Only forward-running time (delta > 0 while playing) accrues.
- *  - A backward seek resets lastTimeMs without accruing (no double-counting).
+ *  - Only genuine forward play time accrues: 0 < delta < 5 000 ms while playing.
+ *    A backward seek (delta < 0) resets lastTimeMs without accruing — prevents
+ *    DOUBLE-counting replayed seconds. A large forward jump (delta >= 5 000 ms)
+ *    is a forward SEEK and is NOT accrued — prevents counting SKIPPED seconds as
+ *    listened ones. These two guards are orthogonal.
  *  - Repeat-one re-loop (backward jump to near-0 on the SAME track after fire)
  *    resets the per-play counters so a second qualification can fire.
  *  - completed = currentTimeMs >= durationMs - 1 500 at fire time.
@@ -61,12 +72,15 @@ export function startPlayTracker(
     // ── Track changed ─────────────────────────────────────────────────────
     if (!track || track.currentId !== current.id) {
       // Previous track: already fired or didn't qualify — discard; start fresh.
+      // Seed durationMs from the Track metadata (set at load time) so we don't
+      // have to wait for the engine's durationchange to settle; fall back to the
+      // engine-state durationMs if the Track's is missing.
       track = {
         currentId: current.id,
         title: current.title,
         artist: current.artist,
         album: current.album,
-        durationMs: durationMs,
+        durationMs: current.durationMs > 0 ? current.durationMs : durationMs,
         isrc: current.isrc,
         lastTimeMs: currentTimeMs,
         msPlayed: 0,
@@ -78,6 +92,7 @@ export function startPlayTracker(
     // ── Same track ────────────────────────────────────────────────────────
 
     // Update settled durationMs (the engine may emit 0 initially then settle).
+    // Prefer a non-zero engine-state value; otherwise keep the Track-seeded one.
     if (durationMs > 0) track.durationMs = durationMs
 
     const delta = currentTimeMs - track.lastTimeMs
@@ -95,10 +110,11 @@ export function startPlayTracker(
       return
     }
 
-    // Forward delta — accrue while playing and delta is positive.
-    // Backward jumps (delta < 0) are handled above; forward seeks are benign
-    // (they don't replay already-counted segments, so accruing them is correct).
-    if (playing && delta > 0) {
+    // Forward delta — accrue only genuine playback: positive, while playing, and
+    // below the seek cap. A delta >= MAX_DELTA_MS is a forward seek (skipped
+    // time) and is NOT accrued (lastTimeMs still advances below, so subsequent
+    // ticks resume correctly from the new position).
+    if (playing && delta > 0 && delta < MAX_DELTA_MS) {
       track.msPlayed += delta
     }
 
