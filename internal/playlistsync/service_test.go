@@ -928,7 +928,10 @@ func TestNilSrcSpotifyMethodsReturnErrSpotifyNotConfigured(t *testing.T) {
 // AddTrack, and RemoveTrack all work when the service has a nil PlaylistSource.
 func TestNilSrcManagedPlaylistOpsWork(t *testing.T) {
 	store := newMemStore()
-	svc := NewService(nil, fakeMatcher{}, &fakeDownloader{}, store, nil, func() int64 { return 200 }, seqID())
+	// Detail re-resolves library-source tracks via the matcher, so the added
+	// lib-t1 entry must be in the matcher's owned map to resolve as owned.
+	m := fakeMatcher{owned: map[string]string{"lib-t1": "lib-t1"}}
+	svc := NewService(nil, m, &fakeDownloader{}, store, nil, func() int64 { return 200 }, seqID())
 
 	// CreateManaged works.
 	det, err := svc.CreateManaged(context.Background(), "No Spotify Playlist")
@@ -960,7 +963,8 @@ func TestNilSrcManagedPlaylistOpsWork(t *testing.T) {
 		t.Fatalf("Detail ID mismatch")
 	}
 
-	// AddTrack works (library entry — no Spotify matching needed).
+	// AddTrack works (library entry — Detail re-resolves it via the matcher,
+	// which has lib-t1 owned, so it stays CoverageFull).
 	entry := core.ExternalResult{Source: "library", ExternalID: "lib-t1", Title: "Track 1", Type: core.EntityTrack}
 	det2, err := svc.AddTrack(context.Background(), det.ID, entry)
 	if err != nil {
@@ -968,6 +972,12 @@ func TestNilSrcManagedPlaylistOpsWork(t *testing.T) {
 	}
 	if det2.TotalCount != 1 {
 		t.Fatalf("TotalCount = %d after AddTrack, want 1", det2.TotalCount)
+	}
+	if det2.OwnedCount != 1 {
+		t.Fatalf("OwnedCount = %d after AddTrack, want 1 (library track re-resolved as owned)", det2.OwnedCount)
+	}
+	if det2.Tracks[0].State != core.CoverageFull {
+		t.Fatalf("Tracks[0].State = %v after AddTrack, want CoverageFull", det2.Tracks[0].State)
 	}
 
 	// RemoveTrack works.
@@ -1381,6 +1391,13 @@ func TestDetailSetsKeyOnAllRows(t *testing.T) {
 	if libRow.State != core.CoverageFull {
 		t.Fatalf("Tracks[0] expected CoverageFull, got %v", libRow.State)
 	}
+	// LibraryTrack must be synthesized from the matcher's returned id.
+	if libRow.LibraryTrack == nil {
+		t.Fatal("Tracks[0] (library-source): LibraryTrack must be non-nil after re-resolution")
+	}
+	if libRow.LibraryTrack.ID != "lib-t1" {
+		t.Fatalf("Tracks[0].LibraryTrack.ID = %q, want matcher-returned 'lib-t1'", libRow.LibraryTrack.ID)
+	}
 	if libRow.Key == nil {
 		t.Fatal("Tracks[0] (library-source): Key must be non-nil")
 	}
@@ -1447,12 +1464,15 @@ func TestDetailEmptyPlaylistHasNonNilTracks(t *testing.T) {
 	}
 }
 
-// TestDetailLibrarySourceTrackCoverArtID asserts that Detail re-resolves a
-// library-source entry via the matcher and returns the matcher's CoverArtID
-// on the synthesized LibraryTrack (not the frozen stored CoverArtID).
+// TestDetailLibrarySourceTrackCoverArtID asserts that Detail's synthesized
+// LibraryTrack carries the CoverArtID returned by the MATCHER, not the frozen
+// CoverArtID stored in TracksJSON. The stored cover is an old/dead id and the
+// matcher returns a distinct fresh id; asserting we get the fresh id proves the
+// cover comes from re-resolution, not storage (the old frozen-id bug).
 func TestDetailLibrarySourceTrackCoverArtID(t *testing.T) {
 	const storedID = "lib-track-55"
-	const wantCoverArtID = "cover-art-xyz"
+	const oldCover = "old-dead-cover-id"
+	const freshCover = "fresh-cover-id"
 	libraryEntry := core.ExternalResult{
 		Source:     "library",
 		ExternalID: storedID,
@@ -1460,17 +1480,17 @@ func TestDetailLibrarySourceTrackCoverArtID(t *testing.T) {
 		Artist:     "Artist",
 		Album:      "Album",
 		DurationMs: 200000,
-		CoverArtID: wantCoverArtID, // stored cover (same backend — matcher returns it)
+		CoverArtID: oldCover, // stale stored cover — must NOT leak through
 		Type:       core.EntityTrack,
 	}
 	src := &fakeSource{playlists: map[string]core.ExternalPlaylist{
 		"PL": {Source: "spotify", ExternalID: "PL", Name: "Cover Test", Tracks: []core.ExternalResult{libraryEntry}},
 	}}
 	store := newMemStore()
-	// Matcher confirms the track and returns the same CoverArtID (same backend, same id).
+	// Matcher returns a DISTINCT fresh CoverArtID for this track's metadata.
 	m := fakeMatcher{
 		owned: map[string]string{storedID: storedID},
-		meta:  map[string]core.Track{storedID: {CoverArtID: wantCoverArtID}},
+		meta:  map[string]core.Track{storedID: {CoverArtID: freshCover}},
 	}
 	svc := NewService(src, m, &fakeDownloader{}, store, nil, func() int64 { return 100 }, seqID())
 	det, err := svc.Import(context.Background(), "spotify:playlist:PL", false)
@@ -1487,8 +1507,11 @@ func TestDetailLibrarySourceTrackCoverArtID(t *testing.T) {
 	if tr.LibraryTrack == nil {
 		t.Fatal("LibraryTrack is nil")
 	}
-	if tr.LibraryTrack.CoverArtID != wantCoverArtID {
-		t.Fatalf("LibraryTrack.CoverArtID = %q, want %q", tr.LibraryTrack.CoverArtID, wantCoverArtID)
+	if tr.LibraryTrack.CoverArtID == oldCover {
+		t.Fatalf("LibraryTrack.CoverArtID = %q (frozen stored cover leaked through — re-resolution failed)", oldCover)
+	}
+	if tr.LibraryTrack.CoverArtID != freshCover {
+		t.Fatalf("LibraryTrack.CoverArtID = %q, want fresh %q (matcher-supplied, not frozen storage)", tr.LibraryTrack.CoverArtID, freshCover)
 	}
 }
 
