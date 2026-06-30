@@ -104,6 +104,129 @@ func (q *Queries) RepointPlays(ctx context.Context, arg RepointPlaysParams) erro
 	return err
 }
 
+const statsEntityArtist = `-- name: StatsEntityArtist :one
+SELECT
+    COUNT(*)         AS plays,
+    COALESCE(SUM(p.ms_played), 0) AS ms_played,
+    MIN(p.played_at) AS first_played,
+    MAX(p.played_at) AS last_played
+FROM plays p JOIN catalog_entity e ON e.id = p.catalog_id
+WHERE p.user_id = ? AND e.artist = ? AND p.played_at >= ? AND p.played_at < ?
+`
+
+type StatsEntityArtistParams struct {
+	UserID     string `json:"user_id"`
+	Artist     string `json:"artist"`
+	PlayedAt   int64  `json:"played_at"`
+	PlayedAt_2 int64  `json:"played_at_2"`
+}
+
+type StatsEntityArtistRow struct {
+	Plays       int64       `json:"plays"`
+	MsPlayed    interface{} `json:"ms_played"`
+	FirstPlayed interface{} `json:"first_played"`
+	LastPlayed  interface{} `json:"last_played"`
+}
+
+func (q *Queries) StatsEntityArtist(ctx context.Context, arg StatsEntityArtistParams) (StatsEntityArtistRow, error) {
+	row := q.db.QueryRowContext(ctx, statsEntityArtist,
+		arg.UserID,
+		arg.Artist,
+		arg.PlayedAt,
+		arg.PlayedAt_2,
+	)
+	var i StatsEntityArtistRow
+	err := row.Scan(
+		&i.Plays,
+		&i.MsPlayed,
+		&i.FirstPlayed,
+		&i.LastPlayed,
+	)
+	return i, err
+}
+
+const statsEntityTrack = `-- name: StatsEntityTrack :one
+SELECT
+    COUNT(*)         AS plays,
+    COALESCE(SUM(p.ms_played), 0) AS ms_played,
+    MIN(p.played_at) AS first_played,
+    MAX(p.played_at) AS last_played
+FROM plays p
+WHERE p.user_id = ? AND p.catalog_id = ? AND p.played_at >= ? AND p.played_at < ?
+`
+
+type StatsEntityTrackParams struct {
+	UserID     string `json:"user_id"`
+	CatalogID  string `json:"catalog_id"`
+	PlayedAt   int64  `json:"played_at"`
+	PlayedAt_2 int64  `json:"played_at_2"`
+}
+
+type StatsEntityTrackRow struct {
+	Plays       int64       `json:"plays"`
+	MsPlayed    interface{} `json:"ms_played"`
+	FirstPlayed interface{} `json:"first_played"`
+	LastPlayed  interface{} `json:"last_played"`
+}
+
+func (q *Queries) StatsEntityTrack(ctx context.Context, arg StatsEntityTrackParams) (StatsEntityTrackRow, error) {
+	row := q.db.QueryRowContext(ctx, statsEntityTrack,
+		arg.UserID,
+		arg.CatalogID,
+		arg.PlayedAt,
+		arg.PlayedAt_2,
+	)
+	var i StatsEntityTrackRow
+	err := row.Scan(
+		&i.Plays,
+		&i.MsPlayed,
+		&i.FirstPlayed,
+		&i.LastPlayed,
+	)
+	return i, err
+}
+
+const statsPlaysInWindow = `-- name: StatsPlaysInWindow :many
+SELECT p.played_at, p.ms_played
+FROM plays p
+WHERE p.user_id = ? AND p.played_at >= ? AND p.played_at < ?
+ORDER BY p.played_at ASC
+`
+
+type StatsPlaysInWindowParams struct {
+	UserID     string `json:"user_id"`
+	PlayedAt   int64  `json:"played_at"`
+	PlayedAt_2 int64  `json:"played_at_2"`
+}
+
+type StatsPlaysInWindowRow struct {
+	PlayedAt int64 `json:"played_at"`
+	MsPlayed int64 `json:"ms_played"`
+}
+
+func (q *Queries) StatsPlaysInWindow(ctx context.Context, arg StatsPlaysInWindowParams) ([]StatsPlaysInWindowRow, error) {
+	rows, err := q.db.QueryContext(ctx, statsPlaysInWindow, arg.UserID, arg.PlayedAt, arg.PlayedAt_2)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []StatsPlaysInWindowRow
+	for rows.Next() {
+		var i StatsPlaysInWindowRow
+		if err := rows.Scan(&i.PlayedAt, &i.MsPlayed); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const statsSummary = `-- name: StatsSummary :one
 SELECT
     COUNT(*)                    AS plays,
@@ -300,6 +423,142 @@ func (q *Queries) StatsTopTracks(ctx context.Context, arg StatsTopTracksParams) 
 	var items []StatsTopTracksRow
 	for rows.Next() {
 		var i StatsTopTracksRow
+		if err := rows.Scan(
+			&i.CatalogID,
+			&i.Title,
+			&i.Artist,
+			&i.Album,
+			&i.Plays,
+			&i.MsPlayed,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const statsTopTracksByArtist = `-- name: StatsTopTracksByArtist :many
+SELECT
+    p.catalog_id,
+    e.title,
+    e.artist,
+    e.album,
+    COUNT(*)          AS plays,
+    SUM(p.ms_played)  AS ms_played
+FROM plays p JOIN catalog_entity e ON e.id = p.catalog_id
+WHERE p.user_id = ? AND e.artist = ? AND p.played_at >= ? AND p.played_at < ?
+GROUP BY p.catalog_id
+ORDER BY COUNT(*) DESC, SUM(p.ms_played) DESC
+LIMIT ?
+`
+
+type StatsTopTracksByArtistParams struct {
+	UserID     string `json:"user_id"`
+	Artist     string `json:"artist"`
+	PlayedAt   int64  `json:"played_at"`
+	PlayedAt_2 int64  `json:"played_at_2"`
+	Limit      int64  `json:"limit"`
+}
+
+type StatsTopTracksByArtistRow struct {
+	CatalogID string          `json:"catalog_id"`
+	Title     string          `json:"title"`
+	Artist    string          `json:"artist"`
+	Album     string          `json:"album"`
+	Plays     int64           `json:"plays"`
+	MsPlayed  sql.NullFloat64 `json:"ms_played"`
+}
+
+func (q *Queries) StatsTopTracksByArtist(ctx context.Context, arg StatsTopTracksByArtistParams) ([]StatsTopTracksByArtistRow, error) {
+	rows, err := q.db.QueryContext(ctx, statsTopTracksByArtist,
+		arg.UserID,
+		arg.Artist,
+		arg.PlayedAt,
+		arg.PlayedAt_2,
+		arg.Limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []StatsTopTracksByArtistRow
+	for rows.Next() {
+		var i StatsTopTracksByArtistRow
+		if err := rows.Scan(
+			&i.CatalogID,
+			&i.Title,
+			&i.Artist,
+			&i.Album,
+			&i.Plays,
+			&i.MsPlayed,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const statsTopTracksByCatalogID = `-- name: StatsTopTracksByCatalogID :many
+SELECT
+    p.catalog_id,
+    e.title,
+    e.artist,
+    e.album,
+    COUNT(*)          AS plays,
+    SUM(p.ms_played)  AS ms_played
+FROM plays p JOIN catalog_entity e ON e.id = p.catalog_id
+WHERE p.user_id = ? AND p.catalog_id = ? AND p.played_at >= ? AND p.played_at < ?
+GROUP BY p.catalog_id
+ORDER BY COUNT(*) DESC, SUM(p.ms_played) DESC
+LIMIT ?
+`
+
+type StatsTopTracksByCatalogIDParams struct {
+	UserID     string `json:"user_id"`
+	CatalogID  string `json:"catalog_id"`
+	PlayedAt   int64  `json:"played_at"`
+	PlayedAt_2 int64  `json:"played_at_2"`
+	Limit      int64  `json:"limit"`
+}
+
+type StatsTopTracksByCatalogIDRow struct {
+	CatalogID string          `json:"catalog_id"`
+	Title     string          `json:"title"`
+	Artist    string          `json:"artist"`
+	Album     string          `json:"album"`
+	Plays     int64           `json:"plays"`
+	MsPlayed  sql.NullFloat64 `json:"ms_played"`
+}
+
+func (q *Queries) StatsTopTracksByCatalogID(ctx context.Context, arg StatsTopTracksByCatalogIDParams) ([]StatsTopTracksByCatalogIDRow, error) {
+	rows, err := q.db.QueryContext(ctx, statsTopTracksByCatalogID,
+		arg.UserID,
+		arg.CatalogID,
+		arg.PlayedAt,
+		arg.PlayedAt_2,
+		arg.Limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []StatsTopTracksByCatalogIDRow
+	for rows.Next() {
+		var i StatsTopTracksByCatalogIDRow
 		if err := rows.Scan(
 			&i.CatalogID,
 			&i.Title,
