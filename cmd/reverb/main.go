@@ -171,6 +171,7 @@ func main() {
 
 	catalogSvc := catalog.NewService(st.Q(), time.Now, uuid.NewString)
 	playSvc := play.NewService(st.Q(), catalogSvc, time.Now, uuid.NewString)
+	statsSvc := play.NewStats(st.Q())
 
 	deps := api.Deps{
 		Auth:          authSvc,
@@ -190,6 +191,7 @@ func main() {
 		Notifications: notifSvc,
 		Resolver:      resolverSvc,
 		Play:          playSvc,
+		Stats:         statsSvc,
 	}
 	// Guard against the "non-nil interface wrapping a nil pointer" trap: only set
 	// the interface fields when the concrete service is actually present.

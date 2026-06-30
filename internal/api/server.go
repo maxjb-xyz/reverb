@@ -135,6 +135,9 @@ type Deps struct {
 	// Play records user play events and mints catalog IDs. Nil in tests/legacy
 	// that don't exercise the listening-history boundary.
 	Play *play.Service
+	// Stats provides per-user listening statistics. Nil in tests/legacy that
+	// don't exercise the stats boundary.
+	Stats *play.Stats
 }
 
 type Server struct {
@@ -270,6 +273,14 @@ func (s *Server) routes() {
 			pr.Get("/notifications", s.handleListNotifications)
 			pr.Post("/notifications/read", s.handleMarkNotificationsRead)
 			pr.Post("/plays", s.handlePlay)
+			pr.Get("/stats/summary", s.handleStatsSummary)
+			pr.Get("/stats/top/tracks", s.handleStatsTopTracks)
+			pr.Get("/stats/top/artists", s.handleStatsTopArtists)
+			pr.Get("/stats/top/albums", s.handleStatsTopAlbums)
+			pr.Get("/stats/timeline", s.handleStatsTimeline)
+			pr.Get("/stats/clock", s.handleStatsClock)
+			pr.Get("/stats/recent", s.handleStatsRecent)
+			pr.Get("/stats/entity", s.handleStatsEntity)
 
 			// manage library & integrations: adapter CRUD + server settings.
 			pr.Group(func(mr chi.Router) {
