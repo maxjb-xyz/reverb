@@ -19,6 +19,7 @@ import (
 	"github.com/maxjb-xyz/reverb/internal/matching"
 	"github.com/maxjb-xyz/reverb/internal/playlistsync"
 	"github.com/maxjb-xyz/reverb/internal/registry"
+	"github.com/maxjb-xyz/reverb/internal/resolver"
 	"github.com/maxjb-xyz/reverb/internal/search"
 	"github.com/maxjb-xyz/reverb/internal/store/db"
 )
@@ -261,6 +262,10 @@ type ServiceBundle struct {
 	Manager    *download.Manager      // may be nil; NOT started yet
 	Sync       *playlistsync.Service  // may be nil (needs a library, a Manager + a PlaylistProvider)
 	Supervisor *embedded.Supervisor   // bundled Navidrome supervisor; nil in external mode wiring helpers
+	// Matcher is the live *matching.Service for the current library adapter, exposed
+	// so the long-lived resolver singleton can re-match against the CURRENT adapter
+	// after a hot-reload rebuilds the bundle. Nil when no library is configured.
+	Matcher resolver.Rematcher
 }
 
 // VersionStore is the library_version reader/writer the Manager + matcher need.
@@ -464,14 +469,24 @@ func (b *Builder) Build(ctx context.Context) (ServiceBundle, error) {
 		Probe:  embedded.PingProbe("http://127.0.0.1:4533", nil),
 	})
 
+	// One matcher per library adapter, shared by the aggregator, the download
+	// Rematcher, AND the resolver singleton (via bundle.Matcher). A single instance
+	// keeps all three re-matching against the same backend; on a hot-reload a fresh
+	// matcher is built here and republished, so the resolver follows the live adapter.
+	var matcher *matching.Service
+	if libAdapter != nil {
+		matcher = matching.NewService(libAdapter, b.queries, b.version.LibraryVersion)
+		bundle.Matcher = matcher
+	}
+
 	// Search sources + matcher + aggregator.
 	sources := BuildSearchSources(b.searchReg, instances, b.getenv)
 	if len(sources) > 0 {
-		var matcher search.Matcher
-		if libAdapter != nil {
-			matcher = matching.NewService(libAdapter, b.queries, b.version.LibraryVersion)
+		var aggMatcher search.Matcher
+		if matcher != nil {
+			aggMatcher = matcher
 		}
-		bundle.Aggregator = search.NewAggregator(sources, matcher, 8*time.Second)
+		bundle.Aggregator = search.NewAggregator(sources, aggMatcher, 8*time.Second)
 		log.Printf("search sources active: %d", len(sources))
 	} else {
 		log.Printf("no search sources configured (add one via settings)")
@@ -488,7 +503,9 @@ func (b *Builder) Build(ctx context.Context) (ServiceBundle, error) {
 	// Downloaders → Manager (constructed but not started).
 	downloaders := BuildDownloaders(b.downloaderReg, instances, b.getenv)
 	if len(downloaders) > 0 && libAdapter != nil {
-		var rematcher download.Rematcher = matching.NewService(libAdapter, b.queries, b.version.LibraryVersion)
+		// Reuse the single matcher built above (libAdapter != nil guarantees it is
+		// non-nil here) — functionally identical to a fresh instance, one fewer alloc.
+		var rematcher download.Rematcher = matcher
 		bundle.Manager = download.NewManager(
 			download.Config{Workers: 2, DebounceWindow: 5 * time.Second},
 			downloaders,

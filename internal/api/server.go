@@ -17,6 +17,7 @@ import (
 	"github.com/maxjb-xyz/reverb/internal/notification"
 	"github.com/maxjb-xyz/reverb/internal/registry"
 	"github.com/maxjb-xyz/reverb/internal/request"
+	"github.com/maxjb-xyz/reverb/internal/resolver"
 	"github.com/maxjb-xyz/reverb/internal/search"
 	"github.com/maxjb-xyz/reverb/internal/store/db"
 )
@@ -118,6 +119,11 @@ type Deps struct {
 	Requests *request.Service
 	// Notifications is the notification service. Nil in tests/legacy that don't use notifications.
 	Notifications *notification.Service
+	// Resolver maps catalog IDs to current backend addressing. It is a long-lived
+	// singleton constructed once in the composition root with a provider that reads
+	// the LIVE matcher, so it survives adapter hot-reloads (the matcher is rebuilt
+	// on each reload). Nil in tests/legacy that don't use the addressing boundary.
+	Resolver *resolver.Service
 }
 
 type Server struct {

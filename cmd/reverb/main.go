@@ -25,6 +25,7 @@ import (
 	"github.com/maxjb-xyz/reverb/internal/playlistsync"
 	"github.com/maxjb-xyz/reverb/internal/registry"
 	"github.com/maxjb-xyz/reverb/internal/request"
+	"github.com/maxjb-xyz/reverb/internal/resolver"
 	"github.com/maxjb-xyz/reverb/internal/search/spotify"
 	"github.com/maxjb-xyz/reverb/internal/store"
 	"github.com/maxjb-xyz/reverb/internal/store/db"
@@ -155,6 +156,16 @@ func main() {
 		}()
 	}
 
+	// The reloader owns the live-matcher holder: it is published from the initial
+	// bundle here and republished on every adapter hot-reload. The resolver below is
+	// constructed ONCE but reads the live matcher per-resolve through reloader's
+	// provider, so it always re-matches against the current adapter (never a stale
+	// one) across reloads. Publishing the boot matcher (may be nil) before building
+	// the resolver makes the very first Resolve see the live matcher too.
+	reloader := newServiceReloader(builder)
+	reloader.publishMatcher(bundle.Matcher)
+	resolverSvc := resolver.NewService(st.Q(), reloader.matcherProvider(), time.Now)
+
 	deps := api.Deps{
 		Auth:          authSvc,
 		Library:       bundle.Library,
@@ -165,12 +176,13 @@ func main() {
 		PlaylistOwner: st.Q(),
 		Events:        bus,
 		ConfigDirty:   dirty,
-		Reload:        &serviceReloader{builder: builder},
+		Reload:        reloader,
 		Dev:           cfg.Dev,
 		Version:       version,
 		DataDir:       filepath.Dir(cfg.DBPath),
 		Requests:      reqSvc,
 		Notifications: notifSvc,
+		Resolver:      resolverSvc,
 	}
 	// Guard against the "non-nil interface wrapping a nil pointer" trap: only set
 	// the interface fields when the concrete service is actually present.
