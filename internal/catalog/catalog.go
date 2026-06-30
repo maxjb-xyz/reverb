@@ -34,6 +34,10 @@ type Querier interface {
 	RepointAliases(ctx context.Context, arg db.RepointAliasesParams) error
 	RepointBindings(ctx context.Context, arg db.RepointBindingsParams) error
 	DeleteCatalogEntity(ctx context.Context, id string) error
+	// Binding methods for merge FK repoint (Task 4).
+	GetBackendBinding(ctx context.Context, arg db.GetBackendBindingParams) (db.BackendBinding, error)
+	UpsertBackendBinding(ctx context.Context, arg db.UpsertBackendBindingParams) error
+	DeleteBindingsForCatalog(ctx context.Context, catalogID string) error
 }
 
 // Service mints and resolves catalog IDs.

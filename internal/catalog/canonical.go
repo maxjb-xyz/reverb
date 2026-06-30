@@ -51,7 +51,15 @@ func (s *Service) CanonicalFor(ctx context.Context, id Identity) (string, error)
 			AliasValue: a.value,
 		})
 		if err == nil {
-			// Found an existing entity. Attach any newly-supplied aliases and return.
+			// Found an existing entity via this alias.
+			// For ISRC hits, require corroboration before accepting the match:
+			// duplicate/re-used ISRCs exist in the wild and must not fuse distinct tracks.
+			if a.kind == "isrc" && !s.corroborates(ctx, cid, id) {
+				// ISRC hit but metadata disagrees — this is a different track sharing
+				// an ISRC. Skip this alias and continue to the next one.
+				continue
+			}
+			// Attach any newly-supplied aliases and return.
 			return s.attachAliases(ctx, cid, id, aliases)
 		}
 		if !errors.Is(err, sql.ErrNoRows) {
@@ -93,20 +101,41 @@ func (s *Service) CanonicalFor(ctx context.Context, id Identity) (string, error)
 	return cid, nil
 }
 
-// attachAliases is a stub for Task 3: insert the supplied aliases with
-// ON CONFLICT DO NOTHING and return the existing catalog ID unchanged.
-// Task 4 replaces the body with collision-detection and merge logic.
-func (s *Service) attachAliases(ctx context.Context, cid string, _ Identity, aliases []aliasKV) (string, error) {
+// attachAliases inserts any newly-supplied aliases onto cid; if an alias already
+// points at a DIFFERENT entity, that observed collision fires a merge.
+// For an isrc collision, the merge is only done if the two entities corroborate
+// (same fingerprint). For non-isrc collisions (e.g. norm, external), merge unconditionally.
+func (s *Service) attachAliases(ctx context.Context, cid string, id Identity, aliases []aliasKV) (string, error) {
+	winner := cid
 	now := s.now().Unix()
 	for _, a := range aliases {
-		if err := s.q.InsertCatalogAlias(ctx, db.InsertCatalogAliasParams{
-			AliasKind:  a.kind,
-			AliasValue: a.value,
-			CatalogID:  cid,
-			CreatedAt:  now,
-		}); err != nil {
+		existing, err := s.q.GetAliasCatalogID(ctx, db.GetAliasCatalogIDParams{AliasKind: a.kind, AliasValue: a.value})
+		switch {
+		case errors.Is(err, sql.ErrNoRows):
+			if err := s.q.InsertCatalogAlias(ctx, db.InsertCatalogAliasParams{
+				AliasKind:  a.kind,
+				AliasValue: a.value,
+				CatalogID:  winner,
+				CreatedAt:  now,
+			}); err != nil {
+				return "", err
+			}
+		case err != nil:
 			return "", err
+		case existing != winner:
+			// Collision detected: an alias already points at a different entity.
+			// For isrc collisions, corroborate before merging (duplicate ISRCs exist in the wild).
+			if a.kind == "isrc" && !s.corroborates(ctx, existing, id) {
+				// Duplicate/re-used ISRC across genuinely distinct tracks — do not merge.
+				continue
+			}
+			// Winner = the existing (older) entity.
+			w, l := pickWinner(winner, existing)
+			if err := s.merge(ctx, l, w); err != nil {
+				return "", err
+			}
+			winner = w
 		}
 	}
-	return cid, nil
+	return winner, nil
 }
