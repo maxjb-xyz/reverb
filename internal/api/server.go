@@ -88,6 +88,13 @@ type ServiceReloader interface {
 	Reload(ctx context.Context) (lib library.LibraryAdapter, search Streamer, coverage CoverageService, downloads DownloadManager, sync SyncService, err error)
 }
 
+// Resolver is the subset of *resolver.Service consumed by the cover/stream
+// handlers. Declared as an interface so tests can inject a recording fake without
+// requiring a real DB-backed resolver.
+type Resolver interface {
+	Resolve(ctx context.Context, catalogID string) (resolver.Addressing, error)
+}
+
 type Deps struct {
 	Auth             *auth.Service
 	Library          library.LibraryAdapter
@@ -123,7 +130,7 @@ type Deps struct {
 	// singleton constructed once in the composition root with a provider that reads
 	// the LIVE matcher, so it survives adapter hot-reloads (the matcher is rebuilt
 	// on each reload). Nil in tests/legacy that don't use the addressing boundary.
-	Resolver *resolver.Service
+	Resolver Resolver
 }
 
 type Server struct {

@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -15,6 +16,7 @@ import (
 	"github.com/maxjb-xyz/reverb/internal/core"
 	"github.com/maxjb-xyz/reverb/internal/library"
 	"github.com/maxjb-xyz/reverb/internal/registry"
+	"github.com/maxjb-xyz/reverb/internal/resolver"
 	"github.com/maxjb-xyz/reverb/internal/store"
 )
 
@@ -195,5 +197,162 @@ func TestHandlerCover_TransportError_Returns502(t *testing.T) {
 	rec := doAuthed(t, srv, http.MethodGet, "/api/v1/cover/any", cookie)
 	if rec.Code != http.StatusBadGateway {
 		t.Fatalf("want 502, got %d (body=%s)", rec.Code, rec.Body.String())
+	}
+}
+
+// --- canonical-aware boundary tests ---
+
+// countingResolver wraps a fake resolver.Addressing result and records calls.
+type countingResolver struct {
+	calls   atomic.Int32
+	result  resolver.Addressing
+	err     error
+}
+
+func (r *countingResolver) Resolve(_ context.Context, _ string) (resolver.Addressing, error) {
+	r.calls.Add(1)
+	return r.result, r.err
+}
+
+// stubLibTestServerWithResolver builds a Server wired to an arbitrary
+// library.LibraryAdapter and a Resolver implementation.
+func stubLibTestServerWithResolver(t *testing.T, lib library.LibraryAdapter, res Resolver) (*Server, *http.Cookie) {
+	t.Helper()
+	st, err := store.Open(t.TempDir() + "/stub-res.db")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { st.Close() })
+	if err := st.Migrate(); err != nil {
+		t.Fatal(err)
+	}
+	authSvc := auth.NewService(st.Q(), time.Now)
+	if err := authSvc.EnsureSeed(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	uid, err := authSvc.SetupOwner(context.Background(), "owner", "pw")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tok, err := authSvc.CreateSession(context.Background(), uid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := NewServer(Deps{
+		Auth:       authSvc,
+		Library:    lib,
+		Search:     registry.NewRegistry("search"),
+		Downloader: registry.NewRegistry("downloader"),
+		Resolver:   res,
+	})
+	return srv, &http.Cookie{Name: sessionCookie, Value: tok}
+}
+
+// TestHandleCover_BackendIdPassesThrough verifies that a non-canonical id (no
+// trk_/alb_/art_ prefix) goes directly to the adapter without touching the
+// resolver. The resolver must receive zero calls.
+func TestHandleCover_BackendIdPassesThrough(t *testing.T) {
+	res := &countingResolver{} // configured with zero calls expectation
+	lib := &stubLibrary{}
+	srv, cookie := stubLibTestServerWithResolver(t, lib, res)
+
+	rec := doAuthed(t, srv, http.MethodGet, "/api/v1/cover/al-1", cookie)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d (body=%s)", rec.Code, rec.Body.String())
+	}
+	if n := res.calls.Load(); n != 0 {
+		t.Fatalf("resolver must NOT be called for raw backend id; got %d call(s)", n)
+	}
+}
+
+// TestHandleCover_CanonicalKnownAbsent404sWithoutBackendCall verifies that a
+// canonical id where the resolver returns Found=false results in a 404 and the
+// adapter is never called.
+func TestHandleCover_CanonicalKnownAbsent404sWithoutBackendCall(t *testing.T) {
+	res := &countingResolver{result: resolver.Addressing{Found: false}}
+	lib := &stubLibrary{}
+	srv, cookie := stubLibTestServerWithResolver(t, lib, res)
+
+	rec := doAuthed(t, srv, http.MethodGet, "/api/v1/cover/alb_abc123", cookie)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("want 404, got %d (body=%s)", rec.Code, rec.Body.String())
+	}
+	if n := res.calls.Load(); n != 1 {
+		t.Fatalf("resolver must be called exactly once; got %d call(s)", n)
+	}
+}
+
+// TestHandleCover_CanonicalResolvesThenServes verifies that a canonical id with
+// Found=true and a non-empty CoverArtID causes the adapter to be called with the
+// resolved backend id, and that ?size= is threaded through.
+func TestHandleCover_CanonicalResolvesThenServes(t *testing.T) {
+	res := &countingResolver{result: resolver.Addressing{Found: true, CoverArtID: "al-resolved"}}
+	lib := &stubLibrary{}
+	srv, cookie := stubLibTestServerWithResolver(t, lib, res)
+
+	rec := doAuthed(t, srv, http.MethodGet, "/api/v1/cover/trk_xyz?size=300", cookie)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d (body=%s)", rec.Code, rec.Body.String())
+	}
+	if rec.Header().Get("Content-Type") != "image/jpeg" {
+		t.Fatalf("content-type = %q", rec.Header().Get("Content-Type"))
+	}
+	if n := res.calls.Load(); n != 1 {
+		t.Fatalf("resolver must be called exactly once; got %d call(s)", n)
+	}
+}
+
+// TestHandleStream_BackendIdPassesThrough verifies that a non-canonical stream id
+// bypasses the resolver entirely.
+func TestHandleStream_BackendIdPassesThrough(t *testing.T) {
+	res := &countingResolver{}
+	lib := &stubLibrary{}
+	srv, cookie := stubLibTestServerWithResolver(t, lib, res)
+
+	rec := doAuthed(t, srv, http.MethodGet, "/api/v1/stream/t1", cookie)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d (body=%s)", rec.Code, rec.Body.String())
+	}
+	if n := res.calls.Load(); n != 0 {
+		t.Fatalf("resolver must NOT be called for raw backend id; got %d call(s)", n)
+	}
+}
+
+// TestHandleStream_CanonicalKnownAbsent404sWithoutBackendCall verifies that a
+// canonical stream id where the resolver returns Found=false results in a 404
+// without calling the adapter.
+func TestHandleStream_CanonicalKnownAbsent404sWithoutBackendCall(t *testing.T) {
+	res := &countingResolver{result: resolver.Addressing{Found: false}}
+	lib := &stubLibrary{}
+	srv, cookie := stubLibTestServerWithResolver(t, lib, res)
+
+	rec := doAuthed(t, srv, http.MethodGet, "/api/v1/stream/trk_dead", cookie)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("want 404, got %d (body=%s)", rec.Code, rec.Body.String())
+	}
+	if n := res.calls.Load(); n != 1 {
+		t.Fatalf("resolver must be called exactly once; got %d call(s)", n)
+	}
+}
+
+// TestHandleStream_CanonicalResolvesThenServes verifies that a canonical stream id
+// with Found=true forwards to the adapter using the resolved BackendID, threading
+// the Range header through.
+func TestHandleStream_CanonicalResolvesThenServes(t *testing.T) {
+	res := &countingResolver{result: resolver.Addressing{Found: true, BackendID: "t-resolved"}}
+	lib := &stubLibrary{}
+	srv, cookie := stubLibTestServerWithResolver(t, lib, res)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/stream/trk_xyz", nil)
+	req.AddCookie(cookie)
+	req.Header.Set("Range", "bytes=0-3")
+	srv.Handler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d (body=%s)", rec.Code, rec.Body.String())
+	}
+	if n := res.calls.Load(); n != 1 {
+		t.Fatalf("resolver must be called exactly once; got %d call(s)", n)
 	}
 }
