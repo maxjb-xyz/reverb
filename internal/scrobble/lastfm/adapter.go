@@ -19,7 +19,7 @@ import (
 )
 
 const (
-	defaultBase  = "https://ws.audioscrobbler.com/2.0/"
+	defaultBase   = "https://ws.audioscrobbler.com/2.0/"
 	lastfmAuthURL = "https://www.last.fm/api/auth/"
 )
 

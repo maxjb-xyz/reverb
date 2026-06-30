@@ -59,11 +59,11 @@ type Link struct {
 // Service orchestrates Last.fm scrobbling per-user: auth, queueing, and the
 // background worker that drains the queue.
 type Service struct {
-	q        Querier
-	sc       Scrobbler
-	cfg      func() Creds      // returns app-level Creds{APIKey, APISecret}
-	now      func() time.Time
-	idgen    func() string
+	q     Querier
+	sc    Scrobbler
+	cfg   func() Creds // returns app-level Creds{APIKey, APISecret}
+	now   func() time.Time
+	idgen func() string
 }
 
 // NewService constructs a Service.

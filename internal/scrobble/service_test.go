@@ -57,9 +57,9 @@ func findMigrationsDir(t *testing.T) string {
 	// The test runs with cwd = internal/scrobble/
 	// Go up two levels to the repo root, then descend.
 	candidates := []string{
-		"../../store/migrations",        // from internal/scrobble/
-		"../store/migrations",           // fallback
-		"internal/store/migrations",     // from repo root
+		"../../store/migrations",    // from internal/scrobble/
+		"../store/migrations",       // fallback
+		"internal/store/migrations", // from repo root
 	}
 	for _, rel := range candidates {
 		abs, err := filepath.Abs(rel)
@@ -98,8 +98,8 @@ type fakeScrobbler struct {
 	nowPlayingErr   error
 
 	// Scrobble recording
-	scrobbleCalls []scrobbleCall
-	scrobbleErr   error
+	scrobbleCalls    []scrobbleCall
+	scrobbleErr      error
 	scrobbleAccepted int
 }
 

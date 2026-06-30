@@ -7,9 +7,9 @@ import (
 
 // Track holds the metadata for a single track.
 type Track struct {
-	Title     string
-	Artist    string
-	Album     string
+	Title      string
+	Artist     string
+	Album      string
 	DurationMs int
 }
 
