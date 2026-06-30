@@ -269,6 +269,7 @@ func (s *Server) routes() {
 			pr.Get("/ws", s.handleWS)
 			pr.Get("/notifications", s.handleListNotifications)
 			pr.Post("/notifications/read", s.handleMarkNotificationsRead)
+			pr.Post("/plays", s.handlePlay)
 
 			// manage library & integrations: adapter CRUD + server settings.
 			pr.Group(func(mr chi.Router) {
