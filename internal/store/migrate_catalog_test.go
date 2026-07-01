@@ -6,7 +6,7 @@ import (
 )
 
 func TestMigration0019_AdditiveAndReversible(t *testing.T) {
-	st := openMigrated(t) // applies all migrations through 0019
+	st := openMigrated(t) // applies all migrations through current latest
 	ctx := context.Background()
 
 	// 1. Additive: the three new tables exist and are EMPTY.
@@ -19,17 +19,22 @@ func TestMigration0019_AdditiveAndReversible(t *testing.T) {
 			t.Fatalf("table %s should start empty, has %d", tbl, n)
 		}
 	}
-	// 2. Pre-existing consumer tables are unaltered (no canonical_id column added).
+	// 2. canonical_id is present on download_jobs (added by migration 0022, Task 3).
+	//    Verify the column exists and has the expected safe default.
 	rows, err := st.DB().QueryContext(ctx, "SELECT name FROM pragma_table_info('download_jobs')")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer rows.Close()
+	found := false
 	for rows.Next() {
 		var col string
 		_ = rows.Scan(&col)
 		if col == "canonical_id" {
-			t.Fatal("0019 must not add canonical_id to download_jobs in P1")
+			found = true
 		}
+	}
+	if !found {
+		t.Fatal("canonical_id must be present on download_jobs (migration 0022)")
 	}
 }

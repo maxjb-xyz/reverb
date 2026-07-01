@@ -59,7 +59,7 @@ func (q *Queries) DeleteFinishedDownloadJobs(ctx context.Context) ([]string, err
 
 const getActiveDownloadJobByDedup = `-- name: GetActiveDownloadJobByDedup :one
 SELECT id, dedup_key, request_json, downloader_name, status, progress, error,
-       output_path, library_track_id, cover_art_id, priority, requested_by, attempts,
+       output_path, library_track_id, cover_art_id, canonical_id, priority, requested_by, attempts,
        downloader_ref, created_at, started_at, finished_at
 FROM download_jobs
 WHERE dedup_key = ? AND status IN ('queued', 'running')
@@ -78,6 +78,7 @@ type GetActiveDownloadJobByDedupRow struct {
 	OutputPath     string         `json:"output_path"`
 	LibraryTrackID sql.NullString `json:"library_track_id"`
 	CoverArtID     sql.NullString `json:"cover_art_id"`
+	CanonicalID    string         `json:"canonical_id"`
 	Priority       int64          `json:"priority"`
 	RequestedBy    sql.NullString `json:"requested_by"`
 	Attempts       int64          `json:"attempts"`
@@ -101,6 +102,7 @@ func (q *Queries) GetActiveDownloadJobByDedup(ctx context.Context, dedupKey stri
 		&i.OutputPath,
 		&i.LibraryTrackID,
 		&i.CoverArtID,
+		&i.CanonicalID,
 		&i.Priority,
 		&i.RequestedBy,
 		&i.Attempts,
@@ -114,7 +116,7 @@ func (q *Queries) GetActiveDownloadJobByDedup(ctx context.Context, dedupKey stri
 
 const getDownloadJob = `-- name: GetDownloadJob :one
 SELECT id, dedup_key, request_json, downloader_name, status, progress, error,
-       output_path, library_track_id, cover_art_id, priority, requested_by, attempts,
+       output_path, library_track_id, cover_art_id, canonical_id, priority, requested_by, attempts,
        downloader_ref, created_at, started_at, finished_at
 FROM download_jobs WHERE id = ?
 `
@@ -130,6 +132,7 @@ type GetDownloadJobRow struct {
 	OutputPath     string         `json:"output_path"`
 	LibraryTrackID sql.NullString `json:"library_track_id"`
 	CoverArtID     sql.NullString `json:"cover_art_id"`
+	CanonicalID    string         `json:"canonical_id"`
 	Priority       int64          `json:"priority"`
 	RequestedBy    sql.NullString `json:"requested_by"`
 	Attempts       int64          `json:"attempts"`
@@ -153,6 +156,7 @@ func (q *Queries) GetDownloadJob(ctx context.Context, id string) (GetDownloadJob
 		&i.OutputPath,
 		&i.LibraryTrackID,
 		&i.CoverArtID,
+		&i.CanonicalID,
 		&i.Priority,
 		&i.RequestedBy,
 		&i.Attempts,
@@ -220,7 +224,7 @@ func (q *Queries) InsertDownloadJob(ctx context.Context, arg InsertDownloadJobPa
 
 const listDownloadJobs = `-- name: ListDownloadJobs :many
 SELECT id, dedup_key, request_json, downloader_name, status, progress, error,
-       output_path, library_track_id, cover_art_id, priority, requested_by, attempts,
+       output_path, library_track_id, cover_art_id, canonical_id, priority, requested_by, attempts,
        downloader_ref, created_at, started_at, finished_at
 FROM download_jobs
 ORDER BY created_at DESC
@@ -237,6 +241,7 @@ type ListDownloadJobsRow struct {
 	OutputPath     string         `json:"output_path"`
 	LibraryTrackID sql.NullString `json:"library_track_id"`
 	CoverArtID     sql.NullString `json:"cover_art_id"`
+	CanonicalID    string         `json:"canonical_id"`
 	Priority       int64          `json:"priority"`
 	RequestedBy    sql.NullString `json:"requested_by"`
 	Attempts       int64          `json:"attempts"`
@@ -266,6 +271,7 @@ func (q *Queries) ListDownloadJobs(ctx context.Context) ([]ListDownloadJobsRow, 
 			&i.OutputPath,
 			&i.LibraryTrackID,
 			&i.CoverArtID,
+			&i.CanonicalID,
 			&i.Priority,
 			&i.RequestedBy,
 			&i.Attempts,
@@ -289,7 +295,7 @@ func (q *Queries) ListDownloadJobs(ctx context.Context) ([]ListDownloadJobsRow, 
 
 const listDownloadJobsByStatus = `-- name: ListDownloadJobsByStatus :many
 SELECT id, dedup_key, request_json, downloader_name, status, progress, error,
-       output_path, library_track_id, cover_art_id, priority, requested_by, attempts,
+       output_path, library_track_id, cover_art_id, canonical_id, priority, requested_by, attempts,
        downloader_ref, created_at, started_at, finished_at
 FROM download_jobs
 WHERE status = ?
@@ -307,6 +313,7 @@ type ListDownloadJobsByStatusRow struct {
 	OutputPath     string         `json:"output_path"`
 	LibraryTrackID sql.NullString `json:"library_track_id"`
 	CoverArtID     sql.NullString `json:"cover_art_id"`
+	CanonicalID    string         `json:"canonical_id"`
 	Priority       int64          `json:"priority"`
 	RequestedBy    sql.NullString `json:"requested_by"`
 	Attempts       int64          `json:"attempts"`
@@ -336,6 +343,7 @@ func (q *Queries) ListDownloadJobsByStatus(ctx context.Context, status string) (
 			&i.OutputPath,
 			&i.LibraryTrackID,
 			&i.CoverArtID,
+			&i.CanonicalID,
 			&i.Priority,
 			&i.RequestedBy,
 			&i.Attempts,
@@ -355,6 +363,34 @@ func (q *Queries) ListDownloadJobsByStatus(ctx context.Context, status string) (
 		return nil, err
 	}
 	return items, nil
+}
+
+const repointDownloadJobs = `-- name: RepointDownloadJobs :exec
+UPDATE download_jobs SET canonical_id = ?1 WHERE canonical_id = ?2
+`
+
+type RepointDownloadJobsParams struct {
+	CanonicalID  string `json:"canonical_id"`
+	CanonicalID2 string `json:"canonical_id_2"`
+}
+
+func (q *Queries) RepointDownloadJobs(ctx context.Context, arg RepointDownloadJobsParams) error {
+	_, err := q.db.ExecContext(ctx, repointDownloadJobs, arg.CanonicalID, arg.CanonicalID2)
+	return err
+}
+
+const updateDownloadJobCanonicalID = `-- name: UpdateDownloadJobCanonicalID :exec
+UPDATE download_jobs SET canonical_id = ?1 WHERE id = ?2
+`
+
+type UpdateDownloadJobCanonicalIDParams struct {
+	CanonicalID string `json:"canonical_id"`
+	ID          string `json:"id"`
+}
+
+func (q *Queries) UpdateDownloadJobCanonicalID(ctx context.Context, arg UpdateDownloadJobCanonicalIDParams) error {
+	_, err := q.db.ExecContext(ctx, updateDownloadJobCanonicalID, arg.CanonicalID, arg.ID)
+	return err
 }
 
 const updateDownloadJobCoverArtID = `-- name: UpdateDownloadJobCoverArtID :exec

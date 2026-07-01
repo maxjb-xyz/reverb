@@ -7,13 +7,13 @@ INSERT INTO download_jobs (
 
 -- name: GetDownloadJob :one
 SELECT id, dedup_key, request_json, downloader_name, status, progress, error,
-       output_path, library_track_id, cover_art_id, priority, requested_by, attempts,
+       output_path, library_track_id, cover_art_id, canonical_id, priority, requested_by, attempts,
        downloader_ref, created_at, started_at, finished_at
 FROM download_jobs WHERE id = ?;
 
 -- name: GetActiveDownloadJobByDedup :one
 SELECT id, dedup_key, request_json, downloader_name, status, progress, error,
-       output_path, library_track_id, cover_art_id, priority, requested_by, attempts,
+       output_path, library_track_id, cover_art_id, canonical_id, priority, requested_by, attempts,
        downloader_ref, created_at, started_at, finished_at
 FROM download_jobs
 WHERE dedup_key = ? AND status IN ('queued', 'running')
@@ -22,14 +22,14 @@ LIMIT 1;
 
 -- name: ListDownloadJobs :many
 SELECT id, dedup_key, request_json, downloader_name, status, progress, error,
-       output_path, library_track_id, cover_art_id, priority, requested_by, attempts,
+       output_path, library_track_id, cover_art_id, canonical_id, priority, requested_by, attempts,
        downloader_ref, created_at, started_at, finished_at
 FROM download_jobs
 ORDER BY created_at DESC;
 
 -- name: ListDownloadJobsByStatus :many
 SELECT id, dedup_key, request_json, downloader_name, status, progress, error,
-       output_path, library_track_id, cover_art_id, priority, requested_by, attempts,
+       output_path, library_track_id, cover_art_id, canonical_id, priority, requested_by, attempts,
        downloader_ref, created_at, started_at, finished_at
 FROM download_jobs
 WHERE status = ?
@@ -76,3 +76,9 @@ RETURNING id;
 
 -- name: ClearMatchedDownloadJobLibraryRefs :exec
 UPDATE download_jobs SET library_track_id = '', cover_art_id = '' WHERE library_track_id != '';
+
+-- name: UpdateDownloadJobCanonicalID :exec
+UPDATE download_jobs SET canonical_id = @canonical_id WHERE id = @id;
+
+-- name: RepointDownloadJobs :exec
+UPDATE download_jobs SET canonical_id = @canonical_id WHERE canonical_id = @canonical_id_2;

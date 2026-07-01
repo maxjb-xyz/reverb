@@ -101,6 +101,7 @@ type DownloadJob struct {
 	CoverArtID     sql.NullString `json:"cover_art_id"`
 	DownloaderRef  string         `json:"downloader_ref"`
 	InitiatedBy    sql.NullString `json:"initiated_by"`
+	CanonicalID    string         `json:"canonical_id"`
 }
 
 type Invite struct {
