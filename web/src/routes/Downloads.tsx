@@ -7,6 +7,7 @@ import {
   cancelDownload,
   retryDownload,
 } from '../lib/downloadApi'
+import { coverUrl } from '../lib/libraryApi'
 import { Button, Chip, Cover, Icon, EmptyState } from '../components/ui'
 import { StatusLabel, DownloadProgress, failureMessage } from '../components/download/parts'
 import type { DownloadJob, DownloadStatus } from '../lib/types'
@@ -50,7 +51,7 @@ function PageRow({
         onChange={() => onToggle(j.id)}
         className="h-4 w-4 flex-none accent-accent"
       />
-      <Cover src={undefined} alt={j.title ?? j.externalId} size={40} />
+      <Cover src={coverUrl(j.canonicalId || j.coverArtId || '') || undefined} alt={j.title ?? j.externalId} size={40} />
       <div className="min-w-0 flex-1">
         <div className="truncate text-sm font-semibold text-text-primary">{j.title ?? j.externalId}</div>
         {j.artist && <div className="truncate text-xs text-text-secondary">{j.artist}</div>}

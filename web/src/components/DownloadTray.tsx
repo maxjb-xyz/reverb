@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { useDownloads } from '../lib/downloadStore'
 import { useUI } from '../lib/uiStore'
 import { cancelDownload, retryDownload, clearDownload } from '../lib/downloadApi'
+import { coverUrl } from '../lib/libraryApi'
 import { IconButton } from './ui/IconButton'
 import { Button } from './ui/Button'
 import { Cover } from './ui/Cover'
@@ -20,7 +21,7 @@ function TrayRow({ j }: { j: DownloadJob }) {
   return (
     <li className="rounded-lg px-2 py-2 transition-colors hover:bg-raised-hover">
       <div className="flex items-center gap-3">
-        <Cover src={undefined} alt={j.title ?? j.externalId} size={36} />
+        <Cover src={coverUrl(j.canonicalId || j.coverArtId || '') || undefined} alt={j.title ?? j.externalId} size={36} />
         <div className="min-w-0 flex-1">
           <div className="truncate text-[13px] font-semibold text-text-primary">{j.title ?? j.externalId}</div>
           {j.artist && <div className="truncate text-xs text-text-secondary">{j.artist}</div>}

@@ -175,6 +175,9 @@ export interface DownloadJob {
   outputPath?: string
   libraryTrackId?: string
   coverArtId?: string
+  /** Stable catalog entity id (trk_…) minted at link time. Preferred over
+   *  coverArtId for cover resolution so covers survive a backend swap. */
+  canonicalId?: string
   downloaderName: string
   priority: number
   attempts: number
@@ -202,6 +205,7 @@ export interface DownloadEvent {
   externalId: string
   libraryTrackId?: string
   coverArtId?: string
+  canonicalId?: string
   artistId?: string
   albumId?: string
 }

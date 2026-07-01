@@ -341,18 +341,14 @@ func (b *Builder) reconcileLibraryIdentity(ctx context.Context, identity string)
 	return b.queries.UpsertSetting(ctx, db.UpsertSettingParams{Key: settingLibraryIdentity, Value: identity})
 }
 
-// reconcileDownloadJobIdentity clears library_track_id and cover_art_id on all
-// completed download jobs when the active library backend's identity differs from
-// the last boot, so the existing re-match passes (backfillUnlinked + runScan)
-// can re-resolve the stale refs against the live backend. No-op when the identity
-// is unchanged (idempotent after the first post-deploy boot).
+// reconcileDownloadJobIdentity is now a no-op stub (Task 3: cover-rot killer).
+// The clear-and-rematch dance (ClearMatchedDownloadJobLibraryRefs) has been retired:
+// download jobs now carry a stable canonical_id minted at link time, so covers and
+// streams re-resolve lazily through the canonical id after a backend swap without
+// needing to clear volatile library refs first. The setting key is preserved so an
+// existing stored value does not cause issues on upgrade.
 func (b *Builder) reconcileDownloadJobIdentity(ctx context.Context, identity string) error {
-	if stored, err := b.queries.GetSetting(ctx, settingDownloadJobIdentity); err == nil && stored == identity {
-		return nil
-	}
-	if err := b.queries.ClearMatchedDownloadJobLibraryRefs(ctx); err != nil {
-		return err
-	}
+	// Persist the identity so future builds can detect no-change quickly (idempotent).
 	return b.queries.UpsertSetting(ctx, db.UpsertSettingParams{Key: settingDownloadJobIdentity, Value: identity})
 }
 
