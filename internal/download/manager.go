@@ -262,9 +262,10 @@ func (m *Manager) SetCanonicalMinter(minter CanonicalMinter) {
 // stores it on the row. Called ONLY at link time (BackfillUnlinked / runScan) for
 // jobs that are newly matched — never for archived, unlinked, or already-minted jobs.
 // Nil-safe: a nil canonicalMinter silently skips minting (no panic, no error).
-func (m *Manager) mintAndStoreCanonicalID(ctx context.Context, j core.DownloadJob) {
+// Returns the minted canonical id, or "" if none (nil minter, minter error, or empty id).
+func (m *Manager) mintAndStoreCanonicalID(ctx context.Context, j core.DownloadJob) string {
 	if m.canonicalMinter == nil {
-		return
+		return ""
 	}
 	id := catalog.Identity{
 		Kind:       "track",
@@ -279,14 +280,15 @@ func (m *Manager) mintAndStoreCanonicalID(ctx context.Context, j core.DownloadJo
 	cid, err := m.canonicalMinter.CanonicalFor(ctx, id)
 	if err != nil {
 		log.Printf("download: mint canonical id for job %s failed: %v", shortID(j.ID), err)
-		return
+		return ""
 	}
 	if cid == "" {
-		return
+		return ""
 	}
 	if err := m.store.UpdateCanonicalID(ctx, j.ID, cid); err != nil {
 		log.Printf("download: store canonical id for job %s failed: %v", shortID(j.ID), err)
 	}
+	return cid
 }
 
 // Start launches the worker pool and kicks off a one-shot startup backfill (in a
@@ -353,7 +355,7 @@ func (m *Manager) BackfillUnlinked() {
 		}
 		// Task 3: mint canonical id at link time. Scoped to newly-linked jobs only —
 		// never bulk-backfill archived jobs, never mint on a browse.
-		m.mintAndStoreCanonicalID(ctx, j)
+		_ = m.mintAndStoreCanonicalID(ctx, j)
 		m.publishComplete(j, res.LibraryTrackID)
 		if m.playlists != nil && j.AddToPlaylistID != "" {
 			if perr := m.playlists.AddTracksToPlaylist(ctx, j.AddToPlaylistID, []string{res.LibraryTrackID}); perr != nil {
@@ -395,7 +397,7 @@ func (m *Manager) BackfillCanonicalIDs() {
 		if j.Status != core.DownloadCompleted || j.LibraryTrackID == "" || j.CanonicalID != "" {
 			continue
 		}
-		m.mintAndStoreCanonicalID(ctx, j)
+		_ = m.mintAndStoreCanonicalID(ctx, j)
 		minted++
 	}
 	if minted > 0 {
@@ -1025,6 +1027,10 @@ func (m *Manager) runScan() {
 	if err != nil {
 		return
 	}
+	// linkedCanonicalIDs accumulates the canonical ids minted for jobs linked in
+	// THIS scan. Used below to call RefreshLinked (Task 4 pre-warm). Empty ids
+	// (nil minter, minter miss) are excluded — they have no binding to refresh.
+	var linkedCanonicalIDs []string
 	for _, j := range jobs {
 		if j.Status != core.DownloadCompleted || j.LibraryTrackID != "" {
 			continue
@@ -1046,7 +1052,10 @@ func (m *Manager) runScan() {
 		j.CoverArtID = res.CoverArtID
 		_ = m.store.Update(ctx, j)
 		// Task 3: mint canonical id at link time. Scoped to newly-linked jobs only.
-		m.mintAndStoreCanonicalID(ctx, j)
+		// Task 4: collect non-empty ids for the RefreshLinked call below.
+		if cid := m.mintAndStoreCanonicalID(ctx, j); cid != "" {
+			linkedCanonicalIDs = append(linkedCanonicalIDs, cid)
+		}
 		m.publishComplete(j, res.LibraryTrackID)
 
 		// One-time import hook: if the originating request named a target playlist,
@@ -1059,6 +1068,19 @@ func (m *Manager) runScan() {
 			}
 		}
 	}
+
+	// Task 4: best-effort pre-warm — refresh resolver bindings for the jobs linked
+	// in this scan so the next Resolve hits a warm cache. Never fails the scan.
+	// NOTE: this does NOT bump binding_epoch; RefreshLinked operates at the current
+	// epoch, marking only these ids stale then re-resolving them.
+	if m.resolve != nil && len(linkedCanonicalIDs) > 0 {
+		if r := m.resolve(); r != nil {
+			if rerr := r.RefreshLinked(ctx, linkedCanonicalIDs); rerr != nil {
+				log.Printf("download: RefreshLinked after scan failed (best-effort, scan still succeeded): %v", rerr)
+			}
+		}
+	}
+
 	// Per-album/artist IDs on LibraryUpdatedEvent are deferred to a later milestone;
 	// the frontend does broad library invalidation on this event.
 	if m.bus != nil {

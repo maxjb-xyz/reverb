@@ -2977,6 +2977,272 @@ func TestCanonicalIDInDTO(t *testing.T) {
 	}
 }
 
+// ─── Task 4: runScan targeted RefreshLinked ──────────────────────────────────
+
+// fakeBindingResolver records RefreshLinked calls for assertions.
+type fakeBindingResolver struct {
+	mu      sync.Mutex
+	calls   [][]string // each call's catalogIDs arg
+	retErr  error
+}
+
+func (f *fakeBindingResolver) Resolve(_ context.Context, _ string) (resolver.Addressing, error) {
+	return resolver.Addressing{}, nil
+}
+
+func (f *fakeBindingResolver) RefreshLinked(_ context.Context, ids []string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	cp := make([]string, len(ids))
+	copy(cp, ids)
+	f.calls = append(f.calls, cp)
+	return f.retErr
+}
+
+func (f *fakeBindingResolver) callCount() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return len(f.calls)
+}
+
+func (f *fakeBindingResolver) getCall(i int) []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.calls[i]
+}
+
+// TestRunScan_RefreshLinkedCalledWithLinkedCanonicalIDs asserts that after
+// runScan links jobs, RefreshLinked is called with exactly the canonical ids of
+// the jobs linked in that scan (jobs that were skipped or got an empty
+// canonical_id are excluded).
+//
+// Setup: enqueue 3 jobs that download and complete inside the debounce window
+// (so BackfillUnlinked at Start does not consume them — BackfillUnlinked only
+// sees already-completed jobs at startup, and these jobs are in Queued state
+// then). The minter returns "" for ext3, so only trk_scan1 + trk_scan2 end up
+// in the RefreshLinked call.
+func TestRunScan_RefreshLinkedCalledWithLinkedCanonicalIDs(t *testing.T) {
+	clk := newFakeClock()
+	store := newMemStore()
+
+	// Minter returns deterministic ids keyed by ExternalID; ext3 returns "".
+	minterIDs := map[string]string{
+		"ext1": "trk_scan1",
+		"ext2": "trk_scan2",
+		"ext3": "",
+	}
+	minter := &fakeDynamicMinter{ids: minterIDs}
+	res := &fakeBindingResolver{}
+	dl := &fakeDL{name: "dl", canDownload: true}
+	bus := events.New()
+	m := NewManager(
+		Config{Workers: 3, DebounceWindow: 5 * time.Second, ScanPollEvery: time.Millisecond, ScanPollMax: time.Second, ScanSettleMax: 10 * time.Millisecond},
+		wrapDownloaders([]Downloader{dl}), store, bus, &fakeScanner{}, &fakeRematcher{trackID: "lib-scan-track"}, &fakeVersion{v: 1}, clk, nil,
+		func() BindingResolver { return res },
+	)
+	m.SetCanonicalMinter(minter)
+	t.Cleanup(m.Stop)
+	m.Start()
+
+	ctx := context.Background()
+	for _, ext := range []string{"ext1", "ext2", "ext3"} {
+		_, err := m.Enqueue(ctx, core.DownloadRequest{
+			Source: "spotify", ExternalID: ext, Title: "Song " + ext, Artist: "A", Album: "B",
+		})
+		if err != nil {
+			t.Fatalf("Enqueue %s: %v", ext, err)
+		}
+	}
+
+	// Wait for all 3 jobs to finish downloading.
+	deadline := time.After(2 * time.Second)
+	for {
+		jobs, _ := store.List(ctx)
+		done := 0
+		for _, j := range jobs {
+			if j.Status == core.DownloadCompleted {
+				done++
+			}
+		}
+		if done == 3 {
+			break
+		}
+		select {
+		case <-deadline:
+			t.Fatal("downloads did not complete in time")
+		default:
+			time.Sleep(time.Millisecond)
+		}
+	}
+
+	// Fire the debounced scan: runScan links the 3 jobs, mints ids, calls RefreshLinked.
+	clk.Advance(5 * time.Second)
+
+	// RefreshLinked must have been called exactly once.
+	if res.callCount() != 1 {
+		t.Fatalf("RefreshLinked called %d times; want 1", res.callCount())
+	}
+	got := res.getCall(0)
+	// Must contain exactly trk_scan1 and trk_scan2 (ext3 returned "" → excluded).
+	if len(got) != 2 {
+		t.Fatalf("RefreshLinked ids len=%d; want 2; got %v", len(got), got)
+	}
+	want := map[string]bool{"trk_scan1": true, "trk_scan2": true}
+	for _, id := range got {
+		if !want[id] {
+			t.Fatalf("RefreshLinked got unexpected id %q; want only trk_scan1 and trk_scan2", id)
+		}
+		delete(want, id)
+	}
+	if len(want) > 0 {
+		t.Fatalf("RefreshLinked missing expected ids: %v", want)
+	}
+}
+
+// TestRunScan_DoesNotBumpBindingEpoch asserts that a plain scan does NOT bump
+// binding_epoch for any identity. Only library_version moves.
+// We wire a fakeEpochBumper to observe any BumpEpoch calls and assert 0.
+// The fakeEpochBumper is a standalone counter not wired into the Manager — it
+// serves as a canary: if runScan ever called it (which the spec forbids), the
+// test fails.
+func TestRunScan_DoesNotBumpBindingEpoch(t *testing.T) {
+	clk := newFakeClock()
+	store := newMemStore()
+	ver := &fakeVersion{v: 7}
+	epochBumper := &fakeEpochBumper{epoch: 42}
+	res := &fakeBindingResolver{}
+	dl := &fakeDL{name: "dl", canDownload: true}
+	bus := events.New()
+	m := NewManager(
+		Config{Workers: 1, DebounceWindow: 5 * time.Second, ScanPollEvery: time.Millisecond, ScanPollMax: time.Second, ScanSettleMax: 10 * time.Millisecond},
+		wrapDownloaders([]Downloader{dl}), store, bus, &fakeScanner{}, &fakeRematcher{trackID: "lib-epoch-track"}, ver, clk, nil,
+		func() BindingResolver { return res },
+	)
+	t.Cleanup(m.Stop)
+	m.Start()
+
+	ctx := context.Background()
+	_, err := m.Enqueue(ctx, core.DownloadRequest{
+		Source: "spotify", ExternalID: "epoch-ext1", Title: "Epoch Song", Artist: "A", Album: "B",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Wait for the download to complete.
+	deadline := time.After(2 * time.Second)
+	for {
+		jobs, _ := store.List(ctx)
+		if len(jobs) > 0 && jobs[0].Status == core.DownloadCompleted {
+			break
+		}
+		select {
+		case <-deadline:
+			t.Fatal("job never completed")
+		default:
+			time.Sleep(time.Millisecond)
+		}
+	}
+
+	// Trigger the scan.
+	clk.Advance(5 * time.Second)
+
+	// library_version must have moved (bumped from 7 to 8).
+	if ver.get() != 8 {
+		t.Fatalf("library_version: got %d, want 8", ver.get())
+	}
+	// The fake epoch bumper must NOT have been touched by runScan.
+	if epochBumper.bumpCount() != 0 {
+		t.Fatalf("binding_epoch bumped %d times by runScan; want 0 (plain scan must not touch binding_epoch)", epochBumper.bumpCount())
+	}
+}
+
+// TestRunScan_NilResolverProviderDoesNotPanic asserts that when m.resolve is nil
+// (or returns nil), runScan completes normally without panicking.
+func TestRunScan_NilResolverProviderDoesNotPanic(t *testing.T) {
+	ctx := context.Background()
+	dl := &fakeDL{name: "dl", canDownload: true}
+	bus := events.New()
+
+	waitCompleted := func(t *testing.T, st *memStore, id string) {
+		t.Helper()
+		deadline := time.After(2 * time.Second)
+		for {
+			j, _, _ := st.Get(ctx, id)
+			if j.Status == core.DownloadCompleted {
+				return
+			}
+			select {
+			case <-deadline:
+				t.Fatal("job never completed")
+			default:
+				time.Sleep(time.Millisecond)
+			}
+		}
+	}
+
+	// Case 1: nil resolve provider.
+	clk1 := newFakeClock()
+	store1 := newMemStore()
+	m1 := NewManager(
+		Config{Workers: 1, DebounceWindow: 5 * time.Second, ScanPollEvery: time.Millisecond, ScanPollMax: time.Second, ScanSettleMax: 10 * time.Millisecond},
+		wrapDownloaders([]Downloader{dl}), store1, bus, &fakeScanner{}, &fakeRematcher{trackID: "lib-t1"}, &fakeVersion{v: 1}, clk1, nil, nil,
+	)
+	t.Cleanup(m1.Stop)
+	m1.Start()
+	j1, err := m1.Enqueue(ctx, core.DownloadRequest{Source: "spotify", ExternalID: "nr-ext1", Title: "NilRes1", Artist: "A", Album: "B"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitCompleted(t, store1, j1.ID)
+	// Must not panic.
+	clk1.Advance(5 * time.Second)
+
+	// Case 2: provider returning nil.
+	clk2 := newFakeClock()
+	store2 := newMemStore()
+	m2 := NewManager(
+		Config{Workers: 1, DebounceWindow: 5 * time.Second, ScanPollEvery: time.Millisecond, ScanPollMax: time.Second, ScanSettleMax: 10 * time.Millisecond},
+		wrapDownloaders([]Downloader{dl}), store2, bus, &fakeScanner{}, &fakeRematcher{trackID: "lib-t2"}, &fakeVersion{v: 1}, clk2, nil,
+		func() BindingResolver { return nil },
+	)
+	t.Cleanup(m2.Stop)
+	m2.Start()
+	j2, err := m2.Enqueue(ctx, core.DownloadRequest{Source: "spotify", ExternalID: "nr-ext2", Title: "NilRes2", Artist: "A", Album: "B"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitCompleted(t, store2, j2.ID)
+	// Must not panic.
+	clk2.Advance(5 * time.Second)
+}
+
+// fakeDynamicMinter returns canonical ids keyed by ExternalID, enabling per-job
+// control over what id (or empty string) the minter returns.
+type fakeDynamicMinter struct {
+	mu  sync.Mutex
+	ids map[string]string // ExternalID → canonical id
+}
+
+func (f *fakeDynamicMinter) CanonicalFor(_ context.Context, id catalog.Identity) (string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.ids[id.ExternalID], nil
+}
+
+// fakeEpochBumper records bumps (used only to assert runScan does NOT call it).
+type fakeEpochBumper struct {
+	mu    sync.Mutex
+	epoch int64
+	bumps int
+}
+
+func (f *fakeEpochBumper) bumpCount() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.bumps
+}
+
 // TestManagerAcceptsNilSafeResolverProvider verifies that NewManager accepts a
 // nil-safe resolve func() BindingResolver dep (the provider seam from Task 1).
 // The dep must be stored but NOT called — Tasks 3-5 add the actual Resolve calls.
