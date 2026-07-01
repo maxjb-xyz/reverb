@@ -13,7 +13,7 @@ func TestSchedulerTickSyncsDue(t *testing.T) {
 		"PL": {Source: "spotify", ExternalID: "PL", Name: "P", Tracks: []core.ExternalResult{track("t1")}},
 	}}
 	store := newMemStore()
-	svc := NewService(src, fakeMatcher{}, &fakeDownloader{}, store, nil, func() int64 { return 1000 }, seqID())
+	svc := NewService(src, fakeMatcher{}, &fakeDownloader{}, store, nil, func() int64 { return 1000 }, seqID(), nil)
 	det, _ := svc.Import(context.Background(), "spotify:playlist:PL", false)
 	// enable daily sync, last_synced far in the past → due
 	_ = svc.UpdateSettings(context.Background(), det.ID, true, 60, false)

@@ -147,7 +147,13 @@ func (s *Service) rematchAndStore(ctx context.Context, catalogID, identity strin
 		return Addressing{}, err
 	}
 
-	res, err := s.matcher().Match(ctx, core.ExternalResult{
+	m := s.matcher()
+	if m == nil {
+		// No library configured — return a benign not-found rather than panicking.
+		// The matcher-provider yields nil when no library adapter is live.
+		return Addressing{Found: false}, nil
+	}
+	res, err := m.Match(ctx, core.ExternalResult{
 		Source:     e.Source,
 		ExternalID: e.ExternalID,
 		Title:      e.Title,

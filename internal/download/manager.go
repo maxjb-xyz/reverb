@@ -12,6 +12,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/maxjb-xyz/reverb/internal/core"
 	"github.com/maxjb-xyz/reverb/internal/events"
+	"github.com/maxjb-xyz/reverb/internal/resolver"
 )
 
 // shortID trims a job UUID for compact log lines.
@@ -77,6 +78,16 @@ type Rematcher interface {
 // Publisher is the EventBus slice the Manager needs. *events.Bus fits.
 type Publisher interface {
 	Publish(ev events.Event)
+}
+
+// BindingResolver is the narrow catalog-resolution seam the Manager will use in
+// Tasks 3-5 to resolve catalog IDs to backend addressing. *resolver.Service
+// satisfies this interface (Go structural typing). Declared here (consumer-side)
+// so the resolver package never needs to import download, keeping the dependency
+// direction one-way (download→resolver, not the reverse).
+type BindingResolver interface {
+	Resolve(ctx context.Context, catalogID string) (resolver.Addressing, error)
+	RefreshLinked(ctx context.Context, catalogIDs []string) error
 }
 
 // VersionBumper reads and bumps library_version. *store.Store fits.
@@ -165,7 +176,8 @@ type Manager struct {
 	rematcher   Rematcher
 	version     VersionBumper
 	clock       Clock
-	playlists   PlaylistAdder // optional; non-nil only when a library is configured
+	playlists   PlaylistAdder  // optional; non-nil only when a library is configured
+	resolve     func() BindingResolver // optional provider; Tasks 3-5 add call sites
 
 	queue chan string // job IDs to process
 
@@ -197,9 +209,12 @@ func (m *Manager) jobTimeout(req core.DownloadRequest) time.Duration {
 // NewManager constructs the Manager. Call Start() to launch workers.
 // playlists may be nil; when non-nil, completed downloads whose request carries
 // AddToPlaylistID will have the matched library track appended to that playlist.
+// resolve is an optional provider func() BindingResolver — nil or returning nil
+// means "no resolver available yet" (no panic). Tasks 3-5 add the actual Resolve
+// and RefreshLinked call sites; this Task (1) only stores the dep.
 func NewManager(cfg Config, downloaders []DownloaderEntry, store JobStore, bus Publisher,
 	scanner ScanController, rematcher Rematcher, version VersionBumper, clock Clock,
-	playlists PlaylistAdder) *Manager {
+	playlists PlaylistAdder, resolve func() BindingResolver) *Manager {
 	if clock == nil {
 		clock = RealClock{}
 	}
@@ -214,6 +229,7 @@ func NewManager(cfg Config, downloaders []DownloaderEntry, store JobStore, bus P
 		version:     version,
 		clock:       clock,
 		playlists:   playlists,
+		resolve:     resolve,
 		queue:       make(chan string, 256),
 		cancels:     map[string]context.CancelFunc{},
 		reqs:        map[string]core.DownloadRequest{},

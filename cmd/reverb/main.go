@@ -127,10 +127,31 @@ func main() {
 		filepath.Dir(cfg.DBPath),
 	)
 
+	// P2 construction order: reloader → resolver → SetResolverProvider → Build.
+	//
+	// The reloader owns the live-matcher atomic holder. It is created BEFORE Build
+	// so we can construct the resolver singleton against it (the provider reads the
+	// holder per-resolve; the holder is empty until publishMatcher below, which is
+	// fine — live services only call Resolve at runtime, after the matcher is up).
+	//
+	// The resolverProvider func is set on the Builder BEFORE the first Build call so
+	// that download.Manager and playlistsync.Service (both constructed inside Build)
+	// receive the resolver dep. They do NOT call it during Build — Tasks 3-5 add the
+	// actual Resolve/RefreshLinked call sites. The matcher-provider seam is unchanged:
+	// the resolver still reads s.matcher() per-resolve for hot-reload correctness.
+	reloader := newServiceReloader(builder)
+	resolverSvc := resolver.NewService(st.Q(), reloader.matcherProvider(), time.Now)
+	builder.SetResolverProvider(func() wiring.BindingResolver { return resolverSvc })
+
 	bundle, err := builder.Build(context.Background())
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	// Publish the boot matcher (may be nil when no library is configured) into the
+	// live-matcher holder so the resolver singleton sees it on its first call.
+	// Matches the pre-P2 behaviour (publishMatcher was called here before the reorder).
+	reloader.publishMatcher(bundle.Matcher)
 
 	// Start the bundled-library supervisor (no-op in external mode).
 	if bundle.Supervisor != nil {
@@ -160,16 +181,6 @@ func main() {
 			}
 		}()
 	}
-
-	// The reloader owns the live-matcher holder: it is published from the initial
-	// bundle here and republished on every adapter hot-reload. The resolver below is
-	// constructed ONCE but reads the live matcher per-resolve through reloader's
-	// provider, so it always re-matches against the current adapter (never a stale
-	// one) across reloads. Publishing the boot matcher (may be nil) before building
-	// the resolver makes the very first Resolve see the live matcher too.
-	reloader := newServiceReloader(builder)
-	reloader.publishMatcher(bundle.Matcher)
-	resolverSvc := resolver.NewService(st.Q(), reloader.matcherProvider(), time.Now)
 
 	catalogSvc := catalog.NewService(st.Q(), time.Now, uuid.NewString)
 	playSvc := play.NewService(st.Q(), catalogSvc, time.Now, uuid.NewString)

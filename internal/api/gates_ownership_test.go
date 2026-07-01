@@ -50,7 +50,7 @@ func realSyncServer(t *testing.T) *Server {
 	syncStore := wiring.NewSyncStore(st.Q())
 	now := func() int64 { return time.Now().Unix() }
 	// src/match/dl/lib are nil: CreateManaged + List only touch the store.
-	svc := playlistsync.NewService(nil, nil, nil, syncStore, nil, now, uuid.NewString)
+	svc := playlistsync.NewService(nil, nil, nil, syncStore, nil, now, uuid.NewString, nil)
 	return NewServer(Deps{
 		Auth:          authSvc,
 		Sync:          svc,

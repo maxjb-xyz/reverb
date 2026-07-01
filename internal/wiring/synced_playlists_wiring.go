@@ -209,7 +209,20 @@ func (b *Builder) BuildSyncService(
 	store := NewSyncStore(b.queries)
 	settings := &dbSettingsStore{q: b.queries}
 	nowUnix := func() int64 { return time.Now().Unix() }
-	svc := playlistsync.NewService(src, matcher, mgr, store, lib, nowUnix, uuid.NewString)
+	// Wrap the wiring-level resolverProvider into a playlistsync.BindingResolver
+	// provider. Nil when SetResolverProvider was not called.
+	var syncResolve func() playlistsync.BindingResolver
+	if b.resolverProvider != nil {
+		rp := b.resolverProvider // capture once
+		syncResolve = func() playlistsync.BindingResolver {
+			r := rp()
+			if r == nil {
+				return nil
+			}
+			return r
+		}
+	}
+	svc := playlistsync.NewService(src, matcher, mgr, store, lib, nowUnix, uuid.NewString, syncResolve)
 	svc.WithLibraryReader(lib)
 	svc.WithSettingsStore(settings)
 	return svc

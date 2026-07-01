@@ -9,7 +9,17 @@ import (
 	"strings"
 
 	"github.com/maxjb-xyz/reverb/internal/core"
+	"github.com/maxjb-xyz/reverb/internal/resolver"
 )
+
+// BindingResolver is the narrow catalog-resolution seam playlistsync.Service will
+// use in Tasks 4-5 to resolve catalog IDs to backend addressing. *resolver.Service
+// satisfies this interface (Go structural typing). Declared here (consumer-side)
+// so the resolver package never imports playlistsync, keeping dependencies one-way.
+type BindingResolver interface {
+	Resolve(ctx context.Context, catalogID string) (resolver.Addressing, error)
+	RefreshLinked(ctx context.Context, catalogIDs []string) error
+}
 
 // ErrNotPlaylistURL is returned by Import when the supplied URL is not a
 // recognizable Spotify playlist URL (a client error, not a fetch failure).
@@ -87,15 +97,20 @@ type Service struct {
 	match    Matcher
 	dl       Downloader
 	store    Store
-	lib      LibraryWriter // optional; nil when no library is configured
-	libRead  LibraryReader // optional; for migration
-	settings SettingsStore // optional; for migration flag guard
+	lib      LibraryWriter  // optional; nil when no library is configured
+	libRead  LibraryReader  // optional; for migration
+	settings SettingsStore  // optional; for migration flag guard
 	now      func() int64
 	newID    func() string
+	resolve  func() BindingResolver // optional provider; Tasks 4-5 add call sites
 }
 
-func NewService(src PlaylistSource, m Matcher, dl Downloader, store Store, lib LibraryWriter, now func() int64, newID func() string) *Service {
-	return &Service{src: src, match: m, dl: dl, store: store, lib: lib, now: now, newID: newID}
+// NewService constructs a playlist-sync Service. resolve is an optional provider
+// func() BindingResolver — nil or returning nil means "no resolver available yet"
+// (no panic). Tasks 4-5 add the actual Resolve/RefreshLinked call sites; this Task
+// (1) only stores the dep for the wiring seam to be reachable.
+func NewService(src PlaylistSource, m Matcher, dl Downloader, store Store, lib LibraryWriter, now func() int64, newID func() string, resolve func() BindingResolver) *Service {
+	return &Service{src: src, match: m, dl: dl, store: store, lib: lib, now: now, newID: newID, resolve: resolve}
 }
 
 // WithLibraryReader attaches a LibraryReader so MigrateLibraryPlaylists can read

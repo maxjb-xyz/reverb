@@ -295,7 +295,7 @@ func testManager(t *testing.T, downloaders []Downloader, store JobStore, rematch
 		clk = RealClock{}
 	}
 	m := NewManager(Config{Workers: 2, DebounceWindow: 5 * time.Second, ScanPollEvery: time.Millisecond, ScanPollMax: time.Second, ScanSettleMax: 10 * time.Millisecond},
-		wrapDownloaders(downloaders), store, bus, scanner, rematch, ver, clk, nil)
+		wrapDownloaders(downloaders), store, bus, scanner, rematch, ver, clk, nil, nil)
 	t.Cleanup(m.Stop)
 	m.Start()
 	return m, bus
@@ -571,7 +571,7 @@ func TestCompletionDebouncesIntoOneScan(t *testing.T) {
 	ver := &fakeVersion{v: 1}
 	bus := events.New()
 	m := NewManager(Config{Workers: 3, DebounceWindow: 5 * time.Second, ScanPollEvery: time.Millisecond, ScanPollMax: time.Second, ScanSettleMax: 10 * time.Millisecond},
-		wrapDownloaders([]Downloader{dl}), store, bus, scanner, &fakeRematcher{trackID: "t1"}, ver, clk, nil)
+		wrapDownloaders([]Downloader{dl}), store, bus, scanner, &fakeRematcher{trackID: "t1"}, ver, clk, nil, nil)
 	t.Cleanup(m.Stop)
 	m.Start()
 
@@ -627,7 +627,7 @@ func TestCompletionSetsLibraryTrackIDAndPublishesComplete(t *testing.T) {
 	bus := events.New()
 	rematcher := &fakeRematcher{trackID: "lib-track-9", coverArtID: "mf-lib-track-9_abc123"}
 	m := NewManager(Config{Workers: 1, DebounceWindow: 5 * time.Second, ScanPollEvery: time.Millisecond, ScanPollMax: time.Second, ScanSettleMax: 10 * time.Millisecond},
-		wrapDownloaders([]Downloader{dl}), store, bus, &fakeScanner{}, rematcher, &fakeVersion{v: 1}, clk, nil)
+		wrapDownloaders([]Downloader{dl}), store, bus, &fakeScanner{}, rematcher, &fakeVersion{v: 1}, clk, nil, nil)
 	t.Cleanup(m.Stop)
 	m.Start()
 
@@ -764,7 +764,7 @@ func TestRunScanWaitsForScanToCompleteBeforeRematch(t *testing.T) {
 	scanner := &fakeScanner{statusSeq: []bool{false, true, true, false}}
 	rematcher := &fakeRematcher{trackID: "lib-track-classical"}
 	m := NewManager(Config{Workers: 1, DebounceWindow: 5 * time.Second, ScanPollEvery: time.Millisecond, ScanPollMax: time.Second, ScanSettleMax: time.Second},
-		wrapDownloaders([]Downloader{dl}), store, bus, scanner, rematcher, &fakeVersion{v: 1}, clk, nil)
+		wrapDownloaders([]Downloader{dl}), store, bus, scanner, rematcher, &fakeVersion{v: 1}, clk, nil, nil)
 	t.Cleanup(m.Stop)
 	m.Start()
 
@@ -1123,7 +1123,7 @@ func TestBackfillUnlinkedReLinksCompletedJobs(t *testing.T) {
 	bus := events.New()
 	dl := &fakeDL{name: "dl", canDownload: true}
 	m := NewManager(Config{Workers: 1, DebounceWindow: 5 * time.Second, ScanPollEvery: time.Millisecond, ScanPollMax: time.Second, ScanSettleMax: 10 * time.Millisecond},
-		wrapDownloaders([]Downloader{dl}), store, bus, &fakeScanner{}, rematcher, &fakeVersion{v: 1}, RealClock{}, nil)
+		wrapDownloaders([]Downloader{dl}), store, bus, &fakeScanner{}, rematcher, &fakeVersion{v: 1}, RealClock{}, nil, nil)
 	t.Cleanup(m.Stop)
 
 	// Subscribe to complete events BEFORE starting so we don't miss the backfill publish.
@@ -1219,7 +1219,7 @@ func TestBackfillPlaylistAdderCalledWhenAddToPlaylistIDSet(t *testing.T) {
 	bus := events.New()
 	dl := &fakeDL{name: "dl", canDownload: true}
 	m := NewManager(Config{Workers: 1, DebounceWindow: 5 * time.Second, ScanPollEvery: time.Millisecond, ScanPollMax: time.Second, ScanSettleMax: 10 * time.Millisecond},
-		wrapDownloaders([]Downloader{dl}), store, bus, &fakeScanner{}, rematcher, &fakeVersion{v: 1}, RealClock{}, adder)
+		wrapDownloaders([]Downloader{dl}), store, bus, &fakeScanner{}, rematcher, &fakeVersion{v: 1}, RealClock{}, adder, nil)
 	t.Cleanup(m.Stop)
 
 	// Subscribe before Start so we don't miss the backfill publish.
@@ -1305,7 +1305,7 @@ func TestPlaylistAdderCalledOnCompletionWithAddToPlaylistID(t *testing.T) {
 	adder := &fakePlaylistAdder{}
 
 	m := NewManager(Config{Workers: 1, DebounceWindow: 5 * time.Second, ScanPollEvery: time.Millisecond, ScanPollMax: time.Second, ScanSettleMax: 10 * time.Millisecond},
-		wrapDownloaders([]Downloader{dl}), store, bus, &fakeScanner{}, rematcher, &fakeVersion{v: 1}, clk, adder)
+		wrapDownloaders([]Downloader{dl}), store, bus, &fakeScanner{}, rematcher, &fakeVersion{v: 1}, clk, adder, nil)
 	t.Cleanup(m.Stop)
 	m.Start()
 
@@ -1426,7 +1426,7 @@ func TestPlaylistAdderNotCalledWhenNoAddToPlaylistID(t *testing.T) {
 	adder := &fakePlaylistAdder{}
 
 	m := NewManager(Config{Workers: 1, DebounceWindow: 5 * time.Second, ScanPollEvery: time.Millisecond, ScanPollMax: time.Second, ScanSettleMax: 10 * time.Millisecond},
-		wrapDownloaders([]Downloader{dl}), store, bus, &fakeScanner{}, rematcher, &fakeVersion{v: 1}, clk, adder)
+		wrapDownloaders([]Downloader{dl}), store, bus, &fakeScanner{}, rematcher, &fakeVersion{v: 1}, clk, adder, nil)
 	t.Cleanup(m.Stop)
 	m.Start()
 
@@ -1483,7 +1483,7 @@ func TestBackfillSkipsAlreadyLinkedAndNonCompleted(t *testing.T) {
 	rematcher := &fakeRematcher{trackID: "should-not-be-set"}
 	dl := &fakeDL{name: "dl", canDownload: true}
 	m := NewManager(Config{Workers: 1, DebounceWindow: 5 * time.Second, ScanPollEvery: time.Millisecond, ScanPollMax: time.Second, ScanSettleMax: 10 * time.Millisecond},
-		wrapDownloaders([]Downloader{dl}), store, nil, &fakeScanner{}, rematcher, &fakeVersion{v: 1}, RealClock{}, nil)
+		wrapDownloaders([]Downloader{dl}), store, nil, &fakeScanner{}, rematcher, &fakeVersion{v: 1}, RealClock{}, nil, nil)
 	t.Cleanup(m.Stop)
 	m.Start()
 
@@ -1617,7 +1617,7 @@ func TestStopUnblocksPausedWorkers(t *testing.T) {
 	bus := events.New()
 	m := NewManager(
 		Config{Workers: 2, DebounceWindow: 5 * time.Second, ScanPollEvery: time.Millisecond, ScanPollMax: time.Second, ScanSettleMax: 10 * time.Millisecond},
-		wrapDownloaders([]Downloader{dl}), store, bus, &fakeScanner{}, &fakeRematcher{trackID: "t1"}, &fakeVersion{v: 1}, RealClock{}, nil,
+		wrapDownloaders([]Downloader{dl}), store, bus, &fakeScanner{}, &fakeRematcher{trackID: "t1"}, &fakeVersion{v: 1}, RealClock{}, nil, nil,
 	)
 	m.Start()
 	m.Pause()
@@ -1818,7 +1818,7 @@ func TestReconcileAdvancesProgressThenCompletes(t *testing.T) {
 	scanner := &fakeScanner{}
 	bus := events.New()
 	m := NewManager(Config{Workers: 1, DebounceWindow: time.Second, ScanPollEvery: time.Millisecond, ScanPollMax: time.Second, ScanSettleMax: 10 * time.Millisecond},
-		wrapDownloaders([]Downloader{async}), store, bus, scanner, &fakeRematcher{trackID: "t1"}, &fakeVersion{v: 1}, clk, nil)
+		wrapDownloaders([]Downloader{async}), store, bus, scanner, &fakeRematcher{trackID: "t1"}, &fakeVersion{v: 1}, clk, nil, nil)
 	t.Cleanup(m.Stop)
 	m.Start()
 
@@ -1901,7 +1901,7 @@ func testManagerEntries(t *testing.T, entries []DownloaderEntry, store JobStore,
 	scanner := &fakeScanner{}
 	m := NewManager(
 		Config{Workers: 2, DebounceWindow: 5 * time.Second, ScanPollEvery: time.Millisecond, ScanPollMax: time.Second, ScanSettleMax: 10 * time.Millisecond},
-		entries, store, bus, scanner, &fakeRematcher{trackID: "t1"}, &fakeVersion{v: 1}, clk, nil,
+		entries, store, bus, scanner, &fakeRematcher{trackID: "t1"}, &fakeVersion{v: 1}, clk, nil, nil,
 	)
 	t.Cleanup(m.Stop)
 	m.Start()
@@ -2438,7 +2438,7 @@ func TestJobTimeoutByGranularity(t *testing.T) {
 // never Start()ed returns promptly (no deadlock, no panic). This guards the guard
 // we added to Stop() that skips wg.Wait() / close(stopCh) when started==false.
 func TestStopWithoutStartIsNoOp(t *testing.T) {
-	m := NewManager(Config{}, wrapDownloaders(nil), newMemStore(), nil, &fakeScanner{}, nil, nil, nil, nil)
+	m := NewManager(Config{}, wrapDownloaders(nil), newMemStore(), nil, &fakeScanner{}, nil, nil, nil, nil, nil)
 	done := make(chan struct{})
 	go func() {
 		m.Stop()
@@ -2542,4 +2542,34 @@ func TestRetryAsyncDetachesRequestContext(t *testing.T) {
 			time.Sleep(time.Millisecond)
 		}
 	}
+}
+
+
+// TestManagerAcceptsNilSafeResolverProvider verifies that NewManager accepts a
+// nil-safe resolve func() BindingResolver dep (the provider seam from Task 1).
+// The dep must be stored but NOT called — Tasks 3-5 add the actual Resolve calls.
+// A nil provider and a provider-returning-nil are both safe (no panic at construction
+// time or during a normal download cycle).
+func TestManagerAcceptsNilSafeResolverProvider(t *testing.T) {
+	// Case 1: nil provider — NewManager with no resolver wired.
+	cfg := Config{Workers: 1, DebounceWindow: time.Millisecond, ScanPollEvery: time.Millisecond, ScanPollMax: 10 * time.Millisecond}
+	m := NewManager(cfg, nil, newMemStore(), nil, &fakeScanner{}, nil, &fakeVersion{v: 1}, nil, nil, nil)
+	// Must not panic on construction. No Start/Stop cycle needed.
+	_ = m
+
+	// Case 2: non-nil provider returning nil — provider says "no resolver yet".
+	m2 := NewManager(cfg, nil, newMemStore(), nil, &fakeScanner{}, nil, &fakeVersion{v: 1}, nil, nil, func() BindingResolver { return nil })
+	_ = m2
+
+	// Case 3: non-nil provider — the provider must NOT be called during construction
+	// (Tasks 3-5 add the actual call sites; Task 1 only stores the dep).
+	var callCount int
+	m3 := NewManager(cfg, nil, newMemStore(), nil, &fakeScanner{}, nil, &fakeVersion{v: 1}, nil, nil, func() BindingResolver {
+		callCount++
+		return nil
+	})
+	if callCount != 0 {
+		t.Fatalf("resolve provider called %d times during NewManager construction; expected 0", callCount)
+	}
+	_ = m3
 }

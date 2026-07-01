@@ -340,7 +340,7 @@ func TestImportThenDetailComputesOwnership(t *testing.T) {
 		owned: map[string]string{"t1": "L1"}, // t2 missing
 		meta:  map[string]core.Track{"t1": {ArtistID: "ar1", AlbumID: "al1", CoverArtID: "cv1"}},
 	}
-	svc := NewService(src, m, &fakeDownloader{}, newMemStore(), nil, func() int64 { return 100 }, seqID())
+	svc := NewService(src, m, &fakeDownloader{}, newMemStore(), nil, func() int64 { return 100 }, seqID(), nil)
 	det, err := svc.Import(context.Background(), "https://open.spotify.com/playlist/PL", false)
 	if err != nil {
 		t.Fatal(err)
@@ -368,7 +368,7 @@ func TestImportStampsLastSyncedAt(t *testing.T) {
 	}}
 	store := newMemStore()
 	const importTime int64 = 1717_000_000
-	svc := NewService(src, fakeMatcher{}, &fakeDownloader{}, store, nil, func() int64 { return importTime }, seqID())
+	svc := NewService(src, fakeMatcher{}, &fakeDownloader{}, store, nil, func() int64 { return importTime }, seqID(), nil)
 	det, err := svc.Import(context.Background(), "spotify:playlist:PL", false)
 	if err != nil {
 		t.Fatal(err)
@@ -390,7 +390,7 @@ func TestSyncReplacesTracklist(t *testing.T) {
 		"PL": {Source: "spotify", ExternalID: "PL", Name: "Chill", Tracks: []core.ExternalResult{track("t1")}},
 	}}
 	store := newMemStore()
-	svc := NewService(src, fakeMatcher{}, &fakeDownloader{}, store, nil, func() int64 { return 100 }, seqID())
+	svc := NewService(src, fakeMatcher{}, &fakeDownloader{}, store, nil, func() int64 { return 100 }, seqID(), nil)
 	det, _ := svc.Import(context.Background(), "spotify:playlist:PL", false)
 	// Spotify playlist gains a track; sync must reflect it.
 	src.playlists["PL"] = core.ExternalPlaylist{Source: "spotify", ExternalID: "PL", Name: "Chill", Tracks: []core.ExternalResult{track("t1"), track("t3")}}
@@ -405,7 +405,7 @@ func TestImportSamePlaylistTwiceReturnsSameID(t *testing.T) {
 		"PL": {Source: "spotify", ExternalID: "PL", Name: "Chill", Tracks: []core.ExternalResult{track("t1")}},
 	}}
 	store := newMemStore()
-	svc := NewService(src, fakeMatcher{}, &fakeDownloader{}, store, nil, func() int64 { return 100 }, seqID())
+	svc := NewService(src, fakeMatcher{}, &fakeDownloader{}, store, nil, func() int64 { return 100 }, seqID(), nil)
 	det1, err1 := svc.Import(context.Background(), "spotify:playlist:PL", false)
 	det2, err2 := svc.Import(context.Background(), "spotify:playlist:PL", false)
 	if err1 != nil || err2 != nil {
@@ -421,7 +421,7 @@ func TestImportWithDownloadMissingEnqueues(t *testing.T) {
 		"PL": {Source: "spotify", ExternalID: "PL", Name: "Mix", Tracks: []core.ExternalResult{track("t1"), track("t2")}},
 	}}
 	dl := &fakeDownloader{}
-	svc := NewService(src, fakeMatcher{}, dl, newMemStore(), nil, func() int64 { return 100 }, seqID())
+	svc := NewService(src, fakeMatcher{}, dl, newMemStore(), nil, func() int64 { return 100 }, seqID(), nil)
 	_, err := svc.Import(context.Background(), "https://open.spotify.com/playlist/PL", true)
 	if err != nil {
 		t.Fatal(err)
@@ -457,7 +457,7 @@ func TestListReturnsAllImported(t *testing.T) {
 		"PL1": {Source: "spotify", ExternalID: "PL1", Name: "A", Tracks: []core.ExternalResult{track("t1")}},
 		"PL2": {Source: "spotify", ExternalID: "PL2", Name: "B", Tracks: []core.ExternalResult{track("t2")}},
 	}}
-	svc := NewService(src, fakeMatcher{}, &fakeDownloader{}, newMemStore(), nil, func() int64 { return 100 }, seqID())
+	svc := NewService(src, fakeMatcher{}, &fakeDownloader{}, newMemStore(), nil, func() int64 { return 100 }, seqID(), nil)
 	svc.Import(context.Background(), "spotify:playlist:PL1", false) //nolint
 	svc.Import(context.Background(), "spotify:playlist:PL2", false) //nolint
 	list, err := svc.List(context.Background())
@@ -474,7 +474,7 @@ func TestDeleteRemovesPlaylist(t *testing.T) {
 		"PL": {Source: "spotify", ExternalID: "PL", Name: "X", Tracks: []core.ExternalResult{track("t1")}},
 	}}
 	store := newMemStore()
-	svc := NewService(src, fakeMatcher{}, &fakeDownloader{}, store, nil, func() int64 { return 100 }, seqID())
+	svc := NewService(src, fakeMatcher{}, &fakeDownloader{}, store, nil, func() int64 { return 100 }, seqID(), nil)
 	det, _ := svc.Import(context.Background(), "spotify:playlist:PL", false)
 	if err := svc.Delete(context.Background(), det.ID); err != nil {
 		t.Fatal(err)
@@ -490,7 +490,7 @@ func TestSyncErrorPreservesTracklist(t *testing.T) {
 		"PL": {Source: "spotify", ExternalID: "PL", Name: "Keep", Tracks: []core.ExternalResult{track("t1"), track("t2")}},
 	}}
 	store := newMemStore()
-	svc := NewService(src, fakeMatcher{}, &fakeDownloader{}, store, nil, func() int64 { return 100 }, seqID())
+	svc := NewService(src, fakeMatcher{}, &fakeDownloader{}, store, nil, func() int64 { return 100 }, seqID(), nil)
 	det, err := svc.Import(context.Background(), "spotify:playlist:PL", false)
 	if err != nil {
 		t.Fatalf("import error: %v", err)
@@ -531,7 +531,7 @@ func TestDetailCoverURLFromExternalTrack(t *testing.T) {
 		"PL": {Source: "spotify", ExternalID: "PL", Name: "Cover Test", Tracks: []core.ExternalResult{extTrack}},
 	}}
 	// No tracks owned — the track should appear as CoverageNone with CoverURL from ext.
-	svc := NewService(src, fakeMatcher{}, &fakeDownloader{}, newMemStore(), nil, func() int64 { return 100 }, seqID())
+	svc := NewService(src, fakeMatcher{}, &fakeDownloader{}, newMemStore(), nil, func() int64 { return 100 }, seqID(), nil)
 	det, err := svc.Import(context.Background(), "spotify:playlist:PL", false)
 	if err != nil {
 		t.Fatal(err)
@@ -562,7 +562,7 @@ func TestDetailCoverURLOwnedTrackFallsBackToExternal(t *testing.T) {
 		"PL": {Source: "spotify", ExternalID: "PL", Name: "Owned Cover Test", Tracks: []core.ExternalResult{extTrack}},
 	}}
 	m := fakeMatcher{owned: map[string]string{"t-owned": "lib-1"}}
-	svc := NewService(src, m, &fakeDownloader{}, newMemStore(), nil, func() int64 { return 100 }, seqID())
+	svc := NewService(src, m, &fakeDownloader{}, newMemStore(), nil, func() int64 { return 100 }, seqID(), nil)
 	det, err := svc.Import(context.Background(), "spotify:playlist:PL", false)
 	if err != nil {
 		t.Fatal(err)
@@ -587,7 +587,7 @@ func TestListTrackCountViaSQLCount(t *testing.T) {
 		"PL1": {Source: "spotify", ExternalID: "PL1", Name: "Three", Tracks: []core.ExternalResult{track("a"), track("b"), track("c")}},
 		"PL2": {Source: "spotify", ExternalID: "PL2", Name: "One", Tracks: []core.ExternalResult{track("x")}},
 	}}
-	svc := NewService(src, fakeMatcher{}, &fakeDownloader{}, newMemStore(), nil, func() int64 { return 100 }, seqID())
+	svc := NewService(src, fakeMatcher{}, &fakeDownloader{}, newMemStore(), nil, func() int64 { return 100 }, seqID(), nil)
 	svc.Import(context.Background(), "spotify:playlist:PL1", false) //nolint
 	svc.Import(context.Background(), "spotify:playlist:PL2", false) //nolint
 
@@ -624,7 +624,7 @@ func TestDetailCarriesArtistAlbumExternalIDs(t *testing.T) {
 		"PL": {Source: "spotify", ExternalID: "PL", Name: "Ext ID Test", Tracks: []core.ExternalResult{ownedTrack, missingTrack}},
 	}}
 	m := fakeMatcher{owned: map[string]string{"t-owned": "lib-owned-1"}}
-	svc := NewService(src, m, &fakeDownloader{}, newMemStore(), nil, func() int64 { return 100 }, seqID())
+	svc := NewService(src, m, &fakeDownloader{}, newMemStore(), nil, func() int64 { return 100 }, seqID(), nil)
 	det, err := svc.Import(context.Background(), "spotify:playlist:PL", false)
 	if err != nil {
 		t.Fatal(err)
@@ -684,7 +684,7 @@ func TestImportOnceCreatesManagedPlaylist(t *testing.T) {
 	matcher := fakeMatcher{owned: map[string]string{"t-owned": "lib-owned-1"}}
 	dl := &fakeDownloader{}
 	store := newMemStore()
-	svc := NewService(src, matcher, dl, store, nil, func() int64 { return 100 }, seqID())
+	svc := NewService(src, matcher, dl, store, nil, func() int64 { return 100 }, seqID(), nil)
 
 	det, err := svc.ImportOnce(context.Background(), "spotify:playlist:PL")
 	if err != nil {
@@ -733,7 +733,7 @@ func TestImportOnceCreatesManagedPlaylist(t *testing.T) {
 // TestImportOnce_BadURL asserts that ImportOnce returns ErrNotPlaylistURL.
 func TestImportOnce_BadURL(t *testing.T) {
 	src := &fakeSource{}
-	svc := NewService(src, fakeMatcher{}, &fakeDownloader{}, newMemStore(), nil, func() int64 { return 100 }, seqID())
+	svc := NewService(src, fakeMatcher{}, &fakeDownloader{}, newMemStore(), nil, func() int64 { return 100 }, seqID(), nil)
 	_, err := svc.ImportOnce(context.Background(), "https://example.com/not-a-playlist")
 	if err == nil {
 		t.Fatal("expected ErrNotPlaylistURL, got nil")
@@ -759,7 +759,7 @@ func TestDetailLibrarySourceTrack(t *testing.T) {
 	// Matcher confirms the track exists in the library (same id — same backend).
 	m := fakeMatcher{owned: map[string]string{storedID: storedID}}
 	store := newMemStore()
-	svc := NewService(src, m, &fakeDownloader{}, store, nil, func() int64 { return 100 }, seqID())
+	svc := NewService(src, m, &fakeDownloader{}, store, nil, func() int64 { return 100 }, seqID(), nil)
 	det, err := svc.Import(context.Background(), "spotify:playlist:PL", false)
 	if err != nil {
 		t.Fatal(err)
@@ -784,7 +784,7 @@ func TestAddTrackAppendsAndDedupes(t *testing.T) {
 	}}
 	dl := &fakeDownloader{}
 	store := newMemStore()
-	svc := NewService(src, fakeMatcher{}, dl, store, nil, func() int64 { return 100 }, seqID())
+	svc := NewService(src, fakeMatcher{}, dl, store, nil, func() int64 { return 100 }, seqID(), nil)
 	det, _ := svc.ImportOnce(context.Background(), "spotify:playlist:PL")
 	initialEnqueues := len(dl.calls) // t1 was enqueued on import
 
@@ -821,7 +821,7 @@ func TestAddTrackNotEditableOnSyncedPlaylist(t *testing.T) {
 		"PL": {Source: "spotify", ExternalID: "PL", Name: "Synced", Tracks: []core.ExternalResult{track("t1")}},
 	}}
 	store := newMemStore()
-	svc := NewService(src, fakeMatcher{}, &fakeDownloader{}, store, nil, func() int64 { return 100 }, seqID())
+	svc := NewService(src, fakeMatcher{}, &fakeDownloader{}, store, nil, func() int64 { return 100 }, seqID(), nil)
 	det, _ := svc.Import(context.Background(), "spotify:playlist:PL", false)
 
 	newTrack := core.ExternalResult{Source: "spotify", ExternalID: "t-new", Title: "New", Type: core.EntityTrack}
@@ -838,7 +838,7 @@ func TestRemoveTrackRemovesEntry(t *testing.T) {
 			Tracks: []core.ExternalResult{track("t1"), track("t2")}},
 	}}
 	store := newMemStore()
-	svc := NewService(src, fakeMatcher{}, &fakeDownloader{}, store, nil, func() int64 { return 100 }, seqID())
+	svc := NewService(src, fakeMatcher{}, &fakeDownloader{}, store, nil, func() int64 { return 100 }, seqID(), nil)
 	det, _ := svc.ImportOnce(context.Background(), "spotify:playlist:PL")
 
 	det2, err := svc.RemoveTrack(context.Background(), det.ID, "spotify", "t1")
@@ -865,6 +865,7 @@ func TestCreateManagedCreatesLocalModeOncePlaylist(t *testing.T) {
 		nil,
 		func() int64 { return 500 },
 		seqID(),
+		nil,
 	)
 	det, err := svc.CreateManaged(context.Background(), "My New Playlist")
 	if err != nil {
@@ -903,7 +904,7 @@ func TestCreateManagedCreatesLocalModeOncePlaylist(t *testing.T) {
 // constructed without a PlaylistSource (src=nil). All other managed-playlist
 // operations must work normally.
 func TestNilSrcSpotifyMethodsReturnErrSpotifyNotConfigured(t *testing.T) {
-	svc := NewService(nil, fakeMatcher{}, &fakeDownloader{}, newMemStore(), nil, func() int64 { return 100 }, seqID())
+	svc := NewService(nil, fakeMatcher{}, &fakeDownloader{}, newMemStore(), nil, func() int64 { return 100 }, seqID(), nil)
 
 	_, err := svc.Import(context.Background(), "spotify:playlist:PL", false)
 	if !errors.Is(err, ErrSpotifyNotConfigured) {
@@ -917,7 +918,7 @@ func TestNilSrcSpotifyMethodsReturnErrSpotifyNotConfigured(t *testing.T) {
 
 	// Seed a row so Sync can attempt to look up the playlist.
 	store := newMemStore()
-	svc2 := NewService(nil, fakeMatcher{}, &fakeDownloader{}, store, nil, func() int64 { return 100 }, seqID())
+	svc2 := NewService(nil, fakeMatcher{}, &fakeDownloader{}, store, nil, func() int64 { return 100 }, seqID(), nil)
 	_, err = svc2.Sync(context.Background(), "nonexistent-id")
 	if !errors.Is(err, ErrSpotifyNotConfigured) {
 		t.Fatalf("Sync with nil src: want ErrSpotifyNotConfigured, got %v", err)
@@ -931,7 +932,7 @@ func TestNilSrcManagedPlaylistOpsWork(t *testing.T) {
 	// Detail re-resolves library-source tracks via the matcher, so the added
 	// lib-t1 entry must be in the matcher's owned map to resolve as owned.
 	m := fakeMatcher{owned: map[string]string{"lib-t1": "lib-t1"}}
-	svc := NewService(nil, m, &fakeDownloader{}, store, nil, func() int64 { return 200 }, seqID())
+	svc := NewService(nil, m, &fakeDownloader{}, store, nil, func() int64 { return 200 }, seqID(), nil)
 
 	// CreateManaged works.
 	det, err := svc.CreateManaged(context.Background(), "No Spotify Playlist")
@@ -1045,6 +1046,7 @@ func TestMigrateLibraryPlaylistsMigratesAll(t *testing.T) {
 		nil,
 		func() int64 { return 1000 },
 		seqID(),
+		nil,
 	)
 	svc.WithLibraryReader(libReader)
 	svc.WithSettingsStore(ss)
@@ -1145,6 +1147,7 @@ func TestMigrateLibraryPlaylistsPerPlaylistError(t *testing.T) {
 		nil,
 		func() int64 { return 2000 },
 		seqID(),
+		nil,
 	)
 	svc.WithLibraryReader(libReader)
 	svc.WithSettingsStore(ss)
@@ -1176,7 +1179,7 @@ func TestServiceRename(t *testing.T) {
 	stor := newMemStore()
 	id := "pl1"
 	stor.rows[id] = &memRow{SyncedRow{ID: id, Name: "Old", CoverURL: "cover.jpg", TracksJSON: "[]", Mode: "once"}}
-	svc := NewService(nil, nil, nil, stor, nil, func() int64 { return now }, func() string { return id })
+	svc := NewService(nil, nil, nil, stor, nil, func() int64 { return now }, func() string { return id }, nil)
 	det, err := svc.Rename(context.Background(), id, "New Name")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -1193,7 +1196,7 @@ func TestServiceRenameEmptyName(t *testing.T) {
 	stor := newMemStore()
 	id := "pl1"
 	stor.rows[id] = &memRow{SyncedRow{ID: id, Name: "Old", Mode: "once"}}
-	svc := NewService(nil, nil, nil, stor, nil, func() int64 { return 0 }, func() string { return id })
+	svc := NewService(nil, nil, nil, stor, nil, func() int64 { return 0 }, func() string { return id }, nil)
 	_, err := svc.Rename(context.Background(), id, "   ")
 	if err == nil {
 		t.Fatal("expected error for empty name")
@@ -1206,7 +1209,7 @@ func TestServiceRenameAllModes(t *testing.T) {
 			stor := newMemStore()
 			id := "pl-" + mode
 			stor.rows[id] = &memRow{SyncedRow{ID: id, Name: "Old", TracksJSON: "[]", Mode: mode}}
-			svc := NewService(nil, nil, nil, stor, nil, func() int64 { return 0 }, func() string { return id })
+			svc := NewService(nil, nil, nil, stor, nil, func() int64 { return 0 }, func() string { return id }, nil)
 			det, err := svc.Rename(context.Background(), id, "New")
 			if err != nil {
 				t.Fatalf("mode %q: unexpected error: %v", mode, err)
@@ -1227,7 +1230,7 @@ func TestSetCoverUpdatesCoverURL(t *testing.T) {
 	svc := NewService(
 		&fakeSource{playlists: map[string]core.ExternalPlaylist{}},
 		fakeMatcher{}, &fakeDownloader{}, store, nil,
-		func() int64 { return 100 }, seqID(),
+		func() int64 { return 100 }, seqID(), nil,
 	)
 	det, err := svc.CreateManaged(context.Background(), "My Playlist")
 	if err != nil {
@@ -1258,7 +1261,7 @@ func TestSetCoverNotEditableOnSyncedPlaylist(t *testing.T) {
 		"PL": {Source: "spotify", ExternalID: "PL", Name: "Synced", Tracks: []core.ExternalResult{track("t1")}},
 	}}
 	store := newMemStore()
-	svc := NewService(src, fakeMatcher{}, &fakeDownloader{}, store, nil, func() int64 { return 100 }, seqID())
+	svc := NewService(src, fakeMatcher{}, &fakeDownloader{}, store, nil, func() int64 { return 100 }, seqID(), nil)
 	det, _ := svc.Import(context.Background(), "spotify:playlist:PL", false)
 
 	_, err := svc.SetCover(context.Background(), det.ID, "/some/url")
@@ -1277,7 +1280,7 @@ func TestReorderTracksReordersCorrectly(t *testing.T) {
 			Tracks: []core.ExternalResult{track("t1"), track("t2"), track("t3")}},
 	}}
 	store := newMemStore()
-	svc := NewService(src, fakeMatcher{}, &fakeDownloader{}, store, nil, func() int64 { return 100 }, seqID())
+	svc := NewService(src, fakeMatcher{}, &fakeDownloader{}, store, nil, func() int64 { return 100 }, seqID(), nil)
 	det, _ := svc.ImportOnce(context.Background(), "spotify:playlist:PL")
 
 	// Reorder: t3 first, then t1 (t2 not in order → appended at end)
@@ -1310,7 +1313,7 @@ func TestReorderTracksIgnoresUnknownKeys(t *testing.T) {
 			Tracks: []core.ExternalResult{track("t1"), track("t2")}},
 	}}
 	store := newMemStore()
-	svc := NewService(src, fakeMatcher{}, &fakeDownloader{}, store, nil, func() int64 { return 100 }, seqID())
+	svc := NewService(src, fakeMatcher{}, &fakeDownloader{}, store, nil, func() int64 { return 100 }, seqID(), nil)
 	det, _ := svc.ImportOnce(context.Background(), "spotify:playlist:PL")
 
 	order := []core.TrackKey{
@@ -1338,7 +1341,7 @@ func TestReorderTracksNotEditableOnSyncedPlaylist(t *testing.T) {
 		"PL": {Source: "spotify", ExternalID: "PL", Name: "Synced", Tracks: []core.ExternalResult{track("t1")}},
 	}}
 	store := newMemStore()
-	svc := NewService(src, fakeMatcher{}, &fakeDownloader{}, store, nil, func() int64 { return 100 }, seqID())
+	svc := NewService(src, fakeMatcher{}, &fakeDownloader{}, store, nil, func() int64 { return 100 }, seqID(), nil)
 	det, _ := svc.Import(context.Background(), "spotify:playlist:PL", false)
 
 	_, err := svc.ReorderTracks(context.Background(), det.ID, []core.TrackKey{{Source: "spotify", ExternalID: "t1"}})
@@ -1377,7 +1380,7 @@ func TestDetailSetsKeyOnAllRows(t *testing.T) {
 	// lib-t1 must also be in the matcher so the library-source re-resolve succeeds.
 	m := fakeMatcher{owned: map[string]string{"lib-t1": "lib-t1", "sp-t2": "lib-match-1"}}
 	store := newMemStore()
-	svc := NewService(src, m, &fakeDownloader{}, store, nil, func() int64 { return 100 }, seqID())
+	svc := NewService(src, m, &fakeDownloader{}, store, nil, func() int64 { return 100 }, seqID(), nil)
 	det, err := svc.Import(context.Background(), "spotify:playlist:PL", false)
 	if err != nil {
 		t.Fatal(err)
@@ -1451,6 +1454,7 @@ func TestDetailEmptyPlaylistHasNonNilTracks(t *testing.T) {
 		nil,
 		func() int64 { return 1000 },
 		seqID(),
+		nil,
 	)
 	det, err := svc.CreateManaged(context.Background(), "Empty Playlist")
 	if err != nil {
@@ -1492,7 +1496,7 @@ func TestDetailLibrarySourceTrackCoverArtID(t *testing.T) {
 		owned: map[string]string{storedID: storedID},
 		meta:  map[string]core.Track{storedID: {CoverArtID: freshCover}},
 	}
-	svc := NewService(src, m, &fakeDownloader{}, store, nil, func() int64 { return 100 }, seqID())
+	svc := NewService(src, m, &fakeDownloader{}, store, nil, func() int64 { return 100 }, seqID(), nil)
 	det, err := svc.Import(context.Background(), "spotify:playlist:PL", false)
 	if err != nil {
 		t.Fatal(err)
@@ -1561,7 +1565,7 @@ func TestDetail_LibrarySourceResolvesAtRead(t *testing.T) {
 		meta:  map[string]core.Track{oldID: {ArtistID: freshArtistID, AlbumID: freshAlbumID, CoverArtID: freshCover}},
 	}
 
-	svc := NewService(nil, m, &fakeDownloader{}, store, nil, func() int64 { return 100 }, seqID())
+	svc := NewService(nil, m, &fakeDownloader{}, store, nil, func() int64 { return 100 }, seqID(), nil)
 	det, err := svc.Detail(context.Background(), "pl-1")
 	if err != nil {
 		t.Fatalf("Detail: %v", err)
@@ -1626,7 +1630,7 @@ func TestDetail_LibrarySourceNoMatch_DegradesToMissing(t *testing.T) {
 	// Fake matcher: nothing matches (backend swap, track is gone).
 	m := fakeMatcher{owned: map[string]string{}}
 
-	svc := NewService(nil, m, &fakeDownloader{}, store, nil, func() int64 { return 100 }, seqID())
+	svc := NewService(nil, m, &fakeDownloader{}, store, nil, func() int64 { return 100 }, seqID(), nil)
 	det, err := svc.Detail(context.Background(), "pl-2")
 	if err != nil {
 		t.Fatalf("Detail: %v", err)

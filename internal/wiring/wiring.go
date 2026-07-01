@@ -356,20 +356,44 @@ func (b *Builder) reconcileDownloadJobIdentity(ctx context.Context, identity str
 	return b.queries.UpsertSetting(ctx, db.UpsertSettingParams{Key: settingDownloadJobIdentity, Value: identity})
 }
 
+// BindingResolver is the narrow catalog-resolution seam exposed to the Builder
+// so the download.Manager and playlistsync.Service (both constructed inside Build)
+// can hold a reference to the long-lived resolver singleton. *resolver.Service
+// satisfies this interface (Go structural typing). Defined here so the composition
+// root, tests, and both consumers share one name without any package importing
+// another in a cycle-forming direction (resolver never imports wiring/download/sync).
+type BindingResolver interface {
+	Resolve(ctx context.Context, catalogID string) (resolver.Addressing, error)
+	RefreshLinked(ctx context.Context, catalogIDs []string) error
+}
+
 // Builder captures everything needed to (re)build a ServiceBundle from the
 // current DB state: the registries, the DB queries (adapter rows + match cache +
 // download persistence), the version store, the event bus, the clock, and the
 // getenv used for secret overrides.
 type Builder struct {
-	libraryReg    *registry.Registry
-	searchReg     *registry.Registry
-	downloaderReg *registry.Registry
-	queries       *db.Queries
-	version       VersionStore
-	bus           download.Publisher
-	clock         download.Clock
-	getenv        func(string) string
-	dataDir       string
+	libraryReg      *registry.Registry
+	searchReg       *registry.Registry
+	downloaderReg   *registry.Registry
+	queries         *db.Queries
+	version         VersionStore
+	bus             download.Publisher
+	clock           download.Clock
+	getenv          func(string) string
+	dataDir         string
+	// resolverProvider is set by the composition root before the first Build call
+	// (P2 construction order: reloader→resolver→SetResolverProvider→Build). Build
+	// reads it lazily — it is never called during Build itself, only stored so
+	// Manager/Sync can call it at runtime. Nil is safe (Manager/Sync nil-guard it).
+	resolverProvider func() BindingResolver
+}
+
+// SetResolverProvider injects the resolver provider into the Builder. Call this
+// BEFORE the first Build so that Manager and Sync receive the resolver dep.
+// The provider func is stored and forwarded to download.NewManager and
+// playlistsync.NewService; they call it at runtime (Tasks 3-5), not during Build.
+func (b *Builder) SetResolverProvider(p func() BindingResolver) {
+	b.resolverProvider = p
 }
 
 // NewBuilder constructs a Builder. clock may be nil (download.NewManager applies
@@ -531,6 +555,21 @@ func (b *Builder) Build(ctx context.Context) (ServiceBundle, error) {
 		// Reuse the single matcher built above (libAdapter != nil guarantees it is
 		// non-nil here) — functionally identical to a fresh instance, one fewer alloc.
 		var rematcher download.Rematcher = matcher
+		// Wrap the wiring-level resolverProvider into a download.BindingResolver
+		// provider. Both interface shapes are structurally identical and satisfied
+		// by *resolver.Service; the wrapper bridges the two local interface types
+		// without any type assertion. Nil when SetResolverProvider was not called.
+		var dlResolve func() download.BindingResolver
+		if b.resolverProvider != nil {
+			rp := b.resolverProvider // capture once
+			dlResolve = func() download.BindingResolver {
+				r := rp()
+				if r == nil {
+					return nil
+				}
+				return r
+			}
+		}
 		bundle.Manager = download.NewManager(
 			download.Config{Workers: 2, DebounceWindow: 5 * time.Second},
 			downloaders,
@@ -541,6 +580,7 @@ func (b *Builder) Build(ctx context.Context) (ServiceBundle, error) {
 			b.version,  // VersionBumper (LibraryVersion/SetLibraryVersion)
 			b.clock,    // production clock (nil → RealClock default)
 			libAdapter, // PlaylistAdder (AddTracksToPlaylist) — subsonic adapter satisfies it
+			dlResolve,  // optional resolver provider; Tasks 3-5 add call sites
 		)
 		log.Printf("download manager active: %d downloader(s)", len(downloaders))
 	} else if len(downloaders) > 0 {

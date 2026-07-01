@@ -232,6 +232,40 @@ func (m *cancelObservingMatcher) Match(ctx context.Context, _ core.ExternalResul
 	return m.result, nil
 }
 
+// TestResolve_NilMatcherProviderReturnsNotFound verifies that Resolve returns a
+// benign not-found result (no panic) when the matcher-provider yields nil (no
+// library configured). Before the fix resolver.go:150 calls s.matcher().Match(...)
+// which panics on a nil interface.
+func TestResolve_NilMatcherProviderReturnsNotFound(t *testing.T) {
+	st := openStore(t)
+	q := st.Q()
+	cid := seedEntity(t, q, "trk_nil", "Song", "Artist", "Album", 200000)
+
+	// Provider always returns nil — simulates "no library configured".
+	svc := NewService(q, func() Rematcher { return nil }, time.Now)
+	addr, err := svc.Resolve(context.Background(), cid)
+	if err != nil {
+		t.Fatalf("Resolve with nil matcher must not error, got: %v", err)
+	}
+	if addr.Found {
+		t.Fatalf("Resolve with nil matcher must return Found:false, got %+v", addr)
+	}
+}
+
+// TestRefreshLinked_NilMatcherProviderIsNoop verifies that RefreshLinked returns
+// nil (no panic) when the matcher-provider yields nil.
+func TestRefreshLinked_NilMatcherProviderIsNoop(t *testing.T) {
+	st := openStore(t)
+	q := st.Q()
+	cid := seedEntity(t, q, "trk_nil2", "Song", "Artist", "Album", 200000)
+
+	svc := NewService(q, func() Rematcher { return nil }, time.Now)
+	err := svc.RefreshLinked(context.Background(), []string{cid})
+	if err != nil {
+		t.Fatalf("RefreshLinked with nil matcher must not error, got: %v", err)
+	}
+}
+
 func TestResolve_DetachesContextForFlight(t *testing.T) {
 	st := openStore(t)
 	q := st.Q()
