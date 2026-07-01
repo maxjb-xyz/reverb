@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/maxjb-xyz/reverb/internal/catalog"
 	"github.com/maxjb-xyz/reverb/internal/core"
 	"github.com/maxjb-xyz/reverb/internal/events"
 	"github.com/maxjb-xyz/reverb/internal/resolver"
@@ -62,6 +63,9 @@ type JobStore interface {
 	// job exists but has no persisted request, and (zero, false, err) on error.
 	// Used by the !haveReq reconstruction to recover Granularity after a restart.
 	GetRequest(ctx context.Context, id string) (core.DownloadRequest, bool, error)
+	// UpdateCanonicalID persists the minted catalog entity id on the job row.
+	// Called at link time (BackfillUnlinked / runScan) after a successful match.
+	UpdateCanonicalID(ctx context.Context, id string, canonicalID string) error
 }
 
 // ScanController is the library slice the Manager needs (StartScan + ScanStatus).
@@ -88,6 +92,14 @@ type Publisher interface {
 type BindingResolver interface {
 	Resolve(ctx context.Context, catalogID string) (resolver.Addressing, error)
 	RefreshLinked(ctx context.Context, catalogIDs []string) error
+}
+
+// CanonicalMinter mints or resolves a stable catalog entity id. *catalog.Service
+// satisfies this interface. Declared here (consumer-side) so the catalog package
+// never imports download (dependency direction: download→catalog, not the reverse).
+// Nil-safe: callers guard with "if m.canonicalMinter != nil".
+type CanonicalMinter interface {
+	CanonicalFor(ctx context.Context, id catalog.Identity) (string, error)
 }
 
 // VersionBumper reads and bumps library_version. *store.Store fits.
@@ -168,16 +180,17 @@ func (c Config) withDefaults() Config {
 // Manager owns the download queue, a bounded worker pool, dedup-join, the
 // fallback chain, scan-debounce, cancel/retry, and EventBus publication.
 type Manager struct {
-	cfg         Config
-	downloaders []DownloaderEntry
-	store       JobStore
-	bus         Publisher
-	scanner     ScanController
-	rematcher   Rematcher
-	version     VersionBumper
-	clock       Clock
-	playlists   PlaylistAdder  // optional; non-nil only when a library is configured
-	resolve     func() BindingResolver // optional provider; Tasks 3-5 add call sites
+	cfg              Config
+	downloaders      []DownloaderEntry
+	store            JobStore
+	bus              Publisher
+	scanner          ScanController
+	rematcher        Rematcher
+	version          VersionBumper
+	clock            Clock
+	playlists        PlaylistAdder   // optional; non-nil only when a library is configured
+	resolve          func() BindingResolver // optional provider; Tasks 3-5 add call sites
+	canonicalMinter  CanonicalMinter // optional; mints catalog IDs at link time (Task 3)
 
 	queue chan string // job IDs to process
 
@@ -235,6 +248,44 @@ func NewManager(cfg Config, downloaders []DownloaderEntry, store JobStore, bus P
 		reqs:        map[string]core.DownloadRequest{},
 		stopCh:      make(chan struct{}),
 		resumeCh:    closedChan(),
+	}
+}
+
+// SetCanonicalMinter injects the catalog minter after construction. Called by the
+// composition root (cmd/reverb/main.go) so the singleton catalogSvc is available
+// before Build runs. Nil-safe: if never called, minting is silently skipped.
+func (m *Manager) SetCanonicalMinter(minter CanonicalMinter) {
+	m.canonicalMinter = minter
+}
+
+// mintAndStoreCanonicalID mints (or resolves) a catalog entity id for job j and
+// stores it on the row. Called ONLY at link time (BackfillUnlinked / runScan) for
+// jobs that are newly matched — never for archived, unlinked, or already-minted jobs.
+// Nil-safe: a nil canonicalMinter silently skips minting (no panic, no error).
+func (m *Manager) mintAndStoreCanonicalID(ctx context.Context, j core.DownloadJob) {
+	if m.canonicalMinter == nil {
+		return
+	}
+	id := catalog.Identity{
+		Kind:       "track",
+		Source:     j.Source,
+		ExternalID: j.ExternalID,
+		ISRC:       j.ISRC,
+		Title:      j.Title,
+		Artist:     j.Artist,
+		Album:      j.Album,
+		DurationMs: j.DurationMs,
+	}
+	cid, err := m.canonicalMinter.CanonicalFor(ctx, id)
+	if err != nil {
+		log.Printf("download: mint canonical id for job %s failed: %v", shortID(j.ID), err)
+		return
+	}
+	if cid == "" {
+		return
+	}
+	if err := m.store.UpdateCanonicalID(ctx, j.ID, cid); err != nil {
+		log.Printf("download: store canonical id for job %s failed: %v", shortID(j.ID), err)
 	}
 }
 
@@ -297,6 +348,9 @@ func (m *Manager) BackfillUnlinked() {
 			log.Printf("download backfill: update job %s failed: %v", shortID(j.ID), err)
 			continue
 		}
+		// Task 3: mint canonical id at link time. Scoped to newly-linked jobs only —
+		// never bulk-backfill archived jobs, never mint on a browse.
+		m.mintAndStoreCanonicalID(ctx, j)
 		m.publishComplete(j, res.LibraryTrackID)
 		if m.playlists != nil && j.AddToPlaylistID != "" {
 			if perr := m.playlists.AddTracksToPlaylist(ctx, j.AddToPlaylistID, []string{res.LibraryTrackID}); perr != nil {
@@ -645,6 +699,7 @@ func (m *Manager) publishEvent(topic string, job core.DownloadJob, errMsg string
 		ExternalID:     job.ExternalID,
 		LibraryTrackID: job.LibraryTrackID,
 		CoverArtID:     job.CoverArtID,
+		CanonicalID:    job.CanonicalID,
 	}})
 }
 
@@ -952,6 +1007,8 @@ func (m *Manager) runScan() {
 		j.LibraryTrackID = res.LibraryTrackID
 		j.CoverArtID = res.CoverArtID
 		_ = m.store.Update(ctx, j)
+		// Task 3: mint canonical id at link time. Scoped to newly-linked jobs only.
+		m.mintAndStoreCanonicalID(ctx, j)
 		m.publishComplete(j, res.LibraryTrackID)
 
 		// One-time import hook: if the originating request named a target playlist,
@@ -1023,9 +1080,9 @@ func (m *Manager) waitForScan(ctx context.Context) {
 	}
 }
 
-// publishComplete emits a final download.complete carrying the library_track_id.
-// artistId/albumId are left empty in MVP (the re-matcher returns only the track
-// id); the client invalidates by libraryTrackId + does a scoped library refetch.
+// publishComplete emits a final download.complete carrying the library_track_id
+// and canonical_id. The FE prefers canonicalId for cover resolution so covers
+// survive a backend swap. artistId/albumId are deferred to a later milestone.
 func (m *Manager) publishComplete(job core.DownloadJob, libraryTrackID string) {
 	if m.bus == nil {
 		return
@@ -1033,7 +1090,8 @@ func (m *Manager) publishComplete(job core.DownloadJob, libraryTrackID string) {
 	m.bus.Publish(events.Event{Topic: TopicComplete, Payload: core.DownloadEvent{
 		JobID: job.ID, DedupKey: job.DedupKey, Status: core.DownloadCompleted, Progress: 100,
 		Source: job.Source, ExternalID: job.ExternalID, LibraryTrackID: libraryTrackID,
-		CoverArtID: job.CoverArtID,
+		CoverArtID:  job.CoverArtID,
+		CanonicalID: job.CanonicalID,
 	}})
 }
 

@@ -32,6 +32,7 @@ type rowFields struct {
 	outputPath     string
 	libraryTrackID sql.NullString
 	coverArtID     sql.NullString
+	canonicalID    string
 	priority       int64
 	attempts       int64
 	downloaderRef  string
@@ -64,6 +65,7 @@ func toCoreFlatRow(r rowFields) (core.DownloadJob, error) {
 	if r.coverArtID.Valid {
 		j.CoverArtID = r.coverArtID.String
 	}
+	j.CanonicalID = r.canonicalID
 	if r.startedAt.Valid {
 		j.StartedAt = r.startedAt.Int64
 	}
@@ -96,7 +98,7 @@ func fromGetRow(r db.GetDownloadJobRow) rowFields {
 		id: r.ID, dedupKey: r.DedupKey, requestJson: r.RequestJson,
 		downloaderName: r.DownloaderName, status: r.Status, progress: r.Progress,
 		errStr: r.Error, outputPath: r.OutputPath,
-		libraryTrackID: r.LibraryTrackID, coverArtID: r.CoverArtID,
+		libraryTrackID: r.LibraryTrackID, coverArtID: r.CoverArtID, canonicalID: r.CanonicalID,
 		priority: r.Priority, attempts: r.Attempts, downloaderRef: r.DownloaderRef,
 		createdAt: r.CreatedAt, startedAt: r.StartedAt, finishedAt: r.FinishedAt,
 	}
@@ -107,7 +109,7 @@ func fromGetDedupRow(r db.GetActiveDownloadJobByDedupRow) rowFields {
 		id: r.ID, dedupKey: r.DedupKey, requestJson: r.RequestJson,
 		downloaderName: r.DownloaderName, status: r.Status, progress: r.Progress,
 		errStr: r.Error, outputPath: r.OutputPath,
-		libraryTrackID: r.LibraryTrackID, coverArtID: r.CoverArtID,
+		libraryTrackID: r.LibraryTrackID, coverArtID: r.CoverArtID, canonicalID: r.CanonicalID,
 		priority: r.Priority, attempts: r.Attempts, downloaderRef: r.DownloaderRef,
 		createdAt: r.CreatedAt, startedAt: r.StartedAt, finishedAt: r.FinishedAt,
 	}
@@ -118,7 +120,7 @@ func fromListRow(r db.ListDownloadJobsRow) rowFields {
 		id: r.ID, dedupKey: r.DedupKey, requestJson: r.RequestJson,
 		downloaderName: r.DownloaderName, status: r.Status, progress: r.Progress,
 		errStr: r.Error, outputPath: r.OutputPath,
-		libraryTrackID: r.LibraryTrackID, coverArtID: r.CoverArtID,
+		libraryTrackID: r.LibraryTrackID, coverArtID: r.CoverArtID, canonicalID: r.CanonicalID,
 		priority: r.Priority, attempts: r.Attempts, downloaderRef: r.DownloaderRef,
 		createdAt: r.CreatedAt, startedAt: r.StartedAt, finishedAt: r.FinishedAt,
 	}
@@ -250,6 +252,13 @@ func (s *sqlStore) DeleteFinished(ctx context.Context) ([]string, error) {
 
 func (s *sqlStore) UpdateRef(ctx context.Context, id string, ref string) error {
 	return s.q.UpdateDownloadJobRef(ctx, db.UpdateDownloadJobRefParams{DownloaderRef: ref, ID: id})
+}
+
+func (s *sqlStore) UpdateCanonicalID(ctx context.Context, id string, canonicalID string) error {
+	return s.q.UpdateDownloadJobCanonicalID(ctx, db.UpdateDownloadJobCanonicalIDParams{
+		CanonicalID: canonicalID,
+		ID:          id,
+	})
 }
 
 // GetRequest retrieves the originating DownloadRequest for the given job id

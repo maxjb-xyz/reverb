@@ -41,6 +41,9 @@ type Querier interface {
 	// plays is the first stored consumer reference the foundation design anticipated:
 	// repointing it on merge keeps listening history consolidated under the winner.
 	RepointPlays(ctx context.Context, arg db.RepointPlaysParams) error
+	// RepointDownloadJobs repoints download_jobs.canonical_id from loser → winner
+	// so that job covers continue to resolve after a catalog merge (Task 3).
+	RepointDownloadJobs(ctx context.Context, arg db.RepointDownloadJobsParams) error
 }
 
 // Service mints and resolves catalog IDs.

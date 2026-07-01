@@ -66,6 +66,10 @@ type DownloadJob struct {
 	OutputPath     string         `json:"outputPath,omitempty"`
 	LibraryTrackID string         `json:"libraryTrackId,omitempty"`
 	CoverArtID     string         `json:"coverArtId,omitempty"`
+	// CanonicalID is the stable catalog entity id (trk_…) minted at link time.
+	// Empty when the job has not yet been matched to the library. The FE prefers
+	// this over CoverArtID for cover resolution so covers survive a backend swap.
+	CanonicalID    string         `json:"canonicalId,omitempty"`
 	DownloaderName string         `json:"downloaderName"`
 	Priority       int            `json:"priority"`
 	Attempts       int            `json:"attempts"`
@@ -102,6 +106,7 @@ type DownloadEvent struct {
 	ExternalID     string         `json:"externalId"`
 	LibraryTrackID string         `json:"libraryTrackId,omitempty"`
 	CoverArtID     string         `json:"coverArtId,omitempty"`
+	CanonicalID    string         `json:"canonicalId,omitempty"`
 	ArtistID       string         `json:"artistId,omitempty"`
 	AlbumID        string         `json:"albumId,omitempty"`
 }

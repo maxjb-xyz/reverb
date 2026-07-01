@@ -356,3 +356,53 @@ func TestMerge_RepointsPlays(t *testing.T) {
 		t.Fatalf("play.catalog_id = %q; want winner %q", plays[0].CatalogID, winner)
 	}
 }
+
+// TestMerge_RepointsDownloadJobCanonicalID verifies that a merge repoints
+// download_jobs.canonical_id from loser → winner (Task 3: cover-rot killer).
+// This ensures a completed download job retains its cover after a catalog merge.
+func TestMerge_RepointsDownloadJobCanonicalID(t *testing.T) {
+	s, q := newTestServiceWithQueries(t)
+	ctx := context.Background()
+
+	winner, err := s.CanonicalFor(ctx, Identity{Kind: "track", Title: "Download Winner", Artist: "X", Album: "Z", DurationMs: 200000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	loser, err := s.CanonicalFor(ctx, Identity{Kind: "track", Title: "Download Loser", Artist: "X", Album: "Z", DurationMs: 200000})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Seed a download job row and set canonical_id = loser.
+	if err := q.InsertDownloadJob(ctx, db.InsertDownloadJobParams{
+		ID: "dl-repoint-job-1", DedupKey: "dk-repoint", RequestJson: "{}",
+		DownloaderName: "test", Status: "completed", Progress: 100,
+		Priority: 0, Attempts: 1,
+	}); err != nil {
+		t.Fatalf("InsertDownloadJob: %v", err)
+	}
+	if err := q.UpdateDownloadJobCanonicalID(ctx, db.UpdateDownloadJobCanonicalIDParams{
+		CanonicalID: loser,
+		ID:          "dl-repoint-job-1",
+	}); err != nil {
+		t.Fatalf("UpdateDownloadJobCanonicalID: %v", err)
+	}
+
+	// Merge loser into winner.
+	if err := s.merge(ctx, loser, winner); err != nil {
+		t.Fatalf("merge: %v", err)
+	}
+
+	// After merge, the download job's canonical_id must point at winner.
+	row, err := q.GetDownloadJob(ctx, "dl-repoint-job-1")
+	if err != nil {
+		t.Fatalf("GetDownloadJob after merge: %v", err)
+	}
+	if row.CanonicalID != winner {
+		t.Fatalf("download_job.canonical_id = %q; want winner %q", row.CanonicalID, winner)
+	}
+	// Loser entity is gone.
+	if _, err := q.GetCatalogEntity(ctx, loser); err == nil {
+		t.Fatal("loser entity should be deleted after merge")
+	}
+}

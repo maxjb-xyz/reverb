@@ -55,6 +55,15 @@ func (s *Service) repointCanonicalRefs(ctx context.Context, winner, loser string
 		return err
 	}
 
+	// 4. Repoint download_jobs.canonical_id from loser → winner (Task 3).
+	//    No FK constraint on download_jobs; safe to run before or after the entity delete.
+	if err := s.q.RepointDownloadJobs(ctx, db.RepointDownloadJobsParams{
+		CanonicalID:  winner,
+		CanonicalID2: loser,
+	}); err != nil {
+		return err
+	}
+
 	return nil
 }
 

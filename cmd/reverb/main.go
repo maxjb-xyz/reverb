@@ -143,6 +143,12 @@ func main() {
 	resolverSvc := resolver.NewService(st.Q(), reloader.matcherProvider(), time.Now)
 	builder.SetResolverProvider(func() wiring.BindingResolver { return resolverSvc })
 
+	// P2 Task 3: catalogSvc is backend-independent (st.Q() + time + uuid only) so it
+	// is constructed BEFORE builder.Build and injected into the Manager via
+	// SetCanonicalMinter AFTER Build returns the Manager. catalogSvc is used as both
+	// the download.CanonicalMinter and the play/stats service dependency below.
+	catalogSvc := catalog.NewService(st.Q(), time.Now, uuid.NewString)
+
 	bundle, err := builder.Build(context.Background())
 	if err != nil {
 		log.Fatal(err)
@@ -159,6 +165,9 @@ func main() {
 	}
 
 	if bundle.Manager != nil {
+		// Task 3: inject the canonical minter so the Manager mints stable catalog ids
+		// at link time (BackfillUnlinked / runScan). Nil-safe if catalogSvc is nil.
+		bundle.Manager.SetCanonicalMinter(catalogSvc)
 		bundle.Manager.Start()
 		defer bundle.Manager.Stop()
 	}
@@ -182,7 +191,7 @@ func main() {
 		}()
 	}
 
-	catalogSvc := catalog.NewService(st.Q(), time.Now, uuid.NewString)
+	// catalogSvc is already constructed above (before Build) and injected into the Manager.
 	playSvc := play.NewService(st.Q(), catalogSvc, time.Now, uuid.NewString)
 	statsSvc := play.NewStats(st.Q())
 

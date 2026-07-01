@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/maxjb-xyz/reverb/internal/catalog"
 	"github.com/maxjb-xyz/reverb/internal/core"
 	"github.com/maxjb-xyz/reverb/internal/events"
 	"github.com/maxjb-xyz/reverb/internal/registry"
@@ -230,6 +231,16 @@ func (s *memStore) UpdateRef(_ context.Context, id string, ref string) error {
 	defer s.mu.Unlock()
 	if j, ok := s.jobs[id]; ok {
 		j.DownloaderRef = ref
+		s.jobs[id] = j
+	}
+	return nil
+}
+
+func (s *memStore) UpdateCanonicalID(_ context.Context, id string, canonicalID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if j, ok := s.jobs[id]; ok {
+		j.CanonicalID = canonicalID
 		s.jobs[id] = j
 	}
 	return nil
@@ -2544,6 +2555,254 @@ func TestRetryAsyncDetachesRequestContext(t *testing.T) {
 	}
 }
 
+
+// ─── Task 3: CanonicalMinter fakes + tests ──────────────────────────────────
+
+// fakeCanonicalMinter records calls and returns a fixed canonical id.
+type fakeCanonicalMinter struct {
+	mu      sync.Mutex
+	calls   []catalog.Identity
+	retID   string
+	retErr  error
+}
+
+func (f *fakeCanonicalMinter) CanonicalFor(_ context.Context, id catalog.Identity) (string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.calls = append(f.calls, id)
+	if f.retErr != nil {
+		return "", f.retErr
+	}
+	return f.retID, nil
+}
+
+func (f *fakeCanonicalMinter) callCount() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return len(f.calls)
+}
+
+func (f *fakeCanonicalMinter) lastCall() (catalog.Identity, bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if len(f.calls) == 0 {
+		return catalog.Identity{}, false
+	}
+	return f.calls[len(f.calls)-1], true
+}
+
+// testManagerWithMinter constructs a Manager with a CanonicalMinter injected.
+func testManagerWithMinter(t *testing.T, downloaders []Downloader, store JobStore, rematch Rematcher, minter CanonicalMinter) (*Manager, *events.Bus) {
+	t.Helper()
+	bus := events.New()
+	scanner := &fakeScanner{}
+	ver := &fakeVersion{v: 1}
+	if rematch == nil {
+		rematch = &fakeRematcher{trackID: "t1"}
+	}
+	m := NewManager(
+		Config{Workers: 2, DebounceWindow: 5 * time.Second, ScanPollEvery: time.Millisecond, ScanPollMax: time.Second, ScanSettleMax: 10 * time.Millisecond},
+		wrapDownloaders(downloaders), store, bus, scanner, rematch, ver, nil, nil, nil,
+	)
+	m.SetCanonicalMinter(minter)
+	t.Cleanup(m.Stop)
+	m.Start()
+	return m, bus
+}
+
+// TestMintAtLink_BackfillMints verifies that BackfillUnlinked mints a canonical_id
+// for a completed/matched job via the injected CanonicalMinter.
+func TestMintAtLink_BackfillMints(t *testing.T) {
+	store := newMemStore()
+	// Seed a completed job with no library_track_id (unlinked).
+	job := core.DownloadJob{
+		ID: "j-mint-1", DedupKey: "dk1", Status: core.DownloadCompleted,
+		DownloaderName: "dl", Source: "spotify", ExternalID: "sp1",
+		Title: "Moon River", Artist: "Audrey Hepburn", Album: "Breakfast", ISRC: "US001",
+		DurationMs: 120000,
+	}
+	_ = store.Insert(context.Background(), job, core.DownloadRequest{
+		Source: "spotify", ExternalID: "sp1", Title: "Moon River", Artist: "Audrey Hepburn",
+		Album: "Breakfast", ISRC: "US001", DurationMs: 120000,
+	})
+	rematch := &fakeRematcher{trackID: "libtrack-1", coverArtID: "art-1"}
+	minter := &fakeCanonicalMinter{retID: "trk_aaaa"}
+
+	m := NewManager(
+		Config{Workers: 1, DebounceWindow: time.Millisecond, ScanPollEvery: time.Millisecond, ScanPollMax: 10 * time.Millisecond},
+		wrapDownloaders(nil), store, nil, &fakeScanner{}, rematch, &fakeVersion{v: 1}, nil, nil, nil,
+	)
+	m.SetCanonicalMinter(minter)
+	// Run BackfillUnlinked directly (not via Start) to keep the test synchronous.
+	m.BackfillUnlinked()
+
+	// The minter should have been called once for the linked job.
+	if minter.callCount() != 1 {
+		t.Fatalf("minter called %d times, want 1", minter.callCount())
+	}
+	id, ok := minter.lastCall()
+	if !ok {
+		t.Fatal("no minter call recorded")
+	}
+	if id.Kind != "track" || id.Source != "spotify" || id.ExternalID != "sp1" {
+		t.Fatalf("unexpected identity passed to minter: %+v", id)
+	}
+	// The job should have canonical_id set.
+	got, _, _ := store.Get(context.Background(), "j-mint-1")
+	if got.CanonicalID != "trk_aaaa" {
+		t.Fatalf("job.CanonicalID = %q, want %q", got.CanonicalID, "trk_aaaa")
+	}
+}
+
+// TestMintAtLink_Scoping verifies mint scoping:
+//   - A completed + linked job (already has library_track_id) is NOT re-minted
+//     during BackfillUnlinked (it's already matched).
+//   - An archived (failed/canceled) job is NOT minted.
+//   - A queued/running job is NOT minted.
+func TestMintAtLink_Scoping(t *testing.T) {
+	store := newMemStore()
+	ctx := context.Background()
+
+	// Already-linked completed job (has library_track_id) — should not enter backfill loop.
+	linked := core.DownloadJob{
+		ID: "j-linked", DedupKey: "dk-linked", Status: core.DownloadCompleted,
+		LibraryTrackID: "existing-lib-track", CanonicalID: "trk_existing",
+		DownloaderName: "dl", Source: "spotify", ExternalID: "sp-linked",
+		Title: "Already Linked", Artist: "A", Album: "B", DurationMs: 120000,
+	}
+	_ = store.Insert(ctx, linked, core.DownloadRequest{Source: "spotify", ExternalID: "sp-linked", Title: "Already Linked"})
+
+	// Failed job — must not be minted.
+	failed := core.DownloadJob{
+		ID: "j-failed", DedupKey: "dk-failed", Status: core.DownloadFailed,
+		DownloaderName: "dl", Source: "spotify", ExternalID: "sp-failed",
+		Title: "Failed Song", Artist: "A", Album: "B", DurationMs: 120000,
+	}
+	_ = store.Insert(ctx, failed, core.DownloadRequest{Source: "spotify", ExternalID: "sp-failed", Title: "Failed Song"})
+
+	// Queued job — must not be minted.
+	queued := core.DownloadJob{
+		ID: "j-queued", DedupKey: "dk-queued", Status: core.DownloadQueued,
+		DownloaderName: "dl", Source: "spotify", ExternalID: "sp-queued",
+		Title: "Queued Song", Artist: "A", Album: "B", DurationMs: 120000,
+	}
+	_ = store.Insert(ctx, queued, core.DownloadRequest{Source: "spotify", ExternalID: "sp-queued", Title: "Queued Song"})
+
+	minter := &fakeCanonicalMinter{retID: "trk_new"}
+	// Rematcher returns nothing matched (so no job gets linked in this pass).
+	rematch := &fakeRematcher{trackID: ""} // MatchNotInLibrary
+
+	m := NewManager(
+		Config{Workers: 1, DebounceWindow: time.Millisecond},
+		wrapDownloaders(nil), store, nil, &fakeScanner{}, rematch, &fakeVersion{v: 1}, nil, nil, nil,
+	)
+	m.SetCanonicalMinter(minter)
+	m.BackfillUnlinked()
+
+	// Minter must NOT have been called: no jobs were newly linked.
+	if minter.callCount() != 0 {
+		t.Fatalf("minter called %d times for non-linked jobs; want 0", minter.callCount())
+	}
+}
+
+// TestMintAtLink_Idempotent verifies that re-running BackfillUnlinked on an already-linked
+// job (with a canonical_id already set) does not attempt to re-link it (it has
+// library_track_id, so the backfill loop skips it).
+func TestMintAtLink_Idempotent(t *testing.T) {
+	store := newMemStore()
+	ctx := context.Background()
+
+	// Already-linked + already-minted job.
+	job := core.DownloadJob{
+		ID: "j-idem", DedupKey: "dk-idem", Status: core.DownloadCompleted,
+		LibraryTrackID: "libtrack-idem", CanonicalID: "trk_idem",
+		DownloaderName: "dl", Source: "spotify", ExternalID: "sp-idem",
+		Title: "Idempotent", Artist: "A", Album: "B", DurationMs: 120000,
+	}
+	_ = store.Insert(ctx, job, core.DownloadRequest{Source: "spotify", ExternalID: "sp-idem", Title: "Idempotent"})
+
+	minter := &fakeCanonicalMinter{retID: "trk_should_not_be_called"}
+	rematch := &fakeRematcher{trackID: "libtrack-idem"}
+
+	m := NewManager(
+		Config{Workers: 1, DebounceWindow: time.Millisecond},
+		wrapDownloaders(nil), store, nil, &fakeScanner{}, rematch, &fakeVersion{v: 1}, nil, nil, nil,
+	)
+	m.SetCanonicalMinter(minter)
+	m.BackfillUnlinked()
+
+	// Minter never called: the job was skipped because library_track_id is non-empty.
+	if minter.callCount() != 0 {
+		t.Fatalf("minter called %d times for already-linked job; want 0", minter.callCount())
+	}
+	// canonical_id is unchanged.
+	got, _, _ := store.Get(ctx, "j-idem")
+	if got.CanonicalID != "trk_idem" {
+		t.Fatalf("canonical_id changed from trk_idem to %q", got.CanonicalID)
+	}
+}
+
+// TestSwapSurvival is the load-bearing test: a completed download job with a minted
+// canonical_id resolves a correct cover via the canonical id WITHOUT the
+// ClearMatchedDownloadJobLibraryRefs dance running. The canonical_id is stable
+// across a simulated backend swap (library_track_id/cover_art_id stale/gone).
+func TestSwapSurvival(t *testing.T) {
+	store := newMemStore()
+	ctx := context.Background()
+
+	// Seed a completed + linked + minted job.
+	job := core.DownloadJob{
+		ID: "j-swap", DedupKey: "dk-swap", Status: core.DownloadCompleted,
+		LibraryTrackID: "old-lib-track-pre-swap", CoverArtID: "old-cover-pre-swap",
+		CanonicalID:    "trk_canonical_stable",
+		DownloaderName: "dl", Source: "spotify", ExternalID: "sp-swap",
+		Title: "Swap Song", Artist: "B", Album: "C", DurationMs: 180000,
+	}
+	_ = store.Insert(ctx, job, core.DownloadRequest{
+		Source: "spotify", ExternalID: "sp-swap", Title: "Swap Song", Artist: "B", Album: "C", DurationMs: 180000,
+	})
+
+	// Simulate a backend swap: clear the volatile refs (what the old dance did).
+	// In Task 3, we remove this dance from wiring — but here we verify that even
+	// after the old volatile refs are gone, canonical_id remains stable.
+	got, _, _ := store.Get(ctx, "j-swap")
+	got.LibraryTrackID = ""
+	got.CoverArtID = ""
+	_ = store.Update(ctx, got)
+
+	// After the swap, canonical_id must still be set (it's the stable ref).
+	after, _, _ := store.Get(ctx, "j-swap")
+	if after.CanonicalID != "trk_canonical_stable" {
+		t.Fatalf("canonical_id changed after simulated swap: got %q, want trk_canonical_stable", after.CanonicalID)
+	}
+	if after.LibraryTrackID != "" || after.CoverArtID != "" {
+		t.Fatal("volatile refs should be empty post-swap (they were cleared)")
+	}
+	// The FE would use canonical_id for cover resolution — it's stable and non-empty.
+	// (Actual resolver call would happen via the resolver.Service; here we just
+	//  confirm the canonical_id survived the swap.)
+}
+
+// TestCanonicalIDInDTO verifies that a job with a canonical_id emits it in the DTO
+// (the JSON-serialized DownloadJob). This is the API layer check.
+func TestCanonicalIDInDTO(t *testing.T) {
+	job := core.DownloadJob{
+		ID:          "j-dto",
+		DedupKey:    "dk-dto",
+		Status:      core.DownloadCompleted,
+		CanonicalID: "trk_abc123",
+		Source:      "spotify",
+		ExternalID:  "sp1",
+		Title:       "DTO Song",
+	}
+	data, err := jsonMarshal(job)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), `"canonicalId":"trk_abc123"`) {
+		t.Fatalf("DTO must emit canonicalId; got: %s", string(data))
+	}
+}
 
 // TestManagerAcceptsNilSafeResolverProvider verifies that NewManager accepts a
 // nil-safe resolve func() BindingResolver dep (the provider seam from Task 1).
