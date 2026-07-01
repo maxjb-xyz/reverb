@@ -26,15 +26,11 @@ func pickWinner(newID, existingID string) (winner, loser string) {
 	return existingID, newID
 }
 
-// merge consolidates the loser entity into the winner in one logical operation:
-//  1. Repoints all catalog_alias rows from loser to winner.
-//  2. Repoints backend_binding rows, preferring the winner's binding on PK collision.
-//  3. Deletes the loser entity.
-func (s *Service) merge(ctx context.Context, loser, winner string) error {
-	if loser == winner {
-		return nil
-	}
-
+// repointCanonicalRefs repoints every STORED canonical-id reference from
+// loser → winner, in FK-safe order (all repoints BEFORE the caller's
+// DeleteCatalogEntity). This is the ONE place to extend when a task adds a
+// stored canonical_id column (e.g. download_jobs.canonical_id in Task 3).
+func (s *Service) repointCanonicalRefs(ctx context.Context, winner, loser string) error {
 	// 1. Repoint all aliases from loser → winner.
 	// RepointAliasesParams: CatalogID = new (winner), CatalogID_2 = old (loser).
 	if err := s.q.RepointAliases(ctx, db.RepointAliasesParams{
@@ -49,9 +45,9 @@ func (s *Service) merge(ctx context.Context, loser, winner string) error {
 		return err
 	}
 
-	// 3. Repoint plays from loser → winner (FK-safe: must precede the delete below).
-	//    plays is the first stored consumer reference the foundation design anticipated:
-	//    repointing it on merge keeps listening history consolidated under the winner.
+	// 3. Repoint plays from loser → winner.
+	//    plays.catalog_id is FK-constrained; repointing BEFORE the delete (step 4
+	//    in merge) ensures the loser entity can be removed without violating the FK.
 	if err := s.q.RepointPlays(ctx, db.RepointPlaysParams{
 		CatalogID:   winner,
 		CatalogID_2: loser,
@@ -59,7 +55,21 @@ func (s *Service) merge(ctx context.Context, loser, winner string) error {
 		return err
 	}
 
-	// 4. Delete the loser entity.
+	return nil
+}
+
+// merge consolidates the loser entity into the winner in one logical operation:
+//  1. Repoints all stored canonical-id references via repointCanonicalRefs.
+//  2. Deletes the loser entity.
+func (s *Service) merge(ctx context.Context, loser, winner string) error {
+	if loser == winner {
+		return nil
+	}
+
+	if err := s.repointCanonicalRefs(ctx, winner, loser); err != nil {
+		return err
+	}
+
 	return s.q.DeleteCatalogEntity(ctx, loser)
 }
 

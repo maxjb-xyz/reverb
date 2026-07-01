@@ -130,6 +130,180 @@ func TestMerge_BindingCollisionPrefersWinner(t *testing.T) {
 	}
 }
 
+// TestMerge_AllThreeRefTypesConsolidate verifies that a merge repoints all three
+// stored canonical-id reference types (alias, backend_binding, play) from loser
+// to winner and then deletes the loser entity — end-to-end coverage for Task 2.
+func TestMerge_AllThreeRefTypesConsolidate(t *testing.T) {
+	s, q := newTestServiceWithQueries(t)
+	ctx := context.Background()
+
+	winner, err := s.CanonicalFor(ctx, Identity{Kind: "track", Title: "Winner Song", Artist: "X", Album: "Y", DurationMs: 240000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	loser, err := s.CanonicalFor(ctx, Identity{Kind: "track", Title: "Loser Song", Artist: "X", Album: "Y", DurationMs: 240000})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Plant an explicit alias on the loser.
+	if err := q.InsertCatalogAlias(ctx, db.InsertCatalogAliasParams{
+		AliasKind: "isrc", AliasValue: "TEST123456789", CatalogID: loser, CreatedAt: 1_700_000_000,
+	}); err != nil {
+		t.Fatalf("InsertCatalogAlias: %v", err)
+	}
+
+	// Plant a backend binding on the loser (unique lib_id so no collision).
+	libID := "navidrome:all-three-test"
+	if err := q.UpsertBackendBinding(ctx, upsertBindingParams(loser, libID, "backend-id-loser", 1_700_000_100)); err != nil {
+		t.Fatalf("UpsertBackendBinding: %v", err)
+	}
+
+	// Plant a play on the loser.
+	const userID = "user-all-three-test"
+	if err := q.InsertPlay(ctx, db.InsertPlayParams{
+		ID: "play-all-three-0001", UserID: userID, CatalogID: loser,
+		PlayedAt: 1_700_000_500, MsPlayed: 240000, Completed: 1, CreatedAt: 1_700_000_500,
+	}); err != nil {
+		t.Fatalf("InsertPlay: %v", err)
+	}
+
+	// Merge.
+	if err := s.merge(ctx, loser, winner); err != nil {
+		t.Fatalf("merge: %v", err)
+	}
+
+	// 1. Alias now points at winner.
+	aliasTarget, err := q.GetAliasCatalogID(ctx, db.GetAliasCatalogIDParams{AliasKind: "isrc", AliasValue: "TEST123456789"})
+	if err != nil {
+		t.Fatalf("GetAliasCatalogID after merge: %v", err)
+	}
+	if aliasTarget != winner {
+		t.Errorf("alias target = %q; want winner %q", aliasTarget, winner)
+	}
+
+	// 2. Backend binding now owned by winner.
+	b, err := q.GetBackendBinding(ctx, getBindingParams(winner, libID))
+	if err != nil {
+		t.Fatalf("winner binding missing after merge: %v", err)
+	}
+	if b.BackendID != "backend-id-loser" {
+		t.Errorf("winner binding backend_id = %q; want %q", b.BackendID, "backend-id-loser")
+	}
+
+	// 3. Play now references winner.
+	plays, err := q.ListRecentPlays(ctx, db.ListRecentPlaysParams{UserID: userID, PlayedAt: 1_700_001_000, Limit: 10})
+	if err != nil {
+		t.Fatalf("ListRecentPlays: %v", err)
+	}
+	if len(plays) != 1 {
+		t.Fatalf("expected 1 play after merge, got %d", len(plays))
+	}
+	if plays[0].CatalogID != winner {
+		t.Errorf("play.catalog_id = %q; want winner %q", plays[0].CatalogID, winner)
+	}
+
+	// 4. Loser entity is gone.
+	if _, err := q.GetCatalogEntity(ctx, loser); err == nil {
+		t.Fatal("loser entity should have been deleted after merge")
+	}
+}
+
+// TestRepointCanonicalRefs_AllRefsMovedLoserIntact verifies repointCanonicalRefs
+// in isolation: it repoints aliases, bindings, and plays from loser to winner
+// but does NOT delete the loser — that is the caller's (merge's) responsibility.
+// This test would fail to compile before the helper is extracted (method undefined).
+func TestRepointCanonicalRefs_AllRefsMovedLoserIntact(t *testing.T) {
+	s, q := newTestServiceWithQueries(t)
+	ctx := context.Background()
+
+	winner, err := s.CanonicalFor(ctx, Identity{Kind: "track", Title: "Helper Winner", Artist: "A", Album: "B", DurationMs: 180000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	loser, err := s.CanonicalFor(ctx, Identity{Kind: "track", Title: "Helper Loser", Artist: "A", Album: "B", DurationMs: 180000})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Plant a play on the loser.
+	if err := q.InsertPlay(ctx, db.InsertPlayParams{
+		ID: "play-repoint-direct-0001", UserID: "user-repoint-test", CatalogID: loser,
+		PlayedAt: 1_700_001_000, MsPlayed: 180000, Completed: 1, CreatedAt: 1_700_001_000,
+	}); err != nil {
+		t.Fatalf("InsertPlay: %v", err)
+	}
+
+	// Call repointCanonicalRefs directly — does NOT delete the loser.
+	if err := s.repointCanonicalRefs(ctx, winner, loser); err != nil {
+		t.Fatalf("repointCanonicalRefs: %v", err)
+	}
+
+	// Play must now reference the winner.
+	plays, err := q.ListRecentPlays(ctx, db.ListRecentPlaysParams{
+		UserID: "user-repoint-test", PlayedAt: 1_700_002_000, Limit: 10,
+	})
+	if err != nil {
+		t.Fatalf("ListRecentPlays: %v", err)
+	}
+	if len(plays) != 1 {
+		t.Fatalf("expected 1 play, got %d", len(plays))
+	}
+	if plays[0].CatalogID != winner {
+		t.Errorf("play.catalog_id = %q; want winner %q", plays[0].CatalogID, winner)
+	}
+
+	// Loser entity must still exist (repointCanonicalRefs doesn't delete it).
+	if _, err := q.GetCatalogEntity(ctx, loser); err != nil {
+		t.Fatalf("loser entity must NOT be deleted by repointCanonicalRefs: %v", err)
+	}
+}
+
+// TestRepointCanonicalRefs_PlaysRepointedBeforeDelete verifies FK safety:
+// a loser with a play can be merged cleanly — plays are repointed BEFORE
+// the loser is deleted, so no FK constraint violation occurs.
+func TestRepointCanonicalRefs_PlaysRepointedBeforeDelete(t *testing.T) {
+	s, q := newTestServiceWithQueries(t)
+	ctx := context.Background()
+
+	winner, err := s.CanonicalFor(ctx, Identity{Kind: "track", Title: "FK Winner", Artist: "C", Album: "D", DurationMs: 120000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	loser, err := s.CanonicalFor(ctx, Identity{Kind: "track", Title: "FK Loser", Artist: "C", Album: "D", DurationMs: 120000})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// A play FK-constrains the loser: without repoint-before-delete, the delete
+	// would fail (FK violation) and this test would error rather than pass.
+	if err := q.InsertPlay(ctx, db.InsertPlayParams{
+		ID: "play-fk-safe-0001", UserID: "user-fk-test", CatalogID: loser,
+		PlayedAt: 1_700_002_000, MsPlayed: 120000, Completed: 1, CreatedAt: 1_700_002_000,
+	}); err != nil {
+		t.Fatalf("InsertPlay: %v", err)
+	}
+
+	// merge must succeed — repointCanonicalRefs fires first, then DeleteCatalogEntity.
+	if err := s.merge(ctx, loser, winner); err != nil {
+		t.Fatalf("merge with play on loser must succeed (FK-safe order): %v", err)
+	}
+
+	// Sanity: play now points at winner, loser is gone.
+	plays, err := q.ListRecentPlays(ctx, db.ListRecentPlaysParams{
+		UserID: "user-fk-test", PlayedAt: 1_700_003_000, Limit: 10,
+	})
+	if err != nil {
+		t.Fatalf("ListRecentPlays: %v", err)
+	}
+	if len(plays) != 1 || plays[0].CatalogID != winner {
+		t.Fatalf("play not repointed to winner: plays=%v", plays)
+	}
+	if _, err := q.GetCatalogEntity(ctx, loser); err == nil {
+		t.Fatal("loser should be deleted after merge")
+	}
+}
+
 // TestMerge_RepointsPlays verifies that plays recorded against the loser catalog
 // entity are repointed to the winner after a merge, so listening history consolidates
 // rather than orphaning or double-counting.
