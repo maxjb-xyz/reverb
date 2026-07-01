@@ -13,6 +13,8 @@ import (
 	"github.com/maxjb-xyz/reverb/internal/core"
 	"github.com/maxjb-xyz/reverb/internal/events"
 	"github.com/maxjb-xyz/reverb/internal/registry"
+	"github.com/maxjb-xyz/reverb/internal/resolver"
+	"github.com/maxjb-xyz/reverb/internal/store"
 )
 
 // ---- fakes ----
@@ -2742,45 +2744,216 @@ func TestMintAtLink_Idempotent(t *testing.T) {
 	}
 }
 
-// TestSwapSurvival is the load-bearing test: a completed download job with a minted
-// canonical_id resolves a correct cover via the canonical id WITHOUT the
-// ClearMatchedDownloadJobLibraryRefs dance running. The canonical_id is stable
-// across a simulated backend swap (library_track_id/cover_art_id stale/gone).
-func TestSwapSurvival(t *testing.T) {
+// TestBackfillCanonicalIDs_MintsLegacyLinkedJob is the regression test for the
+// cover-rot fix: a LEGACY job linked BEFORE Task 3 (has library_track_id, but
+// canonical_id=='') is NEVER minted by BackfillUnlinked/runScan (they gate on
+// library_track_id==''). BackfillCanonicalIDs converges these legacy rows onto the
+// canonical path so retiring the clear-dance does not rot their covers on a swap.
+func TestBackfillCanonicalIDs_MintsLegacyLinkedJob(t *testing.T) {
 	store := newMemStore()
 	ctx := context.Background()
 
-	// Seed a completed + linked + minted job.
-	job := core.DownloadJob{
-		ID: "j-swap", DedupKey: "dk-swap", Status: core.DownloadCompleted,
-		LibraryTrackID: "old-lib-track-pre-swap", CoverArtID: "old-cover-pre-swap",
-		CanonicalID:    "trk_canonical_stable",
-		DownloaderName: "dl", Source: "spotify", ExternalID: "sp-swap",
-		Title: "Swap Song", Artist: "B", Album: "C", DurationMs: 180000,
+	// A pre-existing completed+linked job with NO canonical_id (minted before Task 3).
+	legacy := core.DownloadJob{
+		ID: "j-legacy", DedupKey: "dk-legacy", Status: core.DownloadCompleted,
+		LibraryTrackID: "legacy-backend-track", CoverArtID: "legacy-backend-cover",
+		CanonicalID:    "", // the hole this fix plugs
+		DownloaderName: "dl", Source: "spotify", ExternalID: "sp-legacy",
+		Title: "Legacy Song", Artist: "L", Album: "M", ISRC: "US-legacy", DurationMs: 200000,
 	}
-	_ = store.Insert(ctx, job, core.DownloadRequest{
-		Source: "spotify", ExternalID: "sp-swap", Title: "Swap Song", Artist: "B", Album: "C", DurationMs: 180000,
+	_ = store.Insert(ctx, legacy, core.DownloadRequest{
+		Source: "spotify", ExternalID: "sp-legacy", Title: "Legacy Song", Artist: "L", Album: "M", ISRC: "US-legacy", DurationMs: 200000,
 	})
 
-	// Simulate a backend swap: clear the volatile refs (what the old dance did).
-	// In Task 3, we remove this dance from wiring — but here we verify that even
-	// after the old volatile refs are gone, canonical_id remains stable.
-	got, _, _ := store.Get(ctx, "j-swap")
-	got.LibraryTrackID = ""
-	got.CoverArtID = ""
-	_ = store.Update(ctx, got)
+	minter := &fakeCanonicalMinter{retID: "trk_legacy_minted"}
+	m := NewManager(
+		Config{Workers: 1, DebounceWindow: time.Millisecond},
+		wrapDownloaders(nil), store, nil, &fakeScanner{}, &fakeRematcher{trackID: "legacy-backend-track"}, &fakeVersion{v: 1}, nil, nil, nil,
+	)
+	m.SetCanonicalMinter(minter)
 
-	// After the swap, canonical_id must still be set (it's the stable ref).
-	after, _, _ := store.Get(ctx, "j-swap")
-	if after.CanonicalID != "trk_canonical_stable" {
-		t.Fatalf("canonical_id changed after simulated swap: got %q, want trk_canonical_stable", after.CanonicalID)
+	m.BackfillCanonicalIDs()
+
+	// The minter must have been called ONCE for the legacy linked job.
+	if minter.callCount() != 1 {
+		t.Fatalf("BackfillCanonicalIDs minted %d times; want 1 for the legacy linked job", minter.callCount())
 	}
-	if after.LibraryTrackID != "" || after.CoverArtID != "" {
-		t.Fatal("volatile refs should be empty post-swap (they were cleared)")
+	id, _ := minter.lastCall()
+	if id.Source != "spotify" || id.ExternalID != "sp-legacy" || id.ISRC != "US-legacy" {
+		t.Fatalf("mint identity built from wrong columns: %+v", id)
 	}
-	// The FE would use canonical_id for cover resolution — it's stable and non-empty.
-	// (Actual resolver call would happen via the resolver.Service; here we just
-	//  confirm the canonical_id survived the swap.)
+	// The row now carries the canonical id.
+	got, _, _ := store.Get(ctx, "j-legacy")
+	if got.CanonicalID != "trk_legacy_minted" {
+		t.Fatalf("legacy job canonical_id = %q; want trk_legacy_minted", got.CanonicalID)
+	}
+}
+
+// TestBackfillCanonicalIDs_Idempotent verifies a second run does NOT re-mint an
+// already-minted row (once canonical_id is set, the row no longer matches).
+func TestBackfillCanonicalIDs_Idempotent(t *testing.T) {
+	store := newMemStore()
+	ctx := context.Background()
+
+	// Legacy linked job, canonical_id empty.
+	_ = store.Insert(ctx, core.DownloadJob{
+		ID: "j-idem2", DedupKey: "dk-idem2", Status: core.DownloadCompleted,
+		LibraryTrackID: "backend-track", CanonicalID: "",
+		DownloaderName: "dl", Source: "spotify", ExternalID: "sp-idem2",
+		Title: "Idem2", Artist: "A", Album: "B", DurationMs: 100000,
+	}, core.DownloadRequest{Source: "spotify", ExternalID: "sp-idem2", Title: "Idem2"})
+
+	minter := &fakeCanonicalMinter{retID: "trk_idem2"}
+	m := NewManager(
+		Config{Workers: 1, DebounceWindow: time.Millisecond},
+		wrapDownloaders(nil), store, nil, &fakeScanner{}, &fakeRematcher{trackID: "backend-track"}, &fakeVersion{v: 1}, nil, nil, nil,
+	)
+	m.SetCanonicalMinter(minter)
+
+	m.BackfillCanonicalIDs() // first run mints
+	m.BackfillCanonicalIDs() // second run must be a no-op
+
+	if minter.callCount() != 1 {
+		t.Fatalf("BackfillCanonicalIDs minted %d times across two runs; want 1 (idempotent)", minter.callCount())
+	}
+}
+
+// TestBackfillCanonicalIDs_Scoping verifies BackfillCanonicalIDs does NOT touch
+// unlinked jobs (library_track_id=='') nor non-completed (failed/queued) jobs — it
+// only converges completed+linked+unminted rows.
+func TestBackfillCanonicalIDs_Scoping(t *testing.T) {
+	store := newMemStore()
+	ctx := context.Background()
+
+	// Unlinked completed job — must NOT be minted (that's BackfillUnlinked's job, only after a match).
+	_ = store.Insert(ctx, core.DownloadJob{
+		ID: "j-unlinked", DedupKey: "dk-unlinked", Status: core.DownloadCompleted,
+		LibraryTrackID: "", CanonicalID: "",
+		DownloaderName: "dl", Source: "spotify", ExternalID: "sp-unlinked", Title: "Unlinked",
+	}, core.DownloadRequest{Source: "spotify", ExternalID: "sp-unlinked", Title: "Unlinked"})
+
+	// Failed job with a library_track_id — archived, must NOT be minted.
+	_ = store.Insert(ctx, core.DownloadJob{
+		ID: "j-failed2", DedupKey: "dk-failed2", Status: core.DownloadFailed,
+		LibraryTrackID: "some-track", CanonicalID: "",
+		DownloaderName: "dl", Source: "spotify", ExternalID: "sp-failed2", Title: "Failed2",
+	}, core.DownloadRequest{Source: "spotify", ExternalID: "sp-failed2", Title: "Failed2"})
+
+	// Queued job — must NOT be minted.
+	_ = store.Insert(ctx, core.DownloadJob{
+		ID: "j-queued2", DedupKey: "dk-queued2", Status: core.DownloadQueued,
+		LibraryTrackID: "", CanonicalID: "",
+		DownloaderName: "dl", Source: "spotify", ExternalID: "sp-queued2", Title: "Queued2",
+	}, core.DownloadRequest{Source: "spotify", ExternalID: "sp-queued2", Title: "Queued2"})
+
+	// Already-minted linked job — must NOT be re-minted.
+	_ = store.Insert(ctx, core.DownloadJob{
+		ID: "j-minted", DedupKey: "dk-minted", Status: core.DownloadCompleted,
+		LibraryTrackID: "track-minted", CanonicalID: "trk_already",
+		DownloaderName: "dl", Source: "spotify", ExternalID: "sp-minted", Title: "Minted",
+	}, core.DownloadRequest{Source: "spotify", ExternalID: "sp-minted", Title: "Minted"})
+
+	minter := &fakeCanonicalMinter{retID: "trk_should_not_fire"}
+	m := NewManager(
+		Config{Workers: 1, DebounceWindow: time.Millisecond},
+		wrapDownloaders(nil), store, nil, &fakeScanner{}, &fakeRematcher{trackID: "x"}, &fakeVersion{v: 1}, nil, nil, nil,
+	)
+	m.SetCanonicalMinter(minter)
+
+	m.BackfillCanonicalIDs()
+
+	if minter.callCount() != 0 {
+		t.Fatalf("BackfillCanonicalIDs minted %d times; want 0 (no completed+linked+unminted rows to converge)", minter.callCount())
+	}
+}
+
+// swapMatcher is a resolver.Rematcher whose returned backend refs can be swapped
+// at runtime to model a backend identity change (old backend → new backend).
+type swapMatcher struct {
+	mu     sync.Mutex
+	result core.MatchResult
+}
+
+func (m *swapMatcher) Match(_ context.Context, _ core.ExternalResult) (core.MatchResult, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.result, nil
+}
+
+func (m *swapMatcher) set(r core.MatchResult) {
+	m.mu.Lock()
+	m.result = r
+	m.mu.Unlock()
+}
+
+// TestSwapSurvival is the load-bearing test: a completed download job with a minted
+// canonical_id resolves a FRESH, CORRECT cover via the resolver AFTER a backend
+// swap, WITHOUT the ClearMatchedDownloadJobLibraryRefs dance running. It drives the
+// job's canonical id through the REAL resolver.Service.Resolve across the swap and
+// asserts the resolver returns the NEW backend cover (not the stale pre-swap one).
+func TestSwapSurvival(t *testing.T) {
+	st, err := store.Open(t.TempDir() + "/swap.db")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	if err := st.Migrate(); err != nil {
+		t.Fatal(err)
+	}
+	q := st.Q()
+	ctx := context.Background()
+
+	// Mint a canonical entity for the download's track (this is the stable id).
+	catSvc := catalog.NewService(q, time.Now, func() string { return "swap-0001" })
+	canonicalID, err := catSvc.CanonicalFor(ctx, catalog.Identity{
+		Kind: "track", Source: "spotify", ExternalID: "sp-swap",
+		Title: "Swap Song", Artist: "B", Album: "C", DurationMs: 180000,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// The resolver re-resolves the canonical id → backend addressing via the matcher.
+	matcher := &swapMatcher{result: core.MatchResult{
+		Status: core.MatchInLibrary, LibraryTrackID: "old-backend-track", CoverArtID: "old-backend-cover",
+	}}
+	res := resolver.NewService(q, func() resolver.Rematcher { return matcher }, time.Now)
+
+	// PRE-swap: the resolver returns the OLD backend's cover.
+	pre, err := res.Resolve(ctx, canonicalID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !pre.Found || pre.CoverArtID != "old-backend-cover" {
+		t.Fatalf("pre-swap resolve: got %+v, want cover old-backend-cover", pre)
+	}
+
+	// SWAP the backend: the live library now serves different track/cover ids, so the
+	// matcher returns the NEW backend addressing. RefreshLinked then marks the binding
+	// stale and re-resolves against the new backend. This models a real backend swap
+	// WITHOUT the clear-dance touching download_jobs.
+	matcher.set(core.MatchResult{
+		Status: core.MatchInLibrary, LibraryTrackID: "new-backend-track", CoverArtID: "new-backend-cover",
+	})
+	if err := res.RefreshLinked(ctx, []string{canonicalID}); err != nil {
+		t.Fatal(err)
+	}
+
+	// POST-swap: resolving the SAME canonical id now yields the NEW backend cover.
+	post, err := res.Resolve(ctx, canonicalID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !post.Found {
+		t.Fatalf("post-swap resolve not found: %+v", post)
+	}
+	if post.CoverArtID != "new-backend-cover" {
+		t.Fatalf("post-swap resolve cover = %q; want new-backend-cover (canonical id re-resolved through the boundary — no stale-raw fallback, no clear dance)", post.CoverArtID)
+	}
+	// The canonical id itself is stable across the swap (same id resolved both times).
+	if canonicalID == "" {
+		t.Fatal("canonical id must be non-empty and stable across the swap")
+	}
 }
 
 // TestCanonicalIDInDTO verifies that a job with a canonical_id emits it in the DTO

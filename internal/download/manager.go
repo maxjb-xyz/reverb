@@ -309,6 +309,9 @@ func (m *Manager) Start() {
 		log.Printf("download manager: async reconciler started (every %s)", m.cfg.ReconcileEvery)
 	}
 	go m.BackfillUnlinked()
+	// Converge legacy completed+linked jobs (canonical_id=='') onto the canonical
+	// path so retiring the clear-dance doesn't rot their covers on a backend swap.
+	go m.BackfillCanonicalIDs()
 }
 
 // BackfillUnlinked is a one-shot pass that re-matches every completed job whose
@@ -362,6 +365,41 @@ func (m *Manager) BackfillUnlinked() {
 	}
 	if matched > 0 {
 		log.Printf("download backfill: re-linked %d previously unmatched completed job(s)", matched)
+	}
+}
+
+// BackfillCanonicalIDs is a one-shot, bounded, idempotent pass that mints a stable
+// canonical_id for every completed+LINKED job that predates Task 3 (library_track_id
+// set, canonical_id still empty). It closes the cover-rot hole left by retiring the
+// clear-dance: BackfillUnlinked/runScan only mint jobs they NEWLY link (they gate on
+// library_track_id==""), so a job linked BEFORE Task 3 would otherwise never get a
+// canonical_id and — with the dance gone — fall back to a stale raw cover on a swap.
+//
+// Scope: ONLY status==completed && library_track_id != "" && canonical_id == "".
+// Once a row is minted it no longer matches, so a second run is a no-op (idempotent).
+// Never touches unlinked, archived (failed/canceled), or already-minted rows.
+// Nil-minter-safe: mintAndStoreCanonicalID skips silently when no minter is wired.
+// Fired on boot alongside BackfillUnlinked.
+func (m *Manager) BackfillCanonicalIDs() {
+	if m.canonicalMinter == nil {
+		return // nothing to mint into; nil-safe no-op
+	}
+	ctx := context.Background()
+	jobs, err := m.store.List(ctx)
+	if err != nil {
+		log.Printf("download canonical backfill: list jobs failed: %v", err)
+		return
+	}
+	minted := 0
+	for _, j := range jobs {
+		if j.Status != core.DownloadCompleted || j.LibraryTrackID == "" || j.CanonicalID != "" {
+			continue
+		}
+		m.mintAndStoreCanonicalID(ctx, j)
+		minted++
+	}
+	if minted > 0 {
+		log.Printf("download canonical backfill: minted canonical_id for %d legacy linked job(s)", minted)
 	}
 }
 

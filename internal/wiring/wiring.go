@@ -468,9 +468,10 @@ func (b *Builder) Build(ctx context.Context) (ServiceBundle, error) {
 	if err := b.reconcileLibraryIdentity(ctx, libraryIdentity(mode, instances)); err != nil {
 		log.Printf("WARNING: library identity reconcile: %v", err)
 	}
-	// Clear stale library_track_id + cover_art_id on download jobs so the
-	// existing re-match passes (backfillUnlinked + runScan) can re-resolve them
-	// against the live backend's new track IDs.
+	// Persist the current library identity for download jobs (Task 3: the clear-and-
+	// rematch dance is retired). Download jobs now carry a stable canonical_id and
+	// re-resolve their covers/streams lazily through the resolver after a backend swap,
+	// so no volatile-ref clearing is needed here.
 	if err := b.reconcileDownloadJobIdentity(ctx, libraryIdentity(mode, instances)); err != nil {
 		log.Printf("WARNING: download job identity reconcile: %v", err)
 	}
