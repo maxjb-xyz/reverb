@@ -9,7 +9,9 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/maxjb-xyz/reverb/internal/catalog"
 	"github.com/maxjb-xyz/reverb/internal/core"
+	"github.com/maxjb-xyz/reverb/internal/resolver"
 )
 
 // ---------------------------------------------------------------------------
@@ -1657,5 +1659,439 @@ func TestDetail_LibrarySourceNoMatch_DegradesToMissing(t *testing.T) {
 	// OwnedCount must not include this track.
 	if det.OwnedCount != 0 {
 		t.Fatalf("OwnedCount = %d, want 0 (degraded track must not count as owned)", det.OwnedCount)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Task 5: CanonicalMinter injection + mint-at-persist + resolve-at-read
+// ---------------------------------------------------------------------------
+
+// fakeBindingResolver is a fake BindingResolver for Task-5 tests.
+// It records which catalog IDs were resolved and can be swapped to simulate
+// a backend swap (the resolved BackendID changes after the swap).
+type fakeBindingResolver struct {
+	// resolved maps catalogID → Addressing returned.
+	resolved map[string]resolver.Addressing
+	// calls records the catalog IDs Resolve was called with (in order).
+	calls []string
+}
+
+func (f *fakeBindingResolver) Resolve(_ context.Context, catalogID string) (resolver.Addressing, error) {
+	f.calls = append(f.calls, catalogID)
+	addr, ok := f.resolved[catalogID]
+	if !ok {
+		return resolver.Addressing{}, nil
+	}
+	return addr, nil
+}
+
+func (f *fakeBindingResolver) RefreshLinked(_ context.Context, _ []string) error { return nil }
+
+// fakeCanonicalMinter is a fake CanonicalMinter for Task-5 tests.
+// It records which identities were minted and returns predictable IDs.
+type fakeCanonicalMinter struct {
+	// mintCalls records the catalog.Identity values passed to CanonicalFor.
+	mintCalls []catalog.Identity
+	// nextID returns the canonical id to assign. Default: "trk_minted".
+	nextID func(catalog.Identity) string
+	// err, if non-nil, is returned on every call.
+	err error
+}
+
+func (f *fakeCanonicalMinter) CanonicalFor(_ context.Context, id catalog.Identity) (string, error) {
+	f.mintCalls = append(f.mintCalls, id)
+	if f.err != nil {
+		return "", f.err
+	}
+	if f.nextID != nil {
+		return f.nextID(id), nil
+	}
+	return "trk_minted", nil
+}
+
+// newSvcWithMinter builds a Service with a CanonicalMinter injected.
+func newSvcWithMinter(m Matcher, store Store, minter CanonicalMinter) *Service {
+	return NewService(nil, m, &fakeDownloader{}, store, nil,
+		func() int64 { return 100 }, seqID(), nil).
+		WithCanonicalMinter(minter)
+}
+
+// newSvcWithMinterAndResolver builds a Service with both a minter and resolver provider.
+func newSvcWithMinterAndResolver(
+	m Matcher,
+	store Store,
+	minter CanonicalMinter,
+	resolverFn func() BindingResolver,
+) *Service {
+	return NewService(nil, m, &fakeDownloader{}, store, nil,
+		func() int64 { return 100 }, seqID(), resolverFn).
+		WithCanonicalMinter(minter)
+}
+
+// seedLibraryTrackWithCanonicalID seeds a playlist containing one library-source
+// track that already has a CanonicalID set (simulates a track persisted after Task 5).
+func seedLibraryTrackWithCanonicalID(store *memStore, plID, catalogID, backendID string) {
+	entry := core.ExternalResult{
+		Source:      "library",
+		ExternalID:  backendID,
+		CanonicalID: catalogID,
+		Title:       "Track Title",
+		Artist:      "Artist",
+		Album:       "Album",
+		DurationMs:  180000,
+		Type:        core.EntityTrack,
+	}
+	tj, _ := json.Marshal([]core.ExternalResult{entry})
+	store.rows[plID] = &memRow{SyncedRow{
+		ID: plID, Source: "local", ExternalID: plID,
+		Name: "Test Playlist", Mode: "once", TracksJSON: string(tj),
+	}}
+	store.index["local:"+plID] = plID
+}
+
+// TestTask5_LibraryTrackWithCanonicalIDResolvesViaResolver asserts that Detail()
+// for a library-source track WITH a CanonicalID routes through BindingResolver.Resolve
+// (NOT through s.match.Match). The fake resolver returns a fresh BackendID;
+// the matcher returns nothing — so if the matcher were called, the track would
+// degrade to CoverageNone.
+func TestTask5_LibraryTrackWithCanonicalIDResolvesViaResolver(t *testing.T) {
+	const catalogID = "trk_abc123"
+	const oldBackendID = "old-be-id"
+	const freshBackendID = "fresh-be-id"
+	const freshCover = "fresh-cover"
+
+	store := newMemStore()
+	seedLibraryTrackWithCanonicalID(store, "pl-t5-1", catalogID, oldBackendID)
+
+	// Matcher returns nothing (if called, track would degrade).
+	matcherCalled := false
+	m := fakeMatcher{owned: map[string]string{}}
+	_ = m // not wired — we'll use a tracking matcher below
+
+	trackingMatcher := &trackingMatcherT5{inner: fakeMatcher{owned: map[string]string{}}, called: &matcherCalled}
+
+	resolver := &fakeBindingResolver{
+		resolved: map[string]resolver.Addressing{
+			catalogID: {BackendID: freshBackendID, CoverArtID: freshCover, Found: true},
+		},
+	}
+
+	minter := &fakeCanonicalMinter{}
+	svc := newSvcWithMinterAndResolver(
+		trackingMatcher,
+		store,
+		minter,
+		func() BindingResolver { return resolver },
+	)
+
+	det, err := svc.Detail(context.Background(), "pl-t5-1")
+	if err != nil {
+		t.Fatalf("Detail: %v", err)
+	}
+	if len(det.Tracks) != 1 {
+		t.Fatalf("expected 1 track, got %d", len(det.Tracks))
+	}
+
+	tr := det.Tracks[0]
+	// Must be CoverageFull (resolver found it).
+	if tr.State != core.CoverageFull {
+		t.Fatalf("State = %v, want CoverageFull", tr.State)
+	}
+	if tr.LibraryTrack == nil {
+		t.Fatal("LibraryTrack is nil; resolver path must populate it")
+	}
+	// Must use the resolver's fresh BackendID, not oldBackendID.
+	if tr.LibraryTrack.ID != freshBackendID {
+		t.Fatalf("LibraryTrack.ID = %q, want fresh %q from resolver", tr.LibraryTrack.ID, freshBackendID)
+	}
+	if tr.LibraryTrack.CoverArtID != freshCover {
+		t.Fatalf("LibraryTrack.CoverArtID = %q, want %q from resolver", tr.LibraryTrack.CoverArtID, freshCover)
+	}
+	// Matcher must NOT have been called (resolver path must short-circuit it).
+	if matcherCalled {
+		t.Fatal("s.match.Match was called — but it should NOT be called when CanonicalID is present and resolver returns a result")
+	}
+	// Resolver must have been called with the right catalogID.
+	if len(resolver.calls) != 1 || resolver.calls[0] != catalogID {
+		t.Fatalf("resolver.calls = %v, want [%q]", resolver.calls, catalogID)
+	}
+}
+
+// trackingMatcherT5 wraps fakeMatcher and records whether it was called.
+type trackingMatcherT5 struct {
+	inner  fakeMatcher
+	called *bool
+}
+
+func (m *trackingMatcherT5) Match(ctx context.Context, ext core.ExternalResult) (core.MatchResult, error) {
+	*m.called = true
+	return m.inner.Match(ctx, ext)
+}
+
+// TestTask5_SwapSurvival asserts that Detail() always re-resolves at read time
+// so a backend swap (resolver returning a NEW backend id) is reflected immediately.
+func TestTask5_SwapSurvival(t *testing.T) {
+	const catalogID = "trk_swap"
+	const preSwapID = "pre-swap-be-id"
+	const postSwapID = "post-swap-be-id"
+
+	store := newMemStore()
+	seedLibraryTrackWithCanonicalID(store, "pl-swap", catalogID, preSwapID)
+
+	fakeRes := &fakeBindingResolver{
+		resolved: map[string]resolver.Addressing{
+			catalogID: {BackendID: preSwapID, Found: true},
+		},
+	}
+
+	svc := newSvcWithMinterAndResolver(
+		fakeMatcher{owned: map[string]string{}},
+		store,
+		&fakeCanonicalMinter{},
+		func() BindingResolver { return fakeRes },
+	)
+
+	// First Detail call: gets pre-swap backend id.
+	det1, err := svc.Detail(context.Background(), "pl-swap")
+	if err != nil {
+		t.Fatalf("Detail pre-swap: %v", err)
+	}
+	if det1.Tracks[0].LibraryTrack == nil || det1.Tracks[0].LibraryTrack.ID != preSwapID {
+		t.Fatalf("pre-swap: expected LibraryTrack.ID=%q, got %+v", preSwapID, det1.Tracks[0].LibraryTrack)
+	}
+
+	// Simulate backend swap: resolver now returns a new backend id.
+	fakeRes.resolved[catalogID] = resolver.Addressing{BackendID: postSwapID, Found: true}
+
+	// Second Detail call: must see the new backend id without any re-import.
+	det2, err := svc.Detail(context.Background(), "pl-swap")
+	if err != nil {
+		t.Fatalf("Detail post-swap: %v", err)
+	}
+	if det2.Tracks[0].LibraryTrack == nil || det2.Tracks[0].LibraryTrack.ID != postSwapID {
+		t.Fatalf("post-swap: expected LibraryTrack.ID=%q, got %+v", postSwapID, det2.Tracks[0].LibraryTrack)
+	}
+}
+
+// TestTask5_MintAtPersist_LibraryTrack asserts that when a library-source track
+// is added (AddTrack), the CanonicalMinter is called and the resulting CanonicalID
+// is stored on the persisted ExternalResult.
+func TestTask5_MintAtPersist_LibraryTrack(t *testing.T) {
+	store := newMemStore()
+	// Create a managed playlist.
+	minter := &fakeCanonicalMinter{nextID: func(_ catalog.Identity) string { return "trk_minted_lib" }}
+	svc := newSvcWithMinter(fakeMatcher{owned: map[string]string{}}, store, minter)
+
+	det, err := svc.CreateManaged(context.Background(), "My Playlist")
+	if err != nil {
+		t.Fatalf("CreateManaged: %v", err)
+	}
+
+	libraryTrack := core.ExternalResult{
+		Source:     "library",
+		ExternalID: "lib-track-99",
+		Title:      "Local Song",
+		Artist:     "Local Artist",
+		Album:      "Local Album",
+		DurationMs: 240000,
+		ISRC:       "USABC1234567",
+		Type:       core.EntityTrack,
+	}
+	_, err = svc.AddTrack(context.Background(), det.ID, libraryTrack)
+	if err != nil {
+		t.Fatalf("AddTrack: %v", err)
+	}
+
+	// Minter must have been called exactly once with correct Identity.
+	if len(minter.mintCalls) != 1 {
+		t.Fatalf("expected 1 mint call, got %d", len(minter.mintCalls))
+	}
+	id := minter.mintCalls[0]
+	if id.Kind != "track" {
+		t.Fatalf("mint call Kind = %q, want %q", id.Kind, "track")
+	}
+	if id.Title != libraryTrack.Title || id.Artist != libraryTrack.Artist || id.Album != libraryTrack.Album {
+		t.Fatalf("mint call metadata mismatch: %+v", id)
+	}
+	if id.DurationMs != libraryTrack.DurationMs {
+		t.Fatalf("mint call DurationMs = %d, want %d", id.DurationMs, libraryTrack.DurationMs)
+	}
+	if id.ISRC != libraryTrack.ISRC {
+		t.Fatalf("mint call ISRC = %q, want %q", id.ISRC, libraryTrack.ISRC)
+	}
+	// Source and ExternalID must be blank (pure library — no external anchor).
+	if id.Source != "" || id.ExternalID != "" {
+		t.Fatalf("mint call Source=%q ExternalID=%q, want both empty (pure library)", id.Source, id.ExternalID)
+	}
+
+	// The stored track must carry the minted CanonicalID.
+	row, err := store.Get(context.Background(), det.ID)
+	if err != nil {
+		t.Fatalf("store.Get: %v", err)
+	}
+	var persisted []core.ExternalResult
+	if err := json.Unmarshal([]byte(row.TracksJSON), &persisted); err != nil {
+		t.Fatalf("unmarshal TracksJSON: %v", err)
+	}
+	if len(persisted) != 1 {
+		t.Fatalf("expected 1 persisted track, got %d", len(persisted))
+	}
+	if persisted[0].CanonicalID != "trk_minted_lib" {
+		t.Fatalf("persisted CanonicalID = %q, want %q", persisted[0].CanonicalID, "trk_minted_lib")
+	}
+}
+
+// TestTask5_MintAtPersist_ExternalTrackNotMinted asserts that a non-library
+// (external/Spotify) track does NOT trigger a CanonicalMinter call when added.
+func TestTask5_MintAtPersist_ExternalTrackNotMinted(t *testing.T) {
+	store := newMemStore()
+	minter := &fakeCanonicalMinter{}
+	svc := newSvcWithMinter(fakeMatcher{owned: map[string]string{}}, store, minter)
+
+	det, err := svc.CreateManaged(context.Background(), "External Playlist")
+	if err != nil {
+		t.Fatalf("CreateManaged: %v", err)
+	}
+
+	externalTrack := core.ExternalResult{
+		Source:     "spotify",
+		ExternalID: "sp-track-123",
+		Title:      "Remote Song",
+		Artist:     "Remote Artist",
+		Album:      "Remote Album",
+		DurationMs: 200000,
+		Type:       core.EntityTrack,
+	}
+	_, err = svc.AddTrack(context.Background(), det.ID, externalTrack)
+	if err != nil {
+		t.Fatalf("AddTrack: %v", err)
+	}
+
+	// Minter must NOT have been called for a non-library track.
+	if len(minter.mintCalls) != 0 {
+		t.Fatalf("expected 0 mint calls for external track, got %d: %+v", len(minter.mintCalls), minter.mintCalls)
+	}
+}
+
+// TestTask5_NilMinter_NoMintNoPanic asserts that when no CanonicalMinter is
+// wired, AddTrack completes without panicking and no CanonicalID is set.
+func TestTask5_NilMinter_NoMintNoPanic(t *testing.T) {
+	store := newMemStore()
+	// No minter — use NewService directly without WithCanonicalMinter.
+	svc := NewService(nil, fakeMatcher{owned: map[string]string{}}, &fakeDownloader{}, store, nil,
+		func() int64 { return 100 }, seqID(), nil)
+
+	det, err := svc.CreateManaged(context.Background(), "Nil Minter Playlist")
+	if err != nil {
+		t.Fatalf("CreateManaged: %v", err)
+	}
+
+	libraryTrack := core.ExternalResult{
+		Source:     "library",
+		ExternalID: "lib-no-minter",
+		Title:      "Local Song",
+		Artist:     "Artist",
+		Album:      "Album",
+		DurationMs: 180000,
+		Type:       core.EntityTrack,
+	}
+	// Must not panic.
+	_, err = svc.AddTrack(context.Background(), det.ID, libraryTrack)
+	if err != nil {
+		t.Fatalf("AddTrack with nil minter: %v", err)
+	}
+
+	// CanonicalID must be empty (no minter = no mint).
+	row, _ := store.Get(context.Background(), det.ID)
+	var persisted []core.ExternalResult
+	_ = json.Unmarshal([]byte(row.TracksJSON), &persisted)
+	if len(persisted) > 0 && persisted[0].CanonicalID != "" {
+		t.Fatalf("expected empty CanonicalID with nil minter, got %q", persisted[0].CanonicalID)
+	}
+}
+
+// TestTask5_NoResolver_LegacyTrack_FallsBackToMatcher asserts that when a
+// library-source track has NO CanonicalID (legacy — persisted before Task 5),
+// Detail() falls back to s.match.Match (existing behavior), no panic.
+func TestTask5_NoResolver_LegacyTrack_FallsBackToMatcher(t *testing.T) {
+	const oldBackendID = "legacy-be-id"
+	const freshBackendID = "matched-fresh-id"
+
+	// Seed a legacy library track WITHOUT a CanonicalID.
+	legacyEntry := core.ExternalResult{
+		Source:      "library",
+		ExternalID:  oldBackendID,
+		CanonicalID: "", // legacy — no canonical id
+		Title:       "Legacy Track",
+		Artist:      "Artist",
+		Album:       "Album",
+		DurationMs:  180000,
+		Type:        core.EntityTrack,
+	}
+	store := newMemStore()
+	tj, _ := json.Marshal([]core.ExternalResult{legacyEntry})
+	store.rows["pl-legacy"] = &memRow{SyncedRow{
+		ID: "pl-legacy", Source: "local", ExternalID: "pl-legacy",
+		Name: "Legacy Playlist", Mode: "once", TracksJSON: string(tj),
+	}}
+	store.index["local:pl-legacy"] = "pl-legacy"
+
+	// Matcher resolves the track (simulate it being found by fuzzy match).
+	m := fakeMatcher{owned: map[string]string{oldBackendID: freshBackendID}}
+
+	// No resolver needed — omit resolverFn so s.resolve is nil.
+	svc := NewService(nil, m, &fakeDownloader{}, store, nil,
+		func() int64 { return 100 }, seqID(), nil)
+
+	det, err := svc.Detail(context.Background(), "pl-legacy")
+	if err != nil {
+		t.Fatalf("Detail legacy track: %v", err)
+	}
+	if len(det.Tracks) != 1 {
+		t.Fatalf("expected 1 track, got %d", len(det.Tracks))
+	}
+	tr := det.Tracks[0]
+	// Must resolve via matcher → CoverageFull with the matched fresh id.
+	if tr.State != core.CoverageFull {
+		t.Fatalf("State = %v, want CoverageFull (matcher fallback)", tr.State)
+	}
+	if tr.LibraryTrack == nil || tr.LibraryTrack.ID != freshBackendID {
+		t.Fatalf("LibraryTrack.ID = %q (via matcher), want %q", tr.LibraryTrack.ID, freshBackendID)
+	}
+}
+
+// TestTask5_ResolverNilReturn_FallsBackToMatcher asserts that when the resolver
+// provider returns nil (resolver not yet ready), Detail() falls back to
+// s.match.Match without panicking.
+func TestTask5_ResolverNilReturn_FallsBackToMatcher(t *testing.T) {
+	const catalogID = "trk_nilresolver"
+	const backendID = "be-id-via-matcher"
+
+	store := newMemStore()
+	seedLibraryTrackWithCanonicalID(store, "pl-nilres", catalogID, "old-be")
+
+	// Matcher can resolve by the stored ExternalID "old-be".
+	m := fakeMatcher{owned: map[string]string{"old-be": backendID}}
+
+	// Resolver provider returns nil (not ready).
+	svc := NewService(nil, m, &fakeDownloader{}, store, nil,
+		func() int64 { return 100 }, seqID(),
+		func() BindingResolver { return nil }, // nil resolver
+	)
+
+	det, err := svc.Detail(context.Background(), "pl-nilres")
+	if err != nil {
+		t.Fatalf("Detail with nil resolver: %v", err)
+	}
+	if len(det.Tracks) != 1 {
+		t.Fatalf("expected 1 track, got %d", len(det.Tracks))
+	}
+	// Should fall back to matcher.
+	tr := det.Tracks[0]
+	if tr.State != core.CoverageFull {
+		t.Fatalf("State = %v, want CoverageFull (matcher fallback when resolver nil)", tr.State)
+	}
+	if tr.LibraryTrack == nil || tr.LibraryTrack.ID != backendID {
+		t.Fatalf("LibraryTrack.ID = %q, want %q (matcher fallback)", tr.LibraryTrack.ID, backendID)
 	}
 }
