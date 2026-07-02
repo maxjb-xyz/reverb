@@ -382,6 +382,9 @@ type Builder struct {
 	// reads it lazily — it is never called during Build itself, only stored so
 	// Manager/Sync can call it at runtime. Nil is safe (Manager/Sync nil-guard it).
 	resolverProvider func() BindingResolver
+	// canonicalMinter is set by SetCanonicalMinter (Task 5) so BuildSyncService can
+	// forward it to playlistsync.Service via WithCanonicalMinter. Nil-safe.
+	canonicalMinter playlistsync.CanonicalMinter
 }
 
 // SetResolverProvider injects the resolver provider into the Builder. Call this
@@ -390,6 +393,14 @@ type Builder struct {
 // playlistsync.NewService; they call it at runtime (Tasks 3-5), not during Build.
 func (b *Builder) SetResolverProvider(p func() BindingResolver) {
 	b.resolverProvider = p
+}
+
+// SetCanonicalMinter injects the catalog minter into the Builder so that
+// BuildSyncService can wire it into playlistsync.Service.WithCanonicalMinter.
+// Call this BEFORE Build (same pattern as SetResolverProvider). Nil-safe: if
+// never called, minting is silently skipped in the sync service.
+func (b *Builder) SetCanonicalMinter(m playlistsync.CanonicalMinter) {
+	b.canonicalMinter = m
 }
 
 // NewBuilder constructs a Builder. clock may be nil (download.NewManager applies

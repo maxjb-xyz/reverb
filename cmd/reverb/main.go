@@ -148,6 +148,10 @@ func main() {
 	// SetCanonicalMinter AFTER Build returns the Manager. catalogSvc is used as both
 	// the download.CanonicalMinter and the play/stats service dependency below.
 	catalogSvc := catalog.NewService(st.Q(), time.Now, uuid.NewString)
+	// P2 Task 5: wire catalogSvc as the CanonicalMinter for the sync service so that
+	// AddTrack mints stable catalog ids for library-source tracks at persist time.
+	// Must be set BEFORE Build so BuildSyncService picks it up via b.canonicalMinter.
+	builder.SetCanonicalMinter(catalogSvc)
 
 	bundle, err := builder.Build(context.Background())
 	if err != nil {

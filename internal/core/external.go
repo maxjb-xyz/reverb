@@ -57,6 +57,12 @@ type ExternalResult struct {
 	AlbumExternalID  string       `json:"albumExternalId,omitempty"`
 	Type             EntityType   `json:"type"`
 	Match            *MatchResult `json:"match,omitempty"`
+	// CanonicalID is the stable catalog entity id minted at persist time for
+	// library-source synced-playlist tracks (Task 5). It is used by
+	// playlistsync.Service.Detail() to resolve backend addressing via the
+	// binding cache instead of re-running the fuzzy matcher. Empty for
+	// external/unmatched tracks and for legacy rows persisted before Task 5.
+	CanonicalID string `json:"canonicalId,omitempty"`
 }
 
 // ExternalArtist is an artist profile fetched from an external source (GetArtist).

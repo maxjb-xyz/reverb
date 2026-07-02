@@ -8,6 +8,7 @@ import (
 	"log"
 	"strings"
 
+	"github.com/maxjb-xyz/reverb/internal/catalog"
 	"github.com/maxjb-xyz/reverb/internal/core"
 	"github.com/maxjb-xyz/reverb/internal/resolver"
 )
@@ -19,6 +20,14 @@ import (
 type BindingResolver interface {
 	Resolve(ctx context.Context, catalogID string) (resolver.Addressing, error)
 	RefreshLinked(ctx context.Context, catalogIDs []string) error
+}
+
+// CanonicalMinter mints or resolves a stable catalog entity id. *catalog.Service
+// satisfies this interface. Declared here (consumer-side) so the catalog package
+// never imports playlistsync (dependency direction: playlistsync→catalog, not the reverse).
+// Nil-safe: callers guard with "if s.canonicalMinter != nil".
+type CanonicalMinter interface {
+	CanonicalFor(ctx context.Context, id catalog.Identity) (string, error)
 }
 
 // ErrNotPlaylistURL is returned by Import when the supplied URL is not a
@@ -93,16 +102,17 @@ type SyncedRow struct {
 }
 
 type Service struct {
-	src      PlaylistSource
-	match    Matcher
-	dl       Downloader
-	store    Store
-	lib      LibraryWriter  // optional; nil when no library is configured
-	libRead  LibraryReader  // optional; for migration
-	settings SettingsStore  // optional; for migration flag guard
-	now      func() int64
-	newID    func() string
-	resolve  func() BindingResolver // optional provider; Tasks 4-5 add call sites
+	src             PlaylistSource
+	match           Matcher
+	dl              Downloader
+	store           Store
+	lib             LibraryWriter  // optional; nil when no library is configured
+	libRead         LibraryReader  // optional; for migration
+	settings        SettingsStore  // optional; for migration flag guard
+	now             func() int64
+	newID           func() string
+	resolve         func() BindingResolver // optional provider; Tasks 4-5 add call sites
+	canonicalMinter CanonicalMinter        // optional; Task 5 mints canonical ids at persist time
 }
 
 // NewService constructs a playlist-sync Service. resolve is an optional provider
@@ -124,6 +134,14 @@ func (s *Service) WithLibraryReader(r LibraryReader) *Service {
 // read/write the migration flag. Returns the receiver for chaining.
 func (s *Service) WithSettingsStore(ss SettingsStore) *Service {
 	s.settings = ss
+	return s
+}
+
+// WithCanonicalMinter injects the catalog minter so AddTrack mints a stable
+// catalog entity id for library-source tracks at persist time (Task 5).
+// Nil-safe: if never called (or called with nil), minting is silently skipped.
+func (s *Service) WithCanonicalMinter(m CanonicalMinter) *Service {
+	s.canonicalMinter = m
 	return s
 }
 
@@ -179,14 +197,43 @@ func (s *Service) Detail(ctx context.Context, id string) (core.SyncedPlaylistDet
 		dt := core.AlbumDetailTrack{Title: tr.Title, Artist: tr.Artist, Album: tr.Album, TrackNumber: i + 1, DurationMs: tr.DurationMs, CoverURL: tr.CoverURL,
 			ArtistExternalID: tr.ArtistExternalID, AlbumExternalID: tr.AlbumExternalID}
 		if tr.Source == "library" {
+			// Task 5: if this track has a stable CanonicalID AND a resolver is available,
+			// resolve via the binding cache (fast, cache-first, swap-safe) instead of the
+			// fuzzy matcher. The binding cache is updated by the resolver on each miss so
+			// a backend swap is reflected on the next Detail call (resolve-at-read).
+			// Fall back to the matcher when: (a) no CanonicalID (legacy row), (b) resolver
+			// provider is nil, (c) provider returns nil (not ready), or (d) resolver
+			// returns !Found (catalog entity not yet bound to any backend).
+			if tr.CanonicalID != "" && s.resolve != nil {
+				if r := s.resolve(); r != nil {
+					addr, rErr := r.Resolve(ctx, tr.CanonicalID)
+					if rErr != nil {
+						return core.SyncedPlaylistDetail{}, rErr
+					}
+					if addr.Found && addr.BackendID != "" {
+						det.OwnedCount++
+						dt.State = core.CoverageFull
+						dt.LibraryTrack = &core.Track{
+							ID:         addr.BackendID,
+							Title:      tr.Title,
+							Artist:     tr.Artist,
+							Album:      tr.Album,
+							DurationMs: tr.DurationMs,
+							CoverArtID: addr.CoverArtID,
+						}
+						dt.Key = &core.TrackKey{Source: tr.Source, ExternalID: tr.ExternalID}
+						det.Tracks = append(det.Tracks, dt)
+						continue
+					}
+					// Resolver returned !Found — fall through to matcher below.
+				}
+			}
+			// Matcher fallback: legacy track (no CanonicalID) OR resolver unavailable/not-found.
 			// Re-resolve by durable metadata at read time so cover/playback survive a
 			// backend swap. The stored ExternalID was the old backend's volatile id; the
 			// matcher re-locates the track by title/artist/album/isrc against the LIVE
 			// backend and returns fresh ids. We set Type = EntityTrack to pass the
 			// matcher's type guard (entries written before P1 may omit it).
-			// P2/SP3 note: routing through the resolver's binding cache (minting a
-			// catalog_id at add time and binding it here) is deliberately deferred;
-			// the matcher's fuzzy rung already gives churn-resilient re-resolution.
 			probe := tr
 			probe.Type = core.EntityTrack
 			res, mErr := s.match.Match(ctx, probe)
@@ -474,6 +521,28 @@ func (s *Service) AddTrack(ctx context.Context, id string, entry core.ExternalRe
 	for _, t := range tracks {
 		if t.Source == entry.Source && t.ExternalID == entry.ExternalID {
 			return s.Detail(ctx, id)
+		}
+	}
+	// Task 5: for library-source tracks, mint a stable catalog entity id at persist
+	// time so Detail() can resolve via the binding cache instead of re-running the
+	// fuzzy matcher. Scoped to library tracks only (external/unmatched tracks are
+	// browsed results, not durable references). Nil-minter-safe: silently skipped.
+	if entry.Source == "library" && s.canonicalMinter != nil {
+		cid, mErr := s.canonicalMinter.CanonicalFor(ctx, catalog.Identity{
+			Kind:       "track",
+			Title:      entry.Title,
+			Artist:     entry.Artist,
+			Album:      entry.Album,
+			DurationMs: entry.DurationMs,
+			ISRC:       entry.ISRC,
+			// Source and ExternalID are left blank: this is a pure-library entity,
+			// not anchored to any external catalogue (Spotify/MusicBrainz) — same
+			// convention as plays (see play.Service).
+		})
+		if mErr != nil {
+			log.Printf("playlistsync: mint canonical id for track %q failed: %v", entry.ExternalID, mErr)
+		} else if cid != "" {
+			entry.CanonicalID = cid
 		}
 	}
 	tracks = append(tracks, entry)

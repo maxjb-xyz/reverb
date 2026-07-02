@@ -225,5 +225,11 @@ func (b *Builder) BuildSyncService(
 	svc := playlistsync.NewService(src, matcher, mgr, store, lib, nowUnix, uuid.NewString, syncResolve)
 	svc.WithLibraryReader(lib)
 	svc.WithSettingsStore(settings)
+	// Task 5: wire the canonical minter so AddTrack mints stable catalog ids for
+	// library-source tracks at persist time. Nil-safe: WithCanonicalMinter skips
+	// minting when nil. The minter is set via builder.SetCanonicalMinter before Build.
+	if b.canonicalMinter != nil {
+		svc.WithCanonicalMinter(b.canonicalMinter)
+	}
 	return svc
 }
