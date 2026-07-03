@@ -113,12 +113,14 @@ describe('TopBar', () => {
     expect(screen.getByRole('menuitem', { name: /logout/i })).toBeInTheDocument()
   })
 
-  it('Account and Settings menu items are available to all authenticated users', () => {
+  it('exactly one Settings menu item (no separate Account item)', () => {
     setMe([]) // no manager caps
     renderBar()
     fireEvent.click(screen.getByRole('button', { name: /account|user|avatar|menu/i }))
-    expect(screen.getByRole('menuitem', { name: /account/i })).toBeInTheDocument()
-    expect(screen.getByRole('menuitem', { name: /settings/i })).toBeInTheDocument()
+    // Single "Settings" entry
+    expect(screen.getByRole('menuitem', { name: /^settings$/i })).toBeInTheDocument()
+    // No separate "Account" entry
+    expect(screen.queryByRole('menuitem', { name: /^account$/i })).not.toBeInTheDocument()
   })
 
   it('Admin menu item is hidden when the user lacks all manager capabilities', () => {
