@@ -60,7 +60,7 @@ export default function Settings() {
       <h1 className="text-3xl font-black tracking-tight text-text-primary">Settings</h1>
 
       {/* Tab bar */}
-      <div className="flex gap-2 border-b border-border-subtle pb-0 flex-wrap">
+      <div role="tablist" aria-label="Settings sections" className="flex gap-2 border-b border-border-subtle pb-0 flex-wrap">
         <Chip selected={tab === 'profile'} onClick={() => setTab('profile')}>
           Profile
         </Chip>
