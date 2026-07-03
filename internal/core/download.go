@@ -24,22 +24,22 @@ const (
 
 // DownloadRequest is built from an ExternalResult when the user clicks download.
 type DownloadRequest struct {
-	Source        string `json:"source"`
-	ExternalID    string `json:"externalId"`
-	Artist        string `json:"artist"`
-	Title         string `json:"title"`
-	Album         string `json:"album"`
-	ISRC          string `json:"isrc,omitempty"`
+	Source     string `json:"source"`
+	ExternalID string `json:"externalId"`
+	Artist     string `json:"artist"`
+	Title      string `json:"title"`
+	Album      string `json:"album"`
+	ISRC       string `json:"isrc,omitempty"`
 	// DurationMs from the originating search result; forwarded into the
 	// post-download re-match so the fuzzy rung can disambiguate by length.
-	DurationMs    int    `json:"durationMs,omitempty"`
-	PlayWhenReady bool   `json:"playWhenReady"`
+	DurationMs    int  `json:"durationMs,omitempty"`
+	PlayWhenReady bool `json:"playWhenReady"`
 	// ManualURL is an optional user-supplied source URL (e.g. a YouTube link) that
 	// overrides the default query construction. When set alongside a Spotify source +
 	// ExternalID, the spotDL adapter uses the pipe syntax
 	// "https://open.spotify.com/track/<id>|<manualURL>" so Spotify metadata is
 	// preserved while the audio is fetched from the manual URL.
-	ManualURL     string `json:"manualUrl,omitempty"`
+	ManualURL string `json:"manualUrl,omitempty"`
 	// AddToPlaylistID, when non-empty, causes the download manager to add the
 	// resulting library track to this playlist ID once the download completes and
 	// the track is matched in the library. Used by the one-time import path so
@@ -69,28 +69,28 @@ type DownloadJob struct {
 	// CanonicalID is the stable catalog entity id (trk_…) minted at link time.
 	// Empty when the job has not yet been matched to the library. The FE prefers
 	// this over CoverArtID for cover resolution so covers survive a backend swap.
-	CanonicalID    string         `json:"canonicalId,omitempty"`
-	DownloaderName string         `json:"downloaderName"`
-	Priority       int            `json:"priority"`
-	Attempts       int            `json:"attempts"`
-	Source         string         `json:"source"`
-	ExternalID     string         `json:"externalId"`
+	CanonicalID    string `json:"canonicalId,omitempty"`
+	DownloaderName string `json:"downloaderName"`
+	Priority       int    `json:"priority"`
+	Attempts       int    `json:"attempts"`
+	Source         string `json:"source"`
+	ExternalID     string `json:"externalId"`
 	// Request fields carried so a job rehydrated from request_json can run.
-	Artist          string         `json:"artist,omitempty"`
-	Title           string         `json:"title,omitempty"`
-	Album           string         `json:"album,omitempty"`
-	ISRC            string         `json:"isrc,omitempty"`
-	DurationMs      int            `json:"durationMs,omitempty"`
-	PlayWhenReady   bool           `json:"playWhenReady"`
+	Artist        string `json:"artist,omitempty"`
+	Title         string `json:"title,omitempty"`
+	Album         string `json:"album,omitempty"`
+	ISRC          string `json:"isrc,omitempty"`
+	DurationMs    int    `json:"durationMs,omitempty"`
+	PlayWhenReady bool   `json:"playWhenReady"`
 	// AddToPlaylistID mirrors DownloadRequest.AddToPlaylistID so the post-download
 	// playlist-add hook in runScan can read it from the rehydrated job.
-	AddToPlaylistID string         `json:"addToPlaylistId,omitempty"`
+	AddToPlaylistID string `json:"addToPlaylistId,omitempty"`
 	// DownloaderRef is downloader-internal handle for async downloaders (e.g. the
 	// Lidarr album id). Empty for synchronous downloaders like spotDL.
 	DownloaderRef string `json:"downloaderRef,omitempty"`
-	CreatedAt       int64          `json:"createdAt"`
-	StartedAt       int64          `json:"startedAt"`
-	FinishedAt      int64          `json:"finishedAt"`
+	CreatedAt     int64  `json:"createdAt"`
+	StartedAt     int64  `json:"startedAt"`
+	FinishedAt    int64  `json:"finishedAt"`
 }
 
 // DownloadEvent is published on the EventBus (topics download.queued|progress|

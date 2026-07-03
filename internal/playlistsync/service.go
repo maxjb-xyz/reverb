@@ -94,11 +94,11 @@ type Store interface {
 // never needs to unmarshal TracksJSON just to count tracks for the list view.
 type SyncedRow struct {
 	ID, Source, ExternalID, Name, CoverURL, TracksJSON string
-	Mode                                                string
-	SyncEnabled, AutoDownload                           bool
-	SyncIntervalSec                                     int
-	LastSyncedAt, CreatedAt                             int64
-	TrackCount                                          int // set by List; zero means "not pre-counted, fall back to TracksJSON"
+	Mode                                               string
+	SyncEnabled, AutoDownload                          bool
+	SyncIntervalSec                                    int
+	LastSyncedAt, CreatedAt                            int64
+	TrackCount                                         int // set by List; zero means "not pre-counted, fall back to TracksJSON"
 }
 
 type Service struct {
@@ -106,9 +106,9 @@ type Service struct {
 	match           Matcher
 	dl              Downloader
 	store           Store
-	lib             LibraryWriter  // optional; nil when no library is configured
-	libRead         LibraryReader  // optional; for migration
-	settings        SettingsStore  // optional; for migration flag guard
+	lib             LibraryWriter // optional; nil when no library is configured
+	libRead         LibraryReader // optional; for migration
+	settings        SettingsStore // optional; for migration flag guard
 	now             func() int64
 	newID           func() string
 	resolve         func() BindingResolver // optional provider; Tasks 4-5 add call sites
@@ -676,7 +676,7 @@ func (s *Service) ReorderTracks(ctx context.Context, id string, order []core.Tra
 func rowToSummary(r SyncedRow, trackCount int) core.SyncedPlaylist {
 	return core.SyncedPlaylist{
 		ID: r.ID, Source: r.Source, ExternalID: r.ExternalID, Name: r.Name, CoverURL: r.CoverURL,
-		Mode: r.Mode,
+		Mode:        r.Mode,
 		SyncEnabled: r.SyncEnabled, SyncIntervalSec: r.SyncIntervalSec, AutoDownload: r.AutoDownload,
 		LastSyncedAt: r.LastSyncedAt, TrackCount: trackCount,
 	}

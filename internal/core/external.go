@@ -39,16 +39,16 @@ type MatchResult struct {
 // are DATA (optional) — the matcher uses them when non-empty. Match is filled in
 // by MatchingService before the result is emitted to the client.
 type ExternalResult struct {
-	Source           string       `json:"source"`
-	ExternalID       string       `json:"externalId"`
-	Title            string       `json:"title"`
-	Artist           string       `json:"artist"`
-	Album            string       `json:"album"`
-	DurationMs       int          `json:"durationMs"`
-	ISRC             string       `json:"isrc,omitempty"`
-	MBID             string       `json:"mbid,omitempty"`
-	CoverURL         string       `json:"coverUrl,omitempty"`
-	CoverArtID       string       `json:"coverArtId,omitempty"`
+	Source     string `json:"source"`
+	ExternalID string `json:"externalId"`
+	Title      string `json:"title"`
+	Artist     string `json:"artist"`
+	Album      string `json:"album"`
+	DurationMs int    `json:"durationMs"`
+	ISRC       string `json:"isrc,omitempty"`
+	MBID       string `json:"mbid,omitempty"`
+	CoverURL   string `json:"coverUrl,omitempty"`
+	CoverArtID string `json:"coverArtId,omitempty"`
 	// ArtistExternalID and AlbumExternalID carry the source-specific IDs for the
 	// primary artist and album of this track result. Populated by adapters that
 	// have these IDs readily available (e.g. Spotify). Used by the frontend to
@@ -84,7 +84,7 @@ type ExternalAlbum struct {
 	Artist      string           `json:"artist"`
 	CoverURL    string           `json:"coverUrl,omitempty"`
 	Year        int              `json:"year"`
-	Kind        string           `json:"kind,omitempty"`        // "album" | "single"
+	Kind        string           `json:"kind,omitempty"` // "album" | "single"
 	TotalTracks int              `json:"totalTracks,omitempty"`
 	Tracks      []ExternalResult `json:"tracks"`
 }

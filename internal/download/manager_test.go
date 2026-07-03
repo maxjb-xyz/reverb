@@ -32,14 +32,14 @@ type fakeDL struct {
 	startCount  int
 }
 
-func (d *fakeDL) Type() string    { return "downloader" }
-func (d *fakeDL) Name() string    { return d.name }
+func (d *fakeDL) Type() string { return "downloader" }
+func (d *fakeDL) Name() string { return d.name }
 func (d *fakeDL) SupportedGranularities() []core.DownloadGranularity {
 	return []core.DownloadGranularity{core.GranularityTrack}
 }
-func (d *fakeDL) ConfigSchema() registry.ConfigSchema { return registry.ConfigSchema{} }
-func (d *fakeDL) Init(map[string]any) error                   { return nil }
-func (d *fakeDL) TestConnection(context.Context) error        { return nil }
+func (d *fakeDL) ConfigSchema() registry.ConfigSchema  { return registry.ConfigSchema{} }
+func (d *fakeDL) Init(map[string]any) error            { return nil }
+func (d *fakeDL) TestConnection(context.Context) error { return nil }
 func (d *fakeDL) CanDownload(context.Context, core.DownloadRequest) (bool, error) {
 	return d.canDownload, nil
 }
@@ -1729,9 +1729,9 @@ func (d *fakeAsyncDL) Name() string { return d.name }
 func (d *fakeAsyncDL) SupportedGranularities() []core.DownloadGranularity {
 	return []core.DownloadGranularity{core.GranularityAlbum}
 }
-func (d *fakeAsyncDL) ConfigSchema() registry.ConfigSchema { return registry.ConfigSchema{} }
-func (d *fakeAsyncDL) Init(map[string]any) error                   { return nil }
-func (d *fakeAsyncDL) TestConnection(context.Context) error        { return nil }
+func (d *fakeAsyncDL) ConfigSchema() registry.ConfigSchema  { return registry.ConfigSchema{} }
+func (d *fakeAsyncDL) Init(map[string]any) error            { return nil }
+func (d *fakeAsyncDL) TestConnection(context.Context) error { return nil }
 func (d *fakeAsyncDL) CanDownload(_ context.Context, req core.DownloadRequest) (bool, error) {
 	g := req.Granularity
 	if g == "" {
@@ -1994,7 +1994,7 @@ func TestPickTrackNeverSelectsAlbumOnly(t *testing.T) {
 // and returns 'mid' (order 2) when afterName = "lo", skipping 'hi' (order 0
 // — it comes before 'lo' in sorted order and has already been tried).
 func TestPickAfterReturnsNextTrackEntryByOrder(t *testing.T) {
-	hi := &fakeDL{name: "hi", canDownload: true}  // order 0 — first in sorted order
+	hi := &fakeDL{name: "hi", canDownload: true}   // order 0 — first in sorted order
 	lo := &fakeDL{name: "lo", canDownload: true}   // order 1 — second
 	mid := &fakeDL{name: "mid", canDownload: true} // order 2 — third
 	store := newMemStore()
@@ -2557,15 +2557,14 @@ func TestRetryAsyncDetachesRequestContext(t *testing.T) {
 	}
 }
 
-
 // ─── Task 3: CanonicalMinter fakes + tests ──────────────────────────────────
 
 // fakeCanonicalMinter records calls and returns a fixed canonical id.
 type fakeCanonicalMinter struct {
-	mu      sync.Mutex
-	calls   []catalog.Identity
-	retID   string
-	retErr  error
+	mu     sync.Mutex
+	calls  []catalog.Identity
+	retID  string
+	retErr error
 }
 
 func (f *fakeCanonicalMinter) CanonicalFor(_ context.Context, id catalog.Identity) (string, error) {
@@ -2746,8 +2745,8 @@ func TestMintAtLink_Idempotent(t *testing.T) {
 
 // TestBackfillCanonicalIDs_MintsLegacyLinkedJob is the regression test for the
 // cover-rot fix: a LEGACY job linked BEFORE Task 3 (has library_track_id, but
-// canonical_id=='') is NEVER minted by BackfillUnlinked/runScan (they gate on
-// library_track_id==''). BackfillCanonicalIDs converges these legacy rows onto the
+// canonical_id==”) is NEVER minted by BackfillUnlinked/runScan (they gate on
+// library_track_id==”). BackfillCanonicalIDs converges these legacy rows onto the
 // canonical path so retiring the clear-dance does not rot their covers on a swap.
 func TestBackfillCanonicalIDs_MintsLegacyLinkedJob(t *testing.T) {
 	store := newMemStore()
@@ -2819,7 +2818,7 @@ func TestBackfillCanonicalIDs_Idempotent(t *testing.T) {
 }
 
 // TestBackfillCanonicalIDs_Scoping verifies BackfillCanonicalIDs does NOT touch
-// unlinked jobs (library_track_id=='') nor non-completed (failed/queued) jobs — it
+// unlinked jobs (library_track_id==”) nor non-completed (failed/queued) jobs — it
 // only converges completed+linked+unminted rows.
 func TestBackfillCanonicalIDs_Scoping(t *testing.T) {
 	store := newMemStore()
@@ -2981,9 +2980,9 @@ func TestCanonicalIDInDTO(t *testing.T) {
 
 // fakeBindingResolver records RefreshLinked calls for assertions.
 type fakeBindingResolver struct {
-	mu      sync.Mutex
-	calls   [][]string // each call's catalogIDs arg
-	retErr  error
+	mu     sync.Mutex
+	calls  [][]string // each call's catalogIDs arg
+	retErr error
 }
 
 func (f *fakeBindingResolver) Resolve(_ context.Context, _ string) (resolver.Addressing, error) {

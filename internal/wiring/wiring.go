@@ -441,15 +441,15 @@ type BindingResolver interface {
 // download persistence), the version store, the event bus, the clock, and the
 // getenv used for secret overrides.
 type Builder struct {
-	libraryReg      *registry.Registry
-	searchReg       *registry.Registry
-	downloaderReg   *registry.Registry
-	queries         *db.Queries
-	version         VersionStore
-	bus             download.Publisher
-	clock           download.Clock
-	getenv          func(string) string
-	dataDir         string
+	libraryReg    *registry.Registry
+	searchReg     *registry.Registry
+	downloaderReg *registry.Registry
+	queries       *db.Queries
+	version       VersionStore
+	bus           download.Publisher
+	clock         download.Clock
+	getenv        func(string) string
+	dataDir       string
 	// resolverProvider is set by the composition root before the first Build call
 	// (P2 construction order: reloader→resolver→SetResolverProvider→Build). Build
 	// reads it lazily — it is never called during Build itself, only stored so

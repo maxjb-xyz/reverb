@@ -159,8 +159,8 @@ type memRow struct {
 }
 
 type memStore struct {
-	rows  map[string]*memRow          // id → row
-	index map[string]string           // "source:externalID" → id
+	rows  map[string]*memRow // id → row
+	index map[string]string  // "source:externalID" → id
 }
 
 func newMemStore() *memStore {

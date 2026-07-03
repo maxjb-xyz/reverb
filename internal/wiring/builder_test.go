@@ -449,4 +449,3 @@ func TestReconcileLibraryIdentity_UnchangedIdentityNoopBindingEpoch(t *testing.T
 		t.Fatalf("binding_epoch:builtin changed from %d to %d; must be no-op when identity unchanged", epochBefore, epochAfter)
 	}
 }
-

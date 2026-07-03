@@ -180,25 +180,25 @@ func (c Config) withDefaults() Config {
 // Manager owns the download queue, a bounded worker pool, dedup-join, the
 // fallback chain, scan-debounce, cancel/retry, and EventBus publication.
 type Manager struct {
-	cfg              Config
-	downloaders      []DownloaderEntry
-	store            JobStore
-	bus              Publisher
-	scanner          ScanController
-	rematcher        Rematcher
-	version          VersionBumper
-	clock            Clock
-	playlists        PlaylistAdder   // optional; non-nil only when a library is configured
-	resolve          func() BindingResolver // optional provider; Tasks 3-5 add call sites
-	canonicalMinter  CanonicalMinter // optional; mints catalog IDs at link time (Task 3)
+	cfg             Config
+	downloaders     []DownloaderEntry
+	store           JobStore
+	bus             Publisher
+	scanner         ScanController
+	rematcher       Rematcher
+	version         VersionBumper
+	clock           Clock
+	playlists       PlaylistAdder          // optional; non-nil only when a library is configured
+	resolve         func() BindingResolver // optional provider; Tasks 3-5 add call sites
+	canonicalMinter CanonicalMinter        // optional; mints catalog IDs at link time (Task 3)
 
 	queue chan string // job IDs to process
 
 	mu       sync.Mutex
 	cancels  map[string]context.CancelFunc // in-flight job cancel funcs
 	reqs     map[string]core.DownloadRequest
-	debounce func() bool // active debounce timer stop (or nil)
-	pending  bool        // a completion is awaiting the scan window
+	debounce func() bool   // active debounce timer stop (or nil)
+	pending  bool          // a completion is awaiting the scan window
 	paused   bool          // dispatch gate: workers stop pulling NEW jobs while true
 	resumeCh chan struct{} // closed when running; a fresh OPEN channel while paused
 
