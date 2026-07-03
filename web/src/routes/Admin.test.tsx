@@ -36,6 +36,14 @@ vi.mock('../lib/libraryApi', () => ({
   useLibraryStatus: () => mockUseLibraryStatus(),
 }))
 
+// ── Mock scrobbleApi (used by ScrobblingSection) ─────────────────────────────
+const mockGetLastfmConfig = vi.fn()
+const mockSetLastfmConfig = vi.fn()
+vi.mock('../lib/scrobbleApi', () => ({
+  getLastfmConfig: (...args: unknown[]) => mockGetLastfmConfig(...args),
+  setLastfmConfig: (...args: unknown[]) => mockSetLastfmConfig(...args),
+}))
+
 // ── Mock usersApi (used by UsersSection / RolesSection / RegistrationSection) ─
 const mockUseUsers = vi.fn()
 const mockUseRoles = vi.fn()
@@ -109,6 +117,8 @@ function setupDefaultMocks() {
     isLoading: false,
   })
   mockUseInvites.mockReturnValue({ data: [], isLoading: false })
+  mockGetLastfmConfig.mockResolvedValue({ apiKey: '', apiSecretSet: false })
+  mockSetLastfmConfig.mockResolvedValue(undefined)
 }
 
 function wrap(ui: ReactElement) {
@@ -200,11 +210,19 @@ describe('Admin', () => {
     mockUseSettings.mockReturnValue(settingsData('external'))
     mockUseAvailableAdapters.mockReturnValue({ data: [subsonicAvailable], isLoading: false })
     mockUseAdapters.mockReturnValue({ data: [], isLoading: false })
-    wrap(<Admin />)
+    const { container } = wrap(<Admin />)
     fireEvent.change(screen.getByLabelText('Server URL'), { target: { value: 'http://nav:4533' } })
     fireEvent.change(screen.getByLabelText('Username'), { target: { value: 'admin' } })
     fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'pw' } })
-    fireEvent.click(screen.getByRole('button', { name: /^save$/i }))
+    // Multiple "Save" buttons exist (library form + ScrobblingSection); click the one
+    // adjacent to the Server URL field by picking the first Save in the page.
+    const saveButtons = container.querySelectorAll('button[type="submit"]')
+    // AdapterForm's submit button appears before ScrobblingSection's
+    const adapterSave = Array.from(saveButtons).find(
+      (b) => /^save$/i.test(b.textContent ?? ''),
+    )
+    expect(adapterSave).toBeTruthy()
+    fireEvent.click(adapterSave!)
     await waitFor(() =>
       expect(mockCreateAdapter).toHaveBeenCalledWith({
         type: 'library',
@@ -249,6 +267,12 @@ describe('Admin', () => {
     expect(screen.getByRole('heading', { name: /downloaders/i })).toBeInTheDocument()
     // No multi-instance "Library providers" list anymore.
     expect(screen.queryByRole('heading', { name: /library providers/i })).toBeNull()
+  })
+
+  it('Providers tab renders the ScrobblingSection with Last.fm heading', async () => {
+    wrap(<Admin />)
+    // ScrobblingSection is in the Providers tab (default active tab)
+    expect(await screen.findByRole('heading', { name: /last\.fm/i })).toBeInTheDocument()
   })
 
   it('shows skeleton loaders while adapters are loading', () => {

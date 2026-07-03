@@ -229,7 +229,7 @@ export default function Account() {
       </section>
 
       {/* ── Integrations section ─────────────────────────────────────────────── */}
-      <IntegrationsSection me={me} />
+      <IntegrationsSection />
     </div>
   )
 }

@@ -9,6 +9,7 @@ import {
   type AdapterInstance,
 } from '../lib/adaptersApi'
 import { AdapterSection } from '../components/admin/AdapterSection'
+import { ScrobblingSection } from '../components/admin/ScrobblingSection'
 import { UsersSection } from '../components/admin/UsersSection'
 import { RolesSection } from '../components/admin/RolesSection'
 import { RegistrationSection } from '../components/admin/RegistrationSection'
@@ -339,6 +340,8 @@ export default function Admin() {
                 onReorder={(inst, delta) => void onReorder(inst, delta)}
                 onMoveInColumn={(col, idx, dir, g) => void moveInColumn(col, idx, dir, g)}
               />
+
+              <ScrobblingSection />
             </>
           )}
         </div>
