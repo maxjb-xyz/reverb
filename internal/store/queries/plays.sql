@@ -1,3 +1,9 @@
+-- name: DistinctDurableCanonicalIDs :many
+SELECT DISTINCT catalog_id FROM plays WHERE catalog_id != ''
+UNION
+SELECT DISTINCT canonical_id FROM download_jobs WHERE canonical_id != ''
+LIMIT ?;
+
 -- name: InsertPlay :exec
 INSERT INTO plays (id, user_id, catalog_id, played_at, ms_played, completed, created_at)
 VALUES (?,?,?,?,?,?,?);

@@ -40,6 +40,36 @@ func (q *Queries) DeletePlay(ctx context.Context, arg DeletePlayParams) error {
 	return err
 }
 
+const distinctDurableCanonicalIDs = `-- name: DistinctDurableCanonicalIDs :many
+SELECT DISTINCT catalog_id FROM plays WHERE catalog_id != ''
+UNION
+SELECT DISTINCT canonical_id FROM download_jobs WHERE canonical_id != ''
+LIMIT ?
+`
+
+func (q *Queries) DistinctDurableCanonicalIDs(ctx context.Context, limit int64) ([]string, error) {
+	rows, err := q.db.QueryContext(ctx, distinctDurableCanonicalIDs, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var catalog_id string
+		if err := rows.Scan(&catalog_id); err != nil {
+			return nil, err
+		}
+		items = append(items, catalog_id)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const insertPlay = `-- name: InsertPlay :exec
 INSERT INTO plays (id, user_id, catalog_id, played_at, ms_played, completed, created_at)
 VALUES (?,?,?,?,?,?,?)

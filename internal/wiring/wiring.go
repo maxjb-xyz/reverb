@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"sync"
 	"time"
 
 	"github.com/maxjb-xyz/reverb/internal/core"
@@ -298,6 +299,15 @@ func libraryIdentity(mode embedded.Mode, instances []db.AdapterInstance) string 
 	return "external"
 }
 
+// sweepLimit is the maximum number of durable canonical IDs the post-swap
+// pre-warm sweep will resolve. Bounds memory + work on a large library.
+// The query uses LIMIT so only this many rows are ever fetched.
+const sweepLimit = 500
+
+// sweepConcurrency is the semaphore width for the post-swap sweep goroutine:
+// at most this many Resolve calls run concurrently.
+const sweepConcurrency = 6
+
 // reconcileLibraryIdentity bumps library_version (invalidating the match + coverage
 // caches) when the active library backend's identity differs from the last boot,
 // so matches from a previous backend (with different track IDs) are not reused.
@@ -313,12 +323,11 @@ func libraryIdentity(mode embedded.Mode, instances []db.AdapterInstance) string 
 // cycle. resolver.BumpEpoch is the shared helper that ensures the key format is
 // identical to what the Service reads.
 //
-// DEFERRED (P2/SP3): runScan targeted binding refresh (piece 2) and async
-// post-swap sweep (piece 3) are intentionally NOT wired here. They are
-// best-effort pre-warming, not a correctness dependency — the resolver lazily
-// re-resolves on a binding miss. In P1 there is NO canonical-keyed consumer to
-// refresh yet (download jobs become canonical-keyed in Task 11, plays in SP3).
-// Revisit pre-warming in P2/SP3 once consumers are canonical-keyed.
+// P2/SP3 piece 3 (wired): after the epoch bump, if resolverProvider is set, a
+// bounded best-effort async sweep pre-warms bindings for all durable canonical ids
+// (plays.catalog_id ∪ download_jobs.canonical_id) so the first post-swap /stream
+// or /cover doesn't block on a synchronous re-resolve. The sweep is NEVER a
+// correctness dependency — missed ids re-resolve lazily on the first request.
 //
 // No-op when the identity is unchanged.
 func (b *Builder) reconcileLibraryIdentity(ctx context.Context, identity string) error {
@@ -338,7 +347,71 @@ func (b *Builder) reconcileLibraryIdentity(ctx context.Context, identity string)
 	if err := resolver.BumpEpoch(ctx, b.queries, identity); err != nil {
 		return err
 	}
-	return b.queries.UpsertSetting(ctx, db.UpsertSettingParams{Key: settingLibraryIdentity, Value: identity})
+	if err := b.queries.UpsertSetting(ctx, db.UpsertSettingParams{Key: settingLibraryIdentity, Value: identity}); err != nil {
+		return err
+	}
+	// Launch the async pre-warm sweep (piece 3). Fire-and-forget: never blocks
+	// or fails reconcile. See schedulePostSwapSweep for the full contract.
+	b.schedulePostSwapSweep()
+	return nil
+}
+
+// schedulePostSwapSweep launches a bounded, best-effort goroutine that reads
+// all durable canonical ids (plays + download_jobs) and pre-warms their resolver
+// bindings via Resolve. The goroutine:
+//   - uses a DETACHED context (context.WithoutCancel + 2-minute timeout) so it
+//     outlives the caller's request context and is still bounded in wall-clock time;
+//   - caps the total ids fetched to sweepLimit;
+//   - caps in-flight Resolve calls to sweepConcurrency via a semaphore channel;
+//   - swallows per-id errors and logs a summary if any failed;
+//   - never panics on nil resolver or nil provider.
+func (b *Builder) schedulePostSwapSweep() {
+	if b.resolverProvider == nil {
+		return
+	}
+	res := b.resolverProvider()
+	if res == nil {
+		return
+	}
+	// Snapshot the queries pointer so the goroutine doesn't close over b.
+	q := b.queries
+	go func() {
+		// Detached context: severs cancellation from the caller while preserving
+		// trace values; bounded by a 2-minute timeout so a slow library can't
+		// leave this goroutine running indefinitely.
+		sweepCtx, cancel := context.WithTimeout(context.WithoutCancel(context.Background()), 2*time.Minute)
+		defer cancel()
+
+		ids, err := q.DistinctDurableCanonicalIDs(sweepCtx, sweepLimit)
+		if err != nil {
+			log.Printf("wiring: post-swap sweep: list durable ids: %v", err)
+			return
+		}
+
+		sem := make(chan struct{}, sweepConcurrency)
+		var wg sync.WaitGroup
+		var (
+			mu       sync.Mutex
+			errCount int
+		)
+		for _, id := range ids {
+			id := id
+			sem <- struct{}{}
+			wg.Add(1)
+			go func() {
+				defer func() { <-sem; wg.Done() }()
+				if _, rerr := res.Resolve(sweepCtx, id); rerr != nil {
+					mu.Lock()
+					errCount++
+					mu.Unlock()
+				}
+			}()
+		}
+		wg.Wait()
+		if errCount > 0 {
+			log.Printf("wiring: post-swap sweep: %d/%d ids failed to pre-resolve (best-effort, ignored)", errCount, len(ids))
+		}
+	}()
 }
 
 // reconcileDownloadJobIdentity is now a no-op stub (Task 3: cover-rot killer).
