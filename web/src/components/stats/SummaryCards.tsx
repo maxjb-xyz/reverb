@@ -12,11 +12,11 @@ interface CardProps {
 
 function StatCard({ label, value }: CardProps) {
   return (
-    <div className="flex flex-col gap-1 px-5 py-4 rounded-lg bg-surface-raised">
-      <span className="text-xs font-semibold uppercase tracking-wider text-secondary">
+    <div className="flex flex-col gap-1 px-5 py-4 rounded-lg bg-raised">
+      <span className="text-xs font-semibold uppercase tracking-wider text-text-muted">
         {label}
       </span>
-      <span className="text-3xl font-black tabular-nums text-primary leading-none">
+      <span className="text-3xl font-black tabular-nums text-text-primary leading-none">
         {value}
       </span>
     </div>

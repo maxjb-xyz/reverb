@@ -56,14 +56,18 @@ function LastfmUserWidget({ state }: LastfmUserWidgetProps) {
 
   // Re-seed when the upstream link changes (e.g. parent re-fetched after a save).
   // Only re-seed while the user is at rest (idle/connected) so an in-flight
-  // connect flow is never clobbered by a background refresh.
-  useEffect(() => {
+  // connect flow is never clobbered by a background refresh. Uses React's
+  // "adjust state during render" pattern (keyed on the link identity) instead of
+  // an effect, avoiding a synchronous setState inside useEffect.
+  const linkKey = `${link?.status ?? ''} ${link?.username ?? ''}`
+  const [prevLinkKey, setPrevLinkKey] = useState(linkKey)
+  if (linkKey !== prevLinkKey) {
+    setPrevLinkKey(linkKey)
     if (step === 'idle' || step === 'connected') {
       setStep(initialStep(link))
       setConnectedUsername(link?.status === 'active' ? link.username : null)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [link?.status, link?.username])
+  }
 
   async function handleConnect() {
     setStep('pending')
@@ -224,7 +228,6 @@ export function IntegrationsSection() {
 
   useEffect(() => {
     refreshLinks()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   return (

@@ -73,7 +73,7 @@ export function RangeSelector({ value, onChange }: Props) {
               'px-3 py-1 rounded-full text-sm font-medium transition-colors',
               active
                 ? 'bg-accent text-on-accent'
-                : 'bg-surface-raised text-secondary hover:bg-surface-hover',
+                : 'bg-raised text-text-muted hover:bg-raised-hover',
             ].join(' ')}
           >
             {label}
@@ -96,7 +96,7 @@ export function RangeSelector({ value, onChange }: Props) {
               'px-3 py-1 rounded-full text-sm font-medium transition-colors',
               active
                 ? 'bg-accent text-on-accent'
-                : 'bg-surface-raised text-secondary hover:bg-surface-hover',
+                : 'bg-raised text-text-muted hover:bg-raised-hover',
             ].join(' ')}
           >
             {label}
@@ -112,7 +112,7 @@ export function RangeSelector({ value, onChange }: Props) {
           'px-3 py-1 rounded-full text-sm font-medium transition-colors',
           showCustom
             ? 'bg-accent text-on-accent'
-            : 'bg-surface-raised text-secondary hover:bg-surface-hover',
+            : 'bg-raised text-text-muted hover:bg-raised-hover',
         ].join(' ')}
       >
         Custom
@@ -120,9 +120,9 @@ export function RangeSelector({ value, onChange }: Props) {
 
       {/* Custom date range popover */}
       {showCustom && (
-        <div className="flex flex-wrap items-end gap-2 mt-2 w-full p-3 rounded-lg bg-surface-raised border border-border">
+        <div className="flex flex-wrap items-end gap-2 mt-2 w-full p-3 rounded-lg bg-raised border border-border">
           <div className="flex flex-col gap-1">
-            <label htmlFor="range-from" className="text-xs text-secondary">
+            <label htmlFor="range-from" className="text-xs text-text-muted">
               From
             </label>
             <input
@@ -130,11 +130,11 @@ export function RangeSelector({ value, onChange }: Props) {
               type="date"
               value={fromVal}
               onChange={(e) => setFromVal(e.target.value)}
-              className="px-2 py-1 rounded text-sm bg-surface border border-border text-primary"
+              className="px-2 py-1 rounded text-sm bg-surface border border-border text-text-primary"
             />
           </div>
           <div className="flex flex-col gap-1">
-            <label htmlFor="range-to" className="text-xs text-secondary">
+            <label htmlFor="range-to" className="text-xs text-text-muted">
               To
             </label>
             <input
@@ -142,7 +142,7 @@ export function RangeSelector({ value, onChange }: Props) {
               type="date"
               value={toVal}
               onChange={(e) => setToVal(e.target.value)}
-              className="px-2 py-1 rounded text-sm bg-surface border border-border text-primary"
+              className="px-2 py-1 rounded text-sm bg-surface border border-border text-text-primary"
             />
           </div>
           <button
@@ -153,7 +153,7 @@ export function RangeSelector({ value, onChange }: Props) {
           </button>
           <button
             onClick={() => setShowCustom(false)}
-            className="px-3 py-1 rounded text-sm text-secondary hover:bg-surface-hover"
+            className="px-3 py-1 rounded text-sm text-text-muted hover:bg-raised-hover"
           >
             Cancel
           </button>

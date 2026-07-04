@@ -1,6 +1,7 @@
 import { render, screen } from '@testing-library/react'
 import { describe, it, expect } from 'vitest'
-import { failureMessage, StatusLabel, DownloadProgress } from './parts'
+import { StatusLabel, DownloadProgress } from './parts'
+import { failureMessage } from './failureMessage'
 import type { DownloadJob } from '../../lib/types'
 
 function job(p: Partial<DownloadJob>): DownloadJob {

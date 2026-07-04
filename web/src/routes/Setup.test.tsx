@@ -54,6 +54,33 @@ describe('Setup wizard', () => {
     expect(await screen.findByText(/add a library/i)).toBeInTheDocument()
   })
 
+  it('blocks the password step with a message when username or password is empty', async () => {
+    renderSetup()
+    // Submit with both empty
+    fireEvent.click(screen.getByRole('button', { name: /continue/i }))
+    expect(await screen.findByText(/enter a username and password/i)).toBeInTheDocument()
+    expect(setupOwner).not.toHaveBeenCalled()
+
+    // Username only — still blocked
+    fireEvent.change(screen.getByPlaceholderText('Choose a username'), { target: { value: 'admin' } })
+    fireEvent.click(screen.getByRole('button', { name: /continue/i }))
+    expect(setupOwner).not.toHaveBeenCalled()
+  })
+
+  it('surfaces an error (and does not advance) when the library PUT fails', async () => {
+    ;(api.put as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('boom'))
+    renderSetup()
+    fireEvent.change(screen.getByPlaceholderText('Choose a username'), { target: { value: 'admin' } })
+    fireEvent.change(screen.getByPlaceholderText('Choose a password'), { target: { value: 'hunter2' } })
+    fireEvent.click(screen.getByRole('button', { name: /continue/i }))
+    await screen.findByText(/add a library/i)
+
+    fireEvent.click(screen.getByRole('button', { name: /use built-in/i }))
+    expect(await screen.findByText(/couldn't save your library choice/i)).toBeInTheDocument()
+    // Still on the library step (did not advance to the search step)
+    expect(screen.getByText(/add a library/i)).toBeInTheDocument()
+  })
+
   it('library step offers a Built-in option that sets built-in mode and advances', async () => {
     renderSetup()
     // advance past password step

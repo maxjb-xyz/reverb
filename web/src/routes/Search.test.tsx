@@ -12,7 +12,7 @@ import { makeTrack, makeAlbum } from '../test/factories'
 // one test's mode (e.g. 'everywhere') doesn't leak into the next.
 beforeEach(() => useSearch.setState({ query: '', mode: 'library' }))
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars -- _req exists for TypeScript compatibility with the mock wrapper
+
 const postDownloadMock = vi.fn((_req: unknown) => Promise.resolve({ id: 'j-album', status: 'queued' } as never))
 vi.mock('../lib/downloadApi', () => ({
   postDownload: (req: unknown) => postDownloadMock(req),
@@ -114,7 +114,7 @@ describe('Search (everywhere mode)', () => {
       url: string
       constructor(url: string) {
         this.url = url
-        // eslint-disable-next-line @typescript-eslint/no-this-alias
+
         inst = this
       }
       close() {}
@@ -154,7 +154,7 @@ describe('Search (everywhere mode)', () => {
       url: string
       constructor(url: string) {
         this.url = url
-        // eslint-disable-next-line @typescript-eslint/no-this-alias
+
         inst = this
       }
       close() {}
@@ -184,7 +184,7 @@ describe('Search (everywhere mode)', () => {
       url: string
       constructor(url: string) {
         this.url = url
-        // eslint-disable-next-line @typescript-eslint/no-this-alias
+
         inst = this
       }
       close() {}
@@ -233,7 +233,7 @@ describe('Search (everywhere mode)', () => {
       url: string
       constructor(url: string) {
         this.url = url
-        // eslint-disable-next-line @typescript-eslint/no-this-alias
+
         inst = this
       }
       close() {}
@@ -287,7 +287,7 @@ describe('Search (everywhere mode)', () => {
       url: string
       constructor(url: string) {
         this.url = url
-        // eslint-disable-next-line @typescript-eslint/no-this-alias
+
         inst = this
       }
       close() {}
@@ -321,7 +321,7 @@ describe('Search (everywhere mode)', () => {
       url: string
       constructor(url: string) {
         this.url = url
-        // eslint-disable-next-line @typescript-eslint/no-this-alias
+
         inst = this
       }
       close() {}
@@ -371,7 +371,7 @@ describe('Search (everywhere mode)', () => {
       url: string
       constructor(url: string) {
         this.url = url
-        // eslint-disable-next-line @typescript-eslint/no-this-alias
+
         inst = this
       }
       close() {}
@@ -522,7 +522,7 @@ describe('Search (everywhere mode)', () => {
       url: string
       constructor(url: string) {
         this.url = url
-        // eslint-disable-next-line @typescript-eslint/no-this-alias
+
         inst = this
       }
       close() {}

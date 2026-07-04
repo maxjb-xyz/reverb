@@ -122,7 +122,7 @@ export default function Settings() {
                 {me.capabilities.map((cap) => (
                   <span
                     key={cap}
-                    className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-surface-raised text-text-secondary border border-border-subtle"
+                    className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-raised text-text-secondary border border-border-subtle"
                   >
                     {cap}
                   </span>

@@ -53,7 +53,7 @@ export function TopList({ title, rows, kind }: Props) {
 
   return (
     <section aria-label={title}>
-      <h2 className="text-base font-bold text-primary mb-3">{title}</h2>
+      <h2 className="text-base font-bold text-text-primary mb-3">{title}</h2>
       <div className="flex flex-col gap-0.5">
         {rows.map((row, i) => {
           const src = row.CatalogID ? coverUrl(row.CatalogID, 48) : ''
@@ -87,13 +87,13 @@ export function TopList({ title, rows, kind }: Props) {
               className={[
                 'group flex items-center gap-3 px-3 py-2 rounded-md text-left transition-colors',
                 clickable
-                  ? 'hover:bg-surface-raised cursor-pointer'
+                  ? 'hover:bg-raised cursor-pointer'
                   : 'cursor-default',
                 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
               ].join(' ')}
             >
               {/* Rank */}
-              <span className="w-5 flex-none text-center text-sm font-bold tabular-nums text-secondary">
+              <span className="w-5 flex-none text-center text-sm font-bold tabular-nums text-text-muted">
                 {i + 1}
               </span>
 
@@ -109,11 +109,11 @@ export function TopList({ title, rows, kind }: Props) {
 
               {/* Text */}
               <div className="flex-1 min-w-0">
-                <div className="text-sm font-semibold text-primary truncate">
+                <div className="text-sm font-semibold text-text-primary truncate">
                   {name}
                 </div>
                 {secondary && (
-                  <div className="text-xs text-secondary truncate">
+                  <div className="text-xs text-text-muted truncate">
                     {secondary}
                   </div>
                 )}
@@ -121,7 +121,7 @@ export function TopList({ title, rows, kind }: Props) {
 
               {/* Plays + time — right-aligned */}
               <div className="flex-none text-right">
-                <div className="text-xs font-semibold text-secondary tabular-nums">
+                <div className="text-xs font-semibold text-text-muted tabular-nums">
                   {meta}
                 </div>
               </div>

@@ -36,20 +36,20 @@ vi.mock('../lib/requestApi', () => ({
 }))
 
 vi.mock('../lib/authStore', () => ({
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   useAuthStore: vi.fn((selector: (s: any) => unknown) => selector({ can: () => false })),
 }))
 
 // Mock downloadStore so we can control which jobs are active per test.
 // Default: empty jobs map → no active downloads.
 vi.mock('../lib/downloadStore', () => ({
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   useDownloads: vi.fn((selector: (s: any) => unknown) => selector({ jobs: {} })),
 }))
 
 // Mock libraryRevisionStore (used by coverageStore; irrelevant in Artist tests).
 vi.mock('../lib/libraryRevisionStore', () => ({
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   useLibraryRevision: vi.fn((selector: (s: any) => unknown) => selector({ revision: 0 })),
 }))
 
@@ -144,7 +144,6 @@ function wrapper(ui: React.ReactElement) {
 
 describe('Artist page', () => {
   // Helper: configure can('request') / can('auto_approve') per-test
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   function setAuth(caps: string[]) {
     vi.mocked(useAuthStore).mockImplementation((selector: (s: any) => unknown) =>
       selector({ can: (cap: string) => caps.includes(cap) }),
@@ -164,7 +163,7 @@ describe('Artist page', () => {
     vi.mocked(postBatchRequest).mockClear()
 
     // Default: no active downloads
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     vi.mocked(useDownloads).mockImplementation((selector: (s: any) => unknown) => selector({ jobs: {} }))
 
     // Default: user without request permission
@@ -418,7 +417,7 @@ describe('Artist page', () => {
       startedAt: 0,
       finishedAt: 0,
     }
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     vi.mocked(useDownloads).mockImplementation((selector: any) => selector({ jobs: { 'j-m1': runningJob } }))
     wrapper(<Artist />)
     // The Kid A card should now show the progress ring (determinate, 55%).

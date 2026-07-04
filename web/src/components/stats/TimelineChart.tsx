@@ -32,7 +32,7 @@ function inferGranularity(data: TimeBucket[]): 'day' | 'week' | 'month' {
 const MONTH_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
   'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
-export function formatBucketLabel(startSec: number, granularity: 'day' | 'week' | 'month'): string {
+function formatBucketLabel(startSec: number, granularity: 'day' | 'week' | 'month'): string {
   const d = new Date(startSec * 1000)
   const month = MONTH_SHORT[d.getMonth()]
   if (granularity === 'month') return month
@@ -83,7 +83,7 @@ export function TimelineChart({ data, metric = 'plays' }: Props) {
   if (data.length === 0) {
     return (
       <div className="flex items-center justify-center h-40 rounded-lg bg-raised">
-        <p className="text-sm text-secondary">No listening data in this range</p>
+        <p className="text-sm text-text-muted">No listening data in this range</p>
       </div>
     )
   }
@@ -97,7 +97,7 @@ export function TimelineChart({ data, metric = 'plays' }: Props) {
     const raw = maxVal
     const magnitude = Math.pow(10, Math.floor(Math.log10(raw)))
     const normalized = raw / magnitude
-    let nice = normalized <= 1 ? 1 : normalized <= 2 ? 2 : normalized <= 5 ? 5 : 10
+    const nice = normalized <= 1 ? 1 : normalized <= 2 ? 2 : normalized <= 5 ? 5 : 10
     return nice * magnitude
   })()
 
@@ -240,14 +240,14 @@ export function TimelineChart({ data, metric = 'plays' }: Props) {
       {/* Tooltip — positioned absolutely over the SVG */}
       {tooltip && (
         <div
-          className="pointer-events-none absolute z-10 px-2.5 py-1.5 rounded-md bg-raised shadow-float text-xs font-semibold text-primary whitespace-nowrap"
+          className="pointer-events-none absolute z-10 px-2.5 py-1.5 rounded-md bg-raised shadow-float text-xs font-semibold text-text-primary whitespace-nowrap"
           style={{
             left: tooltip.x,
             top: tooltip.y - 36,
             transform: 'translateX(-50%)',
           }}
         >
-          <span className="text-secondary">{tooltip.label}</span>
+          <span className="text-text-muted">{tooltip.label}</span>
           {' · '}
           {tooltip.value}
         </div>

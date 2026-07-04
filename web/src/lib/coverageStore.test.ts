@@ -7,7 +7,7 @@ import type { AlbumCoverage } from './types'
 // Mock libraryRevisionStore so useCoverageStream gets a stable revision=0
 // in all existing tests (no re-stream behaviour needed here).
 vi.mock('./libraryRevisionStore', () => ({
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   useLibraryRevision: vi.fn((selector: (s: any) => unknown) => selector({ revision: 0 })),
 }))
 

@@ -181,6 +181,39 @@ describe('PlayerBar (shell)', () => {
     })
   })
 
+  it('seek bar is keyboard focusable (tabIndex=0) and operable via arrows/Home/End', () => {
+    const eng = engine as unknown as { durationMs: number; emit(): void }
+    act(() => {
+      eng.durationMs = 200000
+      eng.emit()
+    })
+
+    const seekSpy = vi.spyOn(engine, 'seekMs')
+    render(<PlayerBar />)
+
+    const seekBar = screen.getByRole('slider', { name: /seek/i })
+    expect(seekBar).toHaveAttribute('tabindex', '0')
+
+    // currentTimeMs defaults to 0 in tests
+    act(() => { fireEvent.keyDown(seekBar, { key: 'ArrowRight' }) })
+    expect(seekSpy).toHaveBeenLastCalledWith(5000)
+
+    act(() => { fireEvent.keyDown(seekBar, { key: 'ArrowLeft' }) })
+    expect(seekSpy).toHaveBeenLastCalledWith(0)
+
+    act(() => { fireEvent.keyDown(seekBar, { key: 'End' }) })
+    expect(seekSpy).toHaveBeenLastCalledWith(200000)
+
+    act(() => { fireEvent.keyDown(seekBar, { key: 'Home' }) })
+    expect(seekSpy).toHaveBeenLastCalledWith(0)
+
+    seekSpy.mockRestore()
+    act(() => {
+      eng.durationMs = 0
+      eng.emit()
+    })
+  })
+
   // --- keyboard shortcuts ---
 
   describe('keyboard shortcuts', () => {

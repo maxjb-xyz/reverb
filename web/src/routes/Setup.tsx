@@ -89,6 +89,10 @@ export default function Setup() {
   async function submitPassword(e: React.FormEvent) {
     e.preventDefault()
     setErr('')
+    if (!username.trim() || !pw) {
+      setErr('Enter a username and password to continue.')
+      return
+    }
     try {
       await setupOwner(username, pw)
       // The catalog query first ran pre-auth (401). Now that /setup/admin issued a
@@ -102,6 +106,7 @@ export default function Setup() {
   }
 
   function advance() {
+    setErr('')
     setChosen(null)
     setStep((s) => NEXT[s])
   }
@@ -189,6 +194,13 @@ export default function Setup() {
         <p className="text-sm text-text-secondary">{copy.description}</p>
       </div>
 
+      {err && (
+        <p className="text-sm text-accent flex items-center gap-1.5" role="alert">
+          <Icon name="warn" className="shrink-0 text-base" aria-hidden="true" />
+          {err}
+        </p>
+      )}
+
       {!chosen && (
         <div className="space-y-4">
           {step === 'library' && (
@@ -196,8 +208,13 @@ export default function Setup() {
               <button
                 type="button"
                 onClick={async () => {
-                  await api.put('/settings', { libraryBackendMode: 'built-in' })
-                  advance()
+                  setErr('')
+                  try {
+                    await api.put('/settings', { libraryBackendMode: 'built-in' })
+                    advance()
+                  } catch {
+                    setErr("Couldn't save your library choice. Please try again.")
+                  }
                 }}
                 className="w-full rounded-xl border border-border-subtle bg-raised p-4 text-left hover:border-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent transition-colors"
               >
@@ -250,12 +267,17 @@ export default function Setup() {
             schema={chosen.configSchema}
             submitLabel="Add"
             onSubmit={async (config) => {
-              // Only the library step sets external backend mode; other steps are adapter-type-only.
-              if (step === 'library') {
-                await api.put('/settings', { libraryBackendMode: 'external' })
+              setErr('')
+              try {
+                // Only the library step sets external backend mode; other steps are adapter-type-only.
+                if (step === 'library') {
+                  await api.put('/settings', { libraryBackendMode: 'external' })
+                }
+                await createAdapter({ type: copy.type, name: chosen.name, enabled: true, priority: 0, config })
+                advance()
+              } catch {
+                setErr("Couldn't save this step. Please check the details and try again.")
               }
-              await createAdapter({ type: copy.type, name: chosen.name, enabled: true, priority: 0, config })
-              advance()
             }}
           />
         </div>

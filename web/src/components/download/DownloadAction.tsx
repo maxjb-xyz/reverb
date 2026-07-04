@@ -55,14 +55,18 @@ export function DownloadAction({ result, onPlay }: Props) {
     ''
 
   // Reset modal state whenever the job leaves the failed status (prevents auto-reopen
-  // after a failed → running → failed cycle without a user gesture).
-  useEffect(() => {
-    if (job?.status !== 'failed') {
+  // after a failed → running → failed cycle without a user gesture). Uses React's
+  // "adjust state during render" pattern (keyed on job status) rather than an
+  // effect, so there's no synchronous setState inside useEffect.
+  const [prevJobStatus, setPrevJobStatus] = useState(job?.status)
+  if (job?.status !== prevJobStatus) {
+    setPrevJobStatus(job?.status)
+    if (job?.status !== 'failed' && linkModalOpen) {
       setLinkModalOpen(false)
       setUrlValue('')
       setUrlError(null)
     }
-  }, [job?.status])
+  }
 
   // Focus trap + Esc close for the link modal — mirrors ImportPlaylistDialog pattern.
   const FOCUSABLE = 'button, [href], input, [tabindex]:not([tabindex="-1"])'

@@ -10,6 +10,7 @@ import { RecentList } from '../components/stats/RecentList'
 import { TimelineChart } from '../components/stats/TimelineChart'
 import { ClockHeatmap } from '../components/stats/ClockHeatmap'
 import { Skeleton } from '../components/ui/Skeleton'
+import { Button } from '../components/ui/Button'
 
 function rangeKey(r: Range): [number, number] {
   return [r.from, r.to]
@@ -69,17 +70,31 @@ export default function Stats() {
   const clockCells = clockQ.data ?? []
 
   const isLoading = summaryQ.isLoading
+  const isError = summaryQ.isError
 
   // Empty state: loaded, but no plays recorded in this range
-  const isEmpty = !isLoading && summaryData !== undefined && summaryData.Plays === 0
+  const isEmpty = !isLoading && !isError && summaryData !== undefined && summaryData.Plays === 0
 
   return (
     <div className="space-y-8">
       {/* Page header + range selector */}
       <div className="space-y-4">
-        <h1 className="text-2xl font-black tracking-tight text-primary">Stats</h1>
+        <h1 className="text-2xl font-black tracking-tight text-text-primary">Stats</h1>
         <RangeSelector value={range} onChange={setRange} />
       </div>
+
+      {/* Error state — a failed summary query previously rendered a blank page */}
+      {isError && (
+        <div className="flex flex-col items-center justify-center gap-3 py-20 text-center" role="alert">
+          <p className="text-lg font-semibold text-text-primary">Couldn't load your stats</p>
+          <p className="text-sm text-text-muted max-w-sm">
+            Something went wrong reaching the server. Try again in a moment.
+          </p>
+          <Button size="sm" variant="secondary" onClick={() => void summaryQ.refetch()}>
+            Retry
+          </Button>
+        </div>
+      )}
 
       {/* Loading skeleton */}
       {isLoading && (
@@ -96,8 +111,8 @@ export default function Stats() {
       {/* Empty state */}
       {isEmpty && (
         <div className="flex flex-col items-center justify-center gap-3 py-20 text-center">
-          <p className="text-lg font-semibold text-secondary">No listening history yet</p>
-          <p className="text-sm text-secondary max-w-sm">
+          <p className="text-lg font-semibold text-text-primary">No listening history yet</p>
+          <p className="text-sm text-text-muted max-w-sm">
             Your play stats will appear here once you start listening.
           </p>
         </div>
@@ -111,7 +126,7 @@ export default function Stats() {
 
           {/* Listening over time */}
           <section aria-label="Listening over time">
-            <h2 className="text-base font-bold text-primary mb-3">Listening over time</h2>
+            <h2 className="text-base font-bold text-text-primary mb-3">Listening over time</h2>
             <div className="rounded-lg bg-raised px-4 pt-4 pb-2">
               <TimelineChart data={timelineBuckets} metric="plays" />
             </div>
@@ -119,7 +134,7 @@ export default function Stats() {
 
           {/* When you listen heatmap */}
           <section aria-label="When you listen">
-            <h2 className="text-base font-bold text-primary mb-3">When you listen</h2>
+            <h2 className="text-base font-bold text-text-primary mb-3">When you listen</h2>
             <div className="rounded-lg bg-raised px-4 py-4">
               <ClockHeatmap data={clockCells} />
             </div>

@@ -11,6 +11,7 @@ import {
 import type { Request as MusicRequest, RequestStatus } from '../lib/requestApi'
 import { Cover, EmptyState, Button } from '../components/ui'
 import { coverUrl } from '../lib/libraryApi'
+import { useToastStore } from '../lib/toastStore'
 
 // ---- Status chip --------------------------------------------------------
 
@@ -90,10 +91,15 @@ function MyRequestRow({ req, userId }: { req: MusicRequest; userId: string }) {
   const coverSrc = req.coverUrl ?? (req.coverArtId ? coverUrl(req.coverArtId) : undefined)
 
   async function handleCancel() {
-    await cancelRequest(req.id)
-    // Refetch to reflect updated state
-    const reqs = await getMyRequests()
-    useRequestStore.getState().setMine(reqs)
+    try {
+      await cancelRequest(req.id)
+      // Refetch to reflect updated state
+      const reqs = await getMyRequests()
+      useRequestStore.getState().setMine(reqs)
+    } catch (err) {
+      console.error('[Requests] cancelRequest failed:', err)
+      useToastStore.getState().push("Couldn't cancel that request", 'error')
+    }
   }
 
   return (
@@ -104,7 +110,7 @@ function MyRequestRow({ req, userId }: { req: MusicRequest; userId: string }) {
         <div className="flex items-center gap-1 truncate text-xs text-text-secondary">
           <span className="truncate min-w-0">{req.artist}</span>
           {req.kind === 'album' && (
-            <span className="ml-1 rounded px-1 py-px text-[10px] font-semibold uppercase tracking-wide bg-surface-raised text-text-muted">
+            <span className="ml-1 rounded px-1 py-px text-[10px] font-semibold uppercase tracking-wide bg-raised text-text-muted">
               {req.trackCount && req.trackCount > 0 ? `Album · ${req.trackCount} tracks` : 'Album'}
             </span>
           )}
@@ -158,15 +164,25 @@ function ApprovalRow({ req }: { req: MusicRequest }) {
   const coverSrc = req.coverUrl ?? (req.coverArtId ? coverUrl(req.coverArtId) : undefined)
 
   async function handleApprove() {
-    const updated = await approveRequest(req.id)
-    useRequestStore.getState().upsert(updated)
+    try {
+      const updated = await approveRequest(req.id)
+      useRequestStore.getState().upsert(updated)
+    } catch (err) {
+      console.error('[Requests] approveRequest failed:', err)
+      useToastStore.getState().push("Couldn't approve that request", 'error')
+    }
   }
 
   async function handleDeny() {
-    const updated = await denyRequest(req.id, reason.trim() || undefined)
-    useRequestStore.getState().upsert(updated)
-    setDenying(false)
-    setReason('')
+    try {
+      const updated = await denyRequest(req.id, reason.trim() || undefined)
+      useRequestStore.getState().upsert(updated)
+      setDenying(false)
+      setReason('')
+    } catch (err) {
+      console.error('[Requests] denyRequest failed:', err)
+      useToastStore.getState().push("Couldn't deny that request", 'error')
+    }
   }
 
   return (
@@ -178,7 +194,7 @@ function ApprovalRow({ req }: { req: MusicRequest }) {
           <div className="flex items-center gap-1 truncate text-xs text-text-secondary">
             <span className="truncate min-w-0">{req.artist}</span>
             {req.kind === 'album' && (
-              <span className="rounded px-1 py-px text-[10px] font-semibold uppercase tracking-wide bg-surface-raised text-text-muted">
+              <span className="rounded px-1 py-px text-[10px] font-semibold uppercase tracking-wide bg-raised text-text-muted">
                 {req.trackCount && req.trackCount > 0 ? `Album · ${req.trackCount} tracks` : 'Album'}
               </span>
             )}

@@ -531,6 +531,20 @@ describe('Album page', () => {
       expect(screen.queryByRole('dialog', { name: /request album/i })).not.toBeInTheDocument()
     })
 
+    it('focuses into the dialog on open and closes it on Escape (focus trap)', async () => {
+      setCaps(['request'])
+      await renderLoaded()
+      fireEvent.click(screen.getByRole('button', { name: /request album/i }))
+      const dialog = screen.getByRole('dialog', { name: /request album/i })
+      // First focusable control inside the dialog receives focus on open
+      await waitFor(() => expect(dialog.contains(document.activeElement)).toBe(true))
+      // Escape closes the modal
+      fireEvent.keyDown(document, { key: 'Escape' })
+      await waitFor(() =>
+        expect(screen.queryByRole('dialog', { name: /request album/i })).not.toBeInTheDocument(),
+      )
+    })
+
     it('a rejected postRequest pushes an error toast', async () => {
       setCaps(['request'])
       useToastStore.setState({ toasts: [] })

@@ -18,7 +18,7 @@ function relTime(sec: number): string {
 export function RecentList({ rows }: Props) {
   return (
     <section aria-label="Recently played">
-      <h2 className="text-base font-bold text-primary mb-3">Recently played</h2>
+      <h2 className="text-base font-bold text-text-primary mb-3">Recently played</h2>
       <div className="flex flex-col gap-0.5">
         {rows.map((row, i) => {
           const src = row.CatalogID ? coverUrl(row.CatalogID, 48) : ''
@@ -36,15 +36,15 @@ export function RecentList({ rows }: Props) {
                 />
               </div>
               <div className="flex-1 min-w-0">
-                <div className="text-sm font-semibold text-primary truncate">
+                <div className="text-sm font-semibold text-text-primary truncate">
                   {row.Title}
                 </div>
-                <div className="text-xs text-secondary truncate">
+                <div className="text-xs text-text-muted truncate">
                   {row.Artist}
                   {row.Album ? ` · ${row.Album}` : ''}
                 </div>
               </div>
-              <div className="flex-none text-xs text-secondary tabular-nums whitespace-nowrap">
+              <div className="flex-none text-xs text-text-muted tabular-nums whitespace-nowrap">
                 {relTime(row.PlayedAt)}
               </div>
             </div>

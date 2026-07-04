@@ -13,6 +13,7 @@ export function NotificationBell() {
   const navigate = useNavigate()
   const triggerRef = useRef<HTMLDivElement>(null)
   const [open, setOpen] = useState(false)
+  const [pos, setPos] = useState<{ top: number; right: number } | null>(null)
 
   const unread = useNotificationStore((s) => s.unread)
   const items = useNotificationStore((s) => s.items)
@@ -27,6 +28,24 @@ export function NotificationBell() {
 
   function close() {
     setOpen(false)
+    setPos(null)
+  }
+
+  // Toggle the dropdown. When opening, measure the trigger and position the
+  // portal here in the event handler — reading the ref outside render (and never
+  // calling setState inside an effect body).
+  function toggle() {
+    if (open) {
+      close()
+      return
+    }
+    const rect = triggerRef.current?.getBoundingClientRect()
+    setPos(
+      rect
+        ? { top: rect.bottom + 4, right: window.innerWidth - rect.right }
+        : { top: 0, right: 0 },
+    )
+    setOpen(true)
   }
 
   // Close on Escape (mirrors PortalMenu behavior)
@@ -54,25 +73,13 @@ export function NotificationBell() {
     void postMarkRead(undefined)
   }
 
-  // Portal position — compute from trigger on open
-  function getPosition() {
-    const rect = triggerRef.current?.getBoundingClientRect()
-    if (!rect) return { top: 0, right: 0 }
-    return {
-      top: rect.bottom + 4,
-      right: window.innerWidth - rect.right,
-    }
-  }
-
-  const pos = open ? getPosition() : null
-
   return (
     <div ref={triggerRef} className="relative">
       {/* Bell button */}
       <IconButton
         name="bell"
         label={ariaLabel}
-        onClick={() => setOpen((o) => !o)}
+        onClick={toggle}
       />
 
       {/* Unread count badge */}

@@ -8,7 +8,8 @@ import { IconButton } from './ui/IconButton'
 import { Button } from './ui/Button'
 import { Cover } from './ui/Cover'
 import { Icon } from './ui/Icon'
-import { StatusLabel, DownloadProgress, failureMessage } from './download/parts'
+import { StatusLabel, DownloadProgress } from './download/parts'
+import { failureMessage } from './download/failureMessage'
 import type { DownloadJob } from '../lib/types'
 
 const TIDY_DELAY_MS = 5000
@@ -97,11 +98,19 @@ export function DownloadTray() {
   // Auto-tidy: hide completed rows ~5s after the queue goes fully idle. Failed
   // rows are sticky; active rows always show. View-only — never deletes records.
   const [tidied, setTidied] = useState(false)
+
+  // Reset the tidy flag the moment work resumes, using React's "adjust state
+  // during render" pattern (guarded so it only fires on the active edge). This
+  // avoids a synchronous setState inside the effect body while keeping the timer
+  // (which sets `tidied` true) safely in its callback.
+  const [wasActive, setWasActive] = useState(activeCount > 0)
+  if ((activeCount > 0) !== wasActive) {
+    setWasActive(activeCount > 0)
+    if (activeCount > 0 && tidied) setTidied(false)
+  }
+
   useEffect(() => {
-    if (activeCount > 0) {
-      setTidied(false)
-      return
-    }
+    if (activeCount > 0) return
     const t = setTimeout(() => setTidied(true), TIDY_DELAY_MS)
     return () => clearTimeout(t)
   }, [activeCount])

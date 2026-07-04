@@ -154,7 +154,7 @@ export function TopBar() {
             onClick={() => navigate('/stats')}
           >
             <span className="flex items-center gap-1.5">
-              <Icon name="heart" className="w-4 h-4" />
+              <Icon name="chart" className="w-4 h-4" />
               <span>Stats</span>
             </span>
           </Button>

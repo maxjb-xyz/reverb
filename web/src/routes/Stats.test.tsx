@@ -133,6 +133,18 @@ describe('Stats page', () => {
     await waitFor(() => expect(screen.getByText('3')).toBeInTheDocument())
   })
 
+  // ── Error state ───────────────────────────────────────────────────────────
+
+  it('renders an error message (not a blank page) when the summary query fails', async () => {
+    mockSummary.mockRejectedValue(new Error('boom'))
+    renderStats()
+    // Heading still renders, plus a clear error message + retry
+    expect(await screen.findByText(/couldn't load your stats/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /retry/i })).toBeInTheDocument()
+    // Must not fall through to the misleading "no listening history" empty state
+    expect(screen.queryByText(/no listening history yet/i)).not.toBeInTheDocument()
+  })
+
   // ── Top tracks list ───────────────────────────────────────────────────────
 
   it('renders top track title', async () => {

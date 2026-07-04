@@ -23,7 +23,7 @@ vi.mock('../lib/libraryApi', () => ({
 
 // Default: user with no capabilities. Tests can override via setAuth().
 vi.mock('../lib/authStore', () => ({
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   useAuthStore: vi.fn((selector: (s: any) => unknown) => selector({ can: () => false })),
 }))
 
@@ -69,7 +69,6 @@ function wrap(ui: React.ReactNode) {
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 describe('ImportPlaylistDialog', () => {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   function setAuth(caps: string[]) {
     vi.mocked(useAuthStore).mockImplementation((selector: (s: any) => unknown) =>
       selector({ can: (cap: string) => caps.includes(cap) }),
@@ -81,7 +80,7 @@ describe('ImportPlaylistDialog', () => {
     vi.mocked(importPlaylistOnce).mockReset()
     mockNavigate.mockReset()
     // Reset to no-caps default
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     vi.mocked(useAuthStore).mockImplementation((selector: (s: any) => unknown) =>
       selector({ can: () => false }),
     )

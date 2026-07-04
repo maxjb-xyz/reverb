@@ -5,7 +5,7 @@
  * Sections:
  *   1. Header  — album/context name + close button
  *   2. Cover   — large square cover art
- *   3. Meta    — title / artist + heart
+ *   3. Meta    — title / artist + add-to-playlist
  *   4. "Next in queue" card — up-next tracks; click → jumpTo
  *   5. "About the artist" card — cover, name, "In your library · N albums"
  */

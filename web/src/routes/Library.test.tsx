@@ -183,6 +183,57 @@ describe('Library page', () => {
     expect(screen.getByText(/nothing here yet/i)).toBeInTheDocument()
   })
 
+  it('shows a distinct error state (not the empty message) when albums fail to load', async () => {
+    const refetch = vi.fn()
+    const { useAlbums } = await import('../lib/libraryApi')
+    vi.mocked(useAlbums).mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      isError: true,
+      error: new Error('boom'),
+      refetch,
+    } as unknown as UseQueryResult<Album[], Error>)
+
+    render(wrap(<Library />))
+    expect(screen.getByText(/couldn't load your library/i)).toBeInTheDocument()
+    // Must NOT show the misleading "empty library" message during an outage
+    expect(screen.queryByText(/nothing here yet/i)).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /retry/i }))
+    expect(refetch).toHaveBeenCalled()
+  })
+
+  it('shows the error state when artists fail to load', async () => {
+    const { useArtists } = await import('../lib/libraryApi')
+    vi.mocked(useArtists).mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      isError: true,
+      error: new Error('boom'),
+      refetch: vi.fn(),
+    } as unknown as UseQueryResult<Artist[], Error>)
+
+    render(wrap(<Library />))
+    fireEvent.click(screen.getByRole('button', { name: /^artists$/i }))
+    expect(screen.getByText(/couldn't load your library/i)).toBeInTheDocument()
+    expect(screen.queryByText(/nothing here yet/i)).not.toBeInTheDocument()
+  })
+
+  it('shows the error state when playlists fail to load', () => {
+    vi.mocked(useSyncedPlaylists).mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      isError: true,
+      error: new Error('boom'),
+      refetch: vi.fn(),
+    } as unknown as ReturnType<typeof useSyncedPlaylists>)
+
+    render(wrap(<Library />))
+    fireEvent.click(screen.getByRole('button', { name: /^playlists$/i }))
+    expect(screen.getByText(/couldn't load your library/i)).toBeInTheDocument()
+    expect(screen.queryByText(/nothing here yet/i)).not.toBeInTheDocument()
+  })
+
   it('shows skeleton grid while albums are loading', async () => {
     const { useAlbums } = await import('../lib/libraryApi')
     vi.mocked(useAlbums).mockReturnValue({

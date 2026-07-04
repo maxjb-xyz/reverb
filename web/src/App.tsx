@@ -1,25 +1,29 @@
-import { useEffect } from 'react'
+import { useEffect, lazy, Suspense } from 'react'
 import { Navigate, Route, Routes, useParams } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { AppShell } from './components/AppShell'
 import { ApiError } from './lib/api'
 import { useSessionStatus } from './lib/session'
 import { useAuthStore, isManagerCaps } from './lib/authStore'
-import Search from './routes/Search'
-import Library from './routes/Library'
-import Settings from './routes/Settings'
+// Eager: the auth-gate screens (rendered before the shell / before auth), so
+// there's no benefit to code-splitting them behind a Suspense fallback.
 import Login from './routes/Login'
 import Setup from './routes/Setup'
-import Album from './routes/Album'
-import Artist from './routes/Artist'
-import Home from './routes/Home'
-import Admin from './routes/Admin'
-import Downloads from './routes/Downloads'
-import Requests from './routes/Requests'
-import SyncedPlaylist from './routes/SyncedPlaylist'
 import Signup from './routes/Signup'
-import Account from './routes/Account'
-import Stats from './routes/Stats'
+// Lazy: the heavy authenticated routes. Splitting these out of the main bundle
+// keeps the initial (login) payload small and clears the build size warning.
+const Home = lazy(() => import('./routes/Home'))
+const Search = lazy(() => import('./routes/Search'))
+const Library = lazy(() => import('./routes/Library'))
+const Settings = lazy(() => import('./routes/Settings'))
+const Album = lazy(() => import('./routes/Album'))
+const Artist = lazy(() => import('./routes/Artist'))
+const Admin = lazy(() => import('./routes/Admin'))
+const Downloads = lazy(() => import('./routes/Downloads'))
+const Requests = lazy(() => import('./routes/Requests'))
+const SyncedPlaylist = lazy(() => import('./routes/SyncedPlaylist'))
+const Account = lazy(() => import('./routes/Account'))
+const Stats = lazy(() => import('./routes/Stats'))
 
 /** Redirect bare `/album/:id` or `/artist/:id` URLs to the source-qualified form
  *  `/album/library/:id` / `/artist/library/:id`. These old URLs may exist in
@@ -95,8 +99,9 @@ function Routed() {
   // state rather than flashing an ungated shell (the gates depend on `me`).
   if (!me) return <div className="p-6 text-text-muted">Loading…</div>
   return (
-    <Routes>
-      <Route element={<AppShell />}>
+    <Suspense fallback={<div className="p-6 text-text-muted">Loading…</div>}>
+      <Routes>
+        <Route element={<AppShell />}>
         <Route path="/" element={<Home />} />
         <Route path="/search" element={<Search />} />
         <Route path="/library" element={<Library />} />
@@ -120,8 +125,9 @@ function Routed() {
         <Route path="/downloads" element={<Downloads />} />
         <Route path="/requests" element={<Requests />} />
         <Route path="*" element={<Navigate to="/" replace />} />
-      </Route>
-    </Routes>
+        </Route>
+      </Routes>
+    </Suspense>
   )
 }
 

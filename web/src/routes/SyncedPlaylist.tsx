@@ -20,6 +20,7 @@ import { PortalMenu } from '../components/PortalMenu'
 import type { ExternalResult, ExternalTrackRef, AlbumDetailTrack, Track } from '../lib/types'
 import { usePlayer } from '../lib/playerStore'
 import { useAuthStore } from '../lib/authStore'
+import { useToastStore } from '../lib/toastStore'
 import { useAlbumPalette } from '../lib/useAlbumPalette'
 import { rgbToCss } from '../lib/palette'
 
@@ -195,6 +196,7 @@ export default function SyncedPlaylist() {
       qc.invalidateQueries({ queryKey: ['synced-playlist', id] })
     } catch (err) {
       console.error('Sync failed:', err)
+      useToastStore.getState().push("Couldn't sync this playlist", 'error')
     }
   }
 
@@ -203,6 +205,7 @@ export default function SyncedPlaylist() {
       await downloadMissingForPlaylist(id)
     } catch (err) {
       console.error('Download missing failed:', err)
+      useToastStore.getState().push("Couldn't start downloading missing tracks", 'error')
     }
   }
 
@@ -217,6 +220,7 @@ export default function SyncedPlaylist() {
       qc.invalidateQueries({ queryKey: ['synced-playlist', id] })
     } catch (err) {
       console.error('Failed to update sync settings:', err)
+      useToastStore.getState().push("Couldn't save sync settings", 'error')
     }
   }
 
@@ -245,6 +249,7 @@ export default function SyncedPlaylist() {
       navigate('/library')
     } catch (err) {
       console.error('Failed to delete synced playlist:', err)
+      useToastStore.getState().push("Couldn't remove this playlist", 'error')
     }
   }
 
@@ -254,6 +259,7 @@ export default function SyncedPlaylist() {
       qc.invalidateQueries({ queryKey: ['synced-playlist', id] })
     } catch (err) {
       console.error('Failed to remove track:', err)
+      useToastStore.getState().push("Couldn't remove that track", 'error')
     }
   }
 
@@ -308,6 +314,7 @@ export default function SyncedPlaylist() {
       qc.invalidateQueries({ queryKey: ['synced-playlist', id] })
     } catch (err) {
       console.error('Failed to reorder tracks:', err)
+      useToastStore.getState().push("Couldn't save the new track order", 'error')
       // Restore server order on failure
       setTrackOrder(null)
       qc.invalidateQueries({ queryKey: ['synced-playlist', id] })

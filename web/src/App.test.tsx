@@ -37,7 +37,7 @@ beforeEach(() => {
   useAuthStore.setState({ me: null, loading: false })
 })
 
-test('authenticated renders the app shell', () => {
+test('authenticated renders the app shell', async () => {
   mockStatus(AUTHED)
   seedMe([])
   render(
@@ -45,8 +45,9 @@ test('authenticated renders the app shell', () => {
       <App />
     </MemoryRouter>,
   )
-  // AppShell is present (Sidebar removed; shell identified by its testid)
-  expect(screen.getByTestId('app-shell-root')).toBeInTheDocument()
+  // AppShell is present (Sidebar removed; shell identified by its testid).
+  // Routes are lazy-loaded behind Suspense, so await the shell.
+  expect(await screen.findByTestId('app-shell-root')).toBeInTheDocument()
 })
 
 test('setupRequired renders the setup page', () => {
@@ -80,7 +81,7 @@ test('error renders the server error state with retry button', () => {
   expect(screen.getByText('Retry')).toBeInTheDocument()
 })
 
-test('/album/:id redirects to /album/library/:id and renders Album page', () => {
+test('/album/:id redirects to /album/library/:id and renders Album page', async () => {
   mockStatus(AUTHED)
   seedMe([])
   render(
@@ -88,11 +89,11 @@ test('/album/:id redirects to /album/library/:id and renders Album page', () => 
       <App />
     </MemoryRouter>,
   )
-  // After redirect, the Album stub should render
-  expect(screen.getByText('Album page')).toBeInTheDocument()
+  // After redirect, the (lazy-loaded) Album stub should render
+  expect(await screen.findByText('Album page')).toBeInTheDocument()
 })
 
-test('/artist/:id redirects to /artist/library/:id and renders Artist page', () => {
+test('/artist/:id redirects to /artist/library/:id and renders Artist page', async () => {
   mockStatus(AUTHED)
   seedMe([])
   render(
@@ -100,10 +101,10 @@ test('/artist/:id redirects to /artist/library/:id and renders Artist page', () 
       <App />
     </MemoryRouter>,
   )
-  expect(screen.getByText('Artist page')).toBeInTheDocument()
+  expect(await screen.findByText('Artist page')).toBeInTheDocument()
 })
 
-test('/playlist/:id renders SyncedPlaylist page directly', () => {
+test('/playlist/:id renders SyncedPlaylist page directly', async () => {
   mockStatus(AUTHED)
   seedMe([])
   render(
@@ -111,10 +112,10 @@ test('/playlist/:id renders SyncedPlaylist page directly', () => {
       <App />
     </MemoryRouter>,
   )
-  expect(screen.getByText('SyncedPlaylist page')).toBeInTheDocument()
+  expect(await screen.findByText('SyncedPlaylist page')).toBeInTheDocument()
 })
 
-test('/synced-playlist/:id redirects to /playlist/:id and renders SyncedPlaylist page', () => {
+test('/synced-playlist/:id redirects to /playlist/:id and renders SyncedPlaylist page', async () => {
   mockStatus(AUTHED)
   seedMe([])
   render(
@@ -122,7 +123,7 @@ test('/synced-playlist/:id redirects to /playlist/:id and renders SyncedPlaylist
       <App />
     </MemoryRouter>,
   )
-  expect(screen.getByText('SyncedPlaylist page')).toBeInTheDocument()
+  expect(await screen.findByText('SyncedPlaylist page')).toBeInTheDocument()
 })
 
 test('authenticated but me still loading renders a loading state, not an ungated shell', () => {
@@ -138,7 +139,7 @@ test('authenticated but me still loading renders a loading state, not an ungated
   expect(screen.queryByTestId('app-shell-root')).not.toBeInTheDocument()
 })
 
-test('/admin is rendered for a manager (is_admin)', () => {
+test('/admin is rendered for a manager (is_admin)', async () => {
   mockStatus(AUTHED)
   seedMe(['is_admin'])
   render(
@@ -146,10 +147,10 @@ test('/admin is rendered for a manager (is_admin)', () => {
       <App />
     </MemoryRouter>,
   )
-  expect(screen.getByText('Admin page')).toBeInTheDocument()
+  expect(await screen.findByText('Admin page')).toBeInTheDocument()
 })
 
-test('/admin redirects a non-manager to Home', () => {
+test('/admin redirects a non-manager to Home', async () => {
   mockStatus(AUTHED)
   seedMe(['auto_approve', 'request']) // no manager caps
   render(
@@ -157,8 +158,8 @@ test('/admin redirects a non-manager to Home', () => {
       <App />
     </MemoryRouter>,
   )
+  expect(await screen.findByText('Home page')).toBeInTheDocument()
   expect(screen.queryByText('Admin page')).not.toBeInTheDocument()
-  expect(screen.getByText('Home page')).toBeInTheDocument()
 })
 
 test('unauthenticated / resolves to the Login page (Signup "Sign in" link target)', () => {

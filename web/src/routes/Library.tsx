@@ -33,6 +33,23 @@ function SkeletonGrid({ rounded = 'md' }: { rounded?: 'md' | 'full' }) {
   )
 }
 
+/** Distinct error state for a failed library query — separate from the "empty
+ *  library" message so an outage never reads as "you have no music". */
+function LibraryError({ onRetry }: { onRetry: () => void }) {
+  return (
+    <EmptyState
+      icon="warn"
+      title="Couldn't load your library"
+      hint="Something went wrong reaching the server. Check your connection and try again."
+      action={
+        <Button size="sm" variant="secondary" onClick={onRetry}>
+          Retry
+        </Button>
+      }
+    />
+  )
+}
+
 export default function Library() {
   const [filter, setFilter] = useState<Filter>('albums')
   const [importOpen, setImportOpen] = useState(false)
@@ -88,6 +105,8 @@ export default function Library() {
         <>
           {albums.isLoading ? (
             <SkeletonGrid rounded="md" />
+          ) : albums.isError ? (
+            <LibraryError onRetry={() => void albums.refetch()} />
           ) : (albums.data ?? []).length === 0 ? (
             <EmptyState
               icon="browse"
@@ -116,6 +135,8 @@ export default function Library() {
         <>
           {artists.isLoading ? (
             <SkeletonGrid rounded="full" />
+          ) : artists.isError ? (
+            <LibraryError onRetry={() => void artists.refetch()} />
           ) : (artists.data ?? []).length === 0 ? (
             <EmptyState
               icon="browse"
@@ -143,6 +164,8 @@ export default function Library() {
         <>
           {syncedPlaylists.isLoading ? (
             <SkeletonGrid rounded="md" />
+          ) : syncedPlaylists.isError ? (
+            <LibraryError onRetry={() => void syncedPlaylists.refetch()} />
           ) : (syncedPlaylists.data ?? []).length === 0 ? (
             <EmptyState
               icon="browse"

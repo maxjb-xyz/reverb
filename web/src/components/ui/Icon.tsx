@@ -34,6 +34,7 @@ export type IconName =
   | 'music'
   | 'camera'
   | 'grip'
+  | 'chart'
 
 /**
  * Per-icon descriptor.
@@ -286,6 +287,17 @@ const icons: Record<IconName, IconDef> = {
       <>
         <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
         <circle cx="12" cy="13" r="4" />
+      </>
+    ),
+  },
+  // chart: bar chart — used for the Stats tab / link
+  chart: {
+    content: (
+      <>
+        <path d="M3 3v18h18" />
+        <rect x="7" y="12" width="3" height="6" rx="0.5" />
+        <rect x="12" y="8" width="3" height="10" rx="0.5" />
+        <rect x="17" y="5" width="3" height="13" rx="0.5" />
       </>
     ),
   },

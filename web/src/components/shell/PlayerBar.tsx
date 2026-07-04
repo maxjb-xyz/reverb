@@ -3,7 +3,7 @@
  * Hidden below md; mobile uses MiniPlayer instead.
  *
  * Layout: 3-column grid (30 / 40 / 30) mirroring the mockup .player rule.
- *   Left   — Cover + title/artist + heart
+ *   Left   — Cover + title/artist + add-to-playlist
  *   Center — transport controls (shuffle/prev/play/next/repeat) + scrubber
  *   Right  — lyrics / queue / device / volume / mini / full icon buttons
  *
@@ -43,6 +43,32 @@ function SeekBar() {
     seekMs(Math.max(0, Math.min(1, ratio)) * durationMs)
   }
 
+  // Keyboard operability for the slider role — mirrors the global Arrow-seek
+  // shortcuts (±5s) and adds Home/End to jump to the ends of the track.
+  function onKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
+    if (durationMs <= 0) return
+    switch (e.key) {
+      case 'ArrowRight':
+      case 'ArrowUp':
+        e.preventDefault()
+        seekMs(Math.min(durationMs, currentTimeMs + 5000))
+        break
+      case 'ArrowLeft':
+      case 'ArrowDown':
+        e.preventDefault()
+        seekMs(Math.max(0, currentTimeMs - 5000))
+        break
+      case 'Home':
+        e.preventDefault()
+        seekMs(0)
+        break
+      case 'End':
+        e.preventDefault()
+        seekMs(durationMs)
+        break
+    }
+  }
+
   return (
     <div className="flex w-full max-w-[560px] items-center gap-2.5 text-xs text-text-muted">
       <span className="w-9 text-right tabular-nums">{formatDuration(currentTimeMs)}</span>
@@ -54,8 +80,10 @@ function SeekBar() {
         aria-valuemin={0}
         aria-valuemax={durationMs}
         aria-valuenow={currentTimeMs}
+        tabIndex={0}
         onClick={onClick}
-        className="group relative h-1 flex-1 cursor-pointer rounded-full bg-border-subtle"
+        onKeyDown={onKeyDown}
+        className="group relative h-1 flex-1 cursor-pointer rounded-full bg-border-subtle focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
       >
         {/* Buffered range */}
         <div

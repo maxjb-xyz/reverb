@@ -7,6 +7,7 @@ import { makeTrack } from '../test/factories'
 import type { SyncedPlaylistDetail, AlbumDetailTrack, Track } from '../lib/types'
 import { useAlbumPalette } from '../lib/useAlbumPalette'
 import { useAuthStore } from '../lib/authStore'
+import { useToastStore } from '../lib/toastStore'
 
 // ── useAlbumPalette mock ───────────────────────────────────────────────────────
 vi.mock('../lib/useAlbumPalette', () => ({ useAlbumPalette: vi.fn(() => null) }))
@@ -363,6 +364,34 @@ describe('SyncedPlaylist page', () => {
       fireEvent.click(screen.getByRole('button', { name: /sync now/i }))
     })
     expect(mockSyncNow).toHaveBeenCalledWith('sp1')
+  })
+
+  it('shows an error toast when "Sync now" fails', async () => {
+    useToastStore.setState({ toasts: [] })
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    mockSyncNow.mockRejectedValueOnce(new Error('boom'))
+    await renderLoaded()
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /sync now/i }))
+    })
+    await waitFor(() =>
+      expect(useToastStore.getState().toasts.some((t) => t.kind === 'error')).toBe(true),
+    )
+  })
+
+  it('shows an error toast when "Download all missing" fails', async () => {
+    useToastStore.setState({ toasts: [] })
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    setCaps(['auto_approve'])
+    mockDownloadMissingForPlaylist.mockRejectedValueOnce(new Error('boom'))
+    await renderLoaded()
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /download all missing/i }))
+    })
+    await waitFor(() =>
+      expect(useToastStore.getState().toasts.some((t) => t.kind === 'error')).toBe(true),
+    )
+    useAuthStore.setState({ me: null, loading: false })
   })
 
   it('"Download all missing" button calls downloadMissingForPlaylist with the playlist id', async () => {

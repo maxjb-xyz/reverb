@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { Link, useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
@@ -16,6 +16,7 @@ import { usePlayer } from '../lib/playerStore'
 import { useAuthStore } from '../lib/authStore'
 import { Button, IconButton, Cover, Skeleton, EmptyState, Badge, Icon } from '../components/ui'
 import { useAlbumPalette } from '../lib/useAlbumPalette'
+import { useFocusTrap } from '../lib/useFocusTrap'
 import { rgbToCss } from '../lib/palette'
 import * as statsApi from '../lib/statsApi'
 import type { EntityStats, PlayCountTrack } from '../lib/statsApi'
@@ -73,6 +74,10 @@ export default function Album() {
   const canRequest = useAuthStore((s) => s.can('request'))
   const canAutoApprove = useAuthStore((s) => s.can('auto_approve'))
   const [requestDisclosureOpen, setRequestDisclosureOpen] = useState(false)
+  const requestModalRef = useRef<HTMLDivElement>(null)
+  const closeRequestModal = useCallback(() => setRequestDisclosureOpen(false), [])
+  // Focus trap + Esc + focus restore for the request modal (mirrors ImportPlaylistDialog).
+  useFocusTrap(requestDisclosureOpen, requestModalRef, closeRequestModal)
 
   // ── Listening-history stats ──────────────────────────────────────────────────
   // Hooks must run on every render (before the loading/error early returns), so
@@ -268,7 +273,6 @@ export default function Album() {
                   Download missing · {missingRefs.length}
                 </Button>
               )}
-              <IconButton name="heart" label={`Like ${album.name}`} />
               {!canAutoApprove && canRequest && (
                 <Button
                   variant="secondary"
@@ -294,6 +298,7 @@ export default function Album() {
               onClick={() => setRequestDisclosureOpen(false)}
             />
             <div
+              ref={requestModalRef}
               role="dialog"
               aria-modal="true"
               aria-label="Request album"

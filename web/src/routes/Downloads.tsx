@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect } from 'react'
+import { useMemo, useState } from 'react'
 import { useDownloads } from '../lib/downloadStore'
 import {
   pauseQueue,
@@ -9,7 +9,8 @@ import {
 } from '../lib/downloadApi'
 import { coverUrl } from '../lib/libraryApi'
 import { Button, Chip, Cover, Icon, EmptyState } from '../components/ui'
-import { StatusLabel, DownloadProgress, failureMessage } from '../components/download/parts'
+import { StatusLabel, DownloadProgress } from '../components/download/parts'
+import { failureMessage } from '../components/download/failureMessage'
 import type { DownloadJob, DownloadStatus } from '../lib/types'
 
 type FilterKey = 'all' | 'running' | 'queued' | 'completed' | 'failed'
@@ -159,17 +160,20 @@ export default function Downloads() {
 
   // Prune stale selections: if a selected job is removed from `jobs` (e.g. via
   // WS download.removed or clearFinished), drop it from the selection set so the
-  // bulk bar count stays accurate.
-  useEffect(() => {
-    setSelected((prev) => {
-      if (prev.size === 0) return prev
+  // bulk bar count stays accurate. Uses React's "adjust state during render"
+  // pattern (keyed on the `jobs` reference) rather than an effect, avoiding a
+  // synchronous setState inside useEffect.
+  const [prevJobs, setPrevJobs] = useState(jobs)
+  if (jobs !== prevJobs) {
+    setPrevJobs(jobs)
+    if (selected.size > 0) {
       const next = new Set<string>()
-      for (const id of prev) {
+      for (const id of selected) {
         if (jobs[id]) next.add(id)
       }
-      return next.size === prev.size ? prev : next
-    })
-  }, [jobs])
+      if (next.size !== selected.size) setSelected(next)
+    }
+  }
 
   async function togglePause() {
     if (paused) {

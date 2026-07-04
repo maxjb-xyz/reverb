@@ -175,7 +175,7 @@ export function ClockHeatmap({ data }: Props) {
       {/* Tooltip */}
       {tooltip && (
         <div
-          className="pointer-events-none absolute z-10 px-2.5 py-1.5 rounded-md bg-raised shadow-float text-xs font-semibold text-primary whitespace-nowrap"
+          className="pointer-events-none absolute z-10 px-2.5 py-1.5 rounded-md bg-raised shadow-float text-xs font-semibold text-text-primary whitespace-nowrap"
           style={{
             left: tooltip.svgX,
             top: tooltip.svgY - 8,

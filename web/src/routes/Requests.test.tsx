@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { useAuthStore } from '../lib/authStore'
 import { useRequestStore } from '../lib/requestApi'
 import type { Request as MusicRequest } from '../lib/requestApi'
+import { useToastStore } from '../lib/toastStore'
 import Requests from './Requests'
 import { TopBar } from '../components/shell/TopBar'
 
@@ -194,6 +195,59 @@ describe('Requests page — Approval tab (manager)', () => {
     fireEvent.click(screen.getByRole('button', { name: /confirm/i }))
     await waitFor(() => {
       expect(denyRequest).toHaveBeenCalledWith('r2', undefined)
+    })
+  })
+})
+
+describe('Requests page — action failure toasts', () => {
+  beforeEach(() => {
+    useRequestStore.setState({ byId: {} })
+    useAuthStore.setState({ me: null, loading: false })
+    useToastStore.setState({ toasts: [] })
+    mockNavigate.mockReset()
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+  })
+
+  it('shows an error toast when cancelRequest fails', async () => {
+    const { cancelRequest } = await import('../lib/requestApi')
+    vi.mocked(cancelRequest).mockRejectedValueOnce(new Error('boom'))
+    setMe('u1', ['request'])
+    useRequestStore.setState({ byId: { r1: makeRequest({ requestedBy: 'u1', status: 'pending' }) } })
+    renderRequests()
+    await waitFor(() => expect(screen.getByText('Test Song')).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: /cancel/i }))
+    await waitFor(() => {
+      expect(useToastStore.getState().toasts.some((t) => t.kind === 'error')).toBe(true)
+    })
+  })
+
+  it('shows an error toast when approveRequest fails', async () => {
+    const { approveRequest } = await import('../lib/requestApi')
+    vi.mocked(approveRequest).mockRejectedValueOnce(new Error('boom'))
+    setMe('u2', ['request', 'manage_requests'])
+    useRequestStore.setState({ byId: { r2: makeRequest({ id: 'r2', requestedBy: 'u3', status: 'pending', title: 'Queue Track' }) } })
+    renderRequests()
+    fireEvent.click(screen.getByRole('tab', { name: /approval/i }))
+    await waitFor(() => expect(screen.getByRole('button', { name: /approve/i })).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: /approve/i }))
+    await waitFor(() => {
+      expect(useToastStore.getState().toasts.some((t) => t.kind === 'error')).toBe(true)
+    })
+  })
+
+  it('shows an error toast when denyRequest fails', async () => {
+    const { denyRequest } = await import('../lib/requestApi')
+    vi.mocked(denyRequest).mockRejectedValueOnce(new Error('boom'))
+    setMe('u2', ['request', 'manage_requests'])
+    useRequestStore.setState({ byId: { r2: makeRequest({ id: 'r2', requestedBy: 'u3', status: 'pending', title: 'Queue Track' }) } })
+    renderRequests()
+    fireEvent.click(screen.getByRole('tab', { name: /approval/i }))
+    await waitFor(() => expect(screen.getByRole('button', { name: /deny/i })).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: /deny/i }))
+    await waitFor(() => expect(screen.getByRole('button', { name: /confirm/i })).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: /confirm/i }))
+    await waitFor(() => {
+      expect(useToastStore.getState().toasts.some((t) => t.kind === 'error')).toBe(true)
     })
   })
 })
