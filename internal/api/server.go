@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -148,6 +149,10 @@ type Server struct {
 	deps   Deps
 	router chi.Router
 
+	// authLimiter throttles the login/signup/setup endpoints per client IP to
+	// slow online password guessing.
+	authLimiter *rateLimiter
+
 	// live holds the currently active services. Handlers read them through the
 	// getters under the RLock; reload swaps them under the write lock so adapter
 	// mutations take effect without a restart.
@@ -166,6 +171,9 @@ type Server struct {
 
 func NewServer(deps Deps) *Server {
 	s := &Server{deps: deps, router: chi.NewRouter()}
+	// Auth endpoints: at most 10 attempts per IP per minute. Generous enough that
+	// a human never notices, tight enough that bcrypt-slowed guessing stays slow.
+	s.authLimiter = newRateLimiter(10, time.Minute, nil)
 	s.live.library = deps.Library
 	s.live.search = deps.SearchAggregator
 	s.live.coverage = deps.Coverage
@@ -226,18 +234,28 @@ func (s *Server) Handler() http.Handler { return s.router }
 
 func (s *Server) routes() {
 	s.router.Use(middleware.Recoverer)
+	s.router.Use(s.securityHeaders)
 
 	s.router.Route("/api/v1", func(r chi.Router) {
+		// Reject cross-origin state-changing requests (defense-in-depth over the
+		// cookie's SameSite=Lax). Applies to every /api/v1 mutation, public or not.
+		r.Use(s.csrfGuard)
+
 		// public
 		r.Get("/health", s.handleHealth)
 		r.Get("/setup/status", s.handleSetupStatus)
-		r.Post("/setup/admin", s.handleSetupAdmin)
-		r.Post("/auth/login", s.handleLogin)
 		r.Post("/auth/logout", s.handleLogout)
-		r.Post("/auth/signup", s.handleSignup)
 		r.Get("/auth/registration-status", s.handleRegistrationStatus)
 		r.Get("/openapi.yaml", s.handleOpenAPI)
 		r.Get("/version", s.handleVersion)
+
+		// public auth endpoints, rate-limited per IP to slow password guessing.
+		r.Group(func(ar chi.Router) {
+			ar.Use(s.rateLimitAuth)
+			ar.Post("/setup/admin", s.handleSetupAdmin)
+			ar.Post("/auth/login", s.handleLogin)
+			ar.Post("/auth/signup", s.handleSignup)
+		})
 
 		// protected
 		r.Group(func(pr chi.Router) {
@@ -264,15 +282,12 @@ func (s *Server) routes() {
 			pr.Get("/playlists", s.handleListSyncedPlaylists)
 			pr.Get("/playlists/{id}", s.handleSyncedPlaylistDetail)
 			pr.Get("/playlists/{id}/cover", s.handleServePlaylistCover)
-			// download queue controls + reads stay on plain auth.
-			pr.Post("/downloads/pause", s.handlePauseQueue)
-			pr.Post("/downloads/resume", s.handleResumeQueue)
+			// download queue READS stay on plain auth; the mutating controls
+			// (pause/resume/clear/cancel/retry) are gated below — the queue is a
+			// single global resource, so any authenticated user must not be able to
+			// pause it or cancel/clear another user's jobs.
 			pr.Get("/downloads/queue", s.handleQueueState)
-			pr.Post("/downloads/clear", s.handleClearDownloads)
-			pr.Post("/downloads/{id}/clear", s.handleClearDownload)
 			pr.Get("/downloads", s.handleListDownloads)
-			pr.Post("/downloads/{id}/cancel", s.handleCancelDownload)
-			pr.Post("/downloads/{id}/retry", s.handleRetryDownload)
 			pr.Get("/ws", s.handleWS)
 			pr.Get("/notifications", s.handleListNotifications)
 			pr.Post("/notifications/read", s.handleMarkNotificationsRead)
@@ -309,11 +324,19 @@ func (s *Server) routes() {
 				mr.Put("/admin/integrations/lastfm", s.handlePutLastfmIntegration)
 			})
 
-			// download tracks: enqueue create + batch.
+			// download tracks + manage the queue: enqueue create/batch, plus the
+			// global queue controls. All require auto-approve (the capability that
+			// grants one-click, un-gated downloading).
 			pr.Group(func(dr chi.Router) {
 				dr.Use(s.requireCapability(auth.CapAutoApprove))
 				dr.Post("/downloads/batch", s.handleBatchDownload)
 				dr.Post("/downloads", s.handleCreateDownload)
+				dr.Post("/downloads/pause", s.handlePauseQueue)
+				dr.Post("/downloads/resume", s.handleResumeQueue)
+				dr.Post("/downloads/clear", s.handleClearDownloads)
+				dr.Post("/downloads/{id}/clear", s.handleClearDownload)
+				dr.Post("/downloads/{id}/cancel", s.handleCancelDownload)
+				dr.Post("/downloads/{id}/retry", s.handleRetryDownload)
 			})
 
 			// create playlists: every playlist WRITE (create/import/mutate).

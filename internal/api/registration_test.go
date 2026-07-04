@@ -15,13 +15,13 @@ func bytesContain(b []byte, sub string) bool {
 
 func TestSignupGatedByPolicy(t *testing.T) {
 	srv := newTestServer(t)
-	mustSetupOwner(t, srv, "owner", "pw12345")
+	mustSetupOwner(t, srv, "owner", "pw123456")
 	// signup disabled by default
 	if doPOST(t, srv, "/api/v1/auth/signup", "", `{"username":"carol","password":"carolpw1"}`).Code != 403 {
 		t.Fatal("signup should be disabled by default")
 	}
 	// admin enables open signup
-	tok := mustLogin(t, srv, "owner", "pw12345")
+	tok := mustLogin(t, srv, "owner", "pw123456")
 	if doPATCH(t, srv, "/api/v1/settings/registration", tok, `{"signupEnabled":true,"invitesEnabled":false,"defaultRoleId":"role-user"}`).Code != 200 {
 		t.Fatal("policy update failed")
 	}
@@ -38,8 +38,8 @@ func TestSignupGatedByPolicy(t *testing.T) {
 
 func TestInviteRedemptionAssignsRole(t *testing.T) {
 	srv := newTestServer(t)
-	mustSetupOwner(t, srv, "owner", "pw12345")
-	tok := mustLogin(t, srv, "owner", "pw12345")
+	mustSetupOwner(t, srv, "owner", "pw123456")
+	tok := mustLogin(t, srv, "owner", "pw123456")
 	doPATCH(t, srv, "/api/v1/settings/registration", tok, `{"signupEnabled":false,"invitesEnabled":true,"defaultRoleId":"role-user"}`)
 	rr := doPOST(t, srv, "/api/v1/invites", tok, `{"roleId":"role-requester"}`)
 	var inv struct{ Code string }
@@ -56,8 +56,8 @@ func TestInviteRedemptionAssignsRole(t *testing.T) {
 
 func TestListInvites(t *testing.T) {
 	srv := newTestServer(t)
-	mustSetupOwner(t, srv, "owner", "pw12345")
-	tok := mustLogin(t, srv, "owner", "pw12345")
+	mustSetupOwner(t, srv, "owner", "pw123456")
+	tok := mustLogin(t, srv, "owner", "pw123456")
 	doPOST(t, srv, "/api/v1/invites", tok, `{}`)
 	rr := doGET(t, srv, "/api/v1/invites", tok)
 	if rr.Code != 200 {
@@ -72,8 +72,8 @@ func TestListInvites(t *testing.T) {
 
 func TestDeleteInvite(t *testing.T) {
 	srv := newTestServer(t)
-	mustSetupOwner(t, srv, "owner", "pw12345")
-	tok := mustLogin(t, srv, "owner", "pw12345")
+	mustSetupOwner(t, srv, "owner", "pw123456")
+	tok := mustLogin(t, srv, "owner", "pw123456")
 	rr := doPOST(t, srv, "/api/v1/invites", tok, `{}`)
 	var inv struct {
 		ID   string `json:"id"`
@@ -93,8 +93,8 @@ func TestDeleteInvite(t *testing.T) {
 // with non-empty id and code fields (no ListInvites scan).
 func TestCreateInviteReturnsIDAndCode(t *testing.T) {
 	srv := newTestServer(t)
-	mustSetupOwner(t, srv, "owner", "pw12345")
-	tok := mustLogin(t, srv, "owner", "pw12345")
+	mustSetupOwner(t, srv, "owner", "pw123456")
+	tok := mustLogin(t, srv, "owner", "pw123456")
 	rr := doPOST(t, srv, "/api/v1/invites", tok, `{}`)
 	if rr.Code != 201 {
 		t.Fatalf("create invite = %d (%s)", rr.Code, rr.Body)
@@ -118,7 +118,7 @@ func TestCreateInviteReturnsIDAndCode(t *testing.T) {
 // reachable WITHOUT a session and returns the expected JSON shape.
 func TestRegistrationStatus(t *testing.T) {
 	srv := newTestServer(t)
-	mustSetupOwner(t, srv, "owner", "pw12345")
+	mustSetupOwner(t, srv, "owner", "pw123456")
 
 	// Must be accessible without any auth cookie.
 	rr := doGET(t, srv, "/api/v1/auth/registration-status", "")

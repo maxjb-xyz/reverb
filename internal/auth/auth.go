@@ -124,6 +124,9 @@ func (s *Service) SetupOwner(ctx context.Context, username, password string) (st
 	if n > 0 {
 		return "", errors.New("setup already complete")
 	}
+	if err := ValidatePassword(password); err != nil {
+		return "", err
+	}
 	h, err := HashPassword(password)
 	if err != nil {
 		return "", err
@@ -237,6 +240,9 @@ func (s *Service) ChangeOwnPassword(ctx context.Context, userID, current, next s
 	}
 	if !VerifyPassword(u.PasswordHash, current) {
 		return ErrInvalidCreds
+	}
+	if err := ValidatePassword(next); err != nil {
+		return err
 	}
 	h, err := HashPassword(next)
 	if err != nil {
@@ -409,6 +415,9 @@ func (s *Service) CreateUser(ctx context.Context, username, password, roleID str
 	if _, err := s.q.GetUserByUsername(ctx, username); err == nil {
 		return "", ErrUsernameTaken
 	}
+	if err := ValidatePassword(password); err != nil {
+		return "", err
+	}
 	h, err := HashPassword(password)
 	if err != nil {
 		return "", err
@@ -481,6 +490,9 @@ func (s *Service) SetUserDisabled(ctx context.Context, id string, disabled bool)
 
 // AdminSetPassword resets a user's password without requiring the current one.
 func (s *Service) AdminSetPassword(ctx context.Context, id, password string) error {
+	if err := ValidatePassword(password); err != nil {
+		return err
+	}
 	h, err := HashPassword(password)
 	if err != nil {
 		return err
@@ -729,6 +741,9 @@ func (s *Service) Signup(ctx context.Context, username, password, inviteCode str
 	}
 	if _, err := s.q.GetUserByUsername(ctx, username); err == nil {
 		return "", ErrUsernameTaken
+	}
+	if err := ValidatePassword(password); err != nil {
+		return "", err
 	}
 	h, err := HashPassword(password)
 	if err != nil {

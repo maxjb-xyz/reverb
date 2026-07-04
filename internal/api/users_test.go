@@ -7,8 +7,8 @@ import (
 
 func TestAdminCreatesUserAndOwnerProtected(t *testing.T) {
 	srv := newTestServer(t)
-	ownerID := mustSetupOwner(t, srv, "owner", "pw12345")
-	tok := mustLogin(t, srv, "owner", "pw12345")
+	ownerID := mustSetupOwner(t, srv, "owner", "pw123456")
+	tok := mustLogin(t, srv, "owner", "pw123456")
 
 	// create a regular user
 	rr := doPOST(t, srv, "/api/v1/users", tok, `{"username":"bob","password":"bobpw123","roleId":"role-user"}`)
@@ -31,8 +31,8 @@ func TestAdminCreatesUserAndOwnerProtected(t *testing.T) {
 
 func TestNonAdminCannotManageUsers(t *testing.T) {
 	srv := newTestServer(t)
-	mustSetupOwner(t, srv, "owner", "pw12345")
-	otok := mustLogin(t, srv, "owner", "pw12345")
+	mustSetupOwner(t, srv, "owner", "pw123456")
+	otok := mustLogin(t, srv, "owner", "pw123456")
 	doPOST(t, srv, "/api/v1/users", otok, `{"username":"req","password":"reqpw123","roleId":"role-requester"}`)
 	rtok := mustLogin(t, srv, "req", "reqpw123")
 	if doGET(t, srv, "/api/v1/users", rtok).Code != 403 {
@@ -42,8 +42,8 @@ func TestNonAdminCannotManageUsers(t *testing.T) {
 
 func TestMissingUserReturns404(t *testing.T) {
 	srv := newTestServer(t)
-	mustSetupOwner(t, srv, "owner", "pw12345")
-	tok := mustLogin(t, srv, "owner", "pw12345")
+	mustSetupOwner(t, srv, "owner", "pw123456")
+	tok := mustLogin(t, srv, "owner", "pw123456")
 
 	// PATCH bogus-id role change → 404
 	if rr := doPATCH(t, srv, "/api/v1/users/bogus-id-that-does-not-exist", tok, `{"roleId":"role-user"}`); rr.Code != 404 {
@@ -58,8 +58,8 @@ func TestMissingUserReturns404(t *testing.T) {
 
 func TestOwnerDisableReturns409(t *testing.T) {
 	srv := newTestServer(t)
-	ownerID := mustSetupOwner(t, srv, "owner", "pw12345")
-	tok := mustLogin(t, srv, "owner", "pw12345")
+	ownerID := mustSetupOwner(t, srv, "owner", "pw123456")
+	tok := mustLogin(t, srv, "owner", "pw123456")
 
 	// PATCH owner with disabled:true → 409 (ErrOwnerProtected)
 	rr := doPATCH(t, srv, "/api/v1/users/"+ownerID, tok, `{"disabled":true}`)

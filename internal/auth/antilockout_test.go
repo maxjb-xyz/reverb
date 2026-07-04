@@ -24,7 +24,7 @@ func makeSoleNonOwnerAdmin(t *testing.T) (*Service, *db.Queries, string) {
 	// use the db query directly to avoid any future guards that might be added to
 	// the service layer. is_owner=0 so no owner row exists.
 	const id = "user-sole-admin"
-	h, err := HashPassword("pw")
+	h, err := HashPassword("pw123456")
 	if err != nil {
 		t.Fatal(err)
 	}

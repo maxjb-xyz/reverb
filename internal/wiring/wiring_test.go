@@ -20,7 +20,7 @@ func TestBuildLibraryAdapter_BuiltIn_IgnoresInstancesUsesLocalhost(t *testing.T)
 	// No library instances at all, built-in mode -> still get a configured adapter.
 	lib, err := BuildLibraryAdapter(
 		context.Background(), libReg(), nil, func(string) string { return "" },
-		embedded.ModeBuiltIn, embedded.Credentials{Username: "admin", Password: "pw"},
+		embedded.ModeBuiltIn, embedded.Credentials{Username: "admin", Password: "pw123456"},
 	)
 	if err != nil {
 		t.Fatalf("built-in build: %v", err)
@@ -42,7 +42,7 @@ func TestBuildLibraryAdapter_BuiltIn_UsesLocalhostURL(t *testing.T) {
 
 	_, err := BuildLibraryAdapter(
 		context.Background(), reg, nil /*no instances*/, func(string) string { return "" },
-		embedded.ModeBuiltIn, embedded.Credentials{Username: "admin", Password: "pw"},
+		embedded.ModeBuiltIn, embedded.Credentials{Username: "admin", Password: "pw123456"},
 	)
 	if err != nil {
 		t.Fatalf("built-in build: %v", err)
@@ -53,7 +53,7 @@ func TestBuildLibraryAdapter_BuiltIn_UsesLocalhostURL(t *testing.T) {
 	if captured.got["username"] != "admin" {
 		t.Errorf("username = %q, want admin", captured.got["username"])
 	}
-	if captured.got["password"] != "pw" {
+	if captured.got["password"] != "pw123456" {
 		t.Errorf("password = %q, want pw", captured.got["password"])
 	}
 }

@@ -14,7 +14,7 @@ func sessionCookieFromSetup(t *testing.T, mutate func(*http.Request)) *http.Cook
 	t.Helper()
 	srv := testServer(t)
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/setup/admin", bytes.NewBufferString(`{"username":"owner","password":"pw"}`))
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/setup/admin", bytes.NewBufferString(`{"username":"owner","password":"pw123456"}`))
 	if mutate != nil {
 		mutate(req)
 	}

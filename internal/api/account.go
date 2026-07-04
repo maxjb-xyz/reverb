@@ -35,8 +35,17 @@ func (s *Server) handleChangePassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.deps.Auth.ChangeOwnPassword(r.Context(), cu.ID, b.Current, b.New); err != nil {
+		if writePasswordPolicyError(w, err) {
+			return
+		}
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "current password incorrect"})
 		return
+	}
+	// A password change invalidates every other session for this user (a stolen
+	// session can no longer outlive a password reset). The caller's current
+	// session is preserved so they stay signed in on this device.
+	if err := s.deps.Auth.LogoutAll(r.Context(), cu.ID, s.tokenFromRequest(r)); err != nil {
+		log.Printf("change-password: failed to revoke other sessions for user %s: %v", cu.ID, err)
 	}
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }

@@ -72,12 +72,12 @@ func TestRequestPending(t *testing.T) {
 
 	// Create a requester user via the admin endpoint.
 	rec := doReq(t, srv, ownerCookie, http.MethodPost, "/api/v1/users",
-		`{"username":"req1","password":"pw","roleId":"role-requester"}`)
+		`{"username":"req1","password":"pw123456","roleId":"role-requester"}`)
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("create user = %d: %s", rec.Code, rec.Body.String())
 	}
 
-	requesterTok := mustLogin(t, srv, "req1", "pw")
+	requesterTok := mustLogin(t, srv, "req1", "pw123456")
 	requesterCookie := &http.Cookie{Name: sessionCookie, Value: requesterTok}
 
 	rec = doReq(t, srv, requesterCookie, http.MethodPost, "/api/v1/requests", reqItem)
@@ -188,8 +188,8 @@ func TestListMyRequests(t *testing.T) {
 
 	// Create requester.
 	doReq(t, srv, ownerCookie, http.MethodPost, "/api/v1/users",
-		`{"username":"req2","password":"pw","roleId":"role-requester"}`)
-	reqTok := mustLogin(t, srv, "req2", "pw")
+		`{"username":"req2","password":"pw123456","roleId":"role-requester"}`)
+	reqTok := mustLogin(t, srv, "req2", "pw123456")
 	reqCookie := &http.Cookie{Name: sessionCookie, Value: reqTok}
 
 	// Requester posts a request.
@@ -220,7 +220,7 @@ func TestApproveRequest(t *testing.T) {
 
 	// Create a requester.
 	rec := doReq(t, srv, ownerCookie, http.MethodPost, "/api/v1/users",
-		`{"username":"req3","password":"pw","roleId":"role-requester"}`)
+		`{"username":"req3","password":"pw123456","roleId":"role-requester"}`)
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("create user = %d: %s", rec.Code, rec.Body.String())
 	}
@@ -232,7 +232,7 @@ func TestApproveRequest(t *testing.T) {
 	}
 	requesterID := createdUser.ID
 
-	reqTok := mustLogin(t, srv, "req3", "pw")
+	reqTok := mustLogin(t, srv, "req3", "pw123456")
 	reqCookie := &http.Cookie{Name: sessionCookie, Value: reqTok}
 
 	// Requester posts a request → pending.
@@ -305,8 +305,8 @@ func TestDenyRequest(t *testing.T) {
 
 	// Create requester.
 	doReq(t, srv, ownerCookie, http.MethodPost, "/api/v1/users",
-		`{"username":"req4","password":"pw","roleId":"role-requester"}`)
-	reqTok := mustLogin(t, srv, "req4", "pw")
+		`{"username":"req4","password":"pw123456","roleId":"role-requester"}`)
+	reqTok := mustLogin(t, srv, "req4", "pw123456")
 	reqCookie := &http.Cookie{Name: sessionCookie, Value: reqTok}
 
 	rec := doReq(t, srv, reqCookie, http.MethodPost, "/api/v1/requests", reqItem)
@@ -339,8 +339,8 @@ func TestCancelOwnRequest(t *testing.T) {
 
 	// Create requester.
 	doReq(t, srv, ownerCookie, http.MethodPost, "/api/v1/users",
-		`{"username":"req5","password":"pw","roleId":"role-requester"}`)
-	reqTok := mustLogin(t, srv, "req5", "pw")
+		`{"username":"req5","password":"pw123456","roleId":"role-requester"}`)
+	reqTok := mustLogin(t, srv, "req5", "pw123456")
 	reqCookie := &http.Cookie{Name: sessionCookie, Value: reqTok}
 
 	rec := doReq(t, srv, reqCookie, http.MethodPost, "/api/v1/requests", reqItem)
@@ -366,12 +366,12 @@ func TestCancelOtherUserRequest(t *testing.T) {
 
 	// Create two requesters.
 	doReq(t, srv, ownerCookie, http.MethodPost, "/api/v1/users",
-		`{"username":"req6","password":"pw","roleId":"role-requester"}`)
+		`{"username":"req6","password":"pw123456","roleId":"role-requester"}`)
 	doReq(t, srv, ownerCookie, http.MethodPost, "/api/v1/users",
-		`{"username":"req7","password":"pw","roleId":"role-requester"}`)
+		`{"username":"req7","password":"pw123456","roleId":"role-requester"}`)
 
-	req6Tok := mustLogin(t, srv, "req6", "pw")
-	req7Tok := mustLogin(t, srv, "req7", "pw")
+	req6Tok := mustLogin(t, srv, "req6", "pw123456")
+	req7Tok := mustLogin(t, srv, "req7", "pw123456")
 	req6Cookie := &http.Cookie{Name: sessionCookie, Value: req6Tok}
 	req7Cookie := &http.Cookie{Name: sessionCookie, Value: req7Tok}
 
@@ -399,8 +399,8 @@ func TestRequestCapabilityGates(t *testing.T) {
 	_, srv, ownerCookie := requestTestServer(t, mgr)
 
 	doReq(t, srv, ownerCookie, http.MethodPost, "/api/v1/users",
-		`{"username":"reqgate","password":"pw","roleId":"role-requester"}`)
-	reqTok := mustLogin(t, srv, "reqgate", "pw")
+		`{"username":"reqgate","password":"pw123456","roleId":"role-requester"}`)
+	reqTok := mustLogin(t, srv, "reqgate", "pw123456")
 	reqCookie := &http.Cookie{Name: sessionCookie, Value: reqTok}
 
 	// GET /requests → 403 (manage_requests required).
@@ -512,11 +512,11 @@ func TestAlbumRequestPendingNoEnqueue(t *testing.T) {
 
 	// Create a requester user.
 	rec := doReq(t, srv, ownerCookie, http.MethodPost, "/api/v1/users",
-		`{"username":"albreq1","password":"pw","roleId":"role-requester"}`)
+		`{"username":"albreq1","password":"pw123456","roleId":"role-requester"}`)
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("create user = %d: %s", rec.Code, rec.Body.String())
 	}
-	requesterTok := mustLogin(t, srv, "albreq1", "pw")
+	requesterTok := mustLogin(t, srv, "albreq1", "pw123456")
 	requesterCookie := &http.Cookie{Name: sessionCookie, Value: requesterTok}
 
 	rec = doReq(t, srv, requesterCookie, http.MethodPost, "/api/v1/requests", albumReqItem)
@@ -636,11 +636,11 @@ func TestBatchRequestPendingUser(t *testing.T) {
 
 	// Create a requester user.
 	rec := doReq(t, srv, ownerCookie, http.MethodPost, "/api/v1/users",
-		`{"username":"batchreq1","password":"pw","roleId":"role-requester"}`)
+		`{"username":"batchreq1","password":"pw123456","roleId":"role-requester"}`)
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("create user = %d: %s", rec.Code, rec.Body.String())
 	}
-	reqTok := mustLogin(t, srv, "batchreq1", "pw")
+	reqTok := mustLogin(t, srv, "batchreq1", "pw123456")
 	reqCookie := &http.Cookie{Name: sessionCookie, Value: reqTok}
 
 	body := batchBody(batchAlbumItem1, batchAlbumItem2)
@@ -785,11 +785,11 @@ func TestQuotaSingleRequest_AtCapReturns429(t *testing.T) {
 
 	// Create a requester user.
 	rec := doReq(t, srv, ownerCookie, http.MethodPost, "/api/v1/users",
-		`{"username":"quotareq1","password":"pw","roleId":"role-requester"}`)
+		`{"username":"quotareq1","password":"pw123456","roleId":"role-requester"}`)
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("create user = %d: %s", rec.Code, rec.Body.String())
 	}
-	reqTok := mustLogin(t, srv, "quotareq1", "pw")
+	reqTok := mustLogin(t, srv, "quotareq1", "pw123456")
 	reqCookie := &http.Cookie{Name: sessionCookie, Value: reqTok}
 
 	// Post 2 requests (distinct) → both should succeed.
@@ -833,11 +833,11 @@ func TestQuotaSingleRequest_BelowCapSucceeds(t *testing.T) {
 	setQuotaCap(t, srv, ownerCookie, 2)
 
 	rec := doReq(t, srv, ownerCookie, http.MethodPost, "/api/v1/users",
-		`{"username":"quotareq2","password":"pw","roleId":"role-requester"}`)
+		`{"username":"quotareq2","password":"pw123456","roleId":"role-requester"}`)
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("create user = %d: %s", rec.Code, rec.Body.String())
 	}
-	reqTok := mustLogin(t, srv, "quotareq2", "pw")
+	reqTok := mustLogin(t, srv, "quotareq2", "pw123456")
 	reqCookie := &http.Cookie{Name: sessionCookie, Value: reqTok}
 
 	// Post 1 request.
@@ -864,11 +864,11 @@ func TestQuotaZeroMeansUnlimited(t *testing.T) {
 	setQuotaCap(t, srv, ownerCookie, 0)
 
 	rec := doReq(t, srv, ownerCookie, http.MethodPost, "/api/v1/users",
-		`{"username":"quotareq3","password":"pw","roleId":"role-requester"}`)
+		`{"username":"quotareq3","password":"pw123456","roleId":"role-requester"}`)
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("create user = %d: %s", rec.Code, rec.Body.String())
 	}
-	reqTok := mustLogin(t, srv, "quotareq3", "pw")
+	reqTok := mustLogin(t, srv, "quotareq3", "pw123456")
 	reqCookie := &http.Cookie{Name: sessionCookie, Value: reqTok}
 
 	// Post 5 distinct requests → all should succeed (no cap).
@@ -908,11 +908,11 @@ func TestQuotaBatch_CapEnforced(t *testing.T) {
 	setQuotaCap(t, srv, ownerCookie, 2)
 
 	rec := doReq(t, srv, ownerCookie, http.MethodPost, "/api/v1/users",
-		`{"username":"batchquota1","password":"pw","roleId":"role-requester"}`)
+		`{"username":"batchquota1","password":"pw123456","roleId":"role-requester"}`)
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("create user = %d: %s", rec.Code, rec.Body.String())
 	}
-	reqTok := mustLogin(t, srv, "batchquota1", "pw")
+	reqTok := mustLogin(t, srv, "batchquota1", "pw123456")
 	reqCookie := &http.Cookie{Name: sessionCookie, Value: reqTok}
 
 	bItem1 := `{"source":"lidarr","externalId":"bq-a1","title":"Album A1","artist":"Ar","album":"Al A1","kind":"album"}`

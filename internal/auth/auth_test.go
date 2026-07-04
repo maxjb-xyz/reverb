@@ -52,7 +52,7 @@ func TestSetupRequiredLifecycle(t *testing.T) {
 	if !req {
 		t.Fatal("fresh DB should require setup")
 	}
-	if _, err := s.SetupOwner(ctx, "owner", "pw12345"); err != nil {
+	if _, err := s.SetupOwner(ctx, "owner", "pw123456"); err != nil {
 		t.Fatal(err)
 	}
 	req, _ = s.IsSetupRequired(ctx)
@@ -64,14 +64,14 @@ func TestSetupRequiredLifecycle(t *testing.T) {
 func TestSetupOwnerThenLogin(t *testing.T) {
 	s, _ := newTestService(t) // helper that wires a migrated store + seeded system roles
 	ctx := context.Background()
-	uid, err := s.SetupOwner(ctx, "owner", "pw12345")
+	uid, err := s.SetupOwner(ctx, "owner", "pw123456")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if req, _ := s.IsSetupRequired(ctx); req {
 		t.Fatal("setup should no longer be required")
 	}
-	got, err := s.Login(ctx, "OWNER", "pw12345") // username is case-insensitive
+	got, err := s.Login(ctx, "OWNER", "pw123456") // username is case-insensitive
 	if err != nil || got != uid {
 		t.Fatalf("login failed: %v %s", err, got)
 	}
@@ -83,7 +83,7 @@ func TestSetupOwnerThenLogin(t *testing.T) {
 func TestResolveSessionCarriesCaps(t *testing.T) {
 	s, _ := newTestService(t)
 	ctx := context.Background()
-	uid, _ := s.SetupOwner(ctx, "owner", "pw12345")
+	uid, _ := s.SetupOwner(ctx, "owner", "pw123456")
 	tok, err := s.CreateSession(ctx, uid)
 	if err != nil {
 		t.Fatal(err)
@@ -109,7 +109,7 @@ func TestSessionExpires(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	uid, err := s.SetupOwner(ctx, "owner", "pw12345")
+	uid, err := s.SetupOwner(ctx, "owner", "pw123456")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -129,7 +129,7 @@ func TestSessionExpires(t *testing.T) {
 func TestLogoutInvalidatesSession(t *testing.T) {
 	s, _ := newTestService(t)
 	ctx := context.Background()
-	uid, _ := s.SetupOwner(ctx, "owner", "pw12345")
+	uid, _ := s.SetupOwner(ctx, "owner", "pw123456")
 	tok, err := s.CreateSession(ctx, uid)
 	if err != nil {
 		t.Fatal(err)

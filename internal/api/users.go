@@ -29,6 +29,9 @@ func (s *Server) handleCreateUser(w http.ResponseWriter, r *http.Request) {
 	}
 	id, err := s.deps.Auth.CreateUser(r.Context(), b.Username, b.Password, b.RoleID)
 	if err != nil {
+		if writePasswordPolicyError(w, err) {
+			return
+		}
 		switch {
 		case errors.Is(err, auth.ErrUsernameTaken):
 			writeJSON(w, http.StatusConflict, map[string]string{"error": "username taken"})
@@ -115,6 +118,9 @@ func (s *Server) handleAdminResetPassword(w http.ResponseWriter, r *http.Request
 		return
 	}
 	if err := s.deps.Auth.AdminSetPassword(r.Context(), id, b.Password); err != nil {
+		if writePasswordPolicyError(w, err) {
+			return
+		}
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not reset password"})
 		return
 	}

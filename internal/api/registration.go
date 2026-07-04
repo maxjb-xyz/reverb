@@ -37,6 +37,9 @@ func (s *Server) handleSignup(w http.ResponseWriter, r *http.Request) {
 	}
 	uid, err := s.deps.Auth.Signup(r.Context(), body.Username, body.Password, body.Invite)
 	if err != nil {
+		if writePasswordPolicyError(w, err) {
+			return
+		}
 		switch {
 		case errors.Is(err, auth.ErrSignupDisabled), errors.Is(err, auth.ErrInviteInvalid):
 			writeJSON(w, http.StatusForbidden, map[string]string{"error": err.Error()})

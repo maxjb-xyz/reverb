@@ -152,7 +152,7 @@ func TestStatsSummaryPerUserIsolation(t *testing.T) {
 	ownerID := users[0].ID
 
 	// Create a second user and get a session for them.
-	otherID, err := authSvc.CreateUser(context.Background(), "other", "pw", "role-requester")
+	otherID, err := authSvc.CreateUser(context.Background(), "other", "pw123456", "role-requester")
 	if err != nil {
 		t.Fatal(err)
 	}

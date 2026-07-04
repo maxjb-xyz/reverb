@@ -2,11 +2,30 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
 	"net/http"
 
 	"github.com/maxjb-xyz/reverb/internal/auth"
 	"github.com/maxjb-xyz/reverb/internal/registry"
 )
+
+// writePasswordPolicyError writes a 400 describing the password-policy violation
+// and reports whether err was in fact a policy error. Callers use the bool to
+// decide whether to fall through to their generic error mapping.
+func writePasswordPolicyError(w http.ResponseWriter, err error) bool {
+	switch {
+	case errors.Is(err, auth.ErrPasswordTooShort):
+		writeJSON(w, http.StatusBadRequest, map[string]string{
+			"error": fmt.Sprintf("password must be at least %d characters", auth.MinPasswordLength),
+		})
+		return true
+	case errors.Is(err, auth.ErrPasswordTooLong):
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "password is too long"})
+		return true
+	}
+	return false
+}
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
@@ -55,6 +74,9 @@ func (s *Server) handleSetupAdmin(w http.ResponseWriter, r *http.Request) {
 	}
 	uid, err := s.deps.Auth.SetupOwner(r.Context(), b.Username, b.Password)
 	if err != nil {
+		if writePasswordPolicyError(w, err) {
+			return
+		}
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not create owner"})
 		return
 	}

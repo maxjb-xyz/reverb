@@ -55,7 +55,7 @@ func TestSetupThenProtectedAccess(t *testing.T) {
 
 	// complete setup → expect a session cookie
 	rec = httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/setup/admin", bytes.NewBufferString(`{"username":"owner","password":"pw"}`))
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/setup/admin", bytes.NewBufferString(`{"username":"owner","password":"pw123456"}`))
 	h.ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("setup admin = %d %s", rec.Code, rec.Body.String())
@@ -90,8 +90,8 @@ func TestSetupThenProtectedAccess(t *testing.T) {
 
 func TestLoginWithUsernameAndMe(t *testing.T) {
 	srv := newTestServer(t) // existing helper; ensure its store is seeded (EnsureSeed)
-	mustSetupOwner(t, srv, "owner", "pw12345")
-	tok := mustLogin(t, srv, "owner", "pw12345")
+	mustSetupOwner(t, srv, "owner", "pw123456")
+	tok := mustLogin(t, srv, "owner", "pw123456")
 	rr := doGET(t, srv, "/api/v1/me", tok)
 	if rr.Code != 200 {
 		t.Fatalf("me = %d", rr.Code)
@@ -109,7 +109,7 @@ func TestLoginWithUsernameAndMe(t *testing.T) {
 
 func TestProtectedRouteRejectsNoSession(t *testing.T) {
 	srv := newTestServer(t)
-	mustSetupOwner(t, srv, "owner", "pw12345")
+	mustSetupOwner(t, srv, "owner", "pw123456")
 	rr := doGET(t, srv, "/api/v1/me", "")
 	if rr.Code != 401 {
 		t.Fatalf("want 401, got %d", rr.Code)

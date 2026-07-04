@@ -149,7 +149,7 @@ func stubLibTestServer(t *testing.T, lib library.LibraryAdapter) (*Server, *http
 	if err := authSvc.EnsureSeed(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	uid, err := authSvc.SetupOwner(context.Background(), "owner", "pw")
+	uid, err := authSvc.SetupOwner(context.Background(), "owner", "pw123456")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -239,7 +239,7 @@ func stubLibTestServerWithResolver(t *testing.T, lib library.LibraryAdapter, res
 	if err := authSvc.EnsureSeed(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	uid, err := authSvc.SetupOwner(context.Background(), "owner", "pw")
+	uid, err := authSvc.SetupOwner(context.Background(), "owner", "pw123456")
 	if err != nil {
 		t.Fatal(err)
 	}

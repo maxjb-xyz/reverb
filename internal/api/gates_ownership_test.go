@@ -19,8 +19,8 @@ import (
 // the capability gate runs before the handler (no Manager needed).
 func TestDownloadRequiresCapability(t *testing.T) {
 	srv := newTestServer(t)
-	mustSetupOwner(t, srv, "owner", "pw12345")
-	otok := mustLogin(t, srv, "owner", "pw12345")
+	mustSetupOwner(t, srv, "owner", "pw123456")
+	otok := mustLogin(t, srv, "owner", "pw123456")
 	doPOST(t, srv, "/api/v1/users", otok, `{"username":"req","password":"reqpw123","roleId":"role-requester"}`)
 	rtok := mustLogin(t, srv, "req", "reqpw123")
 	// requester lacks auto_approve → must 403
@@ -64,8 +64,8 @@ func realSyncServer(t *testing.T) *Server {
 // in another user's (the owner's) GET /playlists list.
 func TestPlaylistsScopedToOwner(t *testing.T) {
 	srv := realSyncServer(t)
-	mustSetupOwner(t, srv, "owner", "pw12345")
-	otok := mustLogin(t, srv, "owner", "pw12345")
+	mustSetupOwner(t, srv, "owner", "pw123456")
+	otok := mustLogin(t, srv, "owner", "pw123456")
 	doPOST(t, srv, "/api/v1/users", otok, `{"username":"bob","password":"bobpw123","roleId":"role-user"}`)
 	btok := mustLogin(t, srv, "bob", "bobpw123")
 	// bob creates a playlist

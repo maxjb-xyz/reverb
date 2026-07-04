@@ -17,8 +17,8 @@ import (
 // and returns a logged-in session token for the requester.
 func setupRequesterSession(t *testing.T, srv *Server) (ownerTok, requesterTok string) {
 	t.Helper()
-	mustSetupOwner(t, srv, "owner", "pw12345")
-	ownerTok = mustLogin(t, srv, "owner", "pw12345")
+	mustSetupOwner(t, srv, "owner", "pw123456")
+	ownerTok = mustLogin(t, srv, "owner", "pw123456")
 	doPOST(t, srv, "/api/v1/users", ownerTok, `{"username":"req","password":"reqpw123","roleId":"role-requester"}`)
 	requesterTok = mustLogin(t, srv, "req", "reqpw123")
 	return ownerTok, requesterTok

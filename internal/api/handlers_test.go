@@ -9,8 +9,8 @@ import (
 
 func TestMeIncludesCreatedAt(t *testing.T) {
 	srv := newTestServer(t)
-	mustSetupOwner(t, srv, "owner", "pw12345")
-	tok := mustLogin(t, srv, "owner", "pw12345")
+	mustSetupOwner(t, srv, "owner", "pw123456")
+	tok := mustLogin(t, srv, "owner", "pw123456")
 	rr := doGET(t, srv, "/api/v1/me", tok)
 	if rr.Code != 200 {
 		t.Fatalf("GET /me = %d (%s)", rr.Code, rr.Body)

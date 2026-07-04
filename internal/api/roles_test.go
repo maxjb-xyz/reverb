@@ -7,8 +7,8 @@ import (
 
 func TestRolesCrudAndProtection(t *testing.T) {
 	srv := newTestServer(t)
-	mustSetupOwner(t, srv, "owner", "pw12345")
-	tok := mustLogin(t, srv, "owner", "pw12345")
+	mustSetupOwner(t, srv, "owner", "pw123456")
+	tok := mustLogin(t, srv, "owner", "pw123456")
 
 	// create custom role (using current valid cap keys)
 	rr := doPOST(t, srv, "/api/v1/roles", tok, `{"name":"DJ","capabilities":["can_create_playlists","auto_approve"]}`)
@@ -32,8 +32,8 @@ func TestRolesCrudAndProtection(t *testing.T) {
 
 func TestDefaultRolesAreEditable(t *testing.T) {
 	srv := newTestServer(t)
-	mustSetupOwner(t, srv, "owner", "pw12345")
-	tok := mustLogin(t, srv, "owner", "pw12345")
+	mustSetupOwner(t, srv, "owner", "pw123456")
+	tok := mustLogin(t, srv, "owner", "pw123456")
 	// rename + retag a SYSTEM role (was 409 before) — now allowed
 	rr := doPATCH(t, srv, "/api/v1/roles/role-user", tok, `{"name":"Member","capabilities":["request","can_create_playlists"]}`)
 	if rr.Code != 200 {
@@ -43,8 +43,8 @@ func TestDefaultRolesAreEditable(t *testing.T) {
 
 func TestAutoApproveImpliesRequest(t *testing.T) {
 	srv := newTestServer(t)
-	mustSetupOwner(t, srv, "owner", "pw12345")
-	tok := mustLogin(t, srv, "owner", "pw12345")
+	mustSetupOwner(t, srv, "owner", "pw123456")
+	tok := mustLogin(t, srv, "owner", "pw123456")
 	doPOST(t, srv, "/api/v1/roles", tok, `{"name":"DJ","capabilities":["auto_approve"]}`)
 	rr := doGET(t, srv, "/api/v1/roles", tok)
 	var roles []struct {
@@ -80,8 +80,8 @@ func TestAutoApproveImpliesRequest(t *testing.T) {
 
 func TestAntiLockout(t *testing.T) {
 	srv := newTestServer(t)
-	mustSetupOwner(t, srv, "owner", "pw12345")
-	tok := mustLogin(t, srv, "owner", "pw12345")
+	mustSetupOwner(t, srv, "owner", "pw123456")
+	tok := mustLogin(t, srv, "owner", "pw123456")
 	// owner is the only admin; removing is_admin from the Admin role must 409
 	rr := doPATCH(t, srv, "/api/v1/roles/role-admin", tok, `{"name":"Admin","capabilities":["can_manage_users","can_manage_library","request","auto_approve","can_create_playlists"]}`)
 	if rr.Code != 409 {
@@ -91,8 +91,8 @@ func TestAntiLockout(t *testing.T) {
 
 func TestCapabilitiesMetadata(t *testing.T) {
 	srv := newTestServer(t)
-	mustSetupOwner(t, srv, "owner", "pw12345")
-	tok := mustLogin(t, srv, "owner", "pw12345")
+	mustSetupOwner(t, srv, "owner", "pw123456")
+	tok := mustLogin(t, srv, "owner", "pw123456")
 	rr := doGET(t, srv, "/api/v1/capabilities", tok)
 	var caps []struct{ Key, Label string }
 	json.Unmarshal(rr.Body.Bytes(), &caps)
@@ -103,8 +103,8 @@ func TestCapabilitiesMetadata(t *testing.T) {
 
 func TestUpdateRoleEmptyNameReturns400(t *testing.T) {
 	srv := newTestServer(t)
-	mustSetupOwner(t, srv, "owner", "pw12345")
-	tok := mustLogin(t, srv, "owner", "pw12345")
+	mustSetupOwner(t, srv, "owner", "pw123456")
+	tok := mustLogin(t, srv, "owner", "pw123456")
 
 	// Create a custom role first
 	rr := doPOST(t, srv, "/api/v1/roles", tok, `{"name":"DJ","capabilities":["can_create_playlists"]}`)

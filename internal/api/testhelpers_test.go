@@ -85,7 +85,7 @@ func seededAuthToken(t *testing.T, st *store.Store) (*auth.Service, string) {
 	if err := authSvc.EnsureSeed(ctx); err != nil {
 		t.Fatal(err)
 	}
-	uid, err := authSvc.SetupOwner(ctx, "owner", "pw")
+	uid, err := authSvc.SetupOwner(ctx, "owner", "pw123456")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -232,8 +232,8 @@ func TestSyncedListReturns(t *testing.T) {
 	// Use a real sync server so that created playlists are persisted to the DB
 	// and owner-scoped listing works correctly.
 	srv := realSyncServer(t)
-	mustSetupOwner(t, srv, "owner", "pw12345")
-	otok := mustLogin(t, srv, "owner", "pw12345")
+	mustSetupOwner(t, srv, "owner", "pw123456")
+	otok := mustLogin(t, srv, "owner", "pw123456")
 
 	// Fresh DB: list must be empty.
 	rr := doGET(t, srv, "/api/v1/playlists", otok)

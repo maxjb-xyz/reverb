@@ -108,7 +108,7 @@ func TestListNotificationsDoesNotReturnOtherUsersData(t *testing.T) {
 	ctx := context.Background()
 
 	// Create a second user.
-	otherID, err := authSvc.CreateUser(ctx, "other", "pw", "role-requester")
+	otherID, err := authSvc.CreateUser(ctx, "other", "pw123456", "role-requester")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -243,7 +243,7 @@ func TestMarkReadDoesNotAffectOtherUser(t *testing.T) {
 	ctx := context.Background()
 
 	// Create a second user.
-	otherID, err := authSvc.CreateUser(ctx, "other3", "pw", "role-requester")
+	otherID, err := authSvc.CreateUser(ctx, "other3", "pw123456", "role-requester")
 	if err != nil {
 		t.Fatal(err)
 	}
