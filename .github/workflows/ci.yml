@@ -44,6 +44,7 @@ jobs:
         with: { node-version: '22' }
       - run: npm ci
       - run: npx tsc --noEmit
+      - run: npm run lint
       - run: npm run test
       - run: npm run build
   docker:
