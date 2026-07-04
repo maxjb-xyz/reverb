@@ -72,6 +72,9 @@ music.example.com {
 Caddy obtains/renews certificates automatically and proxies WebSockets out of
 the box.
 
+> **Note:** Caddy sets `X-Forwarded-Proto` automatically. With nginx (below) you
+> must set it yourself — the config already does.
+
 ### nginx
 
 ```nginx
@@ -93,13 +96,32 @@ server {
 }
 ```
 
+## Security / exposing to the internet
+
+Before you expose Reverb beyond a trusted LAN:
+
+- **Put a TLS-terminating reverse proxy in front of it.** Reverb serves plain HTTP
+  and relies on a same-origin session cookie; never expose port 8090 directly.
+- **The proxy must set/overwrite `X-Forwarded-Proto`** so Reverb knows the original
+  request was HTTPS. Caddy does this automatically; the nginx config above sets it
+  explicitly (`proxy_set_header X-Forwarded-Proto $scheme;`).
+- **Unset `REVERB_ADMIN_PASSWORD` after first boot.** It is read only on first run
+  to seed the admin account and is ignored afterward — leaving it set just keeps a
+  plaintext password in your environment.
+- Keep the data volume sensitive — see [Secrets at rest](#secrets-at-rest).
+
 ## Backups
 
-- The `reverb-data` volume holds the SQLite database (`/data/reverb.db`) plus app
-  state — the only stateful Reverb data worth backing up.
-- Your `./music` folder holds the downloaded audio (managed by your library server).
+In the default `docker-compose.yml` setup the database does **not** live in a host
+`./data` directory — it lives inside the **`reverb-data` named Docker volume**
+(mounted at `/data`). Back up:
 
-Copy the DB out of the named volume (cold copy is simplest):
+- The `reverb-data` named volume — holds the SQLite database (`/data/reverb.db`)
+  plus app state. This is the only stateful Reverb data worth backing up.
+- Your `./music` folder — holds the downloaded audio (managed by your library
+  server).
+
+**Named volume (default):** copy the DB out of the volume. A cold copy is simplest:
 
 ```bash
 docker compose stop reverb
@@ -109,7 +131,22 @@ docker compose start reverb
 ```
 
 (The volume is `<project>_reverb-data` — `reverb_reverb-data` when the compose
-directory is `reverb`; run `docker volume ls` to confirm.)
+directory is `reverb`; run `docker volume ls` to confirm.) You can also
+`docker cp reverb:/data/reverb.db ./reverb-$(date +%F).db` against a running
+container, though a stopped-container copy is safest for SQLite.
+
+**Bind-mount alternative:** if you changed `docker-compose.yml` to bind-mount the
+data dir instead (e.g. `- ./data:/data`), then the DB really is at host
+`./data/reverb.db` and you can back it up with a plain file copy while the
+container is stopped.
+
+### Secrets at rest
+
+Adapter credentials (Spotify Client Secret, Subsonic/Navidrome password, Lidarr
+API key) and the bundled-Navidrome admin password are currently stored
+**unencrypted** in the SQLite database. Treat the data volume (and any DB backups
+you copy out) as **sensitive**: restrict file permissions, keep backups off shared
+storage, and don't commit them anywhere.
 
 ## Upgrades
 
@@ -121,12 +158,14 @@ docker compose up -d      # recreate the container
 Building from source instead? Use `git pull && docker compose build && docker
 compose up -d` (with the compose `build:` block uncommented).
 
-Reverb runs SQLite migrations automatically on startup. Back up `./data/reverb.db`
-before a major upgrade.
+Reverb runs SQLite migrations automatically on startup. Back up the database
+before a major upgrade (see [Backups](#backups) — by default it lives in the
+`reverb-data` named volume, not a host `./data` dir).
 
 ## spotDL version pin
 
-The image pins `spotdl==4.2.11`. spotDL's stdout formatting is fragile and
+The image pins `spotdl==4.5.0` (via the `SPOTDL_VERSION` build arg in the
+Dockerfile). spotDL's stdout formatting is fragile and
 Reverb parses download progress with the regex `(\d{1,3})\s*%`
 (`internal/download/spotdl/adapter.go`). **Bumping the spotDL pin requires
 re-validating that regex against the new output format** before shipping —

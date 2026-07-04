@@ -35,8 +35,15 @@ React/TypeScript SPA.
 
 ## Screenshots
 
-<!-- TODO: add screenshots of Search Everywhere, a download in progress, and the player. -->
-_Screenshots coming soon._
+![Search Everywhere](docs/screenshots/search-everywhere.png)
+_Search Everywhere — one box spans your library and online sources, with live
+per-source streaming and library matching._
+
+![A download in progress](docs/screenshots/download-in-progress.png)
+_A one-click spotDL download in progress, with live WebSocket progress._
+
+![The player](docs/screenshots/player.png)
+_The web player — queue, shuffle, repeat, seek, and keyboard shortcuts._
 
 ## Quick start (Docker Compose)
 
@@ -87,23 +94,37 @@ Reverb is configured by flags, environment variables, and the in-app Settings UI
 | `--port` | `8090` | HTTP listen port |
 | `--db` | `./data/reverb.db` | SQLite database path |
 | `--dev` | `false` | Dev mode (proxies the Vite dev server) |
-| `--log-level` | `info` | Log level |
 
 ### Environment variables
 
 | Variable | Description |
 | --- | --- |
-| `REVERB_PORT` | HTTP listen port (same as `--port`) |
+| `REVERB_PORT` | HTTP listen port (same as `--port`); defaults to `8090` |
 | `REVERB_DB` | SQLite path (same as `--db`); the Docker image defaults this to `/data/reverb.db` |
 | `REVERB_DEV=1` | Enable dev mode |
-| `REVERB_ADMIN_PASSWORD` | Seed the admin password on first run (if setup not yet complete) |
-| `REVERB_AUTH_DISABLED=1` (or `true`) | Disable auth entirely — **trusted LAN only**, all routes become unauthenticated |
+| `REVERB_DOWNLOAD_DIR` | Directory spotDL downloads into **and** the folder the bundled Navidrome serves. The Docker image defaults this to `/music` |
+| `REVERB_ADMIN_PASSWORD` | Seed the admin password on first run only (ignored once setup is complete). **Unset it after first boot.** |
+| `REVERB_SPOTIFY_CLIENT_ID` | Spotify app Client ID (alternative to setting it in the Settings UI) |
 | `REVERB_SPOTIFY_CLIENT_SECRET` | Spotify search adapter Client Secret (overrides stored config) |
 | `REVERB_LIBRARY_PASSWORD` | Subsonic/Navidrome library adapter password (overrides stored config) |
+| `REVERB_SPOTDL_PATH` | Path to the spotDL binary. Defaults to the bundled one; rarely needed |
+| `REVERB_NAVIDROME_BIN` | Path to the Navidrome binary for bundled library mode. Defaults to the bundled one; rarely needed |
 
 Secrets (`REVERB_*_SECRET`, `REVERB_*_PASSWORD`, `REVERB_ADMIN_PASSWORD`) should be
 provided via environment / `.env` only — never committed. `.env` is gitignored;
-`.env.example` is the committed template.
+`.env.example` is the committed template. `REVERB_ADMIN_PASSWORD` is read **only on
+first run** to seed the admin account; once setup is complete it is ignored, so
+unset it after the first boot rather than leaving a plaintext password in your
+environment.
+
+### Exposing Reverb to the internet
+
+Reverb serves plain HTTP and relies on a same-origin session cookie. Before you
+expose it beyond a trusted LAN, put it behind a **TLS-terminating reverse proxy**
+(Caddy, nginx, Traefik, …). The proxy MUST set/overwrite the `X-Forwarded-Proto`
+header so Reverb can tell that the original request was HTTPS. See
+[docs/deployment.md](docs/deployment.md#reverse-proxy--tls) for ready-to-use
+Caddy and nginx configs.
 
 ### First-run wizard
 
