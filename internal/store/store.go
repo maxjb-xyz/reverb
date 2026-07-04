@@ -5,9 +5,11 @@ import (
 	"database/sql"
 	"embed"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 
 	"github.com/maxjb-xyz/reverb/internal/store/db"
@@ -21,8 +23,9 @@ var migrationFS embed.FS
 var migrateMu sync.Mutex
 
 type Store struct {
-	sql *sql.DB
-	q   *db.Queries
+	sql  *sql.DB
+	q    *db.Queries
+	path string
 }
 
 func Open(path string) (*Store, error) {
@@ -35,7 +38,7 @@ func Open(path string) (*Store, error) {
 	if err != nil {
 		return nil, fmt.Errorf("open sqlite: %w", err)
 	}
-	return &Store{sql: conn, q: db.New(conn)}, nil
+	return &Store{sql: conn, q: db.New(conn), path: path}, nil
 }
 
 func (s *Store) Migrate() error {
@@ -45,7 +48,60 @@ func (s *Store) Migrate() error {
 	if err := goose.SetDialect("sqlite"); err != nil {
 		return err
 	}
+	s.backupBeforePendingMigrations()
 	return goose.Up(s.sql, "migrations")
+}
+
+// backupBeforePendingMigrations snapshots the database to a sibling
+// `<db>.pre-migrate-v<N>.bak` file when a schema upgrade is about to run against
+// an existing, non-empty database — so a failed or unwanted migration is
+// recoverable by copying the snapshot back. It is best-effort: a backup failure
+// logs a warning and does NOT abort startup, since a transient copy error must
+// not brick the container in a crash loop.
+func (s *Store) backupBeforePendingMigrations() {
+	if s.path == "" || s.path == ":memory:" {
+		return
+	}
+	cur, err := goose.GetDBVersion(s.sql)
+	if err != nil || cur <= 0 {
+		return // fresh DB (no goose table yet) or empty — nothing worth preserving
+	}
+	if latestMigrationVersion() <= cur {
+		return // already current — goose.Up will be a no-op
+	}
+	backup := fmt.Sprintf("%s.pre-migrate-v%d.bak", s.path, cur)
+	_ = os.Remove(backup) // VACUUM INTO requires the target file not to exist
+	quoted := strings.ReplaceAll(backup, "'", "''")
+	if _, err := s.sql.Exec("VACUUM INTO '" + quoted + "'"); err != nil {
+		log.Printf("WARNING: pre-migration DB backup to %s failed: %v (continuing)", backup, err)
+		return
+	}
+	log.Printf("pre-migration DB backup written: %s (schema v%d, upgrading)", backup, cur)
+}
+
+// latestMigrationVersion returns the highest numeric prefix among the embedded
+// migration files (e.g. 22 for `0022_download_job_canonical.sql`), or 0 if none.
+func latestMigrationVersion() int64 {
+	entries, err := migrationFS.ReadDir("migrations")
+	if err != nil {
+		return 0
+	}
+	var max int64
+	for _, e := range entries {
+		name := e.Name()
+		if !strings.HasSuffix(name, ".sql") {
+			continue
+		}
+		idx := strings.IndexByte(name, '_')
+		if idx <= 0 {
+			continue
+		}
+		v, perr := strconv.ParseInt(name[:idx], 10, 64)
+		if perr == nil && v > max {
+			max = v
+		}
+	}
+	return max
 }
 
 func (s *Store) Q() *db.Queries   { return s.q }

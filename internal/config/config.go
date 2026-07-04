@@ -10,14 +10,13 @@ type Config struct {
 	Port          int
 	DBPath        string
 	Dev           bool
-	LogLevel      string
 	AdminPassword string
 	AuthDisabled  bool
 }
 
 // Load resolves config: flags win over env, env wins over defaults.
 func Load(args []string, getenv func(string) string) (Config, error) {
-	c := Config{Port: 8090, DBPath: "./data/reverb.db", LogLevel: "info"}
+	c := Config{Port: 8090, DBPath: "./data/reverb.db"}
 
 	if v := getenv("REVERB_PORT"); v != "" {
 		if p, err := strconv.Atoi(v); err == nil {
@@ -40,7 +39,6 @@ func Load(args []string, getenv func(string) string) (Config, error) {
 	fs.IntVar(&c.Port, "port", c.Port, "HTTP port")
 	fs.StringVar(&c.DBPath, "db", c.DBPath, "SQLite path")
 	fs.BoolVar(&c.Dev, "dev", c.Dev, "dev mode (proxy Vite)")
-	fs.StringVar(&c.LogLevel, "log-level", c.LogLevel, "log level")
 	if err := fs.Parse(args); err != nil {
 		return Config{}, err
 	}
