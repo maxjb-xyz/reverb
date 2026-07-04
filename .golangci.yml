@@ -1,0 +1,39 @@
+version: "2"
+
+run:
+  timeout: 5m
+
+linters:
+  default: none
+  enable:
+    - errcheck
+    - govet
+    - ineffassign
+    - misspell
+    - staticcheck
+    - unconvert
+  settings:
+    staticcheck:
+      checks:
+        - all
+        # Stylistic quick-fix / style suggestions, not correctness issues.
+        - -QF1001 # apply De Morgan's law
+        - -QF1003 # convert if/else-if chain to tagged switch
+        - -ST1000 # package comment format
+        - -ST1003 # initialism casing (CoverUrl vs CoverURL) — pervasive existing naming
+    errcheck:
+      # Ignoring the error from a deferred Close on a read side is idiomatic Go.
+      exclude-functions:
+        - (io.Closer).Close
+        - (io.ReadCloser).Close
+        - (*os.File).Close
+        - (*github.com/coder/websocket.Conn).Close
+        - (*github.com/maxjb-xyz/reverb/internal/store.Store).Close
+  exclusions:
+    rules:
+      # Test code legitimately ignores errors from setup/teardown helpers and
+      # contains harmless explicit conversions for readability.
+      - path: _test\.go
+        linters:
+          - errcheck
+          - unconvert

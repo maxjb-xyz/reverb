@@ -11,7 +11,7 @@ COPY web/ ./
 RUN npm run build
 
 # ---------- Stage 2: build the Go binary with the SPA embedded ----------
-FROM golang:1.23 AS gobuild
+FROM golang:1.26 AS gobuild
 ARG VERSION=dev
 WORKDIR /src
 # Module cache layer.
@@ -48,12 +48,22 @@ COPY --from=denoland/deno:bin /deno /usr/local/bin/deno
 # between spotDL releases. Progress parsing degrades gracefully, so a spotDL
 # output-format drift just falls back to an indeterminate spinner (never breaks).
 ARG SPOTDL_VERSION=4.5.0
+# yt-dlp floats by default (it goes stale between spotDL releases and a stale
+# yt-dlp is the usual cause of "downloads stuck at 0%"). For a fully reproducible
+# image, pass --build-arg YTDLP_VERSION=<version> to pin it.
+ARG YTDLP_VERSION=
 RUN pip install --no-cache-dir "spotdl==${SPOTDL_VERSION}" \
- && pip install --no-cache-dir --upgrade yt-dlp
+ && if [ -n "${YTDLP_VERSION}" ]; then \
+        pip install --no-cache-dir "yt-dlp==${YTDLP_VERSION}"; \
+    else \
+        pip install --no-cache-dir --upgrade yt-dlp; \
+    fi
 COPY --from=gobuild /out/reverb /usr/local/bin/reverb
 # --- Bundled Navidrome (GPL-3.0, shipped unmodified as a separate process) ---
-# TARGETARCH is set automatically by buildx; for a plain 'docker build' pass --build-arg TARGETARCH=amd64|arm64.
-ARG TARGETARCH
+# TARGETARCH is set automatically by buildx per target platform. The =amd64
+# default only applies to a plain (non-buildx) 'docker build', so the from-source
+# path works out of the box on x86; arm builders pass --build-arg TARGETARCH=arm64.
+ARG TARGETARCH=amd64
 ARG NAVIDROME_VERSION=0.62.0
 RUN apt-get update \
  && apt-get install -y --no-install-recommends tini wget ca-certificates \
@@ -78,5 +88,10 @@ ENV REVERB_DB=/data/reverb.db
 ENV REVERB_DOWNLOAD_DIR=/music
 VOLUME ["/data"]
 EXPOSE 8090
+# Liveness probe: the public health endpoint responds as soon as the HTTP server
+# is listening, so `restart: unless-stopped` can recover a wedged (but not
+# crashed) process. Honors REVERB_PORT if overridden.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+  CMD wget -qO- "http://127.0.0.1:${REVERB_PORT:-8090}/api/v1/health" >/dev/null 2>&1 || exit 1
 USER reverb
 ENTRYPOINT ["/usr/bin/tini", "--", "reverb"]
