@@ -32,6 +32,26 @@ var progressRe = regexp.MustCompile(`(\d{1,3})\s*%`)
 // though the process exits 0 (per-song failures don't change the exit code).
 var failureRe = regexp.MustCompile(`AudioProviderError|YT-DLP download error|LookupError|DownloaderError`)
 
+// explainFailure turns a raw spotDL failure marker into a human-readable reason
+// plus an optional operator hint. Because we run spotDL with --simple-tui it emits
+// only a terse marker (e.g. "AudioProviderError: YT-DLP download error -") with no
+// underlying detail, so classifying the marker is more useful than surfacing the
+// bare line — a stale bundled yt-dlp is by far the most common cause of the
+// YouTube/audio-provider failure, and it is fixable.
+func explainFailure(raw string) (reason, hint string) {
+	raw = strings.TrimSpace(raw)
+	low := strings.ToLower(raw)
+	switch {
+	case strings.Contains(low, "yt-dlp download error"), strings.Contains(low, "audioprovidererror"):
+		return "YouTube download failed (yt-dlp): the bundled yt-dlp is likely out of date, or the track is unavailable or region-locked",
+			"if downloads are failing across the board, update yt-dlp — rebuild the image, or run 'pip install --upgrade yt-dlp' inside the container"
+	case strings.Contains(low, "lookuperror"):
+		return "track not found on the audio source", ""
+	default:
+		return raw, ""
+	}
+}
+
 // stageProgress maps spotDL's --simple-tui STAGE labels to coarse progress. When
 // piped, spotDL prints stages ("...: Downloading", "...: Embedding metadata",
 // "...: Done") rather than a percentage, so there is no per-% to parse — these
@@ -297,8 +317,12 @@ func (a *Adapter) Start(ctx context.Context, req core.DownloadRequest, onProgres
 		return "", fmt.Errorf("spotdl download %q: %w", query, rerr)
 	}
 	if failure != "" {
+		reason, hint := explainFailure(failure)
 		log.Printf("spotdl: %q failed: %s", query, failure)
-		return "", fmt.Errorf("spotdl download %q: %s", query, failure)
+		if hint != "" {
+			log.Printf("spotdl: hint — %s", hint)
+		}
+		return "", fmt.Errorf("spotdl download %q: %s", query, reason)
 	}
 	if !sawProgress {
 		onProgress(-1) // indeterminate: spotDL gave no parseable percentage

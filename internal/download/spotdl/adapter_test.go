@@ -302,6 +302,76 @@ func TestStartTreatsAudioErrorAsFailure(t *testing.T) {
 	}
 }
 
+func TestExplainFailure(t *testing.T) {
+	cases := []struct {
+		name       string
+		raw        string
+		wantReason []string // lowercased substrings the reason must contain
+		wantHint   bool
+	}{
+		{
+			name:       "yt-dlp download error",
+			raw:        "AudioProviderError: YT-DLP download error - https://music.youtube.com/watch?v=x",
+			wantReason: []string{"yt-dlp", "out of date"},
+			wantHint:   true,
+		},
+		{
+			name:       "bare audio provider error",
+			raw:        "AudioProviderError: something went wrong",
+			wantReason: []string{"yt-dlp"},
+			wantHint:   true,
+		},
+		{
+			name:       "lookup error is not found, not staleness",
+			raw:        "LookupError: no results found for song: A - T",
+			wantReason: []string{"not found"},
+			wantHint:   false,
+		},
+		{
+			name:       "unknown failure passes through unchanged",
+			raw:        "DownloaderError: No space left on device",
+			wantReason: []string{"no space left on device"},
+			wantHint:   false,
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			reason, hint := explainFailure(c.raw)
+			low := strings.ToLower(reason)
+			for _, want := range c.wantReason {
+				if !strings.Contains(low, want) {
+					t.Errorf("reason %q missing %q", reason, want)
+				}
+			}
+			if c.wantHint && hint == "" {
+				t.Error("expected an operator hint for a yt-dlp failure, got none")
+			}
+			if !c.wantHint && hint != "" {
+				t.Errorf("expected no hint, got %q", hint)
+			}
+		})
+	}
+}
+
+// TestStartSurfacesActionableYtDlpError asserts the error a failed download
+// returns is the classified, actionable reason — not the terse "YT-DLP download
+// error -" marker that --simple-tui emits.
+func TestStartSurfacesActionableYtDlpError(t *testing.T) {
+	r := &fakeRunner{lines: []string{
+		`Processing query: A - T`,
+		`AudioProviderError: YT-DLP download error - https://music.youtube.com/watch?v=x`,
+	}}
+	a := newAdapter(t, r)
+	_, err := a.Start(context.Background(), core.DownloadRequest{Artist: "A", Title: "T"}, func(int) {})
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	low := strings.ToLower(err.Error())
+	if !strings.Contains(low, "yt-dlp") || !strings.Contains(low, "out of date") {
+		t.Fatalf("error should be actionable about stale yt-dlp, got: %v", err)
+	}
+}
+
 func TestStartIncludesYouTubeFallbackProvider(t *testing.T) {
 	// --audio youtube-music youtube must always be present so tracks absent from
 	// YT-Music (obscure/regional/classical releases) can still be found on YouTube.
