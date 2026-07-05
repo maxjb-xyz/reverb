@@ -48,16 +48,15 @@ COPY --from=denoland/deno:bin /deno /usr/local/bin/deno
 # between spotDL releases. Progress parsing degrades gracefully, so a spotDL
 # output-format drift just falls back to an indeterminate spinner (never breaks).
 ARG SPOTDL_VERSION=4.5.0
-# yt-dlp floats by default (it goes stale between spotDL releases and a stale
-# yt-dlp is the usual cause of "downloads stuck at 0%"). For a fully reproducible
-# image, pass --build-arg YTDLP_VERSION=<version> to pin it.
-ARG YTDLP_VERSION=
+# spotDL is pinned for reproducibility, but yt-dlp is DELIBERATELY NOT pinnable:
+# YouTube changes its signature/nsig scheme constantly, so a frozen yt-dlp goes
+# stale within weeks and every download then fails with a bare "YT-DLP download
+# error". Always install the latest at build time. NOTE: this only refreshes
+# yt-dlp when the IMAGE is built — a long-running container still ages, so rebuild
+# periodically (or `docker compose exec -u root reverb pip install --upgrade yt-dlp`
+# to unstick a running one).
 RUN pip install --no-cache-dir "spotdl==${SPOTDL_VERSION}" \
- && if [ -n "${YTDLP_VERSION}" ]; then \
-        pip install --no-cache-dir "yt-dlp==${YTDLP_VERSION}"; \
-    else \
-        pip install --no-cache-dir --upgrade yt-dlp; \
-    fi
+ && pip install --no-cache-dir --upgrade yt-dlp
 COPY --from=gobuild /out/reverb /usr/local/bin/reverb
 # --- Bundled Navidrome (GPL-3.0, shipped unmodified as a separate process) ---
 # TARGETARCH is set automatically by buildx per target platform. The =amd64
