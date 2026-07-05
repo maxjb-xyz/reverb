@@ -1,4 +1,18 @@
-# Reverb
+<p align="center">
+  <img src="web/public/logo.png" alt="Reverb" width="120" />
+</p>
+
+<h1 align="center">Reverb</h1>
+<p align="center">
+  Self-hosted music, done right.<br/>
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/Go-1.26-00798A?logo=go&logoColor=white" />
+  <img src="https://img.shields.io/badge/React-19-149ECA?logo=react&logoColor=white" />
+  <img src="https://img.shields.io/badge/Docker-ready-0B5EA8?logo=docker&logoColor=white" />
+  <img src="https://img.shields.io/badge/license-AGPL_v3-A00000" />
+</p>
 
 **Reverb** is a self-hosted music app that unifies your existing music library, the
 broader catalog you can search online, and one-click downloading — in a single
@@ -7,6 +21,18 @@ React/TypeScript SPA.
 
 > Reverb is for personal use with music you have the legal right to download. See
 > [Legal & ethical use](#legal--ethical-use).
+
+## Screenshots
+
+![Search Everywhere](docs/screenshots/search-everywhere.png)
+_Search Everywhere — one box spans your library and online sources, with live
+per-source streaming and library matching._
+
+![A download in progress](docs/screenshots/download-in-progress.png)
+_A one-click spotDL download in progress, with live WebSocket progress._
+
+![The player](docs/screenshots/player.png)
+_The web player — queue, shuffle, repeat, seek, and keyboard shortcuts._
 
 ## The core loop
 
@@ -32,18 +58,6 @@ React/TypeScript SPA.
 - Single static binary, SPA embedded; ships as one Docker image (Python3 +
   ffmpeg + pinned spotDL included).
 - Responsive UI (desktop + mobile).
-
-## Screenshots
-
-![Search Everywhere](docs/screenshots/search-everywhere.png)
-_Search Everywhere — one box spans your library and online sources, with live
-per-source streaming and library matching._
-
-![A download in progress](docs/screenshots/download-in-progress.png)
-_A one-click spotDL download in progress, with live WebSocket progress._
-
-![The player](docs/screenshots/player.png)
-_The web player — queue, shuffle, repeat, seek, and keyboard shortcuts._
 
 ## Quick start (Docker Compose)
 
