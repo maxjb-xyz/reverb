@@ -57,7 +57,8 @@ _The web player — queue, shuffle, repeat, seek, and keyboard shortcuts._
   first-run setup wizard.
 - Single static binary, SPA embedded; ships as one Docker image (Python3 +
   ffmpeg + pinned spotDL included).
-- Responsive UI (desktop + mobile).
+- Responsive UI (desktop + mobile), installable as a PWA with OS media-key /
+  lock-screen playback controls.
 
 ## Quick start (Docker Compose)
 
