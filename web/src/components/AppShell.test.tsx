@@ -11,6 +11,7 @@ import type { Track } from '../lib/types'
 vi.mock('../lib/realtimeWiring', () => ({ useRealtime: () => {} }))
 import { useAlbumPalette } from '../lib/useAlbumPalette'
 vi.mock('../lib/useAlbumPalette', () => ({ useAlbumPalette: vi.fn(() => null) }))
+import * as mediaSession from '../lib/mediaSession'
 
 // Suppress library API fetches in tests
 vi.mock('../lib/libraryApi', async (importOriginal) => {
@@ -117,5 +118,11 @@ describe('AppShell', () => {
     renderShell()
     const root = screen.getByTestId('app-shell-root')
     expect(root.className).toContain('grid-cols-[minmax(0,1fr)]')
+  })
+
+  it('starts the media session bridge on mount', () => {
+    const spy = vi.spyOn(mediaSession, 'startMediaSession').mockReturnValue(() => {})
+    renderShell()
+    expect(spy).toHaveBeenCalledTimes(1)
   })
 })

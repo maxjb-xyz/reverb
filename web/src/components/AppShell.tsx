@@ -17,6 +17,7 @@ import { trackCoverUrl } from '../lib/libraryApi'
 import { rgbToCss } from '../lib/palette'
 import { startPlayTracker } from '../lib/playTracker'
 import { startNowPlaying } from '../lib/nowPlaying'
+import { startMediaSession } from '../lib/mediaSession'
 
 export function AppShell() {
   // One app-wide realtime WS (distinct from the SSE search stream): drives the
@@ -28,6 +29,7 @@ export function AppShell() {
   // up (unsubscribes) when it unmounts.
   useEffect(() => startPlayTracker(engine), [])
   useEffect(() => startNowPlaying(engine), [])
+  useEffect(() => startMediaSession(engine), [])
 
   const current = usePlayer((s) => s.current)
   const rightPanel = useUI((s) => s.rightPanel)
