@@ -8,40 +8,85 @@ on:
 permissions:
   contents: write
   packages: write
+env:
+  GOVULNCHECK_VERSION: v1.6.0
 jobs:
-  # Gate the publish on every CI check so a release can never ship an image whose
-  # source or browser-level checks failed.
-  test:
+  # These gates run independently so a release is validated as quickly as a push.
+  backend:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
-        with: { go-version: '1.26.5' }
+        with: { go-version: '1.26.5', cache: true }
       - run: go vet ./cmd/... ./internal/...
       - run: go test -race ./cmd/... ./internal/... -count=1
+
+  static-analysis:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: { go-version: '1.26.5', cache: true }
+      - name: Cache golangci-lint
+        id: golangci-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/go/bin/golangci-lint
+          key: ${{ runner.os }}-golangci-lint-v2.12.2
       - name: golangci-lint
         run: |
-          go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2
+          if [ "${{ steps.golangci-cache.outputs.cache-hit }}" != "true" ]; then
+            go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2
+          fi
           golangci-lint run ./cmd/... ./internal/...
-      - name: Check reachable Go vulnerabilities
-        run: |
-          go install golang.org/x/vuln/cmd/govulncheck@latest
-          govulncheck ./...
+      - name: Cache govulncheck
+        id: govulncheck-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/go/bin/govulncheck
+          key: ${{ runner.os }}-govulncheck-${{ env.GOVULNCHECK_VERSION }}
+      - name: Install govulncheck
+        if: steps.govulncheck-cache.outputs.cache-hit != 'true'
+        run: go install golang.org/x/vuln/cmd/govulncheck@${{ env.GOVULNCHECK_VERSION }}
+      - run: govulncheck ./...
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: web } }
+    steps:
+      - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with: { node-version: '22' }
-      - name: Frontend build + tests
-        working-directory: web
-        run: |
-          npm ci
-          npx tsc --noEmit
-          npm run lint
-          npm run test
-          npm run build
-          npx playwright install --with-deps chromium
-          npm run e2e
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+      - run: npx tsc --noEmit
+      - run: npm run lint
+      - run: npm run test
+      - run: npm run build
+
+  e2e:
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: web } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('web/package-lock.json') }}
+      - run: npx playwright install --with-deps chromium
+      - run: npm run e2e
 
   docker:
-    needs: test
+    needs: [backend, static-analysis, frontend, e2e]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -67,7 +112,7 @@ jobs:
           docker rm -f reverb-release-check
 
   release:
-    needs: [test, docker]
+    needs: [backend, static-analysis, frontend, e2e, docker]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
