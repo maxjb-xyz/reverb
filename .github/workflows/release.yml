@@ -98,6 +98,9 @@ jobs:
           push: false
           load: true
           tags: reverb:release-check
+          # Populate the shared BuildKit cache before the final multi-arch push.
+          cache-from: type=gha,scope=reverb-image
+          cache-to: type=gha,mode=max,scope=reverb-image
           build-args: |
             VERSION=${{ github.event.release.tag_name }}
       - name: Smoke-test the image
@@ -139,6 +142,10 @@ jobs:
           tags: |
             ghcr.io/${{ github.repository_owner }}/reverb:${{ steps.ver.outputs.version }}
             ghcr.io/${{ github.repository_owner }}/reverb:latest
+          # The amd64 validation build above seeds this cache; the final build
+          # reuses it and retains its arm64 layers for the next release.
+          cache-from: type=gha,scope=reverb-image
+          cache-to: type=gha,mode=max,scope=reverb-image
           build-args: |
             VERSION=${{ steps.ver.outputs.version }}
           provenance: true
