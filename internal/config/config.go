@@ -11,7 +11,6 @@ type Config struct {
 	DBPath        string
 	Dev           bool
 	AdminPassword string
-	AuthDisabled  bool
 }
 
 // Load resolves config: flags win over env, env wins over defaults.
@@ -30,9 +29,6 @@ func Load(args []string, getenv func(string) string) (Config, error) {
 		c.Dev = true
 	}
 	c.AdminPassword = getenv("REVERB_ADMIN_PASSWORD")
-	if v := getenv("REVERB_AUTH_DISABLED"); v == "1" || v == "true" {
-		c.AuthDisabled = true
-	}
 
 	fs := flag.NewFlagSet("reverb", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)

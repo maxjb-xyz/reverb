@@ -71,9 +71,6 @@ func main() {
 			}
 		}
 	}
-	if cfg.AuthDisabled {
-		log.Printf("WARNING: REVERB_AUTH_DISABLED is no longer supported — auth is always enforced; ignoring")
-	}
 	// Seed system roles + registration-policy defaults, and migrate a legacy
 	// single-admin install into an owner account. Idempotent; fail loudly on error.
 	if err := authSvc.EnsureSeed(context.Background()); err != nil {
