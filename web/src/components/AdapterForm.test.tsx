@@ -102,6 +102,13 @@ describe('AdapterForm', () => {
     render(<AdapterForm name="spotify" schema={schema} onSubmit={vi.fn()} />)
     expect(screen.queryByText(/leave blank to keep the current value/i)).not.toBeInTheDocument()
   })
+
+  it('renders and submits with an empty schema (keyless adapter)', async () => {
+    const onSubmit = vi.fn()
+    render(<AdapterForm name="deezer" schema={{ fields: [] }} onSubmit={onSubmit} />)
+    fireEvent.click(screen.getByRole('button', { name: /^save$/i }))
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledWith({}))
+  })
 })
 
 describe('AdapterForm — granularity checkboxes', () => {

@@ -51,7 +51,8 @@ _The web player — queue, shuffle, repeat, seek, and keyboard shortcuts._
   Subsonic/Navidrome server.
 - Gapless-feeling web player with queue, shuffle, repeat, seek, and keyboard
   shortcuts.
-- "Search Everywhere" with live per-source streaming (SSE) and library matching.
+- "Search Everywhere" with live per-source streaming (SSE) and library matching
+  — Deezer works keyless out of the box; add Spotify credentials for its catalog.
 - One-click spotDL downloads with live progress and auto play-when-ready.
 - Pluggable adapters (library / search / downloader) configured in-app, with a
   first-run setup wizard.

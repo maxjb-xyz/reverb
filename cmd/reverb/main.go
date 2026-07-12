@@ -31,6 +31,7 @@ import (
 	"github.com/maxjb-xyz/reverb/internal/resolver"
 	"github.com/maxjb-xyz/reverb/internal/scrobble"
 	"github.com/maxjb-xyz/reverb/internal/scrobble/lastfm"
+	"github.com/maxjb-xyz/reverb/internal/search/deezer"
 	"github.com/maxjb-xyz/reverb/internal/search/spotify"
 	"github.com/maxjb-xyz/reverb/internal/store"
 	"github.com/maxjb-xyz/reverb/internal/store/db"
@@ -88,6 +89,7 @@ func main() {
 	libraryReg.Register("subsonic", func() registry.Plugin { return subsonic.New() })
 	searchReg := registry.NewRegistry("search")
 	searchReg.Register("spotify", func() registry.Plugin { return spotify.New() })
+	searchReg.Register("deezer", func() registry.Plugin { return deezer.New() })
 	downloaderReg := registry.NewRegistry("downloader")
 	downloaderReg.Register("spotdl", func() registry.Plugin { return spotdl.New() })
 	downloaderReg.Register("lidarr", func() registry.Plugin { return lidarr.New() })
