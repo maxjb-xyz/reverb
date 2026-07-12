@@ -56,17 +56,16 @@ const managerMe = {
 
 // ── shared helpers ────────────────────────────────────────────────────────────
 
-// Log in via the real login form and wait for the app shell. We navigate to '/'
-// twice (same pattern as core-loop.spec.ts) so the authed session resolves into
-// the shell.
+// Log in via the real form and wait for its full-page navigation. Waiting for
+// that navigation avoids racing a second page.goto against location.assign('/').
 async function loginAndLand(page: Page, authed: { value: boolean }) {
   await page.goto('/')
   await expect(page.getByRole('heading', { name: 'Welcome back' })).toBeVisible()
   await page.getByLabel('Username').fill('user')
   await page.getByLabel('Password').fill('pw12345')
+  const navigation = page.waitForNavigation({ waitUntil: 'domcontentloaded' })
   await page.getByRole('button', { name: 'Log in' }).click()
-  // The login handler sets authed.value = true; navigate so the /me probe resolves to the authed user.
-  await page.goto('/')
+  await navigation
   await expect(page.getByTestId('app-shell-root')).toBeVisible()
 }
 
@@ -360,11 +359,6 @@ test('regression: track download has a single Download button and no picker popo
   // Load the app shell directly (no login needed — authed is already true).
   await page.goto('/')
   await expect(page.getByTestId('app-shell-root')).toBeVisible()
-
-  // Wait for the initial downloads resync to settle before asserting.
-  await page
-    .waitForResponse((r) => r.url().includes('/api/v1/downloads') && r.request().method() === 'GET')
-    .catch(() => undefined)
 
   await searchEverywhere(page)
 

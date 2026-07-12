@@ -83,6 +83,23 @@ export async function installApiMocks(
   opts: { me?: typeof ownerMe; setupRequired?: boolean } = {},
 ) {
   downloadState.jobs = [] // reset per test
+  // E2E asserts player state, not the browser's codec support. Prevent an empty
+  // mock stream from asynchronously rejecting playback and flipping the engine
+  // back to paused after the UI has handled a play action.
+  await page.addInitScript(() => {
+    Object.defineProperty(HTMLMediaElement.prototype, 'load', {
+      configurable: true,
+      value() {},
+    })
+    Object.defineProperty(HTMLMediaElement.prototype, 'play', {
+      configurable: true,
+      value() { return Promise.resolve() },
+    })
+    Object.defineProperty(HTMLMediaElement.prototype, 'pause', {
+      configurable: true,
+      value() {},
+    })
+  })
   const me = opts.me ?? ownerMe
   const setupRequired = opts.setupRequired ?? false
   await page.route('**/api/v1/setup/status', (route: Route) =>

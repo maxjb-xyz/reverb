@@ -58,11 +58,6 @@ test('artist request-all: "Request all" visible for request-cap user, dialog ope
   await page.goto('/')
   await expect(page.getByTestId('app-shell-root')).toBeVisible()
 
-  // Wait for the initial downloads resync to settle before navigating.
-  await page
-    .waitForResponse((r) => r.url().includes('/api/v1/downloads') && r.request().method() === 'GET')
-    .catch(() => undefined)
-
   // ── Step 1: Navigate to the artist page ───────────────────────────────────
   await page.goto(`/artist/spotify/${requestAllArtistId}`)
   await expect(page.getByRole('heading', { name: requestAllArtistName })).toBeVisible()
@@ -135,10 +130,6 @@ test('artist request-all: "Request all" button is hidden for user without `reque
 
   await page.goto('/')
   await expect(page.getByTestId('app-shell-root')).toBeVisible()
-  await page
-    .waitForResponse((r) => r.url().includes('/api/v1/downloads') && r.request().method() === 'GET')
-    .catch(() => undefined)
-
   await page.goto(`/artist/spotify/${requestAllArtistId}`)
   await expect(page.getByRole('heading', { name: requestAllArtistName })).toBeVisible()
 

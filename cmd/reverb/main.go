@@ -274,7 +274,7 @@ func main() {
 	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
 	go func() { <-sig; close(stop) }()
 
-	httpSrv := &http.Server{Handler: srv.Handler()}
+	httpSrv := newHTTPServer(srv.Handler())
 	if err := serveWithShutdown(httpSrv, ln, stop, func(ctx context.Context) error {
 		if bundle.Supervisor != nil {
 			return bundle.Supervisor.Shutdown(ctx)

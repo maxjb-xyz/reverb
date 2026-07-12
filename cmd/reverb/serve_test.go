@@ -33,3 +33,24 @@ func TestServeWithShutdown_RunsHookOnStop(t *testing.T) {
 		t.Fatal("shutdown hook did not run after stop")
 	}
 }
+
+func TestNewHTTPServer_UsesConnectionLimits(t *testing.T) {
+	handler := http.NewServeMux()
+	srv := newHTTPServer(handler)
+
+	if srv.Handler != handler {
+		t.Fatal("handler was not configured")
+	}
+	if srv.ReadHeaderTimeout != 10*time.Second {
+		t.Fatalf("ReadHeaderTimeout = %v, want 10s", srv.ReadHeaderTimeout)
+	}
+	if srv.ReadTimeout != 30*time.Second {
+		t.Fatalf("ReadTimeout = %v, want 30s", srv.ReadTimeout)
+	}
+	if srv.IdleTimeout != 2*time.Minute {
+		t.Fatalf("IdleTimeout = %v, want 2m", srv.IdleTimeout)
+	}
+	if srv.WriteTimeout != 0 {
+		t.Fatalf("WriteTimeout = %v, want 0 for SSE/WebSocket support", srv.WriteTimeout)
+	}
+}

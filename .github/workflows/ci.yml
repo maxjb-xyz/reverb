@@ -9,35 +9,25 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
-        with: { go-version: '1.26' }
+        with: { go-version: '1.26.5' }
       - run: go vet ./cmd/... ./internal/...
-      # NOTE: -race is intentionally omitted. It doesn't flag any real data race
-      # here (the download-manager state is lock-guarded), but its slowdown
-      # exposes pre-existing timing assumptions in a couple of async manager tests
-      # (they assert immediately after dispatching worker/scan work). Re-enable
-      # once those tests use condition-based waiting instead of reading state
-      # straight after triggering async work.
-      - run: go test ./cmd/... ./internal/... -count=1
+      - run: go test -race ./cmd/... ./internal/... -count=1
   lint:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
-        with: { go-version: '1.26' }
+        with: { go-version: '1.26.5' }
       - name: golangci-lint
         run: |
           go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2
           golangci-lint run ./cmd/... ./internal/...
   govulncheck:
     runs-on: ubuntu-latest
-    # Informational: the Go stdlib always has some open advisory, so this must not
-    # block merges. It gives maintainers visibility into newly-disclosed CVEs that
-    # the code actually calls; act on findings by bumping the toolchain/deps.
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
-        with: { go-version: '1.26' }
+        with: { go-version: '1.26.5' }
       - run: go install golang.org/x/vuln/cmd/govulncheck@latest
       - run: govulncheck ./...
   frontend:

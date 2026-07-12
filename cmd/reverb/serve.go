@@ -8,6 +8,18 @@ import (
 	"time"
 )
 
+// newHTTPServer applies the production connection limits. Do not set
+// WriteTimeout: SSE search and upgraded WebSocket connections are intentionally
+// long lived.
+func newHTTPServer(handler http.Handler) *http.Server {
+	return &http.Server{
+		Handler:           handler,
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		IdleTimeout:       2 * time.Minute,
+	}
+}
+
 // serveWithShutdown serves until `stop` is closed, then gracefully shuts the
 // HTTP server down and runs onShutdown (e.g. to SIGTERM the Navidrome child).
 func serveWithShutdown(srv *http.Server, ln net.Listener, stop <-chan struct{}, onShutdown func(context.Context) error) error {

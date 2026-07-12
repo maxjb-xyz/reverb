@@ -33,8 +33,9 @@ async function loginAndLand(page: Page) {
   await expect(page.getByRole('heading', { name: 'Welcome back' })).toBeVisible()
   await page.getByLabel('Username').fill('user')
   await page.getByLabel('Password').fill('pw123456')
+  const navigation = page.waitForNavigation({ waitUntil: 'domcontentloaded' })
   await page.getByRole('button', { name: 'Log in' }).click()
-  await page.waitForURL('/')
+  await navigation
   await expect(page.getByTestId('app-shell-root')).toBeVisible()
 }
 
@@ -108,7 +109,7 @@ test('admin gating: a non-admin user has no Admin entry and is redirected away f
 
   // The account menu opens, but there is no Admin entry for a non-manager.
   await page.getByRole('button', { name: 'Account menu' }).click()
-  await expect(page.getByRole('menuitem', { name: 'Account' })).toBeVisible()
+  await expect(page.getByRole('menuitem', { name: 'Settings' })).toBeVisible()
   await expect(page.getByRole('menuitem', { name: 'Admin' })).toHaveCount(0)
 
   // Hitting /admin directly redirects home (defense-in-depth route guard).

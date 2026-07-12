@@ -11,7 +11,7 @@ COPY web/ ./
 RUN npm run build
 
 # ---------- Stage 2: build the Go binary with the SPA embedded ----------
-FROM golang:1.26 AS gobuild
+FROM golang:1.26.5 AS gobuild
 ARG VERSION=dev
 WORKDIR /src
 # Module cache layer.
@@ -54,15 +54,26 @@ ARG SPOTDL_VERSION=4.5.0
 # error". Always install the latest at build time. NOTE: this only refreshes
 # yt-dlp when the IMAGE is built — a long-running container still ages, so rebuild
 # periodically (or `docker compose exec -u root reverb pip install --upgrade yt-dlp`
-# to unstick a running one).
-RUN pip install --no-cache-dir "spotdl==${SPOTDL_VERSION}" \
- && pip install --no-cache-dir --upgrade yt-dlp
+# to unstick a running one). Reverb invokes the spotDL download CLI, not its
+# optional web server. spotDL 4.5.0 eagerly imports that server even for CLI use,
+# retaining the vulnerable FastAPI/Starlette stack in every image. Make that import
+# lazy and remove the unsupported web-server dependencies; package metadata is
+# updated too, so `pip check` remains meaningful for the shipped runtime.
+RUN pip install --no-cache-dir --upgrade pip \
+ && pip install --no-cache-dir "spotdl==${SPOTDL_VERSION}" \
+ && pip install --no-cache-dir --upgrade yt-dlp \
+ && sed -i '/from spotdl.console.web import web/d' /usr/local/lib/python3.12/site-packages/spotdl/console/entry_point.py \
+ && sed -i '/^        web(/i\        from spotdl.console.web import web' /usr/local/lib/python3.12/site-packages/spotdl/console/entry_point.py \
+ && sed -i '/^Requires-Dist: fastapi/d; /^Requires-Dist: uvicorn/d' /usr/local/lib/python3.12/site-packages/spotdl-*.dist-info/METADATA \
+ && pip uninstall -y fastapi starlette uvicorn \
+ && pip check \
+ && spotdl --version
 COPY --from=gobuild /out/reverb /usr/local/bin/reverb
 # --- Bundled Navidrome (GPL-3.0, shipped unmodified as a separate process) ---
-# TARGETARCH is set automatically by buildx per target platform. The =amd64
-# default only applies to a plain (non-buildx) 'docker build', so the from-source
-# path works out of the box on x86; arm builders pass --build-arg TARGETARCH=arm64.
-ARG TARGETARCH=amd64
+# TARGETARCH is supplied automatically by BuildKit for both plain and multi-platform
+# builds. Do not default it: a default of amd64 creates a mixed-architecture image
+# when an ARM host builds from source.
+ARG TARGETARCH
 ARG NAVIDROME_VERSION=0.62.0
 RUN apt-get update \
  && apt-get install -y --no-install-recommends tini wget ca-certificates \

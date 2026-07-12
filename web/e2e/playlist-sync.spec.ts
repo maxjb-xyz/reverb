@@ -30,10 +30,9 @@ test('playlist sync: import -> have/missing -> download missing -> flips owned -
     .catch(() => undefined)
   await page.getByLabel('Username').fill('owner')
   await page.getByLabel('Password').fill('correct horse')
+  const navigation = page.waitForNavigation({ waitUntil: 'domcontentloaded' })
   await page.getByRole('button', { name: 'Log in' }).click()
-  // useSessionStatus probes once on mount and a client-side navigate doesn't
-  // re-run it; re-load so the now-authed session resolves into the shell.
-  await page.goto('/')
+  await navigation
   await expect(page.getByTestId('app-shell-root')).toBeVisible()
   await initialResync
 

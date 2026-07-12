@@ -37,7 +37,7 @@ _The web player — queue, shuffle, repeat, seek, and keyboard shortcuts._
 ## The core loop
 
 1. **Search everywhere** — one search box spans your library and online sources
-   (e.g. Spotify) at once, streaming results as each source responds.
+   (e.g. keyless Deezer or configured Spotify) at once, streaming results as each source responds.
 2. **See what you already have** — results are matched against your library
    (by ISRC/metadata), so you instantly know what is missing.
 3. **One-click download** — missing tracks download via spotDL into your music
@@ -82,8 +82,9 @@ with `REVERB_VERSION=0.1.0` in `.env` (defaults to `latest`). Prefer to build fr
 source? See [Development & contributing](#development--contributing).
 
 Open http://localhost:8090 and complete the **first-run wizard**: set an admin
-password (unless you set `REVERB_ADMIN_PASSWORD` in `.env`), then add a
-**search** (Spotify) adapter in Settings. The **library and downloader are
+password (unless you set `REVERB_ADMIN_PASSWORD` in `.env`), then add the
+keyless **Deezer** search adapter in Settings (or configure Spotify credentials
+for its catalog). The **library and downloader are
 already configured** — the bundled Navidrome serves music from `/music`
 automatically, and spotDL is pre-configured for downloads. To use your own
 Navidrome/Subsonic instead, see [Library backends](#library-backends). Full
@@ -169,13 +170,12 @@ access and download**. By using Reverb you agree that:
 ## Architecture overview
 
 Reverb is a **modular monolith**: a single Go binary organized around clean
-**adapter seams** — `library` (Subsonic/Navidrome), `search` (Spotify), and
+**adapter seams** — `library` (Subsonic/Navidrome), `search` (Deezer / Spotify), and
 `downloader` (spotDL) — each registered explicitly at the composition root (no
 `init()` side-effects). The frontend is a React/TypeScript SPA embedded into the
 binary at build time (`-tags prod`). State and events flow through an in-process
 EventBus that backs both the WebSocket and the download manager. The full design
-rationale is in
-[docs/superpowers/specs/2026-06-20-reverb-mvp-design.md](docs/superpowers/specs/2026-06-20-reverb-mvp-design.md).
+rationale follows those explicit adapter boundaries and the package-level tests.
 The HTTP API is documented in OpenAPI, served live at `/api/v1/openapi.yaml`.
 
 ## Development & contributing

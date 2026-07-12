@@ -21,8 +21,8 @@ Open http://localhost:8090 and complete the first-run wizard (set an admin
 password unless you provided `REVERB_ADMIN_PASSWORD` in `.env`), then connect:
 
 - **Library** (Subsonic/Navidrome): point it at your existing server.
-- **Search** (Spotify): set the Client ID in Settings; the Client Secret comes
-  from `REVERB_SPOTIFY_CLIENT_SECRET` in `.env`.
+- **Search**: add **Deezer** in Settings for keyless search, or configure Spotify
+  with its Client ID in Settings and `REVERB_SPOTIFY_CLIENT_SECRET` in `.env`.
 - **Downloader**: nothing to do — **spotDL is bundled and pre-configured** to
   write into `/music`.
 

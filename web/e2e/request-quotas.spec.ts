@@ -53,11 +53,6 @@ test('request-quotas: "Request all" with quotaCapped:2 — toast notes "2 not re
   await page.goto('/')
   await expect(page.getByTestId('app-shell-root')).toBeVisible()
 
-  // Wait for the initial downloads resync to settle before navigating.
-  await page
-    .waitForResponse((r) => r.url().includes('/api/v1/downloads') && r.request().method() === 'GET')
-    .catch(() => undefined)
-
   // ── Step 1: Navigate to the artist page ───────────────────────────────────
   await page.goto(`/artist/spotify/${requestAllArtistId}`)
   await expect(page.getByRole('heading', { name: requestAllArtistName })).toBeVisible()
