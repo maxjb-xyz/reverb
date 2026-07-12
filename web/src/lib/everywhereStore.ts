@@ -13,11 +13,12 @@ export interface EverywhereState {
   tracks: ExternalResult[]
   albums: ExternalResult[]
   artists: ExternalResult[]
+  playlists: ExternalResult[]
   sources: SourceStatus[]
   status: SearchStatus
 }
 
-export const emptyEverywhere: EverywhereState = { tracks: [], albums: [], artists: [], sources: [], status: 'idle' }
+export const emptyEverywhere: EverywhereState = { tracks: [], albums: [], artists: [], playlists: [], sources: [], status: 'idle' }
 
 // normalize mirrors the backend matching.Normalize closely enough for client-side
 // dedup: lowercase, strip feat groups, &→and, drop non-alphanumerics, collapse ws.
@@ -56,6 +57,7 @@ export function applyEnvelope(state: EverywhereState, env: SearchEnvelope): Ever
   const incTracks = env.results.filter((r) => r.type === 'track')
   const incAlbums = env.results.filter((r) => r.type === 'album')
   const incArtists = env.results.filter((r) => r.type === 'artist')
+  const incPlaylists = env.results.filter((r) => r.type === 'playlist')
 
   const existingSrc = state.sources.find((s) => s.source === env.source)
   const sources =
@@ -68,6 +70,7 @@ export function applyEnvelope(state: EverywhereState, env: SearchEnvelope): Ever
   const tracks = appendSection(state.tracks, incTracks)
   const albums = appendSection(state.albums, incAlbums)
   const artists = appendSection(state.artists, incArtists)
+  const playlists = appendSection(state.playlists, incPlaylists)
 
   // Fully idempotent: if a re-delivered envelope changes nothing, return the SAME
   // state reference so React/Zustand skip the re-render entirely.
@@ -75,6 +78,7 @@ export function applyEnvelope(state: EverywhereState, env: SearchEnvelope): Ever
     tracks === state.tracks &&
     albums === state.albums &&
     artists === state.artists &&
+    playlists === state.playlists &&
     sources === state.sources
   ) {
     return state
@@ -84,6 +88,7 @@ export function applyEnvelope(state: EverywhereState, env: SearchEnvelope): Ever
     tracks,
     albums,
     artists,
+    playlists,
     sources,
     status: state.status, // envelope does not change streaming flag
   }
@@ -114,7 +119,7 @@ function reducer(state: EverywhereState, action: Action): EverywhereState {
 // useEverywhere opens a SearchStream for (q,type) when enabled, accumulating
 // per-source envelopes via the pure reducer. The stream is closed on unmount /
 // when q/type/enabled change (no leaked connections).
-export function useEverywhere(q: string, type: 'track' | 'album' | 'artist', enabled: boolean): EverywhereState {
+export function useEverywhere(q: string, type: 'track' | 'album' | 'artist' | 'playlist', enabled: boolean): EverywhereState {
   const [state, dispatch] = useReducer(reducer, emptyEverywhere)
 
   useEffect(() => {

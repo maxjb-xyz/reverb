@@ -10,11 +10,12 @@ import { useAuthStore } from '../lib/authStore'
 interface ImportPlaylistDialogProps {
   open: boolean
   onClose: () => void
+  initialURL?: string
 }
 
 const FOCUSABLE = 'button, [href], input, [tabindex]:not([tabindex="-1"])'
 
-export function ImportPlaylistDialog({ open, onClose }: ImportPlaylistDialogProps) {
+export function ImportPlaylistDialog({ open, onClose, initialURL = '' }: ImportPlaylistDialogProps) {
   const navigate = useNavigate()
   const panelRef = useRef<HTMLDivElement>(null)
   const canAutoApprove = useAuthStore((s) => s.can('auto_approve'))
@@ -30,13 +31,13 @@ export function ImportPlaylistDialog({ open, onClose }: ImportPlaylistDialogProp
     if (open) {
       /* eslint-disable react-hooks/set-state-in-effect -- intentional: reset form fields when dialog reopens */
       setMode('sync')
-      setUrl('')
+      setUrl(initialURL)
       setDownloadMissing(false)
       setBusy(false)
       setError(null)
       /* eslint-enable react-hooks/set-state-in-effect */
     }
-  }, [open])
+  }, [open, initialURL])
 
   // Focus trap + Esc close
   useEffect(() => {

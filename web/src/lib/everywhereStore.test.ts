@@ -35,6 +35,15 @@ describe('dedupKey', () => {
 })
 
 describe('applyEnvelope', () => {
+
+  it('keeps playlist hits in their own section', () => {
+    const next = applyEnvelope(emptyEverywhere, env({ source: 'spotify', results: [
+      { ...track({ externalId: 'playlist-1' }), title: 'Focus Flow', artist: 'Reverb', type: 'playlist' },
+    ] }))
+    expect(next.playlists).toHaveLength(1)
+    expect(next.playlists[0].title).toBe('Focus Flow')
+    expect(next.tracks).toHaveLength(0)
+  })
   it('appends tracks and records source status', () => {
     const s1 = applyEnvelope(emptyEverywhere, env({ source: 'spotify', results: [track({ externalId: 'a' })] }))
     expect(s1.tracks).toHaveLength(1)

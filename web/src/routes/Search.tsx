@@ -7,6 +7,8 @@ import { postDownload, reqFromResult } from '../lib/downloadApi'
 import { useDownloads } from '../lib/downloadStore'
 import { useAuthStore } from '../lib/authStore'
 import { DownloadAction } from '../components/download/DownloadAction'
+import { ImportPlaylistDialog } from '../components/ImportPlaylistDialog'
+import { useState } from 'react'
 import {
   Segmented,
   TrackRow,
@@ -125,6 +127,7 @@ export default function Search() {
   // Search has no bulk-request path; a user without auto_approve simply sees no
   // bulk download (per-item acquisition on the track rows is unaffected).
   const canAutoApprove = useAuthStore((s) => s.can('auto_approve'))
+  const [playlistURL, setPlaylistURL] = useState<string | null>(null)
 
   // Library mode: TanStack Query REST call
   const lib = useLibrarySearch(mode === 'library' ? q : '')
@@ -402,8 +405,30 @@ export default function Search() {
               </div>
             </section>
           )}
+
+          {everywhere.playlists.length > 0 && (
+            <section aria-label="Playlists">
+              <SectionHeading>Playlists</SectionHeading>
+              <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+                {everywhere.playlists.map((playlist) => (
+                  <MediaCard
+                    key={`${playlist.source}:${playlist.externalId}`}
+                    title={playlist.title}
+                    subtitle={playlist.artist || 'Spotify playlist'}
+                    coverSrc={playlist.coverUrl || undefined}
+                    onClick={() => setPlaylistURL(`https://open.spotify.com/playlist/${playlist.externalId}`)}
+                  />
+                ))}
+              </div>
+            </section>
+          )}
         </>
       )}
+      <ImportPlaylistDialog
+        open={playlistURL !== null}
+        onClose={() => setPlaylistURL(null)}
+        initialURL={playlistURL ?? ''}
+      />
     </div>
   )
 }

@@ -21,7 +21,7 @@ export class SearchStream {
 
   constructor(
     q: string,
-    type: 'track' | 'album' | 'artist',
+    type: 'track' | 'album' | 'artist' | 'playlist',
     handlers: SearchStreamHandlers,
     makeSource: (url: string) => EventSourceLike = (url) => new EventSource(url, { withCredentials: true }) as unknown as EventSourceLike,
   ) {

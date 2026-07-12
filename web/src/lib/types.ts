@@ -148,7 +148,7 @@ export interface ExternalResult {
   mbid?: string
   coverUrl?: string
   coverArtId?: string
-  type: 'track' | 'album' | 'artist'
+  type: 'track' | 'album' | 'artist' | 'playlist'
   match?: MatchResult
   artistExternalId?: string
   albumExternalId?: string
