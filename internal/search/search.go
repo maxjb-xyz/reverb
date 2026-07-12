@@ -30,6 +30,13 @@ type PlaylistProvider interface {
 	GetPlaylist(ctx context.Context, externalID string) (core.ExternalPlaylist, error)
 }
 
+// PlaylistSearchProvider is an optional catalog capability. Its results are
+// appended to normal track search results, allowing the client to keep one
+// streaming search request while Spotify can surface playlists alongside songs.
+type PlaylistSearchProvider interface {
+	SearchPlaylists(ctx context.Context, q string) ([]core.ExternalResult, error)
+}
+
 // EnvelopeStatus is the per-source outcome streamed to the client.
 type EnvelopeStatus string
 

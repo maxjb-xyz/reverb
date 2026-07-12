@@ -138,6 +138,10 @@ func (a *Adapter) Search(ctx context.Context, q string, t core.EntityType) ([]co
 				Type: core.EntityArtist,
 			})
 		}
+	case core.EntityPlaylist:
+		// Playlist import is currently a Spotify-only feature. Do not fall through
+		// to track search, which would mislabel Deezer tracks as playlists.
+		return out, nil
 	default:
 		var resp searchTracksResponse
 		if err := a.client.get(ctx, "/search/track", params, &resp); err != nil {

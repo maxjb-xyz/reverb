@@ -33,6 +33,8 @@ func fixtureServer(t *testing.T) *httptest.Server {
 			serve(w, "search_albums.json")
 		case "artist":
 			serve(w, "search_artists.json")
+		case "playlist":
+			serve(w, "search_playlists.json")
 		default:
 			serve(w, "search_tracks.json")
 		}
@@ -123,6 +125,21 @@ func TestSearchAlbumsAndArtists(t *testing.T) {
 	}
 }
 
+func TestSearchPlaylistsMapsOwnerAndCover(t *testing.T) {
+	a := newTestAdapter(t)
+	playlists, err := a.SearchPlaylists(context.Background(), "x")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(playlists) != 1 {
+		t.Fatalf("want 1 playlist, got %d", len(playlists))
+	}
+	pl := playlists[0]
+	if pl.Source != "spotify" || pl.ExternalID != "sp_pl1" || pl.Title != "Focus Flow" || pl.Artist != "Reverb" || pl.CoverURL != "https://img/pl1.jpg" || pl.Type != core.EntityPlaylist {
+		t.Fatalf("playlist: %+v", pl)
+	}
+}
+
 func TestGetAlbumIncludesTracks(t *testing.T) {
 	a := newTestAdapter(t)
 	al, err := a.GetAlbum(context.Background(), "sp_al1")
@@ -146,7 +163,7 @@ func TestParsePlaylistID(t *testing.T) {
 	cases := map[string]string{
 		"https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M":        "37i9dQZF1DXcBWIGoYBM5M",
 		"https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M?si=abc": "37i9dQZF1DXcBWIGoYBM5M",
-		"spotify:playlist:37i9dQZF1DXcBWIGoYBM5M":                        "37i9dQZF1DXcBWIGoYBM5M",
+		"spotify:playlist:37i9dQZF1DXcBWIGoYBM5M":                         "37i9dQZF1DXcBWIGoYBM5M",
 	}
 	for in, want := range cases {
 		got, ok := ParsePlaylistID(in)

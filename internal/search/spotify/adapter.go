@@ -14,10 +14,11 @@ import (
 )
 
 var (
-	_ search.SearchSource        = (*Adapter)(nil)
-	_ registry.Plugin            = (*Adapter)(nil)
-	_ search.DiscographyProvider = (*Adapter)(nil)
-	_ search.PlaylistProvider    = (*Adapter)(nil)
+	_ search.SearchSource           = (*Adapter)(nil)
+	_ registry.Plugin               = (*Adapter)(nil)
+	_ search.DiscographyProvider    = (*Adapter)(nil)
+	_ search.PlaylistProvider       = (*Adapter)(nil)
+	_ search.PlaylistSearchProvider = (*Adapter)(nil)
 )
 
 var playlistIDRe = regexp.MustCompile(`(?:open\.spotify\.com/playlist/|spotify:playlist:)([A-Za-z0-9]+)`)
@@ -159,6 +160,8 @@ func (a *Adapter) Search(ctx context.Context, q string, t core.EntityType) ([]co
 		stype = "album"
 	case core.EntityArtist:
 		stype = "artist"
+	case core.EntityPlaylist:
+		stype = "playlist"
 	}
 	params := url.Values{}
 	params.Set("q", q)
@@ -192,6 +195,16 @@ func (a *Adapter) Search(ctx context.Context, q string, t core.EntityType) ([]co
 				})
 			}
 		}
+	case core.EntityPlaylist:
+		if resp.Playlists != nil {
+			for _, pl := range resp.Playlists.Items {
+				out = append(out, core.ExternalResult{
+					Source: "spotify", ExternalID: pl.ID, Title: pl.Name,
+					Artist: pl.Owner.DisplayName, CoverURL: firstImage(pl.Images),
+					Type: core.EntityPlaylist,
+				})
+			}
+		}
 	default:
 		if resp.Tracks != nil {
 			for _, tr := range resp.Tracks.Items {
@@ -200,6 +213,12 @@ func (a *Adapter) Search(ctx context.Context, q string, t core.EntityType) ([]co
 		}
 	}
 	return out, nil
+}
+
+// SearchPlaylists finds public Spotify playlists for a normal Everywhere search.
+// It is kept optional so providers without a playlist catalog remain unaffected.
+func (a *Adapter) SearchPlaylists(ctx context.Context, q string) ([]core.ExternalResult, error) {
+	return a.Search(ctx, q, core.EntityPlaylist)
 }
 
 // GetArtist fetches the artist profile (name + images) from GET /artists/{id}.

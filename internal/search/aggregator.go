@@ -66,6 +66,15 @@ func (a *Aggregator) runOne(ctx context.Context, src SearchSource, q string, t c
 		}
 		return Envelope{Source: src.Name(), Status: StatusError, Results: []core.ExternalResult{}, Error: err.Error()}
 	}
+	// Playlist discovery augments the normal track search only when a provider
+	// explicitly supports it. A playlist failure must not discard useful tracks.
+	if t == core.EntityTrack {
+		if provider, ok := src.(PlaylistSearchProvider); ok {
+			if playlists, perr := provider.SearchPlaylists(cctx, q); perr == nil {
+				results = append(results, playlists...)
+			}
+		}
+	}
 
 	if a.matcher != nil {
 		for i := range results {

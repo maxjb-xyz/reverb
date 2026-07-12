@@ -99,6 +99,17 @@ func TestEverywhereSSEStreamsEnvelopes(t *testing.T) {
 	}
 }
 
+func TestEverywhereSSEAcceptsPlaylistType(t *testing.T) {
+	srv, cookie := searchTestServer(t, fakeAgg{})
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/search/everywhere?q=mix&type=playlist", nil)
+	req.AddCookie(cookie)
+	srv.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d", rec.Code)
+	}
+}
+
 func TestEverywhereRequiresAuth(t *testing.T) {
 	srv, _ := searchTestServer(t, fakeAgg{})
 	rec := httptest.NewRecorder()

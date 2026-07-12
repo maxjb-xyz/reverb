@@ -36,6 +36,8 @@ func (s *Server) handleEverywhere(w http.ResponseWriter, r *http.Request) {
 		et = core.EntityAlbum
 	case "artist":
 		et = core.EntityArtist
+	case "playlist":
+		et = core.EntityPlaylist
 	default:
 		et = core.EntityTrack
 	}

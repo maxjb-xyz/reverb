@@ -1,0 +1,12 @@
+{
+  "playlists": {
+    "items": [
+      {
+        "id": "sp_pl1",
+        "name": "Focus Flow",
+        "images": [{"url": "https://img/pl1.jpg"}],
+        "owner": {"display_name": "Reverb"}
+      }
+    ]
+  }
+}

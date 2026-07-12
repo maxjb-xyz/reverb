@@ -70,6 +70,15 @@ type playlistObjectDTO struct {
 	Tracks playlistPageDTO `json:"tracks"`
 }
 
+type playlistSearchDTO struct {
+	ID     string     `json:"id"`
+	Name   string     `json:"name"`
+	Images []imageDTO `json:"images"`
+	Owner  struct {
+		DisplayName string `json:"display_name"`
+	} `json:"owner"`
+}
+
 type playlistPageDTO struct {
 	Items []playlistItemDTO `json:"items"`
 	Next  string            `json:"next"`
@@ -97,4 +106,5 @@ type searchResponse struct {
 			Images []imageDTO `json:"images"`
 		}
 	} `json:"artists"`
+	Playlists *struct{ Items []playlistSearchDTO } `json:"playlists"`
 }
