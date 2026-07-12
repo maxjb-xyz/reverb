@@ -9,3 +9,8 @@
 /dev/navidrome/
 dev/music/*
 !dev/music/.gitkeep
+
+# internal planning artifacts (kept locally, never published)
+reverb-plan.md
+docs/HANDOFF-*.md
+docs/superpowers/
