@@ -707,9 +707,11 @@ func TestClock_AggregatesGrid(t *testing.T) {
 	}
 	if cell10 == nil {
 		t.Fatal("missing cell for hour 10")
+		return
 	}
 	if cell14 == nil {
 		t.Fatal("missing cell for hour 14")
+		return
 	}
 	if cell10.Plays != 2 {
 		t.Errorf("hour-10 cell plays: want 2 got %d", cell10.Plays)

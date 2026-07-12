@@ -439,6 +439,7 @@ func TestDrainOnce_TransientError_IncrementsAttemptsAndSchedulesRetry(t *testing
 	}
 	if found == nil {
 		t.Fatalf("row-retry not found in pending rows after transient error")
+		return
 	}
 	if found.Attempts != 1 {
 		t.Fatalf("expected attempts=1, got %d", found.Attempts)

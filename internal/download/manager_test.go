@@ -747,6 +747,7 @@ checkEvents:
 	if found == nil {
 		t.Fatalf("no download.complete event with libraryTrackId=%q for job %q; got events: %+v",
 			"lib-track-9", job.ID, evs)
+		return
 	}
 	if found.CoverArtID != "mf-lib-track-9_abc123" {
 		t.Fatalf("complete event coverArtId: got %q want %q (must be carried on WS event for live recently-downloaded covers)", found.CoverArtID, "mf-lib-track-9_abc123")
@@ -1196,6 +1197,7 @@ func TestBackfillUnlinkedReLinksCompletedJobs(t *testing.T) {
 	}
 	if found == nil {
 		t.Fatalf("no backfill complete event with libraryTrackId=%q; got: %+v", "lib-bf-1", evs)
+		return
 	}
 	if found.CoverArtID != "cover-bf-1" {
 		t.Fatalf("backfill event CoverArtID: got %q, want %q", found.CoverArtID, "cover-bf-1")
