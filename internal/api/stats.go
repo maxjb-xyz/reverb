@@ -1,11 +1,61 @@
 package api
 
 import (
+	"context"
 	"net/http"
 	"strconv"
+	"time"
 
+	"github.com/maxjb-xyz/reverb/internal/core"
 	"github.com/maxjb-xyz/reverb/internal/play"
 )
+
+type statsMetadataProvider interface {
+	GetTrack(context.Context, string, string) (core.ExternalResult, error)
+	GetArtist(context.Context, string, string) (core.ExternalArtist, error)
+	GetAlbum(context.Context, string, string) (core.ExternalAlbum, error)
+}
+
+// enrichStatsRows restores source-specific navigation and artwork for durable
+// catalog rows. Stats aggregation only stores text plus a representative track;
+// direct source lookup supplies the artist/album IDs needed by full pages.
+func (s *Server) enrichStatsRows(ctx context.Context, rows []play.TopRow, kind string) {
+	provider, ok := s.searchAggregator().(statsMetadataProvider)
+	if !ok {
+		return
+	}
+	for i := range rows {
+		row := &rows[i]
+		if row.Source == "" || row.ExternalID == "" {
+			continue
+		}
+		lookupCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+		track, err := provider.GetTrack(lookupCtx, row.Source, row.ExternalID)
+		cancel()
+		if err != nil {
+			continue
+		}
+		row.CoverURL = track.CoverURL
+		row.ArtistExternalID = track.ArtistExternalID
+		row.AlbumExternalID = track.AlbumExternalID
+		if kind == "artist" && row.ArtistExternalID != "" {
+			lookupCtx, cancel = context.WithTimeout(ctx, 3*time.Second)
+			artist, err := provider.GetArtist(lookupCtx, row.Source, row.ArtistExternalID)
+			cancel()
+			if err == nil && artist.CoverURL != "" {
+				row.CoverURL = artist.CoverURL
+			}
+		}
+		if kind == "album" && row.AlbumExternalID != "" {
+			lookupCtx, cancel = context.WithTimeout(ctx, 3*time.Second)
+			album, err := provider.GetAlbum(lookupCtx, row.Source, row.AlbumExternalID)
+			cancel()
+			if err == nil && album.CoverURL != "" {
+				row.CoverURL = album.CoverURL
+			}
+		}
+	}
+}
 
 // playCountsRequest is the POST /stats/play-counts request body. The FE sends
 // library-track identities (it has no catalog ids); the server resolves each
@@ -120,6 +170,7 @@ func (s *Server) handleStatsTopTracks(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
+	s.enrichStatsRows(r.Context(), result, "track")
 	writeJSON(w, http.StatusOK, result)
 }
 
@@ -140,6 +191,7 @@ func (s *Server) handleStatsTopArtists(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
+	s.enrichStatsRows(r.Context(), result, "artist")
 	writeJSON(w, http.StatusOK, result)
 }
 
@@ -160,6 +212,7 @@ func (s *Server) handleStatsTopAlbums(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
+	s.enrichStatsRows(r.Context(), result, "album")
 	writeJSON(w, http.StatusOK, result)
 }
 

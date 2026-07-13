@@ -65,12 +65,12 @@ const TOP_TRACKS: TopRow[] = [
 
 // Real API shape: TopArtists → Artist field is the name, Title is empty.
 const TOP_ARTISTS: TopRow[] = [
-  { CatalogID: '', Title: '', Artist: 'Radiohead', Album: '', Plays: 20, MsPlayed: 4_000_000 },
+  { CatalogID: 'cat-artist', Title: '', Artist: 'Radiohead', Album: '', Source: 'spotify', ArtistExternalID: 'sp-radiohead', CoverURL: 'https://img/radiohead.jpg', Plays: 20, MsPlayed: 4_000_000 },
 ]
 
 // Real API shape: TopAlbums → Album field is the name, Artist is also populated, Title is empty.
 const TOP_ALBUMS: TopRow[] = [
-  { CatalogID: '', Title: '', Artist: 'Radiohead', Album: 'OK Computer', Plays: 15, MsPlayed: 3_000_000 },
+  { CatalogID: 'cat-album', Title: '', Artist: 'Radiohead', Album: 'OK Computer', Source: 'spotify', AlbumExternalID: 'sp-okc', CoverURL: 'https://img/okc.jpg', Plays: 15, MsPlayed: 3_000_000 },
 ]
 
 const RECENT: RecentRow[] = [
@@ -183,8 +183,8 @@ describe('Stats page', () => {
     renderStats()
     await waitFor(() => {
       const sources = screen.getAllByRole('img').map((img) => img.getAttribute('src'))
-      expect(sources).toContain('/api/v1/cover/cover-radiohead?size=48')
-      expect(sources).toContain('/api/v1/cover/cover-okc?size=48')
+    expect(sources).toContain('https://img/radiohead.jpg')
+    expect(sources).toContain('https://img/okc.jpg')
       // Matrix OST is intentionally absent from the browse mock: recent/top
       // rows must still resolve the canonical catalog cover.
       expect(sources).toContain('/api/v1/cover/cat-2?size=48')
@@ -252,6 +252,17 @@ describe('Stats page', () => {
     })
     // Navigate must NOT have been called with the dead album/trk_ path
     expect(mockNavigate).not.toHaveBeenCalledWith(expect.stringContaining('/album/library/cat-1'))
+  })
+
+  it('opens external artist and album pages from source identities', async () => {
+    renderStats()
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Radiohead' })).toBeInTheDocument())
+
+    fireEvent.click(screen.getByRole('button', { name: 'Radiohead' }))
+    expect(mockNavigate).toHaveBeenCalledWith('/artist/spotify/sp-radiohead')
+
+    fireEvent.click(screen.getByRole('button', { name: 'OK Computer' }))
+    expect(mockNavigate).toHaveBeenCalledWith('/album/spotify/sp-okc')
   })
 
   // ── Recently played ───────────────────────────────────────────────────────

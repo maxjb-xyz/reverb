@@ -344,9 +344,9 @@ func TestStatsTopArtists_Grouping(t *testing.T) {
 	if rows[0].Plays != 2 {
 		t.Errorf("Artist X plays: want 2 got %d", rows[0].Plays)
 	}
-	// CatalogID/Title/Album should be empty for artist grouping
-	if rows[0].CatalogID != "" {
-		t.Errorf("CatalogID should be empty for TopArtists, got %q", rows[0].CatalogID)
+	// A representative catalog ID anchors artwork and source navigation.
+	if rows[0].CatalogID == "" {
+		t.Error("CatalogID should be populated for TopArtists")
 	}
 	if rows[0].Title != "" {
 		t.Errorf("Title should be empty for TopArtists, got %q", rows[0].Title)
@@ -398,9 +398,9 @@ func TestStatsTopAlbums_Grouping(t *testing.T) {
 	if rows[0].Plays != 2 {
 		t.Errorf("Album 1 plays: want 2 got %d", rows[0].Plays)
 	}
-	// CatalogID/Title should be empty for album grouping
-	if rows[0].CatalogID != "" {
-		t.Errorf("CatalogID should be empty for TopAlbums, got %q", rows[0].CatalogID)
+	// A representative catalog ID anchors artwork and source navigation.
+	if rows[0].CatalogID == "" {
+		t.Error("CatalogID should be populated for TopAlbums")
 	}
 	if rows[0].Title != "" {
 		t.Errorf("Title should be empty for TopAlbums, got %q", rows[0].Title)

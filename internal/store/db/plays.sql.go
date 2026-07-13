@@ -369,15 +369,27 @@ func (q *Queries) StatsSummary(ctx context.Context, arg StatsSummaryParams) (Sta
 }
 
 const statsTopAlbums = `-- name: StatsTopAlbums :many
+WITH aggregated AS (
+    SELECT
+        MIN(p.catalog_id) AS catalog_id,
+        e.album,
+        e.artist,
+        COUNT(*)         AS plays,
+        SUM(p.ms_played) AS ms_played
+    FROM plays p JOIN catalog_entity e ON e.id = p.catalog_id
+    WHERE p.user_id = ? AND p.played_at >= ? AND p.played_at < ?
+    GROUP BY e.album, e.artist
+)
 SELECT
-    e.album,
-    e.artist,
-    COUNT(*)          AS plays,
-    SUM(p.ms_played)  AS ms_played
-FROM plays p JOIN catalog_entity e ON e.id = p.catalog_id
-WHERE p.user_id = ? AND p.played_at >= ? AND p.played_at < ?
-GROUP BY e.album, e.artist
-ORDER BY COUNT(*) DESC, SUM(p.ms_played) DESC
+    CAST(a.catalog_id AS TEXT) AS catalog_id,
+    a.album,
+    a.artist,
+    CAST(e.source AS TEXT) AS source,
+    CAST(e.external_id AS TEXT) AS external_id,
+    a.plays,
+    a.ms_played
+FROM aggregated a JOIN catalog_entity e ON e.id = a.catalog_id
+ORDER BY a.plays DESC, a.ms_played DESC
 LIMIT ?
 `
 
@@ -389,10 +401,13 @@ type StatsTopAlbumsParams struct {
 }
 
 type StatsTopAlbumsRow struct {
-	Album    string          `json:"album"`
-	Artist   string          `json:"artist"`
-	Plays    int64           `json:"plays"`
-	MsPlayed sql.NullFloat64 `json:"ms_played"`
+	CatalogID  string          `json:"catalog_id"`
+	Album      string          `json:"album"`
+	Artist     string          `json:"artist"`
+	Source     string          `json:"source"`
+	ExternalID string          `json:"external_id"`
+	Plays      int64           `json:"plays"`
+	MsPlayed   sql.NullFloat64 `json:"ms_played"`
 }
 
 func (q *Queries) StatsTopAlbums(ctx context.Context, arg StatsTopAlbumsParams) ([]StatsTopAlbumsRow, error) {
@@ -410,8 +425,11 @@ func (q *Queries) StatsTopAlbums(ctx context.Context, arg StatsTopAlbumsParams) 
 	for rows.Next() {
 		var i StatsTopAlbumsRow
 		if err := rows.Scan(
+			&i.CatalogID,
 			&i.Album,
 			&i.Artist,
+			&i.Source,
+			&i.ExternalID,
 			&i.Plays,
 			&i.MsPlayed,
 		); err != nil {
@@ -429,14 +447,25 @@ func (q *Queries) StatsTopAlbums(ctx context.Context, arg StatsTopAlbumsParams) 
 }
 
 const statsTopArtists = `-- name: StatsTopArtists :many
+WITH aggregated AS (
+    SELECT
+        MIN(p.catalog_id) AS catalog_id,
+        e.artist,
+        COUNT(*)         AS plays,
+        SUM(p.ms_played) AS ms_played
+    FROM plays p JOIN catalog_entity e ON e.id = p.catalog_id
+    WHERE p.user_id = ? AND p.played_at >= ? AND p.played_at < ?
+    GROUP BY e.artist
+)
 SELECT
-    e.artist,
-    COUNT(*)          AS plays,
-    SUM(p.ms_played)  AS ms_played
-FROM plays p JOIN catalog_entity e ON e.id = p.catalog_id
-WHERE p.user_id = ? AND p.played_at >= ? AND p.played_at < ?
-GROUP BY e.artist
-ORDER BY COUNT(*) DESC, SUM(p.ms_played) DESC
+    CAST(a.catalog_id AS TEXT) AS catalog_id,
+    a.artist,
+    CAST(e.source AS TEXT) AS source,
+    CAST(e.external_id AS TEXT) AS external_id,
+    a.plays,
+    a.ms_played
+FROM aggregated a JOIN catalog_entity e ON e.id = a.catalog_id
+ORDER BY a.plays DESC, a.ms_played DESC
 LIMIT ?
 `
 
@@ -448,9 +477,12 @@ type StatsTopArtistsParams struct {
 }
 
 type StatsTopArtistsRow struct {
-	Artist   string          `json:"artist"`
-	Plays    int64           `json:"plays"`
-	MsPlayed sql.NullFloat64 `json:"ms_played"`
+	CatalogID  string          `json:"catalog_id"`
+	Artist     string          `json:"artist"`
+	Source     string          `json:"source"`
+	ExternalID string          `json:"external_id"`
+	Plays      int64           `json:"plays"`
+	MsPlayed   sql.NullFloat64 `json:"ms_played"`
 }
 
 func (q *Queries) StatsTopArtists(ctx context.Context, arg StatsTopArtistsParams) ([]StatsTopArtistsRow, error) {
@@ -467,7 +499,14 @@ func (q *Queries) StatsTopArtists(ctx context.Context, arg StatsTopArtistsParams
 	var items []StatsTopArtistsRow
 	for rows.Next() {
 		var i StatsTopArtistsRow
-		if err := rows.Scan(&i.Artist, &i.Plays, &i.MsPlayed); err != nil {
+		if err := rows.Scan(
+			&i.CatalogID,
+			&i.Artist,
+			&i.Source,
+			&i.ExternalID,
+			&i.Plays,
+			&i.MsPlayed,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -487,6 +526,8 @@ SELECT
     e.title,
     e.artist,
     e.album,
+    e.source,
+    e.external_id,
     COUNT(*)          AS plays,
     SUM(p.ms_played)  AS ms_played
 FROM plays p JOIN catalog_entity e ON e.id = p.catalog_id
@@ -504,12 +545,14 @@ type StatsTopTracksParams struct {
 }
 
 type StatsTopTracksRow struct {
-	CatalogID string          `json:"catalog_id"`
-	Title     string          `json:"title"`
-	Artist    string          `json:"artist"`
-	Album     string          `json:"album"`
-	Plays     int64           `json:"plays"`
-	MsPlayed  sql.NullFloat64 `json:"ms_played"`
+	CatalogID  string          `json:"catalog_id"`
+	Title      string          `json:"title"`
+	Artist     string          `json:"artist"`
+	Album      string          `json:"album"`
+	Source     string          `json:"source"`
+	ExternalID string          `json:"external_id"`
+	Plays      int64           `json:"plays"`
+	MsPlayed   sql.NullFloat64 `json:"ms_played"`
 }
 
 func (q *Queries) StatsTopTracks(ctx context.Context, arg StatsTopTracksParams) ([]StatsTopTracksRow, error) {
@@ -531,6 +574,8 @@ func (q *Queries) StatsTopTracks(ctx context.Context, arg StatsTopTracksParams) 
 			&i.Title,
 			&i.Artist,
 			&i.Album,
+			&i.Source,
+			&i.ExternalID,
 			&i.Plays,
 			&i.MsPlayed,
 		); err != nil {

@@ -25,13 +25,6 @@ function displayName(kind: EntityKind, row: TopRow): string {
   return row.Album
 }
 
-/** Returns the nav path for artist/album rows; null for track rows (they play instead). */
-function entityPath(kind: EntityKind, row: TopRow): string | null {
-  if (kind === 'artist' && row.Artist) return `/artist/library/${encodeURIComponent(row.Artist)}`
-  if (kind === 'album' && row.Album) return `/album/library/${encodeURIComponent(row.Album)}`
-  return null
-}
-
 /** Synthesizes a minimal playable Track from a TopRow (track kind only). */
 function trackFromTopRow(row: TopRow): Track {
   return {
@@ -75,12 +68,16 @@ export function TopList({ title, rows, kind }: Props) {
           const coverID = kind === 'artist'
             ? artist?.coverArtId || artistAlbum?.coverArtId || row.CatalogID
             : album?.coverArtId || row.CatalogID
-          const src = coverUrl(coverID, 48)
-          const path = kind === 'artist' && artist
-            ? `/artist/library/${encodeURIComponent(artist.id)}`
-            : kind === 'album' && album
-              ? `/album/library/${encodeURIComponent(album.id)}`
-              : entityPath(kind, row)
+          const src = row.CoverURL || coverUrl(coverID, 48)
+          const path = kind === 'artist'
+            ? row.Source && row.ArtistExternalID
+              ? `/artist/${row.Source}/${encodeURIComponent(row.ArtistExternalID)}`
+              : artist ? `/artist/library/${encodeURIComponent(artist.id)}` : null
+            : kind === 'album'
+              ? row.Source && row.AlbumExternalID
+                ? `/album/${row.Source}/${encodeURIComponent(row.AlbumExternalID)}`
+                : album ? `/album/library/${encodeURIComponent(album.id)}` : null
+              : null
           const name = displayName(kind, row)
           const meta = `${row.Plays} plays · ${msToHuman(row.MsPlayed)}`
           // aria-label: descriptive for tracks; just the name for artist/album rows

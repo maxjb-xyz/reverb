@@ -20,15 +20,20 @@ type SummaryStats struct {
 }
 
 // TopRow is a single entry in a top-tracks/artists/albums list.
-// CatalogID/Title/Album are empty for artist grouping; CatalogID/Title are
-// empty for album grouping — only the fields meaningful for each query are set.
+// CatalogID carries a representative track for grouped artist/album rows. It
+// anchors artwork and source metadata even when display names are ambiguous.
 type TopRow struct {
-	CatalogID string
-	Title     string
-	Artist    string
-	Album     string
-	Plays     int
-	MsPlayed  int64
+	CatalogID        string
+	Title            string
+	Artist           string
+	Album            string
+	Source           string
+	ExternalID       string
+	CoverURL         string
+	ArtistExternalID string
+	AlbumExternalID  string
+	Plays            int
+	MsPlayed         int64
 }
 
 // TimeBucket is one time-bucket in a timeline response.
@@ -139,12 +144,14 @@ func (s *Stats) TopTracks(ctx context.Context, userID string, from, to int64, li
 	out := make([]TopRow, len(rows))
 	for i, r := range rows {
 		out[i] = TopRow{
-			CatalogID: r.CatalogID,
-			Title:     r.Title,
-			Artist:    r.Artist,
-			Album:     r.Album,
-			Plays:     int(r.Plays),
-			MsPlayed:  nullFloat64Int64(r.MsPlayed),
+			CatalogID:  r.CatalogID,
+			Title:      r.Title,
+			Artist:     r.Artist,
+			Album:      r.Album,
+			Source:     r.Source,
+			ExternalID: r.ExternalID,
+			Plays:      int(r.Plays),
+			MsPlayed:   nullFloat64Int64(r.MsPlayed),
 		}
 	}
 	return out, nil
@@ -165,9 +172,12 @@ func (s *Stats) TopArtists(ctx context.Context, userID string, from, to int64, l
 	out := make([]TopRow, len(rows))
 	for i, r := range rows {
 		out[i] = TopRow{
-			Artist:   r.Artist,
-			Plays:    int(r.Plays),
-			MsPlayed: nullFloat64Int64(r.MsPlayed),
+			CatalogID:  r.CatalogID,
+			Artist:     r.Artist,
+			Source:     r.Source,
+			ExternalID: r.ExternalID,
+			Plays:      int(r.Plays),
+			MsPlayed:   nullFloat64Int64(r.MsPlayed),
 		}
 	}
 	return out, nil
@@ -188,10 +198,13 @@ func (s *Stats) TopAlbums(ctx context.Context, userID string, from, to int64, li
 	out := make([]TopRow, len(rows))
 	for i, r := range rows {
 		out[i] = TopRow{
-			Album:    r.Album,
-			Artist:   r.Artist,
-			Plays:    int(r.Plays),
-			MsPlayed: nullFloat64Int64(r.MsPlayed),
+			CatalogID:  r.CatalogID,
+			Album:      r.Album,
+			Artist:     r.Artist,
+			Source:     r.Source,
+			ExternalID: r.ExternalID,
+			Plays:      int(r.Plays),
+			MsPlayed:   nullFloat64Int64(r.MsPlayed),
 		}
 	}
 	return out, nil

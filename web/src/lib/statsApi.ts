@@ -19,6 +19,11 @@ export interface TopRow {
   Title: string
   Artist: string
   Album: string
+  Source?: string
+  ExternalID?: string
+  CoverURL?: string
+  ArtistExternalID?: string
+  AlbumExternalID?: string
   Plays: number
   MsPlayed: number
 }
