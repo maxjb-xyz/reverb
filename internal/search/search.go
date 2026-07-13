@@ -24,6 +24,17 @@ type DiscographyProvider interface {
 	GetArtistDiscography(ctx context.Context, externalID string) ([]core.ExternalAlbum, error)
 }
 
+// TrackProvider is an optional direct lookup capability used to enrich durable
+// references (such as listening stats) with the source's current artist/album IDs.
+type TrackProvider interface {
+	GetTrack(ctx context.Context, externalID string) (core.ExternalResult, error)
+}
+
+// ArtistProvider is an optional direct profile lookup capability.
+type ArtistProvider interface {
+	GetArtist(ctx context.Context, externalID string) (core.ExternalArtist, error)
+}
+
 // PlaylistProvider is an OPTIONAL capability (P2 playlist sync). Detected via a
 // type assertion; conformance does not require it.
 type PlaylistProvider interface {

@@ -3,6 +3,7 @@ package search
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"time"
 
@@ -28,6 +29,42 @@ func NewAggregator(sources []SearchSource, matcher Matcher, timeout time.Duratio
 		timeout = 8 * time.Second
 	}
 	return &Aggregator{sources: sources, matcher: matcher, timeout: timeout}
+}
+
+func (a *Aggregator) source(name string) SearchSource {
+	for _, src := range a.sources {
+		if src.Name() == name {
+			return src
+		}
+	}
+	return nil
+}
+
+// GetTrack resolves one durable source track without fuzzy searching.
+func (a *Aggregator) GetTrack(ctx context.Context, source, id string) (core.ExternalResult, error) {
+	src := a.source(source)
+	p, ok := src.(TrackProvider)
+	if !ok {
+		return core.ExternalResult{}, fmt.Errorf("search source %q does not support track lookup", source)
+	}
+	return p.GetTrack(ctx, id)
+}
+
+func (a *Aggregator) GetArtist(ctx context.Context, source, id string) (core.ExternalArtist, error) {
+	src := a.source(source)
+	p, ok := src.(ArtistProvider)
+	if !ok {
+		return core.ExternalArtist{}, fmt.Errorf("search source %q does not support artist lookup", source)
+	}
+	return p.GetArtist(ctx, id)
+}
+
+func (a *Aggregator) GetAlbum(ctx context.Context, source, id string) (core.ExternalAlbum, error) {
+	src := a.source(source)
+	if src == nil {
+		return core.ExternalAlbum{}, fmt.Errorf("search source %q not configured", source)
+	}
+	return src.GetAlbum(ctx, id)
 }
 
 // Stream runs each source in its own goroutine with an individual

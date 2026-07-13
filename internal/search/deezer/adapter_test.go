@@ -33,6 +33,16 @@ func fixtureServer(t *testing.T) *httptest.Server {
 		w.Write([]byte(`{"data": [{"id": 27, "name": "Daft Punk",
 			"picture_medium": "https://cdn.example/a.jpg"}]}`))
 	})
+	mux.HandleFunc("/track/", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(trackJSON))
+	})
+	mux.HandleFunc("/artist/", func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/albums") {
+			w.Write([]byte(`{"data": [{"id": 302127, "title": "Discovery", "cover_medium": "https://cdn.example/m.jpg", "artist": {"id": 27, "name": "Daft Punk"}}]}`))
+			return
+		}
+		w.Write([]byte(`{"id": 27, "name": "Daft Punk", "picture_medium": "https://cdn.example/a.jpg", "picture_big": "https://cdn.example/a-big.jpg"}`))
+	})
 	mux.HandleFunc("/album/", func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasSuffix(r.URL.Path, "/missing") {
 			// Deezer's in-band error shape: HTTP 200 + error object
@@ -110,6 +120,34 @@ func TestGetAlbumBackfillsTrackAlbumFields(t *testing.T) {
 	}
 	if tr.CoverURL != "https://cdn.example/b.jpg" {
 		t.Errorf("track cover backfill: %q", tr.CoverURL)
+	}
+}
+
+func TestDirectTrackAndArtistLookups(t *testing.T) {
+	a := newAdapter(t)
+	track, err := a.GetTrack(context.Background(), "3135556")
+	if err != nil {
+		t.Fatalf("GetTrack: %v", err)
+	}
+	if track.ArtistExternalID != "27" || track.AlbumExternalID != "302127" {
+		t.Errorf("track reference ids = %q/%q", track.ArtistExternalID, track.AlbumExternalID)
+	}
+	artist, err := a.GetArtist(context.Background(), "27")
+	if err != nil {
+		t.Fatalf("GetArtist: %v", err)
+	}
+	if artist.Source != "deezer" || artist.ExternalID != "27" || artist.CoverURL != "https://cdn.example/a-big.jpg" {
+		t.Errorf("artist = %+v", artist)
+	}
+}
+
+func TestGetArtistDiscography(t *testing.T) {
+	albums, err := newAdapter(t).GetArtistDiscography(context.Background(), "27")
+	if err != nil {
+		t.Fatalf("GetArtistDiscography: %v", err)
+	}
+	if len(albums) != 1 || albums[0].Source != "deezer" || albums[0].ExternalID != "302127" {
+		t.Fatalf("albums = %+v", albums)
 	}
 }
 

@@ -44,22 +44,48 @@ type CoverageCache interface {
 	GetLibraryAlbumIDByExternal(ctx context.Context, source, externalAlbumID string) string
 }
 
-type ArtistMapRow struct{ ExternalArtistID string; Confidence float64 }
-type AlbumMapRow struct{ ExternalAlbumID string; Confidence float64 }
+type ArtistMapRow struct {
+	ExternalArtistID string
+	Confidence       float64
+}
+type AlbumMapRow struct {
+	ExternalAlbumID string
+	Confidence      float64
+}
 type DiscoRow struct{ AlbumsJSON string }
-type CoverageRow struct{ CoverageJSON, LibraryAlbumID string; LibraryVersion int64; Found bool }
+type CoverageRow struct {
+	CoverageJSON, LibraryAlbumID string
+	LibraryVersion               int64
+	Found                        bool
+}
 
 type Service struct {
-	src     DiscoSource
-	match   Matcher
-	lib     LibraryArtist
-	cache   CoverageCache
-	now     func() int64
-	version VersionProvider
+	sources       map[string]DiscoSource
+	defaultSource string
+	match         Matcher
+	lib           LibraryArtist
+	cache         CoverageCache
+	now           func() int64
+	version       VersionProvider
 }
 
 func NewService(src DiscoSource, m Matcher, lib LibraryArtist, cache CoverageCache, now func() int64, version VersionProvider) *Service {
-	return &Service{src: src, match: m, lib: lib, cache: cache, now: now, version: version}
+	return NewMultiService(map[string]DiscoSource{"spotify": src}, "spotify", m, lib, cache, now, version)
+}
+
+// NewMultiService builds coverage against every configured source that supports
+// artist profiles, discographies, and album detail. defaultSource is used only
+// when resolving legacy library-only routes.
+func NewMultiService(sources map[string]DiscoSource, defaultSource string, m Matcher, lib LibraryArtist, cache CoverageCache, now func() int64, version VersionProvider) *Service {
+	return &Service{sources: sources, defaultSource: defaultSource, match: m, lib: lib, cache: cache, now: now, version: version}
+}
+
+func (s *Service) source(name string) (DiscoSource, error) {
+	src := s.sources[name]
+	if src == nil {
+		return nil, fmt.Errorf("source %q is not configured for coverage", name)
+	}
+	return src, nil
 }
 
 // ArtistProfile returns a lightweight artist profile (name + image) for the
@@ -67,14 +93,6 @@ func NewService(src DiscoSource, m Matcher, lib LibraryArtist, cache CoverageCac
 // no library search. Callers use this for the now-playing "About the artist" card.
 func (s *Service) ArtistProfile(ctx context.Context, source, id string) (core.ExternalArtist, error) {
 	switch source {
-	case "spotify":
-		prof, err := s.src.GetArtist(ctx, id)
-		if err != nil {
-			return core.ExternalArtist{}, err
-		}
-		prof.Source = "spotify"
-		prof.ExternalID = id
-		return prof, nil
 	case "library":
 		art, err := s.lib.GetArtist(ctx, id)
 		if err != nil {
@@ -86,23 +104,38 @@ func (s *Service) ArtistProfile(ctx context.Context, source, id string) (core.Ex
 			Name:       art.Name,
 			CoverArtID: art.CoverArtID,
 		}, nil
-	default:
-		return core.ExternalArtist{}, fmt.Errorf("unknown source %q", source)
 	}
+	src, err := s.source(source)
+	if err != nil {
+		return core.ExternalArtist{}, err
+	}
+	prof, err := src.GetArtist(ctx, id)
+	if err != nil {
+		return core.ExternalArtist{}, err
+	}
+	prof.Source = source
+	prof.ExternalID = id
+	return prof, nil
 }
 
-// ArtistDetail returns the page skeleton. source is "library" or "spotify".
+// ArtistDetail returns the page skeleton for a library or configured external source.
 func (s *Service) ArtistDetail(ctx context.Context, source, id string) (core.ArtistDetail, error) {
 	extID, libArtistID := "", ""
+	externalSource := source
 	det := core.ArtistDetail{Source: source, ID: id}
 	if source == "library" {
+		externalSource = s.defaultSource
+		src, srcErr := s.source(externalSource)
+		if srcErr != nil {
+			return det, srcErr
+		}
 		libArtistID = id
 		art, err := s.lib.GetArtist(ctx, id)
 		if err != nil {
 			return det, err
 		}
 		det.Name, det.CoverArtID, det.LibraryArtistID = art.Name, art.CoverArtID, id
-		extID, _, _ = ResolveArtist(ctx, s.src, s.lib, s.cache, s.now, id)
+		extID, _, _ = ResolveArtist(ctx, externalSource, src, s.lib, s.cache, s.now, id)
 	} else {
 		extID = id
 	}
@@ -113,16 +146,20 @@ func (s *Service) ArtistDetail(ctx context.Context, source, id string) (core.Art
 		det.LibraryAlbums = s.libraryAlbumsByArtistName(ctx, det.Name)
 		return det, nil
 	}
+	src, err := s.source(externalSource)
+	if err != nil {
+		return det, err
+	}
 	det.Resolved = true
 	det.ExternalArtistID = extID
 	// Fetch the artist's real profile (name + image) from the external source.
-	if prof, pErr := s.src.GetArtist(ctx, extID); pErr == nil {
+	if prof, pErr := src.GetArtist(ctx, extID); pErr == nil {
 		if det.Name == "" {
 			det.Name = prof.Name
 		}
 		det.CoverURL = prof.CoverURL
 	}
-	albums, err := s.discography(ctx, extID)
+	albums, err := s.discography(ctx, externalSource, extID)
 	if err != nil {
 		return det, err
 	}
@@ -133,7 +170,7 @@ func (s *Service) ArtistDetail(ctx context.Context, source, id string) (core.Art
 	}
 	// Backfill LibraryAlbumID for albums already mapped in the coverage cache.
 	for i, da := range det.Albums {
-		if libID := s.cache.GetLibraryAlbumIDByExternal(ctx, "spotify", da.ExternalID); libID != "" {
+		if libID := s.cache.GetLibraryAlbumIDByExternal(ctx, externalSource, da.ExternalID); libID != "" {
 			det.Albums[i].LibraryAlbumID = libID
 		}
 	}
@@ -143,19 +180,23 @@ func (s *Service) ArtistDetail(ctx context.Context, source, id string) (core.Art
 }
 
 // discography is cache-first.
-func (s *Service) discography(ctx context.Context, extID string) ([]core.ExternalAlbum, error) {
-	if row, err := s.cache.GetDiscographyCache(ctx, "spotify", extID); err == nil && row.AlbumsJSON != "" {
+func (s *Service) discography(ctx context.Context, source, extID string) ([]core.ExternalAlbum, error) {
+	if row, err := s.cache.GetDiscographyCache(ctx, source, extID); err == nil && row.AlbumsJSON != "" {
 		var cached []core.ExternalAlbum
 		if json.Unmarshal([]byte(row.AlbumsJSON), &cached) == nil {
 			return cached, nil
 		}
 	}
-	albums, err := s.src.GetArtistDiscography(ctx, extID)
+	src, err := s.source(source)
+	if err != nil {
+		return nil, err
+	}
+	albums, err := src.GetArtistDiscography(ctx, extID)
 	if err != nil {
 		return nil, err
 	}
 	if b, mErr := json.Marshal(albums); mErr == nil {
-		_ = s.cache.UpsertDiscographyCache(ctx, "spotify", extID, string(b), s.now())
+		_ = s.cache.UpsertDiscographyCache(ctx, source, extID, string(b), s.now())
 	}
 	return albums, nil
 }
@@ -226,9 +267,9 @@ func (s *Service) StreamCoverage(ctx context.Context, source, id string) <-chan 
 			return
 		}
 		for _, da := range det.Albums {
-			cov, cErr := s.coverageForAlbum(ctx, da.ExternalID)
+			cov, cErr := s.coverageForAlbum(ctx, da.Source, da.ExternalID)
 			if cErr != nil {
-				cov = core.AlbumCoverage{Source: "spotify", ExternalAlbumID: da.ExternalID, State: core.CoverageNone, MissingTracks: []core.ExternalTrackRef{}}
+				cov = core.AlbumCoverage{Source: da.Source, ExternalAlbumID: da.ExternalID, State: core.CoverageNone, MissingTracks: []core.ExternalTrackRef{}}
 			}
 			select {
 			case <-ctx.Done():
@@ -240,18 +281,22 @@ func (s *Service) StreamCoverage(ctx context.Context, source, id string) <-chan 
 	return out
 }
 
-func (s *Service) coverageForAlbum(ctx context.Context, extAlbumID string) (core.AlbumCoverage, error) {
+func (s *Service) coverageForAlbum(ctx context.Context, source, extAlbumID string) (core.AlbumCoverage, error) {
 	curVer, err := s.version(ctx)
 	if err != nil {
 		return core.AlbumCoverage{}, err
 	}
-	if row, err := s.cache.GetAlbumCoverage(ctx, "spotify", extAlbumID); err == nil && row.Found && row.LibraryVersion >= curVer {
+	if row, err := s.cache.GetAlbumCoverage(ctx, source, extAlbumID); err == nil && row.Found && row.LibraryVersion >= curVer {
 		var cov core.AlbumCoverage
 		if json.Unmarshal([]byte(row.CoverageJSON), &cov) == nil {
 			return cov, nil
 		}
 	}
-	full, err := s.src.GetAlbum(ctx, extAlbumID)
+	src, err := s.source(source)
+	if err != nil {
+		return core.AlbumCoverage{}, err
+	}
+	full, err := src.GetAlbum(ctx, extAlbumID)
 	if err != nil {
 		return core.AlbumCoverage{}, err
 	}
@@ -261,7 +306,7 @@ func (s *Service) coverageForAlbum(ctx context.Context, extAlbumID string) (core
 	}
 	cov.LibraryAlbumID = s.backfillLibraryAlbumID(ctx, cov)
 	if b, mErr := json.Marshal(cov); mErr == nil {
-		_ = s.cache.UpsertAlbumCoverage(ctx, "spotify", extAlbumID, string(b), cov.LibraryAlbumID, curVer, s.now())
+		_ = s.cache.UpsertAlbumCoverage(ctx, source, extAlbumID, string(b), cov.LibraryAlbumID, curVer, s.now())
 	}
 	return cov, nil
 }
@@ -280,11 +325,11 @@ func (s *Service) backfillLibraryAlbumID(ctx context.Context, cov core.AlbumCove
 }
 
 // albumDetailFromExternal builds an AlbumDetail from a full external album by
-// matching each track against the library. spotify-source defaults are applied;
+// matching each track against the library. Source metadata is preserved;
 // callers that need different metadata (e.g. the library branch) override afterwards.
 func (s *Service) albumDetailFromExternal(ctx context.Context, full core.ExternalAlbum) (core.AlbumDetail, error) {
 	det := core.AlbumDetail{
-		Source: "spotify", ID: full.ExternalID, Name: full.Name, Artist: full.Artist,
+		Source: full.Source, ID: full.ExternalID, Name: full.Name, Artist: full.Artist,
 		CoverURL: full.CoverURL, Year: full.Year, TotalCount: len(full.Tracks),
 	}
 	for i, tr := range full.Tracks {
@@ -310,17 +355,18 @@ func (s *Service) albumDetailFromExternal(ctx context.Context, full core.Externa
 
 // resolveExternalAlbum searches the external source for an album matching al by
 // normalized title+artist. Checks the album_external_map cache first; on a miss,
-// performs the live Spotify Search and caches a successful resolution. Returns the
+// performs the selected source's live Search and caches a successful resolution. Returns the
 // external ID and true on success.
-func (s *Service) resolveExternalAlbum(ctx context.Context, al core.Album) (string, bool) {
-	if s.src == nil {
+func (s *Service) resolveExternalAlbum(ctx context.Context, source string, al core.Album) (string, bool) {
+	src, err := s.source(source)
+	if err != nil {
 		return "", false
 	}
 	// Cache-first: if we already resolved this library album, skip the Search.
-	if row, err := s.cache.GetAlbumExternalMap(ctx, al.ID, "spotify"); err == nil && row.ExternalAlbumID != "" {
+	if row, err := s.cache.GetAlbumExternalMap(ctx, al.ID, source); err == nil && row.ExternalAlbumID != "" {
 		return row.ExternalAlbumID, true
 	}
-	cands, err := s.src.Search(ctx, al.Artist+" "+al.Name, core.EntityAlbum)
+	cands, err := src.Search(ctx, al.Artist+" "+al.Name, core.EntityAlbum)
 	if err != nil || len(cands) == 0 {
 		return "", false
 	}
@@ -328,7 +374,7 @@ func (s *Service) resolveExternalAlbum(ctx context.Context, al core.Album) (stri
 	normArtist := matching.Normalize(al.Artist)
 	for _, c := range cands {
 		if matching.Normalize(c.Title) == normName && matching.Normalize(c.Artist) == normArtist {
-			_ = s.cache.UpsertAlbumExternalMap(ctx, al.ID, "spotify", c.ExternalID, 1.0, s.now())
+			_ = s.cache.UpsertAlbumExternalMap(ctx, al.ID, source, c.ExternalID, 1.0, s.now())
 			return c.ExternalID, true
 		}
 	}
@@ -336,19 +382,21 @@ func (s *Service) resolveExternalAlbum(ctx context.Context, al core.Album) (stri
 	return "", false
 }
 
-// AlbumDetail returns per-track ownership for an album. source "library" merges
-// the full Spotify tracklist (owned + missing) when a match is found; falls back
-// to library-only when Spotify isn't configured or no match is found. source
-// "spotify" takes the external id directly.
+// AlbumDetail returns per-track ownership for an album. Library routes use the
+// default configured source; external routes use their explicit source.
 func (s *Service) AlbumDetail(ctx context.Context, source, id string) (core.AlbumDetail, error) {
 	if source == "library" {
 		al, err := s.lib.GetAlbum(ctx, id)
 		if err != nil {
 			return core.AlbumDetail{}, err
 		}
-		extID, ok := s.resolveExternalAlbum(ctx, al)
+		extID, ok := s.resolveExternalAlbum(ctx, s.defaultSource, al)
 		if ok {
-			full, fErr := s.src.GetAlbum(ctx, extID)
+			src, srcErr := s.source(s.defaultSource)
+			if srcErr != nil {
+				return core.AlbumDetail{}, srcErr
+			}
+			full, fErr := src.GetAlbum(ctx, extID)
 			if fErr != nil {
 				return core.AlbumDetail{}, fErr
 			}
@@ -383,7 +431,11 @@ func (s *Service) AlbumDetail(ctx context.Context, source, id string) (core.Albu
 		}
 		return det, nil
 	}
-	full, err := s.src.GetAlbum(ctx, id)
+	src, err := s.source(source)
+	if err != nil {
+		return core.AlbumDetail{}, err
+	}
+	full, err := src.GetAlbum(ctx, id)
 	if err != nil {
 		return core.AlbumDetail{}, err
 	}

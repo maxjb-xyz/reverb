@@ -35,6 +35,15 @@ type artistSearchDTO struct {
 	PictureMedium string `json:"picture_medium"`
 }
 
+// artistDTO is returned by GET /artist/{id}. Deezer may omit picture_big for
+// artists without an uploaded portrait, so callers fall back to picture_medium.
+type artistDTO struct {
+	ID            int64  `json:"id"`
+	Name          string `json:"name"`
+	PictureMedium string `json:"picture_medium"`
+	PictureBig    string `json:"picture_big"`
+}
+
 type searchTracksResponse struct {
 	Data []trackDTO `json:"data"`
 }
@@ -45,6 +54,10 @@ type searchAlbumsResponse struct {
 
 type searchArtistsResponse struct {
 	Data []artistSearchDTO `json:"data"`
+}
+
+type artistAlbumsResponse struct {
+	Data []albumSearchDTO `json:"data"`
 }
 
 type fullAlbumDTO struct {

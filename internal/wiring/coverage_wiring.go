@@ -135,7 +135,7 @@ func (c *coverageCache) GetLibraryAlbumIDByExternal(ctx context.Context, source,
 }
 
 // BuildCoverageService constructs a *coverage.Service from the built services: the
-// first enabled search source implementing coverage.DiscoSource (spotify does),
+// every enabled search source implementing coverage.DiscoSource,
 // the library adapter, a matching.Service over the same library, the cache adapter,
 // and nowFn. It returns nil when there is no DiscoSource-capable source or no
 // library — coverage needs both an external discography source and a library to
@@ -148,17 +148,20 @@ func (b *Builder) BuildCoverageService(
 	if lib == nil {
 		return nil
 	}
-	var src coverage.DiscoSource
+	sourcesByName := map[string]coverage.DiscoSource{}
+	defaultSource := ""
 	for _, s := range sources {
 		if ds, ok := s.(coverage.DiscoSource); ok {
-			src = ds
-			break
+			sourcesByName[s.Name()] = ds
+			if defaultSource == "" {
+				defaultSource = s.Name()
+			}
 		}
 	}
-	if src == nil {
+	if len(sourcesByName) == 0 {
 		return nil
 	}
 	matcher := matching.NewService(lib, b.queries, b.version.LibraryVersion)
 	cache := NewCoverageCache(b.queries)
-	return coverage.NewService(src, matcher, lib, cache, nowFn, b.version.LibraryVersion)
+	return coverage.NewMultiService(sourcesByName, defaultSource, matcher, lib, cache, nowFn, b.version.LibraryVersion)
 }

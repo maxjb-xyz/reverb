@@ -19,6 +19,8 @@ var (
 	_ search.DiscographyProvider    = (*Adapter)(nil)
 	_ search.PlaylistProvider       = (*Adapter)(nil)
 	_ search.PlaylistSearchProvider = (*Adapter)(nil)
+	_ search.TrackProvider          = (*Adapter)(nil)
+	_ search.ArtistProvider         = (*Adapter)(nil)
 )
 
 var playlistIDRe = regexp.MustCompile(`(?:open\.spotify\.com/playlist/|spotify:playlist:)([A-Za-z0-9]+)`)
@@ -221,6 +223,16 @@ func (a *Adapter) SearchPlaylists(ctx context.Context, q string) ([]core.Externa
 	return a.Search(ctx, q, core.EntityPlaylist)
 }
 
+// GetTrack fetches one track so durable catalog rows can recover its parent
+// artist and album identities for navigation after the original search is gone.
+func (a *Adapter) GetTrack(ctx context.Context, externalID string) (core.ExternalResult, error) {
+	var dto trackDTO
+	if err := a.client.apiGet(ctx, "/tracks/"+url.PathEscape(externalID), url.Values{}, &dto); err != nil {
+		return core.ExternalResult{}, err
+	}
+	return a.mapTrack(dto), nil
+}
+
 // GetArtist fetches the artist profile (name + images) from GET /artists/{id}.
 func (a *Adapter) GetArtist(ctx context.Context, externalID string) (core.ExternalArtist, error) {
 	var dto artistDTO
@@ -293,7 +305,7 @@ func (a *Adapter) GetPlaylist(ctx context.Context, externalID string) (core.Exte
 	seen := 0 // total items processed (including skipped local tracks)
 	for {
 		for _, it := range page.Items {
-			seen++ // advance for every item, regardless of whether we keep it
+			seen++                 // advance for every item, regardless of whether we keep it
 			if it.Track.ID == "" { // local/unavailable tracks have no id
 				continue
 			}

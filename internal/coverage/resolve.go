@@ -10,8 +10,8 @@ import (
 
 // ResolveArtist maps a library artist to an external artist id, caching the result.
 // Returns ("",0,nil) when no confident match (caller degrades to library-only).
-func ResolveArtist(ctx context.Context, src DiscoSource, lib LibraryArtist, cache CoverageCache, now func() int64, libraryArtistID string) (string, float64, error) {
-	if row, err := cache.GetArtistExternalMap(ctx, libraryArtistID, "spotify"); err == nil && row.ExternalArtistID != "" {
+func ResolveArtist(ctx context.Context, source string, src DiscoSource, lib LibraryArtist, cache CoverageCache, now func() int64, libraryArtistID string) (string, float64, error) {
+	if row, err := cache.GetArtistExternalMap(ctx, libraryArtistID, source); err == nil && row.ExternalArtistID != "" {
 		return row.ExternalArtistID, row.Confidence, nil
 	}
 	art, err := lib.GetArtist(ctx, libraryArtistID)
@@ -25,7 +25,7 @@ func ResolveArtist(ctx context.Context, src DiscoSource, lib LibraryArtist, cach
 	want := matching.Normalize(art.Name)
 	for _, c := range cands {
 		if matching.Normalize(c.Title) == want {
-			_ = cache.UpsertArtistExternalMap(ctx, libraryArtistID, "spotify", c.ExternalID, 1.0, now())
+			_ = cache.UpsertArtistExternalMap(ctx, libraryArtistID, source, c.ExternalID, 1.0, now())
 			return c.ExternalID, 1.0, nil
 		}
 	}

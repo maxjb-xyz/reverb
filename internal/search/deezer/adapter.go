@@ -16,8 +16,11 @@ import (
 )
 
 var (
-	_ search.SearchSource = (*Adapter)(nil)
-	_ registry.Plugin     = (*Adapter)(nil)
+	_ search.SearchSource        = (*Adapter)(nil)
+	_ search.TrackProvider       = (*Adapter)(nil)
+	_ search.ArtistProvider      = (*Adapter)(nil)
+	_ search.DiscographyProvider = (*Adapter)(nil)
+	_ registry.Plugin            = (*Adapter)(nil)
 )
 
 const defaultAPIURL = "https://api.deezer.com"
@@ -152,6 +155,49 @@ func (a *Adapter) Search(ctx context.Context, q string, t core.EntityType) ([]co
 		}
 	}
 	return out, nil
+}
+
+// GetTrack fetches a durable Deezer track reference without fuzzy searching.
+func (a *Adapter) GetTrack(ctx context.Context, externalID string) (core.ExternalResult, error) {
+	var track trackDTO
+	if err := a.client.get(ctx, "/track/"+url.PathEscape(externalID), url.Values{}, &track); err != nil {
+		return core.ExternalResult{}, err
+	}
+	return mapTrack(track), nil
+}
+
+// GetArtist fetches a Deezer artist profile for source-qualified artist pages.
+func (a *Adapter) GetArtist(ctx context.Context, externalID string) (core.ExternalArtist, error) {
+	var artist artistDTO
+	if err := a.client.get(ctx, "/artist/"+url.PathEscape(externalID), url.Values{}, &artist); err != nil {
+		return core.ExternalArtist{}, err
+	}
+	cover := artist.PictureBig
+	if cover == "" {
+		cover = artist.PictureMedium
+	}
+	return core.ExternalArtist{Source: "deezer", ExternalID: id64(artist.ID), Name: artist.Name, CoverURL: cover}, nil
+}
+
+// GetArtistDiscography returns the albums Deezer exposes for an artist. Deezer
+// paginates this endpoint with index/limit; cap it to keep artist pages bounded.
+func (a *Adapter) GetArtistDiscography(ctx context.Context, externalID string) ([]core.ExternalAlbum, error) {
+	params := url.Values{}
+	params.Set("limit", "50")
+	params.Set("index", "0")
+	var response artistAlbumsResponse
+	if err := a.client.get(ctx, "/artist/"+url.PathEscape(externalID)+"/albums", params, &response); err != nil {
+		return nil, err
+	}
+	albums := make([]core.ExternalAlbum, 0, len(response.Data))
+	for _, album := range response.Data {
+		albums = append(albums, core.ExternalAlbum{
+			Source: "deezer", ExternalID: id64(album.ID), Name: album.Title,
+			Artist: album.Artist.Name, CoverURL: album.CoverMedium,
+			Tracks: []core.ExternalResult{},
+		})
+	}
+	return albums, nil
 }
 
 func (a *Adapter) GetAlbum(ctx context.Context, externalID string) (core.ExternalAlbum, error) {
