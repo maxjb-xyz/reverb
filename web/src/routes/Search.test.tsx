@@ -146,6 +146,35 @@ describe('Search (everywhere mode)', () => {
     vi.unstubAllGlobals()
   })
 
+  it('filters Everywhere results by selected provider without restarting the search', async () => {
+    let inst: { onmessage: ((ev: { data: string }) => void) | null; onerror: (() => void) | null; close(): void } | null = null
+    class StubES {
+      onmessage: ((ev: { data: string }) => void) | null = null
+      onerror: (() => void) | null = null
+      constructor(_url: string) { inst = this }
+      close() {}
+    }
+    vi.stubGlobal('EventSource', StubES as unknown as typeof EventSource)
+
+    render(wrap(<Search />))
+    fireEvent.change(screen.getByPlaceholderText(/search/i), { target: { value: 'providers' } })
+    clickTab(/everywhere/i)
+    act(() => {
+      inst!.onmessage?.({ data: JSON.stringify({ source: 'spotify', status: 'ok', results: [{ source: 'spotify', externalId: 'sp1', title: 'Spotify Song', artist: 'A', album: 'A', durationMs: 1, type: 'track' }] }) })
+      inst!.onmessage?.({ data: JSON.stringify({ source: 'deezer', status: 'ok', results: [{ source: 'deezer', externalId: 'dz1', title: 'Deezer Song', artist: 'B', album: 'B', durationMs: 1, type: 'track' }] }) })
+    })
+
+    await waitFor(() => expect(screen.getByText('Spotify Song')).toBeInTheDocument())
+    expect(screen.getByText('Deezer Song')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Hide Spotify results' }))
+    expect(screen.queryByText('Spotify Song')).not.toBeInTheDocument()
+    expect(screen.getByText('Deezer Song')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Show Spotify results' }))
+    expect(screen.getByText('Spotify Song')).toBeInTheDocument()
+
+    vi.unstubAllGlobals()
+  })
+
   it('source chips render correct tone: error status shows error badge', async () => {
     let inst: { onmessage: ((ev: { data: string }) => void) | null; onerror: (() => void) | null; close(): void } | null = null
     class StubES {

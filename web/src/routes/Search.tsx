@@ -78,21 +78,38 @@ function trackFromMatch(r: ExternalResult, libraryTrackId: string): Track {
 
 // ── Source chips ──────────────────────────────────────────────────────────────
 
-function SourceChipsRow({ sources }: { sources: SourceStatus[] }) {
+function SourceChipsRow({
+  sources,
+  hiddenSources,
+  onToggle,
+}: {
+  sources: SourceStatus[]
+  hiddenSources: ReadonlySet<string>
+  onToggle: (source: string) => void
+}) {
   if (sources.length === 0) return null
   return (
     <div className="flex flex-wrap items-center gap-2" aria-label="Source status">
       {sources.map((s) => (
-        <Badge key={s.source} kind="status" tone={sourceTone(s.status)}>
-          {s.status === 'ok' ? (
-            <>
-              {sourceName(s)}
-              <Icon name="check" className="ml-1 text-xs" aria-hidden="true" />
-            </>
-          ) : (
-            sourceLabel(s)
-          )}
-        </Badge>
+        <button
+          key={s.source}
+          type="button"
+          aria-pressed={!hiddenSources.has(s.source)}
+          aria-label={`${hiddenSources.has(s.source) ? 'Show' : 'Hide'} ${sourceName(s)} results`}
+          onClick={() => onToggle(s.source)}
+          className="rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+        >
+          <Badge key={s.source} kind="status" tone={sourceTone(s.status)}>
+            {s.status === 'ok' ? (
+              <>
+                {sourceName(s)}
+                {!hiddenSources.has(s.source) && <Icon name="check" className="ml-1 text-xs" aria-hidden="true" />}
+              </>
+            ) : (
+              sourceLabel(s)
+            )}
+          </Badge>
+        </button>
       ))}
     </div>
   )
@@ -136,6 +153,7 @@ export default function Search() {
   // bulk download (per-item acquisition on the track rows is unaffected).
   const canAutoApprove = useAuthStore((s) => s.can('auto_approve'))
   const [resultFilter, setResultFilter] = useState<ResultFilter>('all')
+  const [hiddenSources, setHiddenSources] = useState<Set<string>>(() => new Set())
 
   // Library mode: TanStack Query REST call
   const lib = useLibrarySearch(mode === 'library' ? q : '')
@@ -146,6 +164,20 @@ export default function Search() {
   const libTracks = lib.data?.tracks ?? []
   const libAlbums = lib.data?.albums ?? []
   const libArtists = lib.data?.artists ?? []
+  const isVisibleSource = (source: string) => !hiddenSources.has(source)
+  const tracks = everywhere.tracks.filter((result) => isVisibleSource(result.source))
+  const albums = everywhere.albums.filter((result) => isVisibleSource(result.source))
+  const artists = everywhere.artists.filter((result) => isVisibleSource(result.source))
+  const playlists = everywhere.playlists.filter((result) => isVisibleSource(result.source))
+
+  function toggleSource(source: string) {
+    setHiddenSources((current) => {
+      const next = new Set(current)
+      if (next.has(source)) next.delete(source)
+      else next.add(source)
+      return next
+    })
+  }
 
   // ── Empty-query prompt ──────────────────────────────────────────────────────
   if (q.trim() === '') {
@@ -254,7 +286,7 @@ export default function Search() {
       {mode === 'everywhere' && (
         <>
           {/* Source chips */}
-          <SourceChipsRow sources={everywhere.sources} />
+          <SourceChipsRow sources={everywhere.sources} hiddenSources={hiddenSources} onToggle={toggleSource} />
 
           <div className="overflow-x-auto pb-1">
             <Segmented options={RESULT_FILTERS} value={resultFilter} onChange={setResultFilter} />
@@ -270,13 +302,13 @@ export default function Search() {
           {/* Songs */}
           {(resultFilter === 'all' || resultFilter === 'track') && <section aria-label="Songs">
             <SectionHeading>Songs</SectionHeading>
-            {everywhere.tracks.length === 0 && everywhere.status === 'streaming' ? (
+            {tracks.length === 0 && everywhere.status === 'streaming' ? (
               <TrackSkeletons />
-            ) : everywhere.tracks.length === 0 ? (
+            ) : tracks.length === 0 ? (
               <p className="text-sm text-text-muted">No tracks found.</p>
             ) : (
               <div className="space-y-0.5">
-                {everywhere.tracks.map((r) => {
+                {tracks.map((r) => {
                   const matchedId =
                     (r.match?.status === 'in_library' && r.match.libraryTrackId) || ''
                   const syntheticTrack = matchedId ? trackFromMatch(r, matchedId) : null
@@ -358,12 +390,12 @@ export default function Search() {
           </section>}
 
           {/* Albums */}
-          {(resultFilter === 'all' || resultFilter === 'album') && everywhere.albums.length > 0 && (
+          {(resultFilter === 'all' || resultFilter === 'album') && albums.length > 0 && (
             <section aria-label="Albums">
               <SectionHeading>Albums</SectionHeading>
               {/* TODO(phase-6): partial N-of-M needs external album tracks + matching */}
               <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-                {everywhere.albums.map((a) => (
+                {albums.map((a) => (
                   <MediaCard
                     key={`${a.source}:${a.externalId}`}
                     title={a.title}
@@ -402,11 +434,11 @@ export default function Search() {
           )}
 
           {/* Artists */}
-          {(resultFilter === 'all' || resultFilter === 'artist') && everywhere.artists.length > 0 && (
+          {(resultFilter === 'all' || resultFilter === 'artist') && artists.length > 0 && (
             <section aria-label="Artists">
               <SectionHeading>Artists</SectionHeading>
               <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
-                {everywhere.artists.map((r) => (
+                {artists.map((r) => (
                   <MediaCard
                     key={`${r.source}:${r.externalId}`}
                     title={r.title}
@@ -418,11 +450,11 @@ export default function Search() {
             </section>
           )}
 
-          {(resultFilter === 'all' || resultFilter === 'playlist') && everywhere.playlists.length > 0 && (
+          {(resultFilter === 'all' || resultFilter === 'playlist') && playlists.length > 0 && (
             <section aria-label="Playlists">
               <SectionHeading>Playlists</SectionHeading>
               <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-                {everywhere.playlists.map((playlist) => (
+                {playlists.map((playlist) => (
                   <MediaCard
                     key={`${playlist.source}:${playlist.externalId}`}
                     title={playlist.title}
