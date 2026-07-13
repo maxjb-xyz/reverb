@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/maxjb-xyz/reverb/internal/core"
+	"github.com/maxjb-xyz/reverb/internal/matching"
 )
 
 // Matcher pre-matches an external result against the library. Implemented by
@@ -27,7 +28,8 @@ func (a *Aggregator) FindTrack(ctx context.Context, title, artist string) (core.
 			continue
 		}
 		for _, result := range results {
-			if result.Title == title && result.Artist == artist {
+			if matching.Normalize(result.Title) == matching.Normalize(title) &&
+				matching.Normalize(result.Artist) == matching.Normalize(artist) {
 				return result, nil
 			}
 		}

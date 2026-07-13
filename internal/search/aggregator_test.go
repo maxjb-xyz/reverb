@@ -105,6 +105,19 @@ func TestAggregatorErrorEnvelope(t *testing.T) {
 	}
 }
 
+func TestFindTrackNormalizesProviderArtistSeparators(t *testing.T) {
+	source := &scriptedSource{name: "spotify", results: []core.ExternalResult{{
+		Source: "spotify", ExternalID: "track-1", Title: "Royalty", Artist: "Egzod, Maestro Chives, Neoni",
+	}}}
+	track, err := NewAggregator([]SearchSource{source}, nil, time.Second).FindTrack(context.Background(), "Royalty", "Egzod/Maestro Chives/Neoni")
+	if err != nil {
+		t.Fatalf("FindTrack: %v", err)
+	}
+	if track.ExternalID != "track-1" {
+		t.Fatalf("ExternalID = %q, want track-1", track.ExternalID)
+	}
+}
+
 // TestAggregatorCancelExitsCleanly verifies that cancelling the parent context
 // causes the output channel to close promptly even when sources are still
 // blocked. Without the ctx.Done() escape in the send select this test would
