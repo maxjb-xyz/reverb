@@ -3054,57 +3054,23 @@ func TestRunScan_RefreshLinkedCalledWithLinkedCanonicalIDs(t *testing.T) {
 		func() BindingResolver { return res },
 	)
 	m.SetCanonicalMinter(minter)
-	t.Cleanup(m.Stop)
-	m.Start()
-
 	ctx := context.Background()
 	for _, ext := range []string{"ext1", "ext2", "ext3"} {
-		_, err := m.Enqueue(ctx, core.DownloadRequest{
-			Source: "spotify", ExternalID: ext, Title: "Song " + ext, Artist: "A", Album: "B",
-		})
-		if err != nil {
-			t.Fatalf("Enqueue %s: %v", ext, err)
+		job := core.DownloadJob{
+			ID: ext, Source: "spotify", ExternalID: ext, Title: "Song " + ext,
+			Artist: "A", Album: "B", Status: core.DownloadCompleted,
+		}
+		if err := store.Insert(ctx, job, core.DownloadRequest{}); err != nil {
+			t.Fatalf("Insert %s: %v", ext, err)
 		}
 	}
 
-	// Wait for all 3 jobs to finish downloading.
-	deadline := time.After(2 * time.Second)
-	for {
-		jobs, _ := store.List(ctx)
-		done := 0
-		for _, j := range jobs {
-			if j.Status == core.DownloadCompleted {
-				done++
-			}
-		}
-		if done == 3 {
-			break
-		}
-		select {
-		case <-deadline:
-			t.Fatal("downloads did not complete in time")
-		default:
-			time.Sleep(time.Millisecond)
-		}
-	}
+	// Test the scan itself directly. Starting workers here would also start the
+	// one-shot startup backfill, which races this test by consuming completed jobs
+	// before the debounce callback can scan them.
+	m.pending = true
+	m.runScan()
 
-	// A worker records completion before it arms the debounce timer. Wait for all
-	// three completions to arm/re-arm it so Advance cannot fire a partial scan.
-	timerDeadline := time.After(2 * time.Second)
-	for clk.scheduledCount() < 3 {
-		select {
-		case <-timerDeadline:
-			t.Fatal("not all completed downloads armed the debounce timer within 2s")
-		default:
-			time.Sleep(time.Millisecond)
-		}
-	}
-
-	// Fire the final debounced scan: runScan links the 3 jobs, mints ids, and
-	// calls RefreshLinked synchronously through fakeClock.Advance.
-	clk.Advance(5 * time.Second)
-
-	// RefreshLinked must have been called exactly once.
 	if res.callCount() != 1 {
 		t.Fatalf("RefreshLinked called %d times; want 1", res.callCount())
 	}
