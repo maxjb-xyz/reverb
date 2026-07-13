@@ -8,114 +8,8 @@ on:
 permissions:
   contents: write
   packages: write
-env:
-  GOVULNCHECK_VERSION: v1.6.0
 jobs:
-  # These gates run independently so a release is validated as quickly as a push.
-  backend:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with: { go-version: '1.26.5', cache: true }
-      - run: go vet ./cmd/... ./internal/...
-      - run: go test -race ./cmd/... ./internal/... -count=1
-
-  static-analysis:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with: { go-version: '1.26.5', cache: true }
-      - name: Cache golangci-lint
-        id: golangci-cache
-        uses: actions/cache@v4
-        with:
-          path: ~/go/bin/golangci-lint
-          key: ${{ runner.os }}-golangci-lint-v2.12.2
-      - name: golangci-lint
-        run: |
-          if [ "${{ steps.golangci-cache.outputs.cache-hit }}" != "true" ]; then
-            go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2
-          fi
-          golangci-lint run ./cmd/... ./internal/...
-      - name: Cache govulncheck
-        id: govulncheck-cache
-        uses: actions/cache@v4
-        with:
-          path: ~/go/bin/govulncheck
-          key: ${{ runner.os }}-govulncheck-${{ env.GOVULNCHECK_VERSION }}
-      - name: Install govulncheck
-        if: steps.govulncheck-cache.outputs.cache-hit != 'true'
-        run: go install golang.org/x/vuln/cmd/govulncheck@${{ env.GOVULNCHECK_VERSION }}
-      - run: govulncheck ./...
-
-  frontend:
-    runs-on: ubuntu-latest
-    defaults: { run: { working-directory: web } }
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          cache: npm
-          cache-dependency-path: web/package-lock.json
-      - run: npm ci
-      - run: npx tsc --noEmit
-      - run: npm run lint
-      - run: npm run test
-      - run: npm run build
-
-  e2e:
-    runs-on: ubuntu-latest
-    defaults: { run: { working-directory: web } }
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          cache: npm
-          cache-dependency-path: web/package-lock.json
-      - run: npm ci
-      - name: Cache Playwright browsers
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/ms-playwright
-          key: ${{ runner.os }}-playwright-${{ hashFiles('web/package-lock.json') }}
-      - run: npx playwright install --with-deps chromium
-      - run: npm run e2e
-
-  docker:
-    needs: [backend, static-analysis, frontend, e2e]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: docker/setup-buildx-action@v3
-      - name: Build image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          push: false
-          load: true
-          tags: reverb:release-check
-          # Populate the shared BuildKit cache before the final multi-arch push.
-          cache-from: type=gha,scope=reverb-image
-          cache-to: type=gha,mode=max,scope=reverb-image
-          build-args: |
-            VERSION=${{ github.event.release.tag_name }}
-      - name: Smoke-test the image
-        run: |
-          docker run -d --name reverb-release-check -p 18090:8090 reverb:release-check --db /tmp/release-check.db
-          for i in $(seq 1 20); do
-            if curl -fsS http://localhost:18090/api/v1/version; then ok=1; break; fi
-            sleep 1
-          done
-          docker logs reverb-release-check
-          test "${ok:-0}" = "1"
-          docker rm -f reverb-release-check
-
   release:
-    needs: [backend, static-analysis, frontend, e2e, docker]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -142,8 +36,7 @@ jobs:
           tags: |
             ghcr.io/${{ github.repository_owner }}/reverb:${{ steps.ver.outputs.version }}
             ghcr.io/${{ github.repository_owner }}/reverb:latest
-          # The amd64 validation build above seeds this cache; the final build
-          # reuses it and retains its arm64 layers for the next release.
+          # Reuse layers populated by CI and retain arm64 layers for the next release.
           cache-from: type=gha,scope=reverb-image
           cache-to: type=gha,mode=max,scope=reverb-image
           build-args: |
