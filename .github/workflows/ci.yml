@@ -77,8 +77,8 @@ jobs:
           tags: reverb:ci
           # Reuse dependency, web-build, Go-build, and runtime-image layers
           # across push and pull-request checks.
-          cache-from: type=gha,scope=reverb-image
-          cache-to: type=gha,mode=max,scope=reverb-image
+          cache-from: type=gha,scope=reverb-amd64
+          cache-to: type=gha,mode=max,scope=reverb-amd64
           build-args: |
             VERSION=${{ github.sha }}
       - name: Smoke-test the image
