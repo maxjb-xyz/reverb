@@ -87,17 +87,35 @@ export async function installApiMocks(
   // mock stream from asynchronously rejecting playback and flipping the engine
   // back to paused after the UI has handled a play action.
   await page.addInitScript(() => {
+    const paused = new WeakMap<HTMLMediaElement, boolean>()
+    const src = new WeakMap<HTMLMediaElement, string>()
+    Object.defineProperty(HTMLMediaElement.prototype, 'src', {
+      configurable: true,
+      get(this: HTMLMediaElement) { return src.get(this) ?? '' },
+      set(this: HTMLMediaElement, value: string) { src.set(this, value) },
+    })
     Object.defineProperty(HTMLMediaElement.prototype, 'load', {
       configurable: true,
       value() {},
     })
+    Object.defineProperty(HTMLMediaElement.prototype, 'paused', {
+      configurable: true,
+      get(this: HTMLMediaElement) { return paused.get(this) ?? true },
+    })
     Object.defineProperty(HTMLMediaElement.prototype, 'play', {
       configurable: true,
-      value() { return Promise.resolve() },
+      value(this: HTMLMediaElement) {
+        paused.set(this, false)
+        this.dispatchEvent(new Event('play'))
+        return Promise.resolve()
+      },
     })
     Object.defineProperty(HTMLMediaElement.prototype, 'pause', {
       configurable: true,
-      value() {},
+      value(this: HTMLMediaElement) {
+        paused.set(this, true)
+        this.dispatchEvent(new Event('pause'))
+      },
     })
   })
   const me = opts.me ?? ownerMe
