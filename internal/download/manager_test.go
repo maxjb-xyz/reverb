@@ -990,16 +990,20 @@ func TestManualURLClearedAfterFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Wait for the job to reach DownloadFailed again.
+	// The seeded job already has DownloadFailed status, so waiting for that status
+	// alone can finish before the asynchronous retry worker has processed it.
+	// Wait for the request cleanup itself, which is the behaviour under test.
 	deadline := time.After(3 * time.Second)
 	for {
-		cur, _, _ := store.Get(context.Background(), "jurl")
-		if cur.Status == core.DownloadFailed {
+		m.mu.Lock()
+		_, exists := m.reqs["jurl"]
+		m.mu.Unlock()
+		if !exists {
 			break
 		}
 		select {
 		case <-deadline:
-			t.Fatal("timed out waiting for job to fail after manual-URL retry")
+			t.Fatal("timed out waiting for request cleanup after manual-URL retry")
 		default:
 			time.Sleep(time.Millisecond)
 		}
@@ -1024,16 +1028,18 @@ func TestManualURLClearedAfterFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Wait for the second failure.
+	// Wait for the second request cleanup, for the same reason as above.
 	deadline2 := time.After(3 * time.Second)
 	for {
-		cur, _, _ := store.Get(context.Background(), "jurl")
-		if cur.Status == core.DownloadFailed && cur.Attempts >= 3 {
+		m.mu.Lock()
+		_, exists := m.reqs["jurl"]
+		m.mu.Unlock()
+		if !exists {
 			break
 		}
 		select {
 		case <-deadline2:
-			t.Fatal("timed out waiting for second failure")
+			t.Fatal("timed out waiting for second request cleanup")
 		default:
 			time.Sleep(time.Millisecond)
 		}
