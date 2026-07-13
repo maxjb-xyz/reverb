@@ -74,10 +74,12 @@ export function useArtists() {
   })
 }
 
-export function useAlbums(type = 'newest') {
+export function useAlbums(type = 'newest', size?: number) {
+  const params = new URLSearchParams({ type })
+  if (size) params.set('size', String(size))
   return useQuery({
-    queryKey: ['library', 'albums', type],
-    queryFn: () => api.get<Album[]>(`/library/albums?type=${encodeURIComponent(type)}`),
+    queryKey: ['library', 'albums', type, size ?? 0],
+    queryFn: () => api.get<Album[]>(`/library/albums?${params.toString()}`),
   })
 }
 

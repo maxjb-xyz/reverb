@@ -14,6 +14,10 @@ interface Props {
   kind: EntityKind
 }
 
+function metadataKey(name: string, artist = ''): string {
+  return `${name}\u0000${artist}`.trim().toLocaleLowerCase()
+}
+
 /** Returns the primary display name for a row based on its kind. */
 function displayName(kind: EntityKind, row: TopRow): string {
   if (kind === 'track') return row.Title
@@ -50,7 +54,9 @@ function trackFromTopRow(row: TopRow): Track {
 export function TopList({ title, rows, kind }: Props) {
   const navigate = useNavigate()
   const playTrackList = usePlayer((s) => s.playTrackList)
-  const albums = useAlbums()
+  // Stats can cover older listening history, so the default "newest" 50-album
+  // browse result is insufficient to resolve its artwork.
+  const albums = useAlbums('alphabeticalByName', 500)
   const artists = useArtists()
 
   return (
@@ -58,11 +64,18 @@ export function TopList({ title, rows, kind }: Props) {
       <h2 className="text-base font-bold text-text-primary mb-3">{title}</h2>
       <div className="flex flex-col gap-0.5">
         {rows.map((row, i) => {
-          const album = (albums.data ?? []).find((item) => item.name === row.Album && item.artist === row.Artist)
-          const artist = (artists.data ?? []).find((item) => item.name === row.Artist)
-          const src = kind === 'artist'
-            ? coverUrl(artist?.coverArtId ?? '', 48)
-            : coverUrl(album?.coverArtId ?? '', 48)
+          const album = (albums.data ?? []).find((item) => metadataKey(item.name, item.artist) === metadataKey(row.Album, row.Artist))
+          const artist = (artists.data ?? []).find((item) => metadataKey(item.name) === metadataKey(row.Artist))
+          const artistAlbum = kind === 'artist'
+            ? (albums.data ?? []).find((item) => metadataKey(item.artist) === metadataKey(row.Artist))
+            : undefined
+          // A catalog ID resolves through the server to the library cover. It is
+          // present for tracks and is the reliable fallback when browse metadata
+          // is unavailable or has slightly different casing.
+          const coverID = kind === 'artist'
+            ? artist?.coverArtId || artistAlbum?.coverArtId || row.CatalogID
+            : album?.coverArtId || row.CatalogID
+          const src = coverUrl(coverID, 48)
           const path = kind === 'artist' && artist
             ? `/artist/library/${encodeURIComponent(artist.id)}`
             : kind === 'album' && album

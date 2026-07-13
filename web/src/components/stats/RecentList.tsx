@@ -6,6 +6,10 @@ interface Props {
   rows: RecentRow[]
 }
 
+function metadataKey(name: string, artist = ''): string {
+  return `${name}\u0000${artist}`.trim().toLocaleLowerCase()
+}
+
 /** Format a Unix-second timestamp as a relative "Xm ago" / "Xh ago" / "Xd ago" string. */
 function relTime(sec: number): string {
   const diff = Math.floor(Date.now() / 1000) - sec
@@ -16,14 +20,16 @@ function relTime(sec: number): string {
 }
 
 export function RecentList({ rows }: Props) {
-  const albums = useAlbums()
+  const albums = useAlbums('alphabeticalByName', 500)
   return (
     <section aria-label="Recently played">
       <h2 className="text-base font-bold text-text-primary mb-3">Recently played</h2>
       <div className="flex flex-col gap-0.5">
         {rows.map((row, i) => {
-          const album = (albums.data ?? []).find((item) => item.name === row.Album && item.artist === row.Artist)
-          const src = coverUrl(album?.coverArtId ?? '', 48)
+          const album = (albums.data ?? []).find((item) => metadataKey(item.name, item.artist) === metadataKey(row.Album, row.Artist))
+          // Catalog IDs from play history resolve to the current library cover,
+          // making recent tracks work even when the album is outside the browse set.
+          const src = coverUrl(album?.coverArtId || row.CatalogID, 48)
           return (
             <div
               key={`recent-${i}`}

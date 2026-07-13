@@ -179,6 +179,18 @@ describe('Stats page', () => {
     })
   })
 
+  it('renders artist, album, and catalog-cover fallbacks in stats lists', async () => {
+    renderStats()
+    await waitFor(() => {
+      const sources = screen.getAllByRole('img').map((img) => img.getAttribute('src'))
+      expect(sources).toContain('/api/v1/cover/cover-radiohead?size=48')
+      expect(sources).toContain('/api/v1/cover/cover-okc?size=48')
+      // Matrix OST is intentionally absent from the browse mock: recent/top
+      // rows must still resolve the canonical catalog cover.
+      expect(sources).toContain('/api/v1/cover/cat-2?size=48')
+    })
+  })
+
   it('renders top track play count and time', async () => {
     renderStats()
     // Track 1: 12 plays, 2400000 ms = 40m
