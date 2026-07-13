@@ -26,6 +26,13 @@ vi.mock('../lib/statsApi', () => ({
 vi.mock('../lib/libraryApi', () => ({
   coverUrl: (id: string, size = 300) => (id ? `/api/v1/cover/${id}?size=${size}` : ''),
   trackCoverUrl: vi.fn(),
+  useAlbums: () => ({ data: [
+    { id: 'album-retrowave', name: 'Retrowave', artist: 'Synthwave Inc', coverArtId: 'cover-retrowave' },
+    { id: 'album-okc', name: 'OK Computer', artist: 'Radiohead', coverArtId: 'cover-okc' },
+  ] }),
+  useArtists: () => ({ data: [
+    { id: 'artist-radiohead', name: 'Radiohead', coverArtId: 'cover-radiohead' },
+  ] }),
 }))
 
 // ── react-router mocks ────────────────────────────────────────────────────────
@@ -163,11 +170,11 @@ describe('Stats page', () => {
     })
   })
 
-  it('renders top track cover img using CatalogID', async () => {
+  it('renders top track cover img using the matched library album', async () => {
     renderStats()
     await waitFor(() => {
       const imgs = screen.getAllByRole('img')
-      const cover = imgs.find((img) => img.getAttribute('src')?.includes('cat-1'))
+      const cover = imgs.find((img) => img.getAttribute('src')?.includes('cover-retrowave'))
       expect(cover).toBeTruthy()
     })
   })

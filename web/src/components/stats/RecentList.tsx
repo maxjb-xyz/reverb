@@ -1,4 +1,4 @@
-import { coverUrl } from '../../lib/libraryApi'
+import { coverUrl, useAlbums } from '../../lib/libraryApi'
 import { Cover } from '../ui/Cover'
 import type { RecentRow } from '../../lib/statsApi'
 
@@ -16,12 +16,14 @@ function relTime(sec: number): string {
 }
 
 export function RecentList({ rows }: Props) {
+  const albums = useAlbums()
   return (
     <section aria-label="Recently played">
       <h2 className="text-base font-bold text-text-primary mb-3">Recently played</h2>
       <div className="flex flex-col gap-0.5">
         {rows.map((row, i) => {
-          const src = row.CatalogID ? coverUrl(row.CatalogID, 48) : ''
+          const album = (albums.data ?? []).find((item) => item.name === row.Album && item.artist === row.Artist)
+          const src = coverUrl(album?.coverArtId ?? '', 48)
           return (
             <div
               key={`recent-${i}`}

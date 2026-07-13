@@ -1,6 +1,6 @@
 import { useNavigate } from 'react-router-dom'
 import { Cover } from '../ui/Cover'
-import { coverUrl } from '../../lib/libraryApi'
+import { coverUrl, useAlbums, useArtists } from '../../lib/libraryApi'
 import { msToHuman } from '../../lib/range'
 import { usePlayer } from '../../lib/playerStore'
 import type { TopRow } from '../../lib/statsApi'
@@ -50,14 +50,24 @@ function trackFromTopRow(row: TopRow): Track {
 export function TopList({ title, rows, kind }: Props) {
   const navigate = useNavigate()
   const playTrackList = usePlayer((s) => s.playTrackList)
+  const albums = useAlbums()
+  const artists = useArtists()
 
   return (
     <section aria-label={title}>
       <h2 className="text-base font-bold text-text-primary mb-3">{title}</h2>
       <div className="flex flex-col gap-0.5">
         {rows.map((row, i) => {
-          const src = row.CatalogID ? coverUrl(row.CatalogID, 48) : ''
-          const path = entityPath(kind, row)
+          const album = (albums.data ?? []).find((item) => item.name === row.Album && item.artist === row.Artist)
+          const artist = (artists.data ?? []).find((item) => item.name === row.Artist)
+          const src = kind === 'artist'
+            ? coverUrl(artist?.coverArtId ?? '', 48)
+            : coverUrl(album?.coverArtId ?? '', 48)
+          const path = kind === 'artist' && artist
+            ? `/artist/library/${encodeURIComponent(artist.id)}`
+            : kind === 'album' && album
+              ? `/album/library/${encodeURIComponent(album.id)}`
+              : entityPath(kind, row)
           const name = displayName(kind, row)
           const meta = `${row.Plays} plays · ${msToHuman(row.MsPlayed)}`
           // aria-label: descriptive for tracks; just the name for artist/album rows
