@@ -16,6 +16,10 @@ type statsMetadataProvider interface {
 	GetAlbum(context.Context, string, string) (core.ExternalAlbum, error)
 }
 
+type statsTrackFinder interface {
+	FindTrack(context.Context, string, string) (core.ExternalResult, error)
+}
+
 // enrichStatsRows restores source-specific navigation and artwork for durable
 // catalog rows. Stats aggregation only stores text plus a representative track;
 // direct source lookup supplies the artist/album IDs needed by full pages.
@@ -26,20 +30,29 @@ func (s *Server) enrichStatsRows(ctx context.Context, rows []play.TopRow, kind s
 	}
 	for i := range rows {
 		row := &rows[i]
-		if row.Source == "" || row.ExternalID == "" {
+		var track core.ExternalResult
+		if row.Source != "" && row.Source != "library" && row.ExternalID != "" {
+			lookupCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+			track, _ = provider.GetTrack(lookupCtx, row.Source, row.ExternalID)
+			cancel()
+		}
+		if track.ExternalID == "" {
+			if finder, ok := provider.(statsTrackFinder); ok && row.Title != "" && row.Artist != "" {
+				lookupCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+				track, _ = finder.FindTrack(lookupCtx, row.Title, row.Artist)
+				cancel()
+			}
+		}
+		if track.ExternalID == "" {
 			continue
 		}
-		lookupCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
-		track, err := provider.GetTrack(lookupCtx, row.Source, row.ExternalID)
-		cancel()
-		if err != nil {
-			continue
-		}
+		row.Source = track.Source
+		row.ExternalID = track.ExternalID
 		row.CoverURL = track.CoverURL
 		row.ArtistExternalID = track.ArtistExternalID
 		row.AlbumExternalID = track.AlbumExternalID
 		if kind == "artist" && row.ArtistExternalID != "" {
-			lookupCtx, cancel = context.WithTimeout(ctx, 3*time.Second)
+			lookupCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
 			artist, err := provider.GetArtist(lookupCtx, row.Source, row.ArtistExternalID)
 			cancel()
 			if err == nil && artist.CoverURL != "" {
@@ -47,7 +60,7 @@ func (s *Server) enrichStatsRows(ctx context.Context, rows []play.TopRow, kind s
 			}
 		}
 		if kind == "album" && row.AlbumExternalID != "" {
-			lookupCtx, cancel = context.WithTimeout(ctx, 3*time.Second)
+			lookupCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
 			album, err := provider.GetAlbum(lookupCtx, row.Source, row.AlbumExternalID)
 			cancel()
 			if err == nil && album.CoverURL != "" {

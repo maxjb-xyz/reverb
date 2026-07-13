@@ -382,6 +382,7 @@ WITH aggregated AS (
 )
 SELECT
     CAST(a.catalog_id AS TEXT) AS catalog_id,
+    e.title,
     a.album,
     a.artist,
     CAST(e.source AS TEXT) AS source,
@@ -402,6 +403,7 @@ type StatsTopAlbumsParams struct {
 
 type StatsTopAlbumsRow struct {
 	CatalogID  string          `json:"catalog_id"`
+	Title      string          `json:"title"`
 	Album      string          `json:"album"`
 	Artist     string          `json:"artist"`
 	Source     string          `json:"source"`
@@ -426,6 +428,7 @@ func (q *Queries) StatsTopAlbums(ctx context.Context, arg StatsTopAlbumsParams) 
 		var i StatsTopAlbumsRow
 		if err := rows.Scan(
 			&i.CatalogID,
+			&i.Title,
 			&i.Album,
 			&i.Artist,
 			&i.Source,
@@ -459,7 +462,9 @@ WITH aggregated AS (
 )
 SELECT
     CAST(a.catalog_id AS TEXT) AS catalog_id,
+    e.title,
     a.artist,
+    e.album,
     CAST(e.source AS TEXT) AS source,
     CAST(e.external_id AS TEXT) AS external_id,
     a.plays,
@@ -478,7 +483,9 @@ type StatsTopArtistsParams struct {
 
 type StatsTopArtistsRow struct {
 	CatalogID  string          `json:"catalog_id"`
+	Title      string          `json:"title"`
 	Artist     string          `json:"artist"`
+	Album      string          `json:"album"`
 	Source     string          `json:"source"`
 	ExternalID string          `json:"external_id"`
 	Plays      int64           `json:"plays"`
@@ -501,7 +508,9 @@ func (q *Queries) StatsTopArtists(ctx context.Context, arg StatsTopArtistsParams
 		var i StatsTopArtistsRow
 		if err := rows.Scan(
 			&i.CatalogID,
+			&i.Title,
 			&i.Artist,
+			&i.Album,
 			&i.Source,
 			&i.ExternalID,
 			&i.Plays,

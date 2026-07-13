@@ -16,6 +16,25 @@ type Matcher interface {
 	Match(ctx context.Context, ext core.ExternalResult) (core.MatchResult, error)
 }
 
+// FindTrack finds a track in the configured sources when a durable catalog row
+// originated in the local library and therefore lacks an external identity.
+// Sources are consulted in configured priority order; an exact title/artist
+// match is required so stats links never point at a merely similar song.
+func (a *Aggregator) FindTrack(ctx context.Context, title, artist string) (core.ExternalResult, error) {
+	for _, src := range a.sources {
+		results, err := src.Search(ctx, title, core.EntityTrack)
+		if err != nil {
+			continue
+		}
+		for _, result := range results {
+			if result.Title == title && result.Artist == artist {
+				return result, nil
+			}
+		}
+	}
+	return core.ExternalResult{}, fmt.Errorf("no configured source matched %q by %q", title, artist)
+}
+
 // Aggregator fans out a query to every enabled SearchSource concurrently.
 type Aggregator struct {
 	sources []SearchSource

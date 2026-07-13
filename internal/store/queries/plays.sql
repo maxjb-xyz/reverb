@@ -59,7 +59,9 @@ WITH aggregated AS (
 )
 SELECT
     CAST(a.catalog_id AS TEXT) AS catalog_id,
+    e.title,
     a.artist,
+    e.album,
     CAST(e.source AS TEXT) AS source,
     CAST(e.external_id AS TEXT) AS external_id,
     a.plays,
@@ -82,6 +84,7 @@ WITH aggregated AS (
 )
 SELECT
     CAST(a.catalog_id AS TEXT) AS catalog_id,
+    e.title,
     a.album,
     a.artist,
     CAST(e.source AS TEXT) AS source,

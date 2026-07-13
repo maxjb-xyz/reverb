@@ -348,8 +348,8 @@ func TestStatsTopArtists_Grouping(t *testing.T) {
 	if rows[0].CatalogID == "" {
 		t.Error("CatalogID should be populated for TopArtists")
 	}
-	if rows[0].Title != "" {
-		t.Errorf("Title should be empty for TopArtists, got %q", rows[0].Title)
+	if rows[0].Title == "" {
+		t.Error("Title should carry a representative track for TopArtists")
 	}
 	wantMs := int64(180000 + 150000)
 	if rows[0].MsPlayed != wantMs {
@@ -402,8 +402,8 @@ func TestStatsTopAlbums_Grouping(t *testing.T) {
 	if rows[0].CatalogID == "" {
 		t.Error("CatalogID should be populated for TopAlbums")
 	}
-	if rows[0].Title != "" {
-		t.Errorf("Title should be empty for TopAlbums, got %q", rows[0].Title)
+	if rows[0].Title == "" {
+		t.Error("Title should carry a representative track for TopAlbums")
 	}
 	wantMs := int64(180000 + 150000)
 	if rows[0].MsPlayed != wantMs {

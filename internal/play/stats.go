@@ -158,7 +158,8 @@ func (s *Stats) TopTracks(ctx context.Context, userID string, from, to int64, li
 }
 
 // TopArtists returns the top-played artists for userID in [from, to), limited
-// to limit rows. CatalogID, Title, and Album are always empty.
+// to limit rows. CatalogID, Title, and Album carry a representative track for
+// provider-backed artwork and navigation.
 func (s *Stats) TopArtists(ctx context.Context, userID string, from, to int64, limit int) ([]TopRow, error) {
 	rows, err := s.q.StatsTopArtists(ctx, db.StatsTopArtistsParams{
 		UserID:     userID,
@@ -173,7 +174,9 @@ func (s *Stats) TopArtists(ctx context.Context, userID string, from, to int64, l
 	for i, r := range rows {
 		out[i] = TopRow{
 			CatalogID:  r.CatalogID,
+			Title:      r.Title,
 			Artist:     r.Artist,
+			Album:      r.Album,
 			Source:     r.Source,
 			ExternalID: r.ExternalID,
 			Plays:      int(r.Plays),
@@ -184,7 +187,8 @@ func (s *Stats) TopArtists(ctx context.Context, userID string, from, to int64, l
 }
 
 // TopAlbums returns the top-played albums for userID in [from, to), limited to
-// limit rows. CatalogID and Title are always empty; Artist is the album artist.
+// limit rows. CatalogID and Title carry a representative track; Artist is the
+// album artist.
 func (s *Stats) TopAlbums(ctx context.Context, userID string, from, to int64, limit int) ([]TopRow, error) {
 	rows, err := s.q.StatsTopAlbums(ctx, db.StatsTopAlbumsParams{
 		UserID:     userID,
@@ -199,6 +203,7 @@ func (s *Stats) TopAlbums(ctx context.Context, userID string, from, to int64, li
 	for i, r := range rows {
 		out[i] = TopRow{
 			CatalogID:  r.CatalogID,
+			Title:      r.Title,
 			Album:      r.Album,
 			Artist:     r.Artist,
 			Source:     r.Source,
