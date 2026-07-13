@@ -559,6 +559,12 @@ func (c *fakeClock) AfterFunc(d time.Duration, f func()) func() bool {
 	}
 }
 
+func (c *fakeClock) scheduledCount() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return len(c.fns)
+}
+
 // Advance moves time forward and fires all timers now due (in order).
 func (c *fakeClock) Advance(d time.Duration) {
 	c.mu.Lock()
@@ -3076,7 +3082,20 @@ func TestRunScan_RefreshLinkedCalledWithLinkedCanonicalIDs(t *testing.T) {
 		}
 	}
 
-	// Fire the debounced scan: runScan links the 3 jobs, mints ids, calls RefreshLinked.
+	// A worker records completion before it arms the debounce timer. Wait for all
+	// three completions to arm/re-arm it so Advance cannot fire a partial scan.
+	timerDeadline := time.After(2 * time.Second)
+	for clk.scheduledCount() < 3 {
+		select {
+		case <-timerDeadline:
+			t.Fatal("not all completed downloads armed the debounce timer within 2s")
+		default:
+			time.Sleep(time.Millisecond)
+		}
+	}
+
+	// Fire the final debounced scan: runScan links the 3 jobs, mints ids, and
+	// calls RefreshLinked synchronously through fakeClock.Advance.
 	clk.Advance(5 * time.Second)
 
 	// RefreshLinked must have been called exactly once.
