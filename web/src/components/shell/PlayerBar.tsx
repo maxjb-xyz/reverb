@@ -10,7 +10,7 @@
  * Wiring: usePlayer (playerStore) + useUI (uiStore). Keyboard shortcuts preserved
  * from the original PlayerBar (Space, Arrow{Left,Right}, Shift+Arrow{Left,Right}).
  */
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { usePlayer } from '../../lib/playerStore'
 import { useUI } from '../../lib/uiStore'
@@ -130,6 +130,20 @@ export function PlayerBar() {
 
   const navigate = useNavigate()
   const [addMenuOpen, setAddMenuOpen] = useState(false)
+  const previousVolume = useRef(volume || 1)
+
+  useEffect(() => {
+    if (volume > 0) previousVolume.current = volume
+  }, [volume])
+
+  function toggleMute() {
+    if (volume > 0) {
+      previousVolume.current = volume
+      setVolume(0)
+    } else {
+      setVolume(previousVolume.current || 1)
+    }
+  }
 
   const palette = useAlbumPalette(current ? trackCoverUrl(current, 80) : undefined)
 
@@ -294,7 +308,12 @@ export function PlayerBar() {
 
         {/* Volume — icon + slider (styled thumb + accent fill in index.css) */}
         <div className="flex items-center gap-1.5">
-          <IconButton name="vol" label="Volume" size="sm" />
+          <IconButton
+            name="vol"
+            label={volume === 0 ? 'Unmute' : 'Mute'}
+            size="sm"
+            onClick={toggleMute}
+          />
           <input
             type="range"
             min={0}

@@ -141,6 +141,17 @@ describe('PlayerBar (shell)', () => {
     expect(useUI.getState().rightPanel).toBe(null)
   })
 
+  it('volume button mutes and restores the previous volume', () => {
+    act(() => usePlayer.getState().setVolume(0.42))
+    render(<PlayerBar />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Mute' }))
+    expect(usePlayer.getState().volume).toBe(0)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Unmute' }))
+    expect(usePlayer.getState().volume).toBe(0.42)
+  })
+
   // --- seek bar ---
 
   it('seek bar click calls seekMs with ratio * durationMs', () => {
