@@ -7,7 +7,6 @@ import { postDownload, reqFromResult } from '../lib/downloadApi'
 import { useDownloads } from '../lib/downloadStore'
 import { useAuthStore } from '../lib/authStore'
 import { DownloadAction } from '../components/download/DownloadAction'
-import { ImportPlaylistDialog } from '../components/ImportPlaylistDialog'
 import { useState } from 'react'
 import {
   Segmented,
@@ -25,10 +24,19 @@ import type { ExternalResult, EnvelopeStatus, Track } from '../lib/types'
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 type Mode = 'library' | 'everywhere'
+type ResultFilter = 'all' | 'track' | 'playlist' | 'album' | 'artist'
 
 const MODE_OPTIONS: { value: Mode; label: string }[] = [
   { value: 'library', label: 'My Library' },
   { value: 'everywhere', label: 'Everywhere' },
+]
+
+const RESULT_FILTERS: { value: ResultFilter; label: string }[] = [
+  { value: 'all', label: 'All' },
+  { value: 'track', label: 'Songs' },
+  { value: 'playlist', label: 'Playlists' },
+  { value: 'album', label: 'Albums' },
+  { value: 'artist', label: 'Artists' },
 ]
 
 function sourceTone(status: EnvelopeStatus): 'success' | 'warning' | 'error' {
@@ -127,7 +135,7 @@ export default function Search() {
   // Search has no bulk-request path; a user without auto_approve simply sees no
   // bulk download (per-item acquisition on the track rows is unaffected).
   const canAutoApprove = useAuthStore((s) => s.can('auto_approve'))
-  const [playlistURL, setPlaylistURL] = useState<string | null>(null)
+  const [resultFilter, setResultFilter] = useState<ResultFilter>('all')
 
   // Library mode: TanStack Query REST call
   const lib = useLibrarySearch(mode === 'library' ? q : '')
@@ -248,6 +256,10 @@ export default function Search() {
           {/* Source chips */}
           <SourceChipsRow sources={everywhere.sources} />
 
+          <div className="overflow-x-auto pb-1">
+            <Segmented options={RESULT_FILTERS} value={resultFilter} onChange={setResultFilter} />
+          </div>
+
           {/* Streaming hint — shows while at least one envelope is in flight */}
           {everywhere.status === 'streaming' && (
             <p className="text-xs text-text-muted" aria-live="polite">
@@ -256,7 +268,7 @@ export default function Search() {
           )}
 
           {/* Songs */}
-          <section aria-label="Songs">
+          {(resultFilter === 'all' || resultFilter === 'track') && <section aria-label="Songs">
             <SectionHeading>Songs</SectionHeading>
             {everywhere.tracks.length === 0 && everywhere.status === 'streaming' ? (
               <TrackSkeletons />
@@ -343,10 +355,10 @@ export default function Search() {
                 })}
               </div>
             )}
-          </section>
+          </section>}
 
           {/* Albums */}
-          {everywhere.albums.length > 0 && (
+          {(resultFilter === 'all' || resultFilter === 'album') && everywhere.albums.length > 0 && (
             <section aria-label="Albums">
               <SectionHeading>Albums</SectionHeading>
               {/* TODO(phase-6): partial N-of-M needs external album tracks + matching */}
@@ -390,7 +402,7 @@ export default function Search() {
           )}
 
           {/* Artists */}
-          {everywhere.artists.length > 0 && (
+          {(resultFilter === 'all' || resultFilter === 'artist') && everywhere.artists.length > 0 && (
             <section aria-label="Artists">
               <SectionHeading>Artists</SectionHeading>
               <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
@@ -406,7 +418,7 @@ export default function Search() {
             </section>
           )}
 
-          {everywhere.playlists.length > 0 && (
+          {(resultFilter === 'all' || resultFilter === 'playlist') && everywhere.playlists.length > 0 && (
             <section aria-label="Playlists">
               <SectionHeading>Playlists</SectionHeading>
               <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
@@ -416,7 +428,7 @@ export default function Search() {
                     title={playlist.title}
                     subtitle={playlist.artist || 'Spotify playlist'}
                     coverSrc={playlist.coverUrl || undefined}
-                    onClick={() => setPlaylistURL(`https://open.spotify.com/playlist/${playlist.externalId}`)}
+                    onClick={() => navigate(`/playlist/${playlist.source}/${playlist.externalId}`)}
                   />
                 ))}
               </div>
@@ -424,11 +436,6 @@ export default function Search() {
           )}
         </>
       )}
-      <ImportPlaylistDialog
-        open={playlistURL !== null}
-        onClose={() => setPlaylistURL(null)}
-        initialURL={playlistURL ?? ''}
-      />
     </div>
   )
 }

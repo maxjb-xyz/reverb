@@ -183,6 +183,15 @@ func (s *Service) Import(ctx context.Context, rawURL string, downloadMissing boo
 	return det, nil
 }
 
+// Preview fetches a public Spotify playlist without creating a local playlist.
+// It powers the inspect-before-import flow in the web client.
+func (s *Service) Preview(ctx context.Context, externalID string) (core.ExternalPlaylist, error) {
+	if s.src == nil {
+		return core.ExternalPlaylist{}, ErrSpotifyNotConfigured
+	}
+	return s.src.GetPlaylist(ctx, externalID)
+}
+
 func (s *Service) Detail(ctx context.Context, id string) (core.SyncedPlaylistDetail, error) {
 	row, err := s.store.Get(ctx, id)
 	if err != nil {

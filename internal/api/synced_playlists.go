@@ -47,12 +47,35 @@ type SyncService interface {
 	Rename(ctx context.Context, id, name string) (core.SyncedPlaylistDetail, error)
 }
 
+type playlistPreviewer interface {
+	Preview(ctx context.Context, externalID string) (core.ExternalPlaylist, error)
+}
+
 // sync returns the currently active synced-playlist service under the read lock.
 // It may be nil when no PlaylistProvider-capable source is configured.
 func (s *Server) sync() SyncService {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.live.sync
+}
+
+// handleExternalPlaylistPreview fetches a Spotify playlist without persisting it.
+func (s *Server) handleExternalPlaylistPreview(w http.ResponseWriter, r *http.Request) {
+	if chi.URLParam(r, "source") != "spotify" || !validPlaylistID(chi.URLParam(r, "id")) {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "playlist not found"})
+		return
+	}
+	preview, ok := s.sync().(playlistPreviewer)
+	if !ok {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "Spotify playlist source is not configured"})
+		return
+	}
+	pl, err := preview.Preview(r.Context(), chi.URLParam(r, "id"))
+	if err != nil {
+		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, pl)
 }
 
 // playlistAccessAllowed reports whether the current user may read or mutate the

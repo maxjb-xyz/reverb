@@ -24,6 +24,7 @@ const Requests = lazy(() => import('./routes/Requests'))
 const SyncedPlaylist = lazy(() => import('./routes/SyncedPlaylist'))
 const Account = lazy(() => import('./routes/Account'))
 const Stats = lazy(() => import('./routes/Stats'))
+const ExternalPlaylist = lazy(() => import('./routes/ExternalPlaylist'))
 
 /** Redirect bare `/album/:id` or `/artist/:id` URLs to the source-qualified form
  *  `/album/library/:id` / `/artist/library/:id`. These old URLs may exist in
@@ -109,6 +110,7 @@ function Routed() {
         <Route path="/artist/:source/:id" element={<Artist />} />
         <Route path="/artist/:id" element={<RedirectToLibrary kind="artist" />} />
         <Route path="/playlist/:id" element={<SyncedPlaylist />} />
+        <Route path="/playlist/:source/:id" element={<ExternalPlaylist />} />
         <Route path="/synced-playlist/:id" element={<RedirectToPlaylist />} />
         <Route path="/stats" element={<Stats />} />
         <Route path="/account" element={<Account />} />

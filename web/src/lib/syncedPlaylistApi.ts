@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { api, ApiError } from './api'
-import type { SyncedPlaylist, SyncedPlaylistDetail, DownloadJob } from './types'
+import type { SyncedPlaylist, SyncedPlaylistDetail, DownloadJob, ExternalPlaylist } from './types'
 
 const BASE = '/api/v1'
 
@@ -8,6 +8,14 @@ export function useSyncedPlaylists() {
   return useQuery({
     queryKey: ['synced-playlists'],
     queryFn: () => api.get<SyncedPlaylist[]>('/playlists'),
+  })
+}
+
+export function useExternalPlaylist(source: string, id: string) {
+  return useQuery({
+    queryKey: ['external-playlist', source, id],
+    queryFn: () => api.get<ExternalPlaylist>(`/playlists/external/${encodeURIComponent(source)}/${encodeURIComponent(id)}`),
+    enabled: !!source && !!id,
   })
 }
 

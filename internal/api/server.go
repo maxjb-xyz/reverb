@@ -280,6 +280,7 @@ func (s *Server) routes() {
 			pr.Get("/album/{source}/{id}", s.handleAlbumDetail)
 			// playlist READS stay on plain auth (ownership is enforced in-handler).
 			pr.Get("/playlists", s.handleListSyncedPlaylists)
+			pr.Get("/playlists/external/{source}/{id}", s.handleExternalPlaylistPreview)
 			pr.Get("/playlists/{id}", s.handleSyncedPlaylistDetail)
 			pr.Get("/playlists/{id}/cover", s.handleServePlaylistCover)
 			// download queue READS stay on plain auth; the mutating controls

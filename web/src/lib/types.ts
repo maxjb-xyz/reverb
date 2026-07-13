@@ -154,6 +154,14 @@ export interface ExternalResult {
   albumExternalId?: string
 }
 
+export interface ExternalPlaylist {
+  source: string
+  externalId: string
+  name: string
+  coverUrl?: string
+  tracks: ExternalResult[]
+}
+
 export type EnvelopeStatus = 'ok' | 'timeout' | 'error'
 
 export interface SearchEnvelope {
