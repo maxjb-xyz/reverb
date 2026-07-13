@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { render, screen, act } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import type { ReactNode } from 'react'
 import { AppShell } from './AppShell'
 import { useUI } from '../lib/uiStore'
 import { useDownloads } from '../lib/downloadStore'
@@ -47,6 +48,10 @@ function renderShell() {
   )
 }
 
+function SuspendedRoute(): ReactNode {
+  throw new Promise(() => {})
+}
+
 describe('AppShell', () => {
   beforeEach(() => {
     useDownloads.setState({ jobs: {} })
@@ -59,6 +64,25 @@ describe('AppShell', () => {
     renderShell()
     // TopBar renders a header element
     expect(screen.getByRole('banner')).toBeInTheDocument()
+  })
+
+  it('keeps the shell visible while a lazy route is loading', () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <QueryClientProvider client={qc}>
+        <MemoryRouter>
+          <Routes>
+            <Route element={<AppShell />}>
+              <Route index element={<SuspendedRoute />} />
+            </Route>
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    )
+
+    expect(screen.getByTestId('app-shell-root')).toBeInTheDocument()
+    expect(screen.getByRole('banner')).toBeInTheDocument()
+    expect(screen.getByLabelText('Loading page')).toBeInTheDocument()
   })
 
   it('LibraryRail is in the DOM (hidden on mobile via CSS)', () => {

@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { Suspense, useEffect } from 'react'
 import { Outlet } from 'react-router-dom'
 import { TopBar } from './shell/TopBar'
 import { LibraryRail } from './shell/LibraryRail'
@@ -9,6 +9,7 @@ import { MobileTabNav } from './MobileTabNav'
 import { MiniPlayer } from './MiniPlayer'
 import { NowPlayingOverlay } from './NowPlayingOverlay'
 import { Toaster } from './ui/Toaster'
+import { Skeleton } from './ui/Skeleton'
 import { useRealtime } from '../lib/realtimeWiring'
 import { usePlayer, engine } from '../lib/playerStore'
 import { useUI } from '../lib/uiStore'
@@ -18,6 +19,26 @@ import { rgbToCss } from '../lib/palette'
 import { startPlayTracker } from '../lib/playTracker'
 import { startNowPlaying } from '../lib/nowPlaying'
 import { startMediaSession } from '../lib/mediaSession'
+
+function RouteLoading() {
+  return (
+    <div className="space-y-6" aria-label="Loading page" aria-busy="true">
+      <div className="space-y-2">
+        <Skeleton className="h-7 w-40" />
+        <Skeleton className="h-4 w-64 max-w-full" />
+      </div>
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
+        {Array.from({ length: 5 }).map((_, index) => (
+          <div key={index} className="space-y-2">
+            <Skeleton className="aspect-square w-full" />
+            <Skeleton className="h-4 w-3/4" />
+            <Skeleton className="h-3 w-1/2" />
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
 
 export function AppShell() {
   // One app-wide realtime WS (distinct from the SSE search stream): drives the
@@ -75,7 +96,9 @@ export function AppShell() {
         {/* Center main content — bg-surface rounded card that scrolls */}
         <main className="flex-1 min-h-0 overflow-auto bg-surface rounded-lg relative">
           <div className="px-4 py-5 sm:px-6 sm:py-6 lg:px-8">
-            <Outlet />
+            <Suspense fallback={<RouteLoading />}>
+              <Outlet />
+            </Suspense>
           </div>
         </main>
 

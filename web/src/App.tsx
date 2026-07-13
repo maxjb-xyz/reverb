@@ -1,4 +1,4 @@
-import { useEffect, lazy, Suspense } from 'react'
+import { useEffect, lazy } from 'react'
 import { Navigate, Route, Routes, useParams } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { AppShell } from './components/AppShell'
@@ -99,9 +99,8 @@ function Routed() {
   // state rather than flashing an ungated shell (the gates depend on `me`).
   if (!me) return <div className="p-6 text-text-muted">Loading…</div>
   return (
-    <Suspense fallback={<div className="p-6 text-text-muted">Loading…</div>}>
-      <Routes>
-        <Route element={<AppShell />}>
+    <Routes>
+      <Route element={<AppShell />}>
         <Route path="/" element={<Home />} />
         <Route path="/search" element={<Search />} />
         <Route path="/library" element={<Library />} />
@@ -125,9 +124,8 @@ function Routed() {
         <Route path="/downloads" element={<Downloads />} />
         <Route path="/requests" element={<Requests />} />
         <Route path="*" element={<Navigate to="/" replace />} />
-        </Route>
-      </Routes>
-    </Suspense>
+      </Route>
+    </Routes>
   )
 }
 
