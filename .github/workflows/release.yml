@@ -1,23 +1,61 @@
 name: Release
 
-# CI validates every push. A published release only builds and publishes the
-# already-validated image for each supported architecture.
+# A release may publish only the current main commit after its CI workflow has
+# succeeded. This prevents an arbitrary tag or a commit with failed CI from
+# becoming a public image.
 on:
   release:
     types: [published]
 
 permissions:
+  actions: read
   contents: write
   packages: write
 
 jobs:
+  verify-release:
+    name: Verify release source
+    runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.source.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name }}
+          fetch-depth: 0
+      - id: source
+        name: Require the release tag to match main
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          tag_sha="$(git rev-parse "${TAG}^{commit}")"
+          main_sha="$(git rev-parse origin/main)"
+          test "$tag_sha" = "$main_sha"
+          echo "sha=$tag_sha" >> "$GITHUB_OUTPUT"
+      - name: Require successful CI for the release commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ steps.source.outputs.sha }}
+        run: |
+          successful_runs="$(gh run list \
+            --repo "$GITHUB_REPOSITORY" \
+            --workflow ci.yml \
+            --commit "$SHA" \
+            --status completed \
+            --json conclusion \
+            --jq '[.[] | select(.conclusion == "success")] | length')"
+          test "$successful_runs" -gt 0
+
   build-amd64:
     name: Build & Push AMD64
+    needs: verify-release
     runs-on: ubuntu-latest
     outputs:
       digest: ${{ steps.build.outputs.digest }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.verify-release.outputs.sha }}
       - uses: docker/setup-buildx-action@v3
       - uses: docker/login-action@v3
         with:
@@ -40,11 +78,14 @@ jobs:
 
   build-arm64:
     name: Build & Push ARM64
+    needs: verify-release
     runs-on: ubuntu-24.04-arm
     outputs:
       digest: ${{ steps.build.outputs.digest }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.verify-release.outputs.sha }}
       - uses: docker/setup-buildx-action@v3
       - uses: docker/login-action@v3
         with:
