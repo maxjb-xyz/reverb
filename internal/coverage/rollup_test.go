@@ -9,8 +9,8 @@ import (
 )
 
 type fakeMatcher struct {
-	owned map[string]string      // externalID -> libraryTrackID ("" = miss)
-	meta  map[string]core.Track  // externalID -> matched candidate metadata (optional)
+	owned map[string]string     // externalID -> libraryTrackID ("" = miss)
+	meta  map[string]core.Track // externalID -> matched candidate metadata (optional)
 }
 
 func (f fakeMatcher) Match(_ context.Context, e core.ExternalResult) (core.MatchResult, error) {

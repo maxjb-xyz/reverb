@@ -79,11 +79,11 @@ type stubLibrary struct {
 }
 
 // Satisfy registry.Plugin.
-func (s *stubLibrary) Type() string                             { return "library" }
-func (s *stubLibrary) Name() string                             { return "stub" }
-func (s *stubLibrary) ConfigSchema() registry.ConfigSchema      { return registry.ConfigSchema{} }
-func (s *stubLibrary) Init(_ map[string]any) error              { return nil }
-func (s *stubLibrary) TestConnection(_ context.Context) error   { return nil }
+func (s *stubLibrary) Type() string                           { return "library" }
+func (s *stubLibrary) Name() string                           { return "stub" }
+func (s *stubLibrary) ConfigSchema() registry.ConfigSchema    { return registry.ConfigSchema{} }
+func (s *stubLibrary) Init(_ map[string]any) error            { return nil }
+func (s *stubLibrary) TestConnection(_ context.Context) error { return nil }
 
 // Satisfy library.LibraryAdapter.
 func (s *stubLibrary) Search(_ context.Context, _ string, _ []core.EntityType) (core.SearchResults, error) {
@@ -213,9 +213,9 @@ func TestHandlerCover_TransportError_Returns502(t *testing.T) {
 
 // countingResolver wraps a fake resolver.Addressing result and records calls.
 type countingResolver struct {
-	calls   atomic.Int32
-	result  resolver.Addressing
-	err     error
+	calls  atomic.Int32
+	result resolver.Addressing
+	err    error
 }
 
 func (r *countingResolver) Resolve(_ context.Context, _ string) (resolver.Addressing, error) {

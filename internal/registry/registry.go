@@ -70,7 +70,7 @@ func (r *Registry) Names() []string {
 // --- capability probes ---
 
 var (
-	capMu    sync.RWMutex
+	capMu     sync.RWMutex
 	capProbes = map[string]func(Plugin) bool{}
 )
 

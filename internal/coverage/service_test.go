@@ -12,11 +12,11 @@ import (
 
 // fakeDisco implements DiscoSource for tests.
 type fakeDisco struct {
-	artists      []core.ExternalResult
-	albumSearch  []core.ExternalResult              // returned for EntityAlbum searches
-	albums       map[string]core.ExternalAlbum      // externalAlbumID -> full album (with tracks)
-	disco        []core.ExternalAlbum
-	artist       *core.ExternalArtist               // returned by GetArtist; nil → error (not found)
+	artists     []core.ExternalResult
+	albumSearch []core.ExternalResult         // returned for EntityAlbum searches
+	albums      map[string]core.ExternalAlbum // externalAlbumID -> full album (with tracks)
+	disco       []core.ExternalAlbum
+	artist      *core.ExternalArtist // returned by GetArtist; nil → error (not found)
 }
 
 func (f fakeDisco) Search(_ context.Context, q string, t core.EntityType) ([]core.ExternalResult, error) {

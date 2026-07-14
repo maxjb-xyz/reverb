@@ -4,10 +4,10 @@ import "testing"
 
 func TestResolveMode(t *testing.T) {
 	cases := []struct {
-		name        string
-		setting     string
-		hasLibInst  bool
-		want        Mode
+		name       string
+		setting    string
+		hasLibInst bool
+		want       Mode
 	}{
 		{"explicit built-in", "built-in", true, ModeBuiltIn},
 		{"explicit external", "external", false, ModeExternal},

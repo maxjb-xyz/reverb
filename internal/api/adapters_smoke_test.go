@@ -39,7 +39,9 @@ func TestAdapterLifecycleSmoke(t *testing.T) {
 	// 3. test ok
 	rec = do(t, srv, cookie, http.MethodPost, "/api/v1/adapters/test",
 		`{"name":"fake","config":{"url":"http://x","token":"sekret"}}`)
-	var test struct{ OK bool `json:"ok"` }
+	var test struct {
+		OK bool `json:"ok"`
+	}
 	_ = json.Unmarshal(rec.Body.Bytes(), &test)
 	if !test.OK {
 		t.Fatalf("test should be ok, got %s", rec.Body.String())

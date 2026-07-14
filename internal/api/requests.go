@@ -124,11 +124,11 @@ func (s *Server) handleBatchCreateRequests(w http.ResponseWriter, r *http.Reques
 	ctx := r.Context()
 
 	var (
-		created    int
-		skipped    int
-		failed     int
+		created     int
+		skipped     int
+		failed      int
 		quotaCapped int
-		requests   []core.Request
+		requests    []core.Request
 	)
 
 	for _, item := range body.Items {

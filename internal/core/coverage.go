@@ -65,16 +65,16 @@ type ArtistDetail struct {
 
 // AlbumDetailTrack is one track on the album page, owned or missing.
 type AlbumDetailTrack struct {
-	State       CoverageState     `json:"state"` // full = owned, none = missing
+	State        CoverageState     `json:"state"` // full = owned, none = missing
 	LibraryTrack *Track            `json:"libraryTrack,omitempty"`
 	ExternalRef  *ExternalTrackRef `json:"externalRef,omitempty"`
 	Key          *TrackKey         `json:"key,omitempty"`
-	Title       string            `json:"title"`
-	Artist      string            `json:"artist"`
-	Album       string            `json:"album,omitempty"`
-	TrackNumber int               `json:"trackNumber"`
-	DurationMs  int               `json:"durationMs"`
-	CoverURL    string            `json:"coverUrl,omitempty"`
+	Title        string            `json:"title"`
+	Artist       string            `json:"artist"`
+	Album        string            `json:"album,omitempty"`
+	TrackNumber  int               `json:"trackNumber"`
+	DurationMs   int               `json:"durationMs"`
+	CoverURL     string            `json:"coverUrl,omitempty"`
 	// ArtistExternalID and AlbumExternalID carry the Spotify IDs for the track's
 	// primary artist and album. Set on both owned and missing rows so synced-playlist
 	// and album-detail rows can render clickable artist/album links to the Spotify

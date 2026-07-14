@@ -86,8 +86,8 @@ func (a *Adapter) WithRunner(r Runner) *Adapter {
 	return a
 }
 
-func (a *Adapter) Type() string                          { return "downloader" }
-func (a *Adapter) Name() string                          { return "spotdl" }
+func (a *Adapter) Type() string { return "downloader" }
+func (a *Adapter) Name() string { return "spotdl" }
 func (a *Adapter) SupportedGranularities() []core.DownloadGranularity {
 	return []core.DownloadGranularity{core.GranularityTrack, core.GranularityAlbum}
 }

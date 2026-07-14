@@ -9,11 +9,11 @@ import (
 )
 
 const (
-	keyAccentColor           = "accent_color"
-	keyDynamicBackground     = "dynamic_background"
-	keyLibraryBackendMode    = "library_backend_mode"
-	keyMaxPendingRequests    = "max_pending_requests_per_user"
-	defaultAccentColor       = "#F0354B"
+	keyAccentColor        = "accent_color"
+	keyDynamicBackground  = "dynamic_background"
+	keyLibraryBackendMode = "library_backend_mode"
+	keyMaxPendingRequests = "max_pending_requests_per_user"
+	defaultAccentColor    = "#F0354B"
 )
 
 var hexColorRE = regexp.MustCompile(`^#[0-9a-fA-F]{6}$`)
@@ -113,4 +113,3 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, s.currentSettings(r))
 }
-

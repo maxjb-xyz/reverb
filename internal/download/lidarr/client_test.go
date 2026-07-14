@@ -10,7 +10,7 @@ import (
 
 // fakeDoer routes requests to canned responses by method+path substring.
 type fakeDoer struct {
-	routes map[string]string // "METHOD /path" substring → JSON body
+	routes     map[string]string // "METHOD /path" substring → JSON body
 	lastBodies map[string]string
 }
 

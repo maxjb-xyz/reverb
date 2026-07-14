@@ -364,14 +364,14 @@ func (s *Service) EnsureSeed(ctx context.Context) error {
 
 // UserView is the admin-safe projection of a user row (no password hash).
 type UserView struct {
-	ID        string  `json:"id"`
-	Username  string  `json:"username"`
-	RoleID    string  `json:"roleId"`
-	RoleName  string  `json:"roleName"`
-	IsOwner   bool    `json:"isOwner"`
-	Disabled  bool    `json:"disabled"`
-	CreatedAt int64   `json:"createdAt"`
-	LastSeen  *int64  `json:"lastSeen"`
+	ID        string `json:"id"`
+	Username  string `json:"username"`
+	RoleID    string `json:"roleId"`
+	RoleName  string `json:"roleName"`
+	IsOwner   bool   `json:"isOwner"`
+	Disabled  bool   `json:"disabled"`
+	CreatedAt int64  `json:"createdAt"`
+	LastSeen  *int64 `json:"lastSeen"`
 }
 
 // ListUsers returns all users with resolved role names.

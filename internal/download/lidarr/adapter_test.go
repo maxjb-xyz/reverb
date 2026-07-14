@@ -50,12 +50,12 @@ func TestCanDownloadReturnsTrue(t *testing.T) {
 
 func TestSubmitResolvesAddsMonitorsSearches(t *testing.T) {
 	doer := &fakeDoer{routes: map[string]string{
-		"GET /api/v1/album/lookup": `[{"title":"Discovery","foreignAlbumId":"mb-al","artist":{"artistName":"Daft Punk","foreignArtistId":"mb-ar"}}]`,
-		"GET /api/v1/artist":       `[]`,
-		"POST /api/v1/artist":      `{"id":7,"artistName":"Daft Punk","foreignArtistId":"mb-ar"}`,
-		"GET /api/v1/album":        `[{"id":42,"title":"Discovery","foreignAlbumId":"mb-al"}]`,
+		"GET /api/v1/album/lookup":  `[{"title":"Discovery","foreignAlbumId":"mb-al","artist":{"artistName":"Daft Punk","foreignArtistId":"mb-ar"}}]`,
+		"GET /api/v1/artist":        `[]`,
+		"POST /api/v1/artist":       `{"id":7,"artistName":"Daft Punk","foreignArtistId":"mb-ar"}`,
+		"GET /api/v1/album":         `[{"id":42,"title":"Discovery","foreignAlbumId":"mb-al"}]`,
 		"PUT /api/v1/album/monitor": `{}`,
-		"POST /api/v1/command":     `{"id":1}`,
+		"POST /api/v1/command":      `{"id":1}`,
 	}}
 	a := newTestAdapter(t, doer)
 	ref, err := a.Submit(context.Background(), core.DownloadRequest{Artist: "Daft Punk", Album: "Discovery", Title: "One More Time"})

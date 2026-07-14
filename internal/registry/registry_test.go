@@ -7,11 +7,13 @@ import (
 
 type fakeAdapter struct{ initialized bool }
 
-func (f *fakeAdapter) Type() string                              { return "library" }
-func (f *fakeAdapter) Name() string                              { return "fake" }
-func (f *fakeAdapter) ConfigSchema() ConfigSchema                { return ConfigSchema{Fields: []ConfigField{{Key: "url", Label: "URL", Type: "string", Required: true}}} }
-func (f *fakeAdapter) Init(cfg map[string]any) error             { f.initialized = true; return nil }
-func (f *fakeAdapter) TestConnection(ctx context.Context) error  { return nil }
+func (f *fakeAdapter) Type() string { return "library" }
+func (f *fakeAdapter) Name() string { return "fake" }
+func (f *fakeAdapter) ConfigSchema() ConfigSchema {
+	return ConfigSchema{Fields: []ConfigField{{Key: "url", Label: "URL", Type: "string", Required: true}}}
+}
+func (f *fakeAdapter) Init(cfg map[string]any) error            { f.initialized = true; return nil }
+func (f *fakeAdapter) TestConnection(ctx context.Context) error { return nil }
 
 // optional capability interface (mimics future DiscographyProvider)
 type discographyProvider interface{ Discography() }

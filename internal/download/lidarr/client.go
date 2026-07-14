@@ -35,13 +35,13 @@ func NewClient(base, key string, http Doer) *Client {
 // --- API types (subset used) ---
 
 type ArtistRef struct {
-	ID              int    `json:"id"`
-	ArtistName      string `json:"artistName"`
-	ForeignArtistID string `json:"foreignArtistId"`
-	QualityProfileID int   `json:"qualityProfileId,omitempty"`
-	MetadataProfileID int  `json:"metadataProfileId,omitempty"`
-	RootFolderPath  string `json:"rootFolderPath,omitempty"`
-	Monitored       bool   `json:"monitored"`
+	ID                int    `json:"id"`
+	ArtistName        string `json:"artistName"`
+	ForeignArtistID   string `json:"foreignArtistId"`
+	QualityProfileID  int    `json:"qualityProfileId,omitempty"`
+	MetadataProfileID int    `json:"metadataProfileId,omitempty"`
+	RootFolderPath    string `json:"rootFolderPath,omitempty"`
+	Monitored         bool   `json:"monitored"`
 }
 
 type AlbumResult struct {
@@ -59,12 +59,12 @@ type AlbumStatistics struct {
 }
 
 type QueueRecord struct {
-	AlbumID               int    `json:"albumId"`
+	AlbumID               int     `json:"albumId"`
 	Size                  float64 `json:"size"`
 	Sizeleft              float64 `json:"sizeleft"`
-	Status                string `json:"status"`
-	TrackedDownloadStatus string `json:"trackedDownloadStatus"`
-	ErrorMessage          string `json:"errorMessage"`
+	Status                string  `json:"status"`
+	TrackedDownloadStatus string  `json:"trackedDownloadStatus"`
+	ErrorMessage          string  `json:"errorMessage"`
 }
 
 type queuePage struct {
@@ -139,12 +139,12 @@ func (c *Client) GetArtistByForeignID(ctx context.Context, foreignID string) (Ar
 // UNMONITORED (monitored:false + addOptions.monitor:"none") so Lidarr does not
 // chase the whole discography.
 type addArtistBody struct {
-	ArtistName        string         `json:"artistName"`
-	ForeignArtistID   string         `json:"foreignArtistId"`
-	QualityProfileID  int            `json:"qualityProfileId"`
-	MetadataProfileID int            `json:"metadataProfileId"`
-	RootFolderPath    string         `json:"rootFolderPath"`
-	Monitored         bool           `json:"monitored"`
+	ArtistName        string           `json:"artistName"`
+	ForeignArtistID   string           `json:"foreignArtistId"`
+	QualityProfileID  int              `json:"qualityProfileId"`
+	MetadataProfileID int              `json:"metadataProfileId"`
+	RootFolderPath    string           `json:"rootFolderPath"`
+	Monitored         bool             `json:"monitored"`
 	AddOptions        addArtistAddOpts `json:"addOptions"`
 }
 type addArtistAddOpts struct {

@@ -30,8 +30,8 @@ func New() *Adapter { return &Adapter{} }
 // NewClientFor builds a Client bound to a's config with the given Doer (test seam).
 func NewClientFor(a *Adapter, doer Doer) *Client { return NewClient(a.url, a.apiKey, doer) }
 
-func (a *Adapter) Type() string                          { return "downloader" }
-func (a *Adapter) Name() string                          { return "lidarr" }
+func (a *Adapter) Type() string { return "downloader" }
+func (a *Adapter) Name() string { return "lidarr" }
 func (a *Adapter) SupportedGranularities() []core.DownloadGranularity {
 	return []core.DownloadGranularity{core.GranularityAlbum}
 }

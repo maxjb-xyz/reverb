@@ -176,4 +176,3 @@ func TestGetPlaylistEmptyResponseReturnsError(t *testing.T) {
 		t.Fatal("expected error for empty playlist response")
 	}
 }
-

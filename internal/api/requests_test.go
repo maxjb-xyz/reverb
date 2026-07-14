@@ -729,10 +729,10 @@ func TestBatchRequestEmpty(t *testing.T) {
 // batchRespWithQuota is the expected response shape for POST /requests/batch
 // once quota enforcement is in place.
 type batchRespWithQuota struct {
-	Created    int            `json:"created"`
-	Skipped    int            `json:"skipped"`
-	QuotaCapped int           `json:"quotaCapped"`
-	Requests   []core.Request `json:"requests"`
+	Created     int            `json:"created"`
+	Skipped     int            `json:"skipped"`
+	QuotaCapped int            `json:"quotaCapped"`
+	Requests    []core.Request `json:"requests"`
 }
 
 // quotaTestServer builds a Server with a real store (temp SQLite), the request

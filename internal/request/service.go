@@ -86,10 +86,10 @@ func (s *Service) Create(ctx context.Context, requestedBy string, item core.Requ
 		Isrc:        nullStr(item.ISRC),
 		DurationMs:  nullInt(int64(item.DurationMs)),
 		CoverArtID:  nullStr(item.CoverArtID),
-		CoverUrl:   nullStr(item.CoverUrl),
-		Kind:       kind,
-		TrackCount: int64(item.TrackCount),
-		Status:     core.RequestPending,
+		CoverUrl:    nullStr(item.CoverUrl),
+		Kind:        kind,
+		TrackCount:  int64(item.TrackCount),
+		Status:      core.RequestPending,
 	}
 	if err := s.q.CreateRequest(ctx, params); err != nil {
 		return core.Request{}, false, err

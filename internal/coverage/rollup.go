@@ -17,10 +17,10 @@ type Matcher interface {
 // library lookups because MatchResult carries only the track id.
 func RollUp(ctx context.Context, m Matcher, al core.ExternalAlbum) (core.AlbumCoverage, error) {
 	cov := core.AlbumCoverage{
-		Source:        al.Source,
+		Source:          al.Source,
 		ExternalAlbumID: al.ExternalID,
-		TotalCount:    len(al.Tracks),
-		MissingTracks: []core.ExternalTrackRef{},
+		TotalCount:      len(al.Tracks),
+		MissingTracks:   []core.ExternalTrackRef{},
 	}
 	for _, tr := range al.Tracks {
 		res, err := m.Match(ctx, tr)

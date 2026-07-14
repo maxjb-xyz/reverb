@@ -222,7 +222,9 @@ func TestUpdatePreservesSecretWhenBlank(t *testing.T) {
 	srv, cookie := adapterTestServer(t, adapterServerOpts{dirty: &testDirty{}})
 	rec := do(t, srv, cookie, http.MethodPost, "/api/v1/adapters",
 		`{"type":"search","name":"fake","enabled":true,"priority":0,"config":{"url":"http://x","token":"orig"}}`)
-	var wrap struct{ Data adapterInstanceDTO `json:"data"` }
+	var wrap struct {
+		Data adapterInstanceDTO `json:"data"`
+	}
 	_ = json.Unmarshal(rec.Body.Bytes(), &wrap)
 	created := wrap.Data
 
@@ -252,7 +254,9 @@ func TestUpdateNewSecretOverwrites(t *testing.T) {
 	srv, cookie := adapterTestServer(t, adapterServerOpts{dirty: &testDirty{}})
 	rec := do(t, srv, cookie, http.MethodPost, "/api/v1/adapters",
 		`{"type":"search","name":"fake","enabled":true,"config":{"url":"http://x","token":"orig"}}`)
-	var wrap struct{ Data adapterInstanceDTO `json:"data"` }
+	var wrap struct {
+		Data adapterInstanceDTO `json:"data"`
+	}
 	_ = json.Unmarshal(rec.Body.Bytes(), &wrap)
 	created := wrap.Data
 
@@ -274,7 +278,9 @@ func TestDeleteAdapter(t *testing.T) {
 	srv, cookie := adapterTestServer(t, adapterServerOpts{dirty: dirty})
 	rec := do(t, srv, cookie, http.MethodPost, "/api/v1/adapters",
 		`{"type":"search","name":"fake","config":{"url":"http://x","token":"t"}}`)
-	var wrap struct{ Data adapterInstanceDTO `json:"data"` }
+	var wrap struct {
+		Data adapterInstanceDTO `json:"data"`
+	}
 	_ = json.Unmarshal(rec.Body.Bytes(), &wrap)
 	created := wrap.Data
 

@@ -499,11 +499,11 @@ func TestStartManualURLWithPipeCharIsStripped(t *testing.T) {
 	r := &fakeRunner{lines: []string{`Downloaded: ok`}}
 	a := newAdapter(t, r)
 	_, _ = a.Start(context.Background(), core.DownloadRequest{
-		Source:    "spotify",
+		Source:     "spotify",
 		ExternalID: "abc",
-		Artist:    "A",
-		Title:     "T",
-		ManualURL: "https://youtube.com/watch?v=X|Y|Z", // two extra pipes
+		Artist:     "A",
+		Title:      "T",
+		ManualURL:  "https://youtube.com/watch?v=X|Y|Z", // two extra pipes
 	}, func(int) {})
 	n := len(r.gotArgs)
 	if n == 0 {
