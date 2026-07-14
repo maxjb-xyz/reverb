@@ -68,27 +68,19 @@ No clone or build needed — Compose pulls the published image:
 ```bash
 mkdir reverb && cd reverb
 curl -O https://raw.githubusercontent.com/maxjb-xyz/reverb/main/docker-compose.yml
-curl -o .env https://raw.githubusercontent.com/maxjb-xyz/reverb/main/.env.example
-# edit .env to set your secrets (see Configuration)
-docker compose up -d        # pulls ghcr.io/maxjb-xyz/reverb and runs on http://localhost:8090
+mkdir music
+docker compose up -d
 ```
 
-That's it. Reverb runs **non-root** (uid 1000); your music library is the `./music`
-folder on the **host filesystem** (point it at an existing library by editing the
-volume line in `docker-compose.yml`), and the database lives in a managed Docker
-volume — no permission setup for the common case. **spotDL is bundled and
-pre-configured as the downloader**, so downloading works immediately. Pin a version
-with `REVERB_VERSION=0.1.0` in `.env` (defaults to `latest`). Prefer to build from
-source? See [Development & contributing](#development--contributing).
+Open http://localhost:8090 and finish the first-run wizard. Reverb uses the
+`./music` folder for downloads, keeps its database in a managed Docker volume, and
+bundles both the music server and downloader — no extra containers or configuration
+are needed.
 
-Open http://localhost:8090 and complete the **first-run wizard**: set an admin
-password (unless you set `REVERB_ADMIN_PASSWORD` in `.env`), then add the
-keyless **Deezer** search adapter in Settings (or configure Spotify credentials
-for its catalog). The **library and downloader are
-already configured** — the bundled Navidrome serves music from `/music`
-automatically, and spotDL is pre-configured for downloads. To use your own
-Navidrome/Subsonic instead, see [Library backends](#library-backends). Full
-details: [docs/deployment.md](docs/deployment.md).
+To use an existing music folder, pin a version, or configure Spotify, download
+[.env.example](.env.example) as `.env` and uncomment the settings you need. Add
+the keyless **Deezer** search adapter in Settings after setup. Full deployment,
+backup, and reverse-proxy guidance is in [docs/deployment.md](docs/deployment.md).
 
 ## Library backends
 

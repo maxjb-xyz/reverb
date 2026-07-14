@@ -1,35 +1,22 @@
-# Production-ish single-host deployment for Reverb.
+# Start with: docker compose up -d
 #
-# By default the Reverb image ships a bundled Navidrome — just mount your music
-# at /music and start it. No extra service needed. Secrets come ONLY from .env
-# (copy .env.example -> .env).
-#
-# If you prefer your own Navidrome/Subsonic server (Library backend = External),
-# see the commented `navidrome` service at the bottom of this file.
+# Reverb stores its database in a managed Docker volume and uses ./music for
+# downloads. Optional settings live in .env; copy .env.example
+# only when you need an existing music folder, a version pin, or credentials.
 
 services:
   reverb:
-    # Pull the published image (override the tag with REVERB_VERSION, e.g. 0.1.0).
     image: ghcr.io/maxjb-xyz/reverb:${REVERB_VERSION:-latest}
-    # To build from source instead, comment out `image:` above and uncomment:
-    # build:
-    #   context: .
-    #   args:
-    #     VERSION: "${REVERB_VERSION:-dev}"
     ports:
       - "8090:8090"
-    env_file:
-      - .env
+    environment:
+      REVERB_ADMIN_PASSWORD: ${REVERB_ADMIN_PASSWORD:-}
+      REVERB_SPOTIFY_CLIENT_ID: ${REVERB_SPOTIFY_CLIENT_ID:-}
+      REVERB_SPOTIFY_CLIENT_SECRET: ${REVERB_SPOTIFY_CLIENT_SECRET:-}
+      REVERB_LIBRARY_PASSWORD: ${REVERB_LIBRARY_PASSWORD:-}
     volumes:
-      # App state + SQLite DB. A named volume needs zero setup — it inherits the
-      # container's non-root (uid 1000) ownership so the DB just opens.
       - reverb-data:/data
-      # Your music library on the host. spotDL downloads land here and your
-      # library server scans it. To use an EXISTING library, change ./music to its
-      # path, e.g. `- /srv/music:/music`. Reverb runs as uid 1000, so this folder
-      # must be writable by uid 1000 (it is if you created/own it). If it's owned
-      # by a different user, add a `user: "<uid>:<gid>"` line to this service.
-      - ./music:/music
+      - "${REVERB_MUSIC_DIR:-./music}:/music"
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8090/api/v1/health"]
@@ -37,24 +24,6 @@ services:
       timeout: 5s
       retries: 3
       start_period: 30s
-
-  # ---------------------------------------------------------------------------
-  # ONLY if you set Library backend = External in Reverb Settings.
-  # In that mode Reverb does NOT start its bundled Navidrome, and you can run
-  # your own here. In Reverb's Settings UI add a Subsonic library adapter with
-  # base URL http://navidrome:4533 (and REVERB_LIBRARY_PASSWORD in .env).
-  # If you use the default built-in mode, leave this commented out.
-  # ---------------------------------------------------------------------------
-  # navidrome:
-  #   image: deluan/navidrome:latest
-  #   ports:
-  #     - "4533:4533"
-  #   environment:
-  #     ND_LOGLEVEL: info
-  #   volumes:
-  #     - ./music:/music:ro
-  #     - ./navidrome-data:/data
-  #   restart: unless-stopped
 
 volumes:
   reverb-data:

@@ -12,19 +12,30 @@ checkout or build required:
 ```bash
 mkdir reverb && cd reverb
 curl -O https://raw.githubusercontent.com/maxjb-xyz/reverb/main/docker-compose.yml
-curl -o .env https://raw.githubusercontent.com/maxjb-xyz/reverb/main/.env.example
-# edit .env to set secrets; optionally pin REVERB_VERSION=0.1.0 (defaults to latest)
-docker compose up -d      # pulls the image and starts Reverb on :8090
+mkdir music
+docker compose up -d
 ```
 
-Open http://localhost:8090 and complete the first-run wizard (set an admin
-password unless you provided `REVERB_ADMIN_PASSWORD` in `.env`), then connect:
+Open http://localhost:8090 and complete the first-run wizard. Reverb uses the
+`./music` folder, keeps its database in a managed Docker volume, and starts its
+built-in music server and downloader automatically. Then add **Deezer** in
+Settings for keyless catalog search.
 
-- **Library** (Subsonic/Navidrome): point it at your existing server.
-- **Search**: add **Deezer** in Settings for keyless search, or configure Spotify
-  with its Client ID in Settings and `REVERB_SPOTIFY_CLIENT_SECRET` in `.env`.
-- **Downloader**: nothing to do — **spotDL is bundled and pre-configured** to
-  write into `/music`.
+Want to use an existing library, pin a release, or supply credentials? Download
+the optional settings file and uncomment only the values you need:
+
+```bash
+curl -o .env https://raw.githubusercontent.com/maxjb-xyz/reverb/main/.env.example
+```
+
+- `REVERB_MUSIC_DIR=/srv/music` uses an existing music folder instead of `./music`.
+- `REVERB_VERSION=0.1.0` pins the image instead of following `latest`.
+- `REVERB_ADMIN_PASSWORD` skips the first-run password screen; remove it after
+  the first boot.
+
+To use your own library server, select **External Subsonic** in Settings →
+Library backend and add its details there. Configure optional Spotify credentials
+in `.env`.
 
 ## Folders
 
@@ -33,27 +44,20 @@ Reverb stores two things:
 - **App state + SQLite DB** → the `reverb-data` **named volume** (`/data`). It needs
   no setup — the volume inherits the container's non-root ownership, so the DB just
   opens. (See [Backups](#backups) for copying it out.)
-- **Your music library** → the `./music` **host bind mount** (`/music`), where spotDL
-  downloads land and your library server scans. To use an existing library, change
-  `./music` to its path in `docker-compose.yml` (e.g. `- /srv/music:/music`).
+- **Your music library** → the `./music` **host folder** (`/music`), where spotDL
+  downloads land and the bundled music server scans. Set `REVERB_MUSIC_DIR` in
+  `.env` to use an existing library instead.
 
 The container **runs non-root as uid 1000** (the typical first host user), so a
 music folder you created/own is writable with **no `chown` and no `PUID`/`PGID`
 config**. If your library is owned by a *different* user (e.g. a NAS share or a
-service account), either `chown` it to `1000:1000` or add a `user:` line to the
-`reverb` service matching its owner:
-
-```yaml
-    user: "1001:1001"   # set to `id -u`:`id -g` of your music folder's owner
-```
+service account), make it writable by uid 1000 before starting Reverb.
 
 ## The shared music folder
 
-For downloads to appear in your library, your Subsonic/Navidrome server MUST scan
-the SAME `/music` folder. The provided `docker-compose.yml` bind-mounts `./music`
-into Reverb and (in the commented Navidrome service) the same folder read-only
-into Navidrome. After a download completes, Reverb triggers a library scan and the
-track becomes playable.
+For downloads to appear in an external Subsonic/Navidrome server, it MUST scan
+the same host music folder that you set with `REVERB_MUSIC_DIR`. After a download
+completes, Reverb triggers a library scan and the track becomes playable.
 
 ## Reverse proxy + TLS
 
