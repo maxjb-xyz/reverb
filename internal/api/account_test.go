@@ -2,6 +2,7 @@ package api
 
 import (
 	"bytes"
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -76,7 +77,7 @@ func TestChangeOwnUsernameRejectsBlankAndDuplicate(t *testing.T) {
 	srv := newTestServer(t)
 	mustSetupOwner(t, srv, "owner", "pw123456")
 	tok := mustLogin(t, srv, "owner", "pw123456")
-	if _, err := srv.deps.Auth.CreateUser(t.Context(), "other", "otherpw1", "role-user"); err != nil {
+	if _, err := srv.deps.Auth.CreateUser(context.Background(), "other", "otherpw1", "role-user"); err != nil {
 		t.Fatal(err)
 	}
 
