@@ -55,3 +55,35 @@ func TestChangeOwnPasswordEmptyCurrentReturns400(t *testing.T) {
 		t.Fatalf("empty current password = %d, want 400 (body: %s)", rr.Code, rr.Body)
 	}
 }
+
+func TestChangeOwnUsername(t *testing.T) {
+	srv := newTestServer(t)
+	mustSetupOwner(t, srv, "owner", "pw123456")
+	tok := mustLogin(t, srv, "owner", "pw123456")
+
+	if rr := doPATCH(t, srv, "/api/v1/account/profile", tok, `{"username":"renamed"}`); rr.Code != 200 {
+		t.Fatalf("rename = %d: %s", rr.Code, rr.Body)
+	}
+	if doPOST(t, srv, "/api/v1/auth/login", "", `{"username":"owner","password":"pw123456"}`).Code != 401 {
+		t.Fatal("old username should no longer log in")
+	}
+	if doPOST(t, srv, "/api/v1/auth/login", "", `{"username":"renamed","password":"pw123456"}`).Code != 200 {
+		t.Fatal("new username should log in")
+	}
+}
+
+func TestChangeOwnUsernameRejectsBlankAndDuplicate(t *testing.T) {
+	srv := newTestServer(t)
+	mustSetupOwner(t, srv, "owner", "pw123456")
+	tok := mustLogin(t, srv, "owner", "pw123456")
+	if _, err := srv.deps.Auth.CreateUser(t.Context(), "other", "otherpw1", "role-user"); err != nil {
+		t.Fatal(err)
+	}
+
+	if rr := doPATCH(t, srv, "/api/v1/account/profile", tok, `{"username":"  "}`); rr.Code != 400 {
+		t.Fatalf("blank username = %d, want 400", rr.Code)
+	}
+	if rr := doPATCH(t, srv, "/api/v1/account/profile", tok, `{"username":"OTHER"}`); rr.Code != 409 {
+		t.Fatalf("duplicate username = %d, want 409", rr.Code)
+	}
+}

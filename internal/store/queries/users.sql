@@ -22,6 +22,9 @@ UPDATE users SET disabled = ?, updated_at = unixepoch() WHERE id = ?;
 -- name: SetUserPassword :exec
 UPDATE users SET password_hash = ?, updated_at = unixepoch() WHERE id = ?;
 
+-- name: SetUsername :exec
+UPDATE users SET username = ?, updated_at = unixepoch() WHERE id = ?;
+
 -- name: DeleteUser :exec
 DELETE FROM users WHERE id = ?;
 

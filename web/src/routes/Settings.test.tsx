@@ -11,9 +11,11 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { AdapterInstance } from '../lib/adaptersApi'
+import { ApiError } from '../lib/api'
 
 // ── Auth mock ─────────────────────────────────────────────────────────────────
 const mockLogout = vi.fn()
+const mockRefresh = vi.fn()
 const mockMe = {
   id: 'u1',
   username: 'alice',
@@ -25,16 +27,18 @@ const mockMe = {
 }
 
 vi.mock('../lib/authStore', () => ({
-  useAuthStore: (selector: (s: { me: typeof mockMe; logout: typeof mockLogout }) => unknown) =>
-    selector({ me: mockMe, logout: mockLogout }),
+  useAuthStore: (selector: (s: { me: typeof mockMe; logout: typeof mockLogout; refresh: typeof mockRefresh }) => unknown) =>
+    selector({ me: mockMe, logout: mockLogout, refresh: mockRefresh }),
 }))
 
 // ── Account API mock ──────────────────────────────────────────────────────────
 const mockChangePassword = vi.fn()
+const mockChangeUsername = vi.fn()
 const mockLogoutAll = vi.fn()
 
 vi.mock('../lib/accountApi', () => ({
   changePassword: (...args: unknown[]) => mockChangePassword(...args),
+  changeUsername: (...args: unknown[]) => mockChangeUsername(...args),
   logoutAll: (...args: unknown[]) => mockLogoutAll(...args),
 }))
 
@@ -92,6 +96,8 @@ function wrap(ui: ReactElement) {
 describe('Settings — tab bar', () => {
   beforeEach(() => {
     mockChangePassword.mockResolvedValue(undefined)
+    mockChangeUsername.mockResolvedValue(undefined)
+    mockRefresh.mockResolvedValue(undefined)
     mockLogoutAll.mockResolvedValue(undefined)
     mockLogout.mockResolvedValue(undefined)
     mockMutate.mockClear()
@@ -160,6 +166,23 @@ describe('Settings — Profile tab', () => {
   it('renders the username', () => {
     wrap(<Settings />)
     expect(screen.getByText('alice')).toBeInTheDocument()
+  })
+
+  it('lets every user change their username', async () => {
+    wrap(<Settings />)
+    fireEvent.change(screen.getByLabelText(/^username$/i), { target: { value: 'renamed' } })
+    fireEvent.click(screen.getByRole('button', { name: /save username/i }))
+    await waitFor(() => expect(mockChangeUsername).toHaveBeenCalledWith('renamed'))
+    expect(mockRefresh).toHaveBeenCalled()
+    expect(await screen.findByText(/username updated/i)).toBeInTheDocument()
+  })
+
+  it('shows a useful error when the username is taken', async () => {
+    mockChangeUsername.mockRejectedValueOnce(new ApiError('PATCH', '/account/profile', 409))
+    wrap(<Settings />)
+    fireEvent.change(screen.getByLabelText(/^username$/i), { target: { value: 'taken' } })
+    fireEvent.click(screen.getByRole('button', { name: /save username/i }))
+    expect(await screen.findByText(/already in use/i)).toBeInTheDocument()
   })
 
   it('renders the role name badge', () => {

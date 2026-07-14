@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Button, Chip } from '../components/ui'
 import { useAuthStore } from '../lib/authStore'
-import { changePassword, logoutAll } from '../lib/accountApi'
+import { changePassword, changeUsername, logoutAll } from '../lib/accountApi'
 import { ApiError } from '../lib/api'
 import { IntegrationsSection } from '../components/account/IntegrationsSection'
 import { AppearanceSection } from '../components/account/AppearanceSection'
@@ -11,8 +11,43 @@ type Tab = 'profile' | 'security' | 'sessions' | 'integrations' | 'appearance'
 export default function Settings() {
   const me = useAuthStore((s) => s.me)
   const logout = useAuthStore((s) => s.logout)
+  const refresh = useAuthStore((s) => s.refresh)
 
   const [tab, setTab] = useState<Tab>('profile')
+
+  // ── Profile form ──────────────────────────────────────────────────────────
+  const [username, setUsername] = useState(me?.username ?? '')
+  const [profileError, setProfileError] = useState<string | null>(null)
+  const [profileSuccess, setProfileSuccess] = useState(false)
+  const [profilePending, setProfilePending] = useState(false)
+
+  async function handleChangeUsername(e: React.FormEvent) {
+    e.preventDefault()
+    const nextUsername = username.trim()
+    setProfileError(null)
+    setProfileSuccess(false)
+    if (!nextUsername) {
+      setProfileError('Username is required')
+      return
+    }
+    if (nextUsername === me?.username) return
+
+    setProfilePending(true)
+    try {
+      await changeUsername(nextUsername)
+      await refresh()
+      setUsername(nextUsername)
+      setProfileSuccess(true)
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 409) {
+        setProfileError('That username is already in use')
+      } else {
+        setProfileError('Failed to update profile — please try again')
+      }
+    } finally {
+      setProfilePending(false)
+    }
+  }
 
   // ── Change password form ──────────────────────────────────────────────────
   const [current, setCurrent] = useState('')
@@ -107,6 +142,29 @@ export default function Settings() {
                 )}
               </div>
             </div>
+          </div>
+
+          <div className="py-5">
+            <div className="text-sm font-bold text-text-primary mb-1">Username</div>
+            <p className="text-xs text-text-secondary mb-4">Used to sign in to Reverb.</p>
+            <form onSubmit={(e) => void handleChangeUsername(e)} className="flex flex-wrap items-start gap-3 max-w-md">
+              <div className="flex-1 min-w-52">
+                <label htmlFor="profile-username" className="sr-only">Username</label>
+                <input
+                  id="profile-username"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  autoComplete="username"
+                  required
+                  className="w-full h-9 px-3 rounded-md bg-input text-sm text-text-primary border border-border-subtle focus:outline-none focus:ring-2 focus:ring-accent"
+                />
+                {profileError && <p className="mt-2 text-xs font-medium text-error" role="alert">{profileError}</p>}
+                {profileSuccess && <p className="mt-2 text-xs font-medium text-success">Username updated.</p>}
+              </div>
+              <Button type="submit" variant="secondary" disabled={profilePending || username.trim() === me.username}>
+                {profilePending ? 'Saving…' : 'Save username'}
+              </Button>
+            </form>
           </div>
 
           {/* Capabilities */}

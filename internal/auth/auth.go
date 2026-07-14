@@ -66,6 +66,7 @@ type Querier interface {
 	DeleteUser(ctx context.Context, id string) error
 	TouchUserLastSeen(ctx context.Context, id string) error
 	SetUserPassword(ctx context.Context, arg db.SetUserPasswordParams) error
+	SetUsername(ctx context.Context, arg db.SetUsernameParams) error
 	// roles
 	GetRole(ctx context.Context, id string) (db.Role, error)
 	ListRoles(ctx context.Context) ([]db.Role, error)
@@ -249,6 +250,22 @@ func (s *Service) ChangeOwnPassword(ctx context.Context, userID, current, next s
 		return err
 	}
 	return s.q.SetUserPassword(ctx, db.SetUserPasswordParams{PasswordHash: h, ID: userID})
+}
+
+// ChangeOwnUsername updates a user's own login name. Usernames are unique
+// case-insensitively, matching the login lookup.
+func (s *Service) ChangeOwnUsername(ctx context.Context, userID, username string) error {
+	current, err := s.q.GetUserByID(ctx, userID)
+	if err != nil {
+		return ErrUserNotFound
+	}
+	if current.Username == username {
+		return nil
+	}
+	if existing, err := s.q.GetUserByUsername(ctx, username); err == nil && existing.ID != userID {
+		return ErrUsernameTaken
+	}
+	return s.q.SetUsername(ctx, db.SetUsernameParams{Username: username, ID: userID})
 }
 
 // LogoutAll deletes all sessions for userID except the one identified by exceptToken.

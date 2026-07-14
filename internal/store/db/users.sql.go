@@ -159,6 +159,20 @@ func (q *Queries) SetUserPassword(ctx context.Context, arg SetUserPasswordParams
 	return err
 }
 
+const setUsername = `-- name: SetUsername :exec
+UPDATE users SET username = ?, updated_at = unixepoch() WHERE id = ?
+`
+
+type SetUsernameParams struct {
+	Username string `json:"username"`
+	ID       string `json:"id"`
+}
+
+func (q *Queries) SetUsername(ctx context.Context, arg SetUsernameParams) error {
+	_, err := q.db.ExecContext(ctx, setUsername, arg.Username, arg.ID)
+	return err
+}
+
 const touchUserLastSeen = `-- name: TouchUserLastSeen :exec
 UPDATE users SET last_seen = unixepoch() WHERE id = ?
 `

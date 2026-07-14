@@ -59,6 +59,22 @@ paths:
     get:
       summary: Current session check
       responses: { "200": { description: authenticated }, "401": { description: unauthorized } }
+  /account/profile:
+    patch:
+      summary: Change the current user's username
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties: { username: { type: string } }
+              required: [username]
+      responses: { "200": { description: updated }, "400": { description: invalid username }, "409": { description: username taken } }
+  /account/password:
+    post:
+      summary: Change the current user's password
+      responses: { "200": { description: updated }, "400": { description: invalid current or new password } }
   /adapters/available:
     get:
       summary: Registered adapter types with config schemas and capabilities

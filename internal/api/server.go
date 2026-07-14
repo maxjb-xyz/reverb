@@ -261,6 +261,7 @@ func (s *Server) routes() {
 		r.Group(func(pr chi.Router) {
 			pr.Use(s.requireAuth)
 			pr.Get("/account", s.handleAccount)
+			pr.Patch("/account/profile", s.handleChangeUsername)
 			pr.Post("/account/password", s.handleChangePassword)
 			pr.Post("/account/logout-all", s.handleLogoutAll)
 			pr.Get("/me", s.handleMe)
