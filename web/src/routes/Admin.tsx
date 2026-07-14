@@ -20,7 +20,7 @@ import { useLibraryStatus } from '../lib/libraryApi'
 
 const modeLabel = (m: string) => (m === 'external' ? 'External Subsonic' : 'Built-in (bundled)')
 
-type Tab = 'providers' | 'server' | 'users'
+type Tab = 'providers' | 'users'
 
 /** Removes the `<key>__isSet` sidecar booleans before re-sending a redacted config. */
 function stripIsSet(config: Record<string, unknown>): Record<string, unknown> {
@@ -176,9 +176,6 @@ export default function Admin() {
       <div className="flex gap-2 border-b border-border-subtle pb-0" role="tablist" aria-label="Admin sections">
         <Chip selected={tab === 'providers'} onClick={() => setTab('providers')}>
           Providers
-        </Chip>
-        <Chip selected={tab === 'server'} onClick={() => setTab('server')}>
-          Server
         </Chip>
         <Chip selected={tab === 'users'} onClick={() => setTab('users')}>
           Users
@@ -344,25 +341,6 @@ export default function Admin() {
               <ScrobblingSection />
             </>
           )}
-        </div>
-      )}
-
-      {/* ── Server tab ── */}
-      {tab === 'server' && (
-        <div className="space-y-6">
-          <div className="rounded-lg border border-border-subtle bg-raised p-6 space-y-3">
-            <h2 className="text-base font-extrabold text-text-primary">Server info</h2>
-            <p className="text-sm text-text-secondary">
-              Reverb is running. Configuration changes take effect immediately.
-            </p>
-            <div className="space-y-2 pt-1">
-              <div className="text-sm font-bold text-text-primary">Applying config changes</div>
-              <p className="text-xs text-text-secondary">
-                Adding, editing, or removing providers applies live — Reverb rebuilds the active
-                library, search, and downloader the moment you save. No restart required.
-              </p>
-            </div>
-          </div>
         </div>
       )}
 

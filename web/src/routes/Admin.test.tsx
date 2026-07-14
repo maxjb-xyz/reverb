@@ -146,10 +146,10 @@ describe('Admin', () => {
     expect(screen.getByRole('heading', { name: /admin/i })).toBeInTheDocument()
   })
 
-  it('shows Providers, Server and Users tabs', () => {
+  it('shows Providers and Users tabs', () => {
     wrap(<Admin />)
     expect(screen.getByRole('button', { name: /providers/i })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /server/i })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^server$/i })).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: /users/i })).toBeInTheDocument()
   })
 
@@ -319,15 +319,6 @@ describe('Admin', () => {
     wrap(<Admin />)
     expect(screen.queryByRole('alert')).toBeNull()
     expect(screen.queryByText(/restart reverb/i)).toBeNull()
-  })
-
-  // ── Server tab ───────────────────────────────────────────────────────────────
-  it('Server tab shows server info with live-apply copy', () => {
-    wrap(<Admin />)
-    fireEvent.click(screen.getByRole('button', { name: /server/i }))
-    expect(screen.getByRole('heading', { name: /server info/i })).toBeInTheDocument()
-    expect(screen.getByText(/applying config changes/i)).toBeInTheDocument()
-    expect(screen.getByText(/no restart required/i)).toBeInTheDocument()
   })
 
   // ── Users tab — real UsersSection ────────────────────────────────────────────
