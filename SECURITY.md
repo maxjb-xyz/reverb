@@ -15,12 +15,8 @@ issue.
 
 **Please do not open a public issue for security vulnerabilities.**
 
-Report privately through one of:
-
-- **GitHub Security Advisories** (preferred) — open a private advisory at
-  <https://github.com/maxjb-xyz/reverb/security/advisories/new>.
-- **Email** — security@reverb.example _(placeholder — replace with the real
-  contact before public release)_.
+Report privately through a **GitHub Security Advisory**:
+<https://github.com/maxjb-xyz/reverb/security/advisories/new>.
 
 Please include:
 
