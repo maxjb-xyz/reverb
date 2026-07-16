@@ -132,7 +132,6 @@ export function TopBar() {
               query={query}
               onNavigateAll={goToResults}
               onClose={() => setSuggestOpen(false)}
-              onEmptyChange={() => {}}
             />
           )}
         </div>
