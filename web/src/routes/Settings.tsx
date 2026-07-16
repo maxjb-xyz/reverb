@@ -5,10 +5,12 @@ import { changePassword, changeUsername, logoutAll } from '../lib/accountApi'
 import { ApiError } from '../lib/api'
 import { IntegrationsSection } from '../components/account/IntegrationsSection'
 import { AppearanceSection } from '../components/account/AppearanceSection'
+import { useDocumentTitle } from '../lib/useDocumentTitle'
 
 type Tab = 'profile' | 'security' | 'sessions' | 'integrations' | 'appearance'
 
 export default function Settings() {
+  useDocumentTitle('Settings')
   const me = useAuthStore((s) => s.me)
   const logout = useAuthStore((s) => s.logout)
   const refresh = useAuthStore((s) => s.refresh)

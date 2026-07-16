@@ -20,6 +20,7 @@ import {
 } from '../components/ui'
 import type { SourceStatus } from '../lib/everywhereStore'
 import type { ExternalResult, EnvelopeStatus, Track } from '../lib/types'
+import { useDocumentTitle } from '../lib/useDocumentTitle'
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -140,6 +141,7 @@ function TrackSkeletons() {
 // ── Main component ─────────────────────────────────────────────────────────────
 
 export default function Search() {
+  useDocumentTitle('Search')
   const q = useSearch((s) => s.query)
   const setQ = useSearch((s) => s.setQuery)
   const mode = useSearch((s) => s.mode)

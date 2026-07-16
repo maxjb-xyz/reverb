@@ -21,6 +21,7 @@ import { rgbToCss } from '../lib/palette'
 import * as statsApi from '../lib/statsApi'
 import type { EntityStats, PlayCountTrack } from '../lib/statsApi'
 import { presetRange, msToHuman } from '../lib/range'
+import { useDocumentTitle } from '../lib/useDocumentTitle'
 
 // ── Local helpers ─────────────────────────────────────────────────────────────
 
@@ -65,6 +66,7 @@ function refToExternalResult(ref: ExternalTrackRef, albumName: string, albumArti
 export default function Album() {
   const { source = 'library', id = '' } = useParams()
   const { data: album, isLoading, isError } = useAlbumDetail(source, id)
+  useDocumentTitle(album ? `${album.name} · ${album.artist}` : 'Album')
   const playTrackList = usePlayer((s) => s.playTrackList)
   const toggleShuffle = usePlayer((s) => s.toggleShuffle)
   const shuffle = usePlayer((s) => s.shuffle)

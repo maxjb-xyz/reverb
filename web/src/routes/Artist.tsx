@@ -18,6 +18,7 @@ import { rgbToCss } from '../lib/palette'
 import * as statsApi from '../lib/statsApi'
 import type { EntityStats } from '../lib/statsApi'
 import { presetRange, msToHuman } from '../lib/range'
+import { useDocumentTitle } from '../lib/useDocumentTitle'
 
 type KindFilter = 'all' | 'album' | 'single'
 
@@ -99,6 +100,7 @@ function AlbumCard({ album, cov, resolved, canAutoApprove, onNavigate }: AlbumCa
 export default function Artist() {
   const { source = 'library', id = '' } = useParams()
   const { data: detail, isLoading, isError } = useArtistDetail(source, id)
+  useDocumentTitle(detail?.name ?? 'Artist')
   const coverage = useCoverageStream(source, id, detail?.resolved === true)
   const navigate = useNavigate()
   const [filter, setFilter] = useState<KindFilter>('all')

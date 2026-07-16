@@ -17,6 +17,7 @@ import { AdapterForm } from '../components/AdapterForm'
 import { Chip, Skeleton, Select, Button } from '../components/ui'
 import { useSettings, useUpdateSettings } from '../lib/settingsApi'
 import { useLibraryStatus } from '../lib/libraryApi'
+import { useDocumentTitle } from '../lib/useDocumentTitle'
 
 const modeLabel = (m: string) => (m === 'external' ? 'External Subsonic' : 'Built-in (bundled)')
 
@@ -33,6 +34,7 @@ function stripIsSet(config: Record<string, unknown>): Record<string, unknown> {
 }
 
 export default function Admin() {
+  useDocumentTitle('Admin')
   const qc = useQueryClient()
   const adapters = useAdapters()
   const available = useAvailableAdapters()
