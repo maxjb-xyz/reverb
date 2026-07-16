@@ -24,16 +24,19 @@ import { Icon } from '../ui/Icon'
 import { AddToPlaylistMenu } from '../AddToPlaylistMenu'
 import { ProgressRing } from '../ui/ProgressRing'
 import { usePendingPlay } from '../../lib/pendingPlayStore'
+import { usePeaks } from '../../lib/peaksApi'
 
 // ---------------------------------------------------------------------------
 // SeekBar — thin 4 px track with a thumb that appears on hover, driven by
 // position/duration from the player store. Click-to-seek updates seekMs.
 // ---------------------------------------------------------------------------
 function SeekBar() {
+  const trackId = usePlayer((s) => s.current?.id)
   const currentTimeMs = usePlayer((s) => s.currentTimeMs)
   const durationMs = usePlayer((s) => s.durationMs)
   const bufferedMs = usePlayer((s) => s.bufferedMs)
   const seekMs = usePlayer((s) => s.seekMs)
+  const peaks = usePeaks(trackId).data
 
   const pct = durationMs > 0 ? (currentTimeMs / durationMs) * 100 : 0
   const bufPct = durationMs > 0 ? (bufferedMs / durationMs) * 100 : 0
@@ -87,18 +90,15 @@ function SeekBar() {
         onKeyDown={onKeyDown}
         className="group relative h-1 flex-1 cursor-pointer rounded-full bg-border-subtle focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
       >
-        <div
-          className="pointer-events-none absolute inset-y-0 left-0 rounded-full bg-raised-hover"
-          style={{ width: `${bufPct}%` }}
-        />
-        <div
-          className="pointer-events-none absolute inset-y-0 left-0 rounded-full bg-text-primary group-hover:bg-accent"
-          style={{ width: `${pct}%` }}
-        />
-        <div
-          className="pointer-events-none absolute top-1/2 hidden h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full bg-text-primary group-hover:block"
-          style={{ left: `${pct}%` }}
-        />
+        {peaks?.length ? (
+          <div data-testid="waveform" className="flex h-6 items-center gap-px">
+            {peaks.map((peak, index) => <div key={index} className={index / peaks.length * 100 <= pct ? 'flex-1 rounded-full bg-text-primary group-hover:bg-accent' : 'flex-1 rounded-full bg-border-subtle'} style={{ minHeight: '2px', height: `${Math.max(8, peak * 100)}%` }} />)}
+          </div>
+        ) : <>
+          <div data-testid="flat-rail" className="pointer-events-none absolute inset-y-0 left-0 rounded-full bg-raised-hover" style={{ width: `${bufPct}%` }} />
+          <div className="pointer-events-none absolute inset-y-0 left-0 rounded-full bg-text-primary group-hover:bg-accent" style={{ width: `${pct}%` }} />
+          <div className="pointer-events-none absolute top-1/2 hidden h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full bg-text-primary group-hover:block" style={{ left: `${pct}%` }} />
+        </>}
       </div>
 
       <span className="w-9 tabular-nums">{formatDuration(durationMs)}</span>
