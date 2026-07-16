@@ -1,6 +1,6 @@
 import { Link, useNavigate } from 'react-router-dom'
 import { useLibrarySearch } from '../lib/libraryApi'
-import { useEverywhere } from '../lib/everywhereStore'
+import { dedupKey, useEverywhere } from '../lib/everywhereStore'
 import { usePlayer } from '../lib/playerStore'
 import { useSearch } from '../lib/searchStore'
 import { postDownload, reqFromResult } from '../lib/downloadApi'
@@ -21,16 +21,11 @@ import {
 import type { SourceStatus } from '../lib/everywhereStore'
 import type { ExternalResult, EnvelopeStatus, Track } from '../lib/types'
 import { useDocumentTitle } from '../lib/useDocumentTitle'
+import { useDebouncedValue } from '../lib/useDebouncedValue'
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-type Mode = 'library' | 'everywhere'
 type ResultFilter = 'all' | 'track' | 'playlist' | 'album' | 'artist'
-
-const MODE_OPTIONS: { value: Mode; label: string }[] = [
-  { value: 'library', label: 'My Library' },
-  { value: 'everywhere', label: 'Everywhere' },
-]
 
 const RESULT_FILTERS: { value: ResultFilter; label: string }[] = [
   { value: 'all', label: 'All' },
@@ -144,8 +139,7 @@ export default function Search() {
   useDocumentTitle('Search')
   const q = useSearch((s) => s.query)
   const setQ = useSearch((s) => s.setQuery)
-  const mode = useSearch((s) => s.mode)
-  const setMode = useSearch((s) => s.setMode)
+  const debouncedQ = useDebouncedValue(q, 400)
 
   const playTrackList = usePlayer((s) => s.playTrackList)
   const currentTrackId = usePlayer((s) => s.current?.id)
@@ -158,10 +152,10 @@ export default function Search() {
   const [hiddenSources, setHiddenSources] = useState<Set<string>>(() => new Set())
 
   // Library mode: TanStack Query REST call
-  const lib = useLibrarySearch(mode === 'library' ? q : '')
+  const lib = useLibrarySearch(q)
 
   // Everywhere mode: SSE stream via reducer (transport stays entirely in useEverywhere)
-  const everywhere = useEverywhere(q, 'track', mode === 'everywhere')
+  const everywhere = useEverywhere(debouncedQ, 'track', debouncedQ.trim() !== '')
 
   const libTracks = lib.data?.tracks ?? []
   const libAlbums = lib.data?.albums ?? []
@@ -171,6 +165,8 @@ export default function Search() {
   const albums = everywhere.albums.filter((result) => isVisibleSource(result.source))
   const artists = everywhere.artists.filter((result) => isVisibleSource(result.source))
   const playlists = everywhere.playlists.filter((result) => isVisibleSource(result.source))
+  const libraryTrackKeys = new Set(libTracks.map((track) => dedupKey({ isrc: track.isrc, artist: track.artist, title: track.title } as ExternalResult)))
+  const externalTracks = tracks.filter((result) => result.match?.status !== 'in_library' && !libraryTrackKeys.has(dedupKey(result)))
 
   function toggleSource(source: string) {
     setHiddenSources((current) => {
@@ -186,13 +182,9 @@ export default function Search() {
     return (
       <div className="space-y-6">
         {/* Mobile-only input — the TopBar has no search bar on mobile. */}
-        <MobileSearchInput q={q} onChange={setQ} mode={mode} />
+        <MobileSearchInput q={q} onChange={setQ} />
 
-        {/* Scope toggle is always available so you can pick where to search. */}
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <h1 className="text-xl font-extrabold text-text-primary">Search</h1>
-          <Segmented options={MODE_OPTIONS} value={mode} onChange={setMode} />
-        </div>
+        <h1 className="text-xl font-extrabold text-text-primary">Search</h1>
 
         <div className="py-12">
           <EmptyState
@@ -208,18 +200,16 @@ export default function Search() {
   return (
     <div className="space-y-8">
       {/* Mobile-only input — the TopBar has no search bar on mobile. */}
-      <MobileSearchInput q={q} onChange={setQ} mode={mode} />
+      <MobileSearchInput q={q} onChange={setQ} />
 
-      {/* Results header — title + scope toggle, intentional and aligned. */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <div>
         <h1 className="truncate text-xl font-extrabold text-text-primary">
           Results for &ldquo;{q}&rdquo;
         </h1>
-        <Segmented options={MODE_OPTIONS} value={mode} onChange={setMode} />
       </div>
 
       {/* ── Library mode ──────────────────────────────────────────────────── */}
-      {mode === 'library' && (
+      <>
         <>
           {lib.isFetching && <TrackSkeletons />}
 
@@ -282,10 +272,10 @@ export default function Search() {
             </section>
           )}
         </>
-      )}
+      </>
 
       {/* ── Everywhere mode ────────────────────────────────────────────────── */}
-      {mode === 'everywhere' && (
+      <>
         <>
           {/* Source chips */}
           <SourceChipsRow sources={everywhere.sources} hiddenSources={hiddenSources} onToggle={toggleSource} />
@@ -306,11 +296,11 @@ export default function Search() {
             <SectionHeading>Songs</SectionHeading>
             {tracks.length === 0 && everywhere.status === 'streaming' ? (
               <TrackSkeletons />
-            ) : tracks.length === 0 ? (
+            ) : externalTracks.length === 0 ? (
               <p className="text-sm text-text-muted">No tracks found.</p>
             ) : (
               <div className="space-y-0.5">
-                {tracks.map((r) => {
+                {externalTracks.map((r) => {
                   const matchedId =
                     (r.match?.status === 'in_library' && r.match.libraryTrackId) || ''
                   const syntheticTrack = matchedId ? trackFromMatch(r, matchedId) : null
@@ -469,7 +459,7 @@ export default function Search() {
             </section>
           )}
         </>
-      )}
+      </>
     </div>
   )
 }
@@ -484,11 +474,10 @@ export default function Search() {
 interface MobileSearchInputProps {
   q: string
   onChange: (v: string) => void
-  mode: Mode
 }
 
-function MobileSearchInput({ q, onChange, mode }: MobileSearchInputProps) {
-  const placeholder = mode === 'everywhere' ? 'Search everywhere' : 'Search your library'
+function MobileSearchInput({ q, onChange }: MobileSearchInputProps) {
+  const placeholder = 'Search your library — or everywhere'
   return (
     <div className="md:hidden">
       <label className="sr-only" htmlFor="search-input">

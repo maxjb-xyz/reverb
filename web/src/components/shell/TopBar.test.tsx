@@ -50,7 +50,7 @@ describe('TopBar', () => {
     vi.mocked(global.fetch).mockClear()
     useUI.setState({ rightPanel: null })
     useDownloads.setState({ jobs: {} })
-    useSearch.setState({ query: '', mode: 'library' })
+    useSearch.setState({ query: '' })
     useAuthStore.setState({ me: null, loading: false })
   })
 

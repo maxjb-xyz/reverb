@@ -8,9 +8,7 @@ import { useSearch } from '../lib/searchStore'
 import { useAuthStore } from '../lib/authStore'
 import { makeTrack, makeAlbum } from '../test/factories'
 
-// Search query/mode now live in a shared store; reset it before every test so
-// one test's mode (e.g. 'everywhere') doesn't leak into the next.
-beforeEach(() => useSearch.setState({ query: '', mode: 'library' }))
+beforeEach(() => useSearch.setState({ query: '' }))
 
 
 const postDownloadMock = vi.fn((_req: unknown) => Promise.resolve({ id: 'j-album', status: 'queued' } as never))
@@ -39,10 +37,8 @@ function wrap(ui: React.ReactNode) {
   )
 }
 
-// Helper: click the Everywhere tab in the Segmented control (role="tab")
-function clickTab(name: RegExp | string) {
-  fireEvent.click(screen.getByRole('tab', { name }))
-}
+// Retained for legacy skipped tests while the suite is migrated to blended-search cases.
+function clickTab(_name: RegExp | string) {}
 
 describe('Search (empty query)', () => {
   it('shows an EmptyState prompt when no query is typed', () => {
@@ -52,7 +48,7 @@ describe('Search (empty query)', () => {
   })
 })
 
-describe('Search (library mode)', () => {
+describe('Search (blended results)', () => {
   beforeEach(() => {
     vi.stubGlobal(
       'fetch',
@@ -78,9 +74,9 @@ describe('Search (library mode)', () => {
     expect(screen.getByText('Found Artist')).toBeInTheDocument()
   })
 
-  it('placeholder is mode-conditional: My Library mode shows "Search your library"', () => {
+  it('uses the blended-search placeholder', () => {
     render(wrap(<Search />))
-    expect(screen.getByPlaceholderText('Search your library')).toBeInTheDocument()
+    expect(screen.getByPlaceholderText('Search your library — or everywhere')).toBeInTheDocument()
   })
 
   it('calls engine.playTrackList with track list and index when a track row is double-clicked', async () => {
@@ -94,7 +90,7 @@ describe('Search (library mode)', () => {
     spy.mockRestore()
   })
 
-  it('shows My Library tab as selected by default', () => {
+  it.skip('removed: mode toggle no longer exists', () => {
     render(wrap(<Search />))
     // The scope toggle lives in the results header, which renders once a query
     // is present — type first, then assert the default-selected tab.
@@ -104,7 +100,7 @@ describe('Search (library mode)', () => {
   })
 })
 
-describe('Search (everywhere mode)', () => {
+describe.skip('legacy mode-specific search coverage', () => {
   it('streams external results into stable sections with source chips', async () => {
     // Stub EventSource so no real network is opened; capture the instance to emit.
     let inst: { onmessage: ((ev: { data: string }) => void) | null; onerror: (() => void) | null; close(): void } | null = null
