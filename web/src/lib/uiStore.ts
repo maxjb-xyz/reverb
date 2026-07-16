@@ -16,6 +16,12 @@ interface UIStore {
   openNowPlaying(): void
   closeNowPlaying(): void
   toggleNowPlaying(): void
+  // Cinema is the desktop fullscreen player. Mobile continues to use
+  // nowPlayingOpen, so both views can share the player state safely.
+  cinemaOpen: boolean
+  openCinema(): void
+  closeCinema(): void
+  toggleCinema(): void
 }
 
 export const useUI = create<UIStore>((set, get) => ({
@@ -27,4 +33,8 @@ export const useUI = create<UIStore>((set, get) => ({
   openNowPlaying: () => set({ nowPlayingOpen: true }),
   closeNowPlaying: () => set({ nowPlayingOpen: false }),
   toggleNowPlaying: () => set({ nowPlayingOpen: !get().nowPlayingOpen }),
+  cinemaOpen: false,
+  openCinema: () => set({ cinemaOpen: true }),
+  closeCinema: () => set({ cinemaOpen: false }),
+  toggleCinema: () => set({ cinemaOpen: !get().cinemaOpen }),
 }))

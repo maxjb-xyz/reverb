@@ -126,6 +126,7 @@ export function PlayerBar() {
   const cycleRepeat = usePlayer((s) => s.cycleRepeat)
 
   const togglePanel = useUI((s) => s.togglePanel)
+  const toggleCinema = useUI((s) => s.toggleCinema)
   const rightPanel = useUI((s) => s.rightPanel)
 
   const navigate = useNavigate()
@@ -330,6 +331,7 @@ export function PlayerBar() {
             }}
           />
         </div>
+        <IconButton name="expand" label="Full screen" size="sm" onClick={toggleCinema} />
       </div>
     </div>
   )

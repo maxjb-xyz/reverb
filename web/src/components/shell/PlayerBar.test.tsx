@@ -141,6 +141,12 @@ describe('PlayerBar (shell)', () => {
     expect(useUI.getState().rightPanel).toBe(null)
   })
 
+  it('toggles the cinema view from the expand button', () => {
+    render(<PlayerBar />)
+    fireEvent.click(screen.getByLabelText('Full screen'))
+    expect(useUI.getState().cinemaOpen).toBe(true)
+  })
+
   it('volume button mutes and restores the previous volume', () => {
     act(() => usePlayer.getState().setVolume(0.42))
     render(<PlayerBar />)

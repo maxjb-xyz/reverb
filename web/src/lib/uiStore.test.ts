@@ -81,3 +81,16 @@ describe('uiStore now-playing overlay', () => {
     expect(useUI.getState().nowPlayingOpen).toBe(false)
   })
 })
+
+describe('cinema', () => {
+  beforeEach(() => useUI.setState({ cinemaOpen: false }))
+
+  it('opens, closes and toggles the cinema view', () => {
+    useUI.getState().openCinema()
+    expect(useUI.getState().cinemaOpen).toBe(true)
+    useUI.getState().closeCinema()
+    expect(useUI.getState().cinemaOpen).toBe(false)
+    useUI.getState().toggleCinema()
+    expect(useUI.getState().cinemaOpen).toBe(true)
+  })
+})
