@@ -213,11 +213,11 @@ export default function Search() {
         <>
           {lib.isFetching && <TrackSkeletons />}
 
-          {!lib.isFetching && libTracks.length === 0 && libAlbums.length === 0 && libArtists.length === 0 && lib.isFetched && (
+          {!lib.isFetching && libTracks.length === 0 && libAlbums.length === 0 && libArtists.length === 0 && lib.isFetched && everywhere.status === 'done' && externalTracks.length === 0 && albums.length === 0 && artists.length === 0 && playlists.length === 0 && (
             <EmptyState
               icon="search"
               title="No results"
-              hint={`Nothing in your library matches "${q}". Try Everywhere to discover it.`}
+              hint={`Nothing matches "${q}" in your library or connected sources.`}
             />
           )}
 

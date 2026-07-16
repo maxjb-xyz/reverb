@@ -79,6 +79,26 @@ describe('Search (blended results)', () => {
     expect(screen.getByPlaceholderText('Search your library — or everywhere')).toBeInTheDocument()
   })
 
+  it('waits for external search to finish before showing the empty state', async () => {
+    let stream: { onerror: (() => void) | null } | null = null
+    class StubEventSource {
+      onmessage: ((event: MessageEvent) => void) | null = null
+      onerror: (() => void) | null = null
+      constructor() { stream = this }
+      close() {}
+    }
+    vi.stubGlobal('EventSource', StubEventSource as unknown as typeof EventSource)
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ tracks: [], albums: [], artists: [] }), { status: 200, headers: { 'Content-Type': 'application/json' } })))
+    render(wrap(<Search />))
+    fireEvent.change(screen.getByPlaceholderText(/search your library/i), { target: { value: 'missing' } })
+    await new Promise((resolve) => setTimeout(resolve, 450))
+    await waitFor(() => expect(stream).not.toBeNull())
+    expect(screen.queryByText('No results')).toBeNull()
+    act(() => stream!.onerror?.())
+    await waitFor(() => expect(screen.getByText('No results')).toBeInTheDocument())
+    vi.unstubAllGlobals()
+  })
+
   it('calls engine.playTrackList with track list and index when a track row is double-clicked', async () => {
     const spy = vi.spyOn(engine, 'playTrackList').mockImplementation(() => {})
     render(wrap(<Search />))
