@@ -151,7 +151,6 @@ describe('Search (blended results)', () => {
     // Library row precedes the external row in DOM order.
     const libNode = screen.getByText('Found Song')
     const extNode = screen.getByText('External Only Song')
-    // eslint-disable-next-line no-bitwise
     expect(libNode.compareDocumentPosition(extNode) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
 
     vi.unstubAllGlobals()

@@ -36,12 +36,6 @@ export function CommandPalette() {
     if (open) requestAnimationFrame(() => input.current?.focus())
   }, [open])
 
-  // Reset the highlighted row whenever the query changes, so a narrowed
-  // result list doesn't leave `active` pointing past the visible commands.
-  useEffect(() => {
-    setActive(0)
-  }, [query])
-
   // The ⌘K toggle listens globally, always-on (it's how the palette opens).
   useEffect(() => {
     function handleToggle(e: KeyboardEvent) {
@@ -99,7 +93,12 @@ export function CommandPalette() {
           aria-label="Type a command or search"
           placeholder="Type a command or search…"
           value={query}
-          onChange={(e) => setQuery(e.target.value)}
+          onChange={(e) => {
+            // Reset the highlighted row on every query change, so a narrowed
+            // result list doesn't leave `active` pointing past the visible commands.
+            setQuery(e.target.value)
+            setActive(0)
+          }}
           onKeyDown={(e) => {
             if (e.key === 'ArrowDown') {
               e.preventDefault()
