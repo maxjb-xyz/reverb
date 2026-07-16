@@ -110,6 +110,125 @@ describe('Search (blended results)', () => {
     spy.mockRestore()
   })
 
+  it('merges library and external tracks into a single Songs section, library first', async () => {
+    let inst: { onmessage: ((ev: { data: string }) => void) | null; onerror: (() => void) | null; close(): void } | null = null
+    class StubES {
+      onmessage: ((ev: { data: string }) => void) | null = null
+      onerror: (() => void) | null = null
+      constructor() { inst = this }
+      close() {}
+    }
+    vi.stubGlobal('EventSource', StubES as unknown as typeof EventSource)
+
+    render(wrap(<Search />))
+    fireEvent.change(screen.getByPlaceholderText(/search your library/i), { target: { value: 'found' } })
+    await waitFor(() => expect(screen.getByText('Found Song')).toBeInTheDocument())
+    await waitFor(() => expect(inst).not.toBeNull())
+
+    act(() => {
+      inst!.onmessage?.({
+        data: JSON.stringify({
+          source: 'spotify',
+          status: 'ok',
+          results: [
+            {
+              source: 'spotify',
+              externalId: 'sp-ext',
+              title: 'External Only Song',
+              artist: 'B',
+              album: 'B',
+              durationMs: 200000,
+              type: 'track',
+              match: { status: 'not_in_library', libraryTrackId: '', method: 'none', confidence: 0 },
+            },
+          ],
+        }),
+      })
+    })
+
+    await waitFor(() => expect(screen.getByText('External Only Song')).toBeInTheDocument())
+
+    // Exactly one "Songs" heading — the two old blocks are merged. (The
+    // Segmented filter also has a "Songs" tab label, so scope to the heading role.)
+    expect(screen.getAllByRole('heading', { name: 'Songs' })).toHaveLength(1)
+
+    // Library row precedes the external row in DOM order.
+    const libNode = screen.getByText('Found Song')
+    const extNode = screen.getByText('External Only Song')
+    // eslint-disable-next-line no-bitwise
+    expect(libNode.compareDocumentPosition(extNode) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+
+    vi.unstubAllGlobals()
+  })
+
+  it('does not show "No tracks found." when the library has songs and external has none', async () => {
+    let inst: { onmessage: ((ev: { data: string }) => void) | null; onerror: (() => void) | null; close(): void } | null = null
+    class StubES {
+      onmessage: ((ev: { data: string }) => void) | null = null
+      onerror: (() => void) | null = null
+      constructor() { inst = this }
+      close() {}
+    }
+    vi.stubGlobal('EventSource', StubES as unknown as typeof EventSource)
+
+    render(wrap(<Search />))
+    fireEvent.change(screen.getByPlaceholderText(/search your library/i), { target: { value: 'found' } })
+    await waitFor(() => expect(screen.getByText('Found Song')).toBeInTheDocument())
+    await waitFor(() => expect(inst).not.toBeNull())
+
+    act(() => inst!.onerror?.())
+
+    await waitFor(() => expect(screen.queryByText('No results')).not.toBeInTheDocument())
+    expect(screen.queryByText('No tracks found.')).not.toBeInTheDocument()
+
+    vi.unstubAllGlobals()
+  })
+
+  it('selecting the Albums filter hides both library and external song rows', async () => {
+    let inst: { onmessage: ((ev: { data: string }) => void) | null; onerror: (() => void) | null; close(): void } | null = null
+    class StubES {
+      onmessage: ((ev: { data: string }) => void) | null = null
+      onerror: (() => void) | null = null
+      constructor() { inst = this }
+      close() {}
+    }
+    vi.stubGlobal('EventSource', StubES as unknown as typeof EventSource)
+
+    render(wrap(<Search />))
+    fireEvent.change(screen.getByPlaceholderText(/search your library/i), { target: { value: 'found' } })
+    await waitFor(() => expect(screen.getByText('Found Song')).toBeInTheDocument())
+    await waitFor(() => expect(inst).not.toBeNull())
+
+    act(() => {
+      inst!.onmessage?.({
+        data: JSON.stringify({
+          source: 'spotify',
+          status: 'ok',
+          results: [
+            {
+              source: 'spotify',
+              externalId: 'sp-ext2',
+              title: 'External Filter Song',
+              artist: 'B',
+              album: 'B',
+              durationMs: 200000,
+              type: 'track',
+              match: { status: 'not_in_library', libraryTrackId: '', method: 'none', confidence: 0 },
+            },
+          ],
+        }),
+      })
+    })
+    await waitFor(() => expect(screen.getByText('External Filter Song')).toBeInTheDocument())
+
+    fireEvent.click(screen.getByRole('tab', { name: /^Albums$/i }))
+
+    expect(screen.queryByText('Found Song')).not.toBeInTheDocument()
+    expect(screen.queryByText('External Filter Song')).not.toBeInTheDocument()
+
+    vi.unstubAllGlobals()
+  })
+
   it.skip('removed: mode toggle no longer exists', () => {
     render(wrap(<Search />))
     // The scope toggle lives in the results header, which renders once a query

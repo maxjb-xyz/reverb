@@ -209,261 +209,228 @@ export default function Search() {
         </h1>
       </div>
 
-      {/* ── Library mode ──────────────────────────────────────────────────── */}
-      <>
-        <>
-          {lib.isFetching && <TrackSkeletons />}
+      {!lib.isFetching && libTracks.length === 0 && libAlbums.length === 0 && libArtists.length === 0 && lib.isFetched && everywhere.status === 'done' && externalTracks.length === 0 && albums.length === 0 && artists.length === 0 && playlists.length === 0 && (
+        <EmptyState
+          icon="search"
+          title="No results"
+          hint={`Nothing matches "${q}" in your library or connected sources.`}
+        />
+      )}
 
-          {!lib.isFetching && libTracks.length === 0 && libAlbums.length === 0 && libArtists.length === 0 && lib.isFetched && everywhere.status === 'done' && externalTracks.length === 0 && albums.length === 0 && artists.length === 0 && playlists.length === 0 && (
-            <EmptyState
-              icon="search"
-              title="No results"
-              hint={`Nothing matches "${q}" in your library or connected sources.`}
-            />
-          )}
+      {/* Source chips */}
+      <SourceChipsRow sources={everywhere.sources} hiddenSources={hiddenSources} onToggle={toggleSource} />
 
-          {libTracks.length > 0 && (
-            <section aria-label="Songs">
-              <SectionHeading>Songs</SectionHeading>
-              <div className="space-y-0.5">
-                {libTracks.map((t, i) => (
+      <div className="overflow-x-auto pb-1">
+        <Segmented options={RESULT_FILTERS} value={resultFilter} onChange={setResultFilter} />
+      </div>
+
+      {/* Streaming hint — shows while at least one envelope is in flight */}
+      {everywhere.status === 'streaming' && (
+        <p className="text-xs text-text-muted" aria-live="polite">
+          Searching sources...
+        </p>
+      )}
+
+      {/* Songs — library rows first, then external rows, in one section */}
+      {(resultFilter === 'all' || resultFilter === 'track') &&
+        (lib.isFetching || libTracks.length > 0 || externalTracks.length > 0 || everywhere.status === 'streaming') && (
+        <section aria-label="Songs">
+          <SectionHeading>Songs</SectionHeading>
+          {lib.isFetching ? (
+            <TrackSkeletons />
+          ) : libTracks.length === 0 && externalTracks.length === 0 && everywhere.status !== 'streaming' ? (
+            <p className="text-sm text-text-muted">No tracks found.</p>
+          ) : (
+            <div className="space-y-0.5">
+              {libTracks.map((t, i) => (
+                <TrackRow
+                  key={t.id}
+                  track={t}
+                  index={i}
+                  active={currentTrackId === t.id}
+                  onPlay={() => playTrackList(libTracks, i)}
+                />
+              ))}
+              {externalTracks.map((r) => {
+                const matchedId =
+                  (r.match?.status === 'in_library' && r.match.libraryTrackId) || ''
+                const syntheticTrack = matchedId ? trackFromMatch(r, matchedId) : null
+
+                // For display in TrackRow we need a Track shape. We always render
+                // a synthetic Track — the right slot carries the DownloadAction.
+                const displayTrack: Track = syntheticTrack ?? {
+                  id: `${r.source}:${r.externalId}`,
+                  title: r.title,
+                  albumId: '',
+                  album: r.album,
+                  artistId: '',
+                  artist: r.artist,
+                  coverArtId: r.coverArtId ?? '',
+                  trackNumber: 0,
+                  discNumber: 0,
+                  durationMs: r.durationMs,
+                  bitRate: 0,
+                  suffix: '',
+                  contentType: '',
+                  isrc: r.isrc,
+                }
+
+                // For non-library results, link artist/album to external pages if IDs are present.
+                const artistNode = !syntheticTrack && r.artistExternalId ? (
+                  <Link
+                    to={`/artist/${r.source}/${r.artistExternalId}`}
+                    onClick={(e) => e.stopPropagation()}
+                    onDoubleClick={(e) => e.stopPropagation()}
+                    className="hover:underline"
+                  >
+                    {r.artist}
+                  </Link>
+                ) : undefined
+                const albumNode = !syntheticTrack && r.albumExternalId ? (
+                  <Link
+                    to={`/album/${r.source}/${r.albumExternalId}`}
+                    onClick={(e) => e.stopPropagation()}
+                    onDoubleClick={(e) => e.stopPropagation()}
+                    className="hover:underline"
+                  >
+                    {r.album}
+                  </Link>
+                ) : undefined
+
+                return (
                   <TrackRow
-                    key={t.id}
-                    track={t}
-                    index={i}
-                    active={currentTrackId === t.id}
-                    onPlay={() => playTrackList(libTracks, i)}
-                  />
-                ))}
-              </div>
-            </section>
-          )}
-
-          {libAlbums.length > 0 && (
-            <section aria-label="Albums">
-              <SectionHeading>Albums</SectionHeading>
-              <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-                {libAlbums.map((al) => (
-                  <MediaCard
-                    key={al.id}
-                    title={al.name}
-                    subtitle={al.artist}
-                    coverId={al.coverArtId}
-                    onClick={() => navigate(`/album/library/${al.id}`)}
-                  />
-                ))}
-              </div>
-            </section>
-          )}
-
-          {libArtists.length > 0 && (
-            <section aria-label="Artists">
-              <SectionHeading>Artists</SectionHeading>
-              <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
-                {libArtists.map((ar) => (
-                  <MediaCard
-                    key={ar.id}
-                    title={ar.name}
-                    coverId={ar.coverArtId}
-                    rounded="full"
-                    onClick={() => navigate(`/artist/library/${ar.id}`)}
-                  />
-                ))}
-              </div>
-            </section>
-          )}
-        </>
-      </>
-
-      {/* ── Everywhere mode ────────────────────────────────────────────────── */}
-      <>
-        <>
-          {/* Source chips */}
-          <SourceChipsRow sources={everywhere.sources} hiddenSources={hiddenSources} onToggle={toggleSource} />
-
-          <div className="overflow-x-auto pb-1">
-            <Segmented options={RESULT_FILTERS} value={resultFilter} onChange={setResultFilter} />
-          </div>
-
-          {/* Streaming hint — shows while at least one envelope is in flight */}
-          {everywhere.status === 'streaming' && (
-            <p className="text-xs text-text-muted" aria-live="polite">
-              Searching sources...
-            </p>
-          )}
-
-          {/* Songs */}
-          {(resultFilter === 'all' || resultFilter === 'track') && <section aria-label="Songs">
-            <SectionHeading>Songs</SectionHeading>
-            {tracks.length === 0 && everywhere.status === 'streaming' ? (
-              <TrackSkeletons />
-            ) : externalTracks.length === 0 ? (
-              <p className="text-sm text-text-muted">No tracks found.</p>
-            ) : (
-              <div className="space-y-0.5">
-                {externalTracks.map((r) => {
-                  const matchedId =
-                    (r.match?.status === 'in_library' && r.match.libraryTrackId) || ''
-                  const syntheticTrack = matchedId ? trackFromMatch(r, matchedId) : null
-
-                  // For display in TrackRow we need a Track shape. We always render
-                  // a synthetic Track — the right slot carries the DownloadAction.
-                  const displayTrack: Track = syntheticTrack ?? {
-                    id: `${r.source}:${r.externalId}`,
-                    title: r.title,
-                    albumId: '',
-                    album: r.album,
-                    artistId: '',
-                    artist: r.artist,
-                    coverArtId: r.coverArtId ?? '',
-                    trackNumber: 0,
-                    discNumber: 0,
-                    durationMs: r.durationMs,
-                    bitRate: 0,
-                    suffix: '',
-                    contentType: '',
-                    isrc: r.isrc,
-                  }
-
-                  // For non-library results, link artist/album to external pages if IDs are present.
-                  const artistNode = !syntheticTrack && r.artistExternalId ? (
-                    <Link
-                      to={`/artist/${r.source}/${r.artistExternalId}`}
-                      onClick={(e) => e.stopPropagation()}
-                      onDoubleClick={(e) => e.stopPropagation()}
-                      className="hover:underline"
-                    >
-                      {r.artist}
-                    </Link>
-                  ) : undefined
-                  const albumNode = !syntheticTrack && r.albumExternalId ? (
-                    <Link
-                      to={`/album/${r.source}/${r.albumExternalId}`}
-                      onClick={(e) => e.stopPropagation()}
-                      onDoubleClick={(e) => e.stopPropagation()}
-                      className="hover:underline"
-                    >
-                      {r.album}
-                    </Link>
-                  ) : undefined
-
-                  return (
-                    <TrackRow
-                      key={`${r.source}:${r.externalId}`}
-                      track={displayTrack}
-                      coverSrc={r.coverUrl || undefined}
-                      rightWidth="8.5rem"
-                      active={!!matchedId && currentTrackId === matchedId}
-                      artistNode={artistNode}
-                      albumNode={albumNode}
-                      onPlay={() => {
-                        if (syntheticTrack) {
-                          playTrackList([syntheticTrack], 0)
-                        } else {
-                          // Not in your library yet — clicking the song downloads it
-                          // (server picks the downloader via the fallback chain).
-                          postDownload({ ...reqFromResult(r), playWhenReady: true })
-                            .then((j) => {
-                              useDownloads.getState().upsert(j)
-                              usePendingPlay.getState().begin({ jobId: j.id, title: r.title, artist: r.artist, coverArtId: r.coverArtId })
-                            })
-                            .catch(() => {})
-                        }
-                      }}
-                      right={
-                        <DownloadAction
-                          result={r}
-                          onPlay={(libraryTrackId) => {
-                            playTrackList([trackFromMatch(r, libraryTrackId)], 0)
-                          }}
-                        />
+                    key={`${r.source}:${r.externalId}`}
+                    track={displayTrack}
+                    coverSrc={r.coverUrl || undefined}
+                    rightWidth="8.5rem"
+                    active={!!matchedId && currentTrackId === matchedId}
+                    artistNode={artistNode}
+                    albumNode={albumNode}
+                    onPlay={() => {
+                      if (syntheticTrack) {
+                        playTrackList([syntheticTrack], 0)
+                      } else {
+                        // Not in your library yet — clicking the song downloads it
+                        // (server picks the downloader via the fallback chain).
+                        postDownload({ ...reqFromResult(r), playWhenReady: true })
+                          .then((j) => {
+                            useDownloads.getState().upsert(j)
+                            usePendingPlay.getState().begin({ jobId: j.id, title: r.title, artist: r.artist, coverArtId: r.coverArtId })
+                          })
+                          .catch(() => {})
                       }
-                    />
-                  )
-                })}
-              </div>
-            )}
-          </section>}
-
-          {/* Albums */}
-          {(resultFilter === 'all' || resultFilter === 'album') && albums.length > 0 && (
-            <section aria-label="Albums">
-              <SectionHeading>Albums</SectionHeading>
-              {/* TODO(phase-6): partial N-of-M needs external album tracks + matching */}
-              <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-                {albums.map((a) => (
-                  <MediaCard
-                    key={`${a.source}:${a.externalId}`}
-                    title={a.title}
-                    subtitle={a.artist}
-                    onClick={() => navigate(`/album/${a.source}/${a.externalId}`)}
-                    badge={
-                      a.match?.status === 'in_library' ? (
-                        <Badge kind="in-library">
-                          In Library
-                        </Badge>
-                      ) : canAutoApprove ? (
-                        <Button
-                          variant="secondary"
-                          size="sm"
-                          aria-label={`Download all of ${a.title}`}
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            void postDownload({
-                              source: a.source,
-                              externalId: a.externalId,
-                              artist: a.artist,
-                              title: a.title,
-                              album: a.title,
-                            }).then((j) => useDownloads.getState().upsert(j))
-                          }}
-                        >
-                          <Icon name="dl" className="text-xs" />
-                          Download all
-                        </Button>
-                      ) : undefined
+                    }}
+                    right={
+                      <DownloadAction
+                        result={r}
+                        onPlay={(libraryTrackId) => {
+                          playTrackList([trackFromMatch(r, libraryTrackId)], 0)
+                        }}
+                      />
                     }
                   />
-                ))}
-              </div>
-            </section>
+                )
+              })}
+            </div>
           )}
+        </section>
+      )}
 
-          {/* Artists */}
-          {(resultFilter === 'all' || resultFilter === 'artist') && artists.length > 0 && (
-            <section aria-label="Artists">
-              <SectionHeading>Artists</SectionHeading>
-              <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
-                {artists.map((r) => (
-                  <MediaCard
-                    key={`${r.source}:${r.externalId}`}
-                    title={r.title}
-                    rounded="full"
-                    onClick={() => navigate(`/artist/${r.source}/${r.externalId}`)}
-                  />
-                ))}
-              </div>
-            </section>
-          )}
+      {/* Albums — library cards first, then external cards, in one grid */}
+      {(resultFilter === 'all' || resultFilter === 'album') && (libAlbums.length > 0 || albums.length > 0) && (
+        <section aria-label="Albums">
+          <SectionHeading>Albums</SectionHeading>
+          {/* TODO(phase-6): partial N-of-M needs external album tracks + matching */}
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+            {libAlbums.map((al) => (
+              <MediaCard
+                key={al.id}
+                title={al.name}
+                subtitle={al.artist}
+                coverId={al.coverArtId}
+                onClick={() => navigate(`/album/library/${al.id}`)}
+              />
+            ))}
+            {albums.map((a) => (
+              <MediaCard
+                key={`${a.source}:${a.externalId}`}
+                title={a.title}
+                subtitle={a.artist}
+                onClick={() => navigate(`/album/${a.source}/${a.externalId}`)}
+                badge={
+                  a.match?.status === 'in_library' ? (
+                    <Badge kind="in-library">
+                      In Library
+                    </Badge>
+                  ) : canAutoApprove ? (
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      aria-label={`Download all of ${a.title}`}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        void postDownload({
+                          source: a.source,
+                          externalId: a.externalId,
+                          artist: a.artist,
+                          title: a.title,
+                          album: a.title,
+                        }).then((j) => useDownloads.getState().upsert(j))
+                      }}
+                    >
+                      <Icon name="dl" className="text-xs" />
+                      Download all
+                    </Button>
+                  ) : undefined
+                }
+              />
+            ))}
+          </div>
+        </section>
+      )}
 
-          {(resultFilter === 'all' || resultFilter === 'playlist') && playlists.length > 0 && (
-            <section aria-label="Playlists">
-              <SectionHeading>Playlists</SectionHeading>
-              <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-                {playlists.map((playlist) => (
-                  <MediaCard
-                    key={`${playlist.source}:${playlist.externalId}`}
-                    title={playlist.title}
-                    subtitle={playlist.artist || 'Spotify playlist'}
-                    coverSrc={playlist.coverUrl || undefined}
-                    onClick={() => navigate(`/playlist/${playlist.source}/${playlist.externalId}`)}
-                  />
-                ))}
-              </div>
-            </section>
-          )}
-        </>
-      </>
+      {/* Artists — library cards first, then external cards, in one grid */}
+      {(resultFilter === 'all' || resultFilter === 'artist') && (libArtists.length > 0 || artists.length > 0) && (
+        <section aria-label="Artists">
+          <SectionHeading>Artists</SectionHeading>
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
+            {libArtists.map((ar) => (
+              <MediaCard
+                key={ar.id}
+                title={ar.name}
+                coverId={ar.coverArtId}
+                rounded="full"
+                onClick={() => navigate(`/artist/library/${ar.id}`)}
+              />
+            ))}
+            {artists.map((r) => (
+              <MediaCard
+                key={`${r.source}:${r.externalId}`}
+                title={r.title}
+                rounded="full"
+                onClick={() => navigate(`/artist/${r.source}/${r.externalId}`)}
+              />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {(resultFilter === 'all' || resultFilter === 'playlist') && playlists.length > 0 && (
+        <section aria-label="Playlists">
+          <SectionHeading>Playlists</SectionHeading>
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+            {playlists.map((playlist) => (
+              <MediaCard
+                key={`${playlist.source}:${playlist.externalId}`}
+                title={playlist.title}
+                subtitle={playlist.artist || 'Spotify playlist'}
+                coverSrc={playlist.coverUrl || undefined}
+                onClick={() => navigate(`/playlist/${playlist.source}/${playlist.externalId}`)}
+              />
+            ))}
+          </div>
+        </section>
+      )}
     </div>
   )
 }
