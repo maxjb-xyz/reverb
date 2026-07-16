@@ -66,6 +66,7 @@ export function AppShell() {
 
   const current = usePlayer((s) => s.current)
   const rightPanel = useUI((s) => s.rightPanel)
+  const closePanel = useUI((s) => s.closePanel)
   const palette = useAlbumPalette(current ? trackCoverUrl(current, 80) : undefined)
 
   // Ambient dynamic background: a subtle gradient from the dominant color into
@@ -78,6 +79,15 @@ export function AppShell() {
 
   // Whether the right column is open (a desktop column or an overlay at mid-widths)
   const rightOpen = rightPanel === 'nowplaying' || rightPanel === 'downloads'
+
+  useEffect(() => {
+    if (!rightOpen) return
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') closePanel()
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [rightOpen, closePanel])
 
   return (
     <div
@@ -116,6 +126,13 @@ export function AppShell() {
 
         {/* Right column — desktop: occupies a column at xl+; mid: overlay; absent when null */}
         {rightOpen && (
+          <>
+            <button
+              type="button"
+              aria-label="Close side panel"
+              onClick={closePanel}
+              className="absolute inset-0 z-10 hidden bg-black/30 lg:block xl:hidden"
+            />
           <div
             data-testid="right-panel-column"
             className={[
@@ -129,6 +146,7 @@ export function AppShell() {
             {rightPanel === 'nowplaying' && <NowPlayingPanel />}
             {rightPanel === 'downloads' && <DownloadTray />}
           </div>
+          </>
         )}
       </div>
 

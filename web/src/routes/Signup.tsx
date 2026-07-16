@@ -93,14 +93,14 @@ export default function Signup() {
             </div>
 
             {err && (
-              <p className="text-sm text-accent flex items-center gap-1.5" role="alert">
+              <p className="text-sm text-error flex items-center gap-1.5" role="alert">
                 <Icon name="warn" className="shrink-0 text-base" aria-hidden="true" />
                 {err}
               </p>
             )}
 
-            <Button type="submit" variant="primary" size="md" disabled={loading} aria-label="Create account">
-              <span className="w-full text-center">{loading ? 'Creating account…' : 'Create account'}</span>
+            <Button type="submit" variant="primary" size="md" disabled={loading} aria-label="Create account" className="w-full">
+              {loading ? 'Creating account…' : 'Create account'}
             </Button>
           </form>
 

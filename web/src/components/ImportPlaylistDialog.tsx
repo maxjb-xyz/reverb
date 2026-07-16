@@ -184,7 +184,7 @@ export function ImportPlaylistDialog({ open, onClose, initialURL = '' }: ImportP
 
             {/* Inline error */}
             {error && (
-              <p role="alert" className="text-sm text-accent">
+              <p role="alert" className="text-sm text-error">
                 {error}
               </p>
             )}

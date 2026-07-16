@@ -147,11 +147,13 @@ export function PlayerBar() {
 
   const palette = useAlbumPalette(current ? trackCoverUrl(current, 80) : undefined)
 
-  // Global keyboard shortcuts. Ignore when typing in an input/textarea.
+  // Global keyboard shortcuts. Keep interactive controls in charge of their own
+  // keys (notably the seek slider and menu buttons).
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
+      if (!current) return
       const el = e.target as HTMLElement | null
-      if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)) return
+      if (el instanceof HTMLElement && el.closest('input, textarea, select, button, [role], [contenteditable="true"]')) return
       if (e.code === 'Space') {
         e.preventDefault()
         toggle()
@@ -171,7 +173,7 @@ export function PlayerBar() {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [toggle, next, prev, seekMs, currentTimeMs])
+  }, [current, toggle, next, prev, seekMs, currentTimeMs])
 
   const coverSrc = current ? trackCoverUrl(current, 80) || undefined : undefined
 

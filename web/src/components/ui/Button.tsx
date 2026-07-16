@@ -7,6 +7,7 @@ interface ButtonProps {
   onClick?: React.MouseEventHandler<HTMLButtonElement>
   type?: 'button' | 'submit' | 'reset'
   'aria-label'?: string
+  className?: string
   children: React.ReactNode
 }
 
@@ -28,6 +29,7 @@ export function Button({
   onClick,
   type = 'button',
   'aria-label': ariaLabel,
+  className,
   children,
 }: ButtonProps) {
   return (
@@ -42,6 +44,7 @@ export function Button({
         'disabled:opacity-40 disabled:cursor-not-allowed',
         variantClasses[variant],
         sizeClasses[size],
+        className,
       ].join(' ')}
     >
       {children}

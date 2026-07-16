@@ -371,7 +371,7 @@ export default function SyncedPlaylist() {
             )}
           </div>
           {coverError && (
-            <p role="alert" className="absolute bottom-2 left-0 right-0 text-center text-xs text-red-400">
+            <p role="alert" className="absolute bottom-2 left-0 right-0 text-center text-xs text-error">
               {coverError}
             </p>
           )}

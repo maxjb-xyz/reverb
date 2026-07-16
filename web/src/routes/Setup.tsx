@@ -162,7 +162,7 @@ export default function Setup() {
             />
           </div>
           {err && (
-            <p className="text-sm text-accent flex items-center gap-1.5" role="alert">
+            <p className="text-sm text-error flex items-center gap-1.5" role="alert">
               <Icon name="warn" className="shrink-0 text-base" aria-hidden="true" />
               {err}
             </p>
@@ -212,7 +212,7 @@ export default function Setup() {
       </div>
 
       {err && (
-        <p className="text-sm text-accent flex items-center gap-1.5" role="alert">
+        <p className="text-sm text-error flex items-center gap-1.5" role="alert">
           <Icon name="warn" className="shrink-0 text-base" aria-hidden="true" />
           {err}
         </p>

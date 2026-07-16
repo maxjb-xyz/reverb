@@ -60,4 +60,9 @@ describe('Button', () => {
     const btn = screen.getByRole('button', { name: 'Go' })
     expect(btn.className).toMatch(/text-sm/)
   })
+
+  it('forwards className for layout variants such as full-width auth actions', () => {
+    render(<Button className="w-full">Go</Button>)
+    expect(screen.getByRole('button', { name: 'Go' }).className).toMatch(/w-full/)
+  })
 })

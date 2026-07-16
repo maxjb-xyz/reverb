@@ -67,6 +67,7 @@ export default function Login() {
                 onChange={(e) => setUsername(e.target.value)}
                 placeholder="Username"
                 autoComplete="username"
+                required
                 className="w-full rounded-lg bg-input border border-border-subtle px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
               />
             </div>
@@ -82,19 +83,20 @@ export default function Login() {
                 onChange={(e) => setPw(e.target.value)}
                 placeholder="Password"
                 autoComplete="current-password"
+                required
                 className="w-full rounded-lg bg-input border border-border-subtle px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
               />
             </div>
 
             {err && (
-              <p className="text-sm text-accent flex items-center gap-1.5" role="alert">
+              <p className="text-sm text-error flex items-center gap-1.5" role="alert">
                 <Icon name="warn" className="shrink-0 text-base" aria-hidden="true" />
                 {err}
               </p>
             )}
 
-            <Button type="submit" variant="primary" size="md" disabled={loading} aria-label="Log in">
-              <span className="w-full text-center">{loading ? 'Logging in...' : 'Log in'}</span>
+            <Button type="submit" variant="primary" size="md" disabled={loading} aria-label="Log in" className="w-full">
+              {loading ? 'Logging in...' : 'Log in'}
             </Button>
           </form>
 

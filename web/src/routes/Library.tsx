@@ -4,6 +4,7 @@ import { useAlbums, useArtists, useLibraryStatus } from '../lib/libraryApi'
 import { useSyncedPlaylists } from '../lib/syncedPlaylistApi'
 import { Chip, MediaCard, Skeleton, EmptyState, Button } from '../components/ui'
 import { ImportPlaylistDialog } from '../components/ImportPlaylistDialog'
+import { useDocumentTitle } from '../lib/useDocumentTitle'
 
 type Filter = 'albums' | 'artists' | 'playlists'
 
@@ -51,6 +52,7 @@ function LibraryError({ onRetry }: { onRetry: () => void }) {
 }
 
 export default function Library() {
+  useDocumentTitle('Library')
   const [filter, setFilter] = useState<Filter>('albums')
   const [importOpen, setImportOpen] = useState(false)
   const navigate = useNavigate()
@@ -69,7 +71,7 @@ export default function Library() {
         </div>
       )}
       {libStatus.data?.state === 'degraded' && (
-        <div className="rounded-lg border border-red-500/40 bg-red-500/10 px-4 py-2 text-sm text-red-300">
+        <div className="rounded-lg border border-error/40 bg-error/10 px-4 py-2 text-sm text-error">
           Library unavailable — the bundled server failed to start. Check logs or switch to an external server in Settings.
         </div>
       )}

@@ -201,7 +201,7 @@ export function AdapterForm({
         </div>
       )}
 
-      {submitError && <p className="text-sm text-accent">{submitError}</p>}
+      {submitError && <p className="text-sm text-error">{submitError}</p>}
       <div className="flex items-center gap-3 pt-1">
         <button type="submit" disabled={submitting} className="rounded bg-accent px-4 py-2 font-medium text-on-accent disabled:opacity-50">
           {submitLabel}
@@ -210,7 +210,7 @@ export function AdapterForm({
           {testState.status === 'testing' ? 'Testing...' : 'Test Connection'}
         </button>
         {testState.status === 'ok' && <span className="flex items-center gap-1 text-sm text-success"><Icon name="check" className="w-4 h-4" /> Connection OK</span>}
-        {testState.status === 'error' && <span className="flex items-center gap-1 text-sm text-accent"><Icon name="x" className="w-4 h-4" /> {testState.msg}</span>}
+        {testState.status === 'error' && <span className="flex items-center gap-1 text-sm text-error"><Icon name="x" className="w-4 h-4" /> {testState.msg}</span>}
       </div>
     </form>
   )
