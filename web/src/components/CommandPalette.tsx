@@ -135,7 +135,7 @@ export function CommandPalette() {
                 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
               ].join(' ')}
             >
-              Search for "{query}"
+              Search for "“{query}”"
             </button>
           )}
         </div>
