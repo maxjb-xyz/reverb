@@ -15,7 +15,6 @@ export function TopBar() {
   const activeCount = useDownloads((s) => s.active().length)
   const query = useSearch((s) => s.query)
   const setQuery = useSearch((s) => s.setQuery)
-  const setMode = useSearch((s) => s.setMode)
 
   // Defense-in-depth: hide the Admin entry for users without a management
   // capability (the backend enforces this regardless). Account/Settings stay
@@ -29,15 +28,10 @@ export function TopBar() {
   // Typeahead dropdown — typing only updates the shared query; submitting
   // (Enter) navigates to the full /search results page.
   const [suggestOpen, setSuggestOpen] = useState(false)
-  // Whether the library preview returned no matches (drives "search everywhere").
-  const [previewEmpty, setPreviewEmpty] = useState(false)
   const searchRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
   function goToResults() {
-    // The dropdown's hint promises "search everywhere" when the library has no
-    // matches — honor it by switching to Everywhere before opening the results.
-    if (query.trim() !== '' && previewEmpty) setMode('everywhere')
     navigate('/search')
     setSuggestOpen(false)
     inputRef.current?.blur()
@@ -138,7 +132,6 @@ export function TopBar() {
               query={query}
               onNavigateAll={goToResults}
               onClose={() => setSuggestOpen(false)}
-              onEmptyChange={setPreviewEmpty}
             />
           )}
         </div>

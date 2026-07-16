@@ -90,6 +90,7 @@ function AlbumCard({ album, cov, resolved, canAutoApprove, onNavigate }: AlbumCa
             }
           : undefined
       }
+      ghost={!album.libraryAlbumId}
       onDownload={canAutoApprove && hasMissing && !downloadState.active ? handleDownload : undefined}
       downloadProgress={downloadState.active ? downloadState : undefined}
       onClick={onNavigate}

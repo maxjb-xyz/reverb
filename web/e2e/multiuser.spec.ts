@@ -13,14 +13,13 @@ import { installApiMocks, ownerMe, externalTrack } from './mocks'
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
-// Drive the Everywhere search so the one not-in-library external track renders
-// (mirrors the core-loop flow). Returns once the result row's title is visible.
+// Drive the blended search so the one not-in-library external track renders
+// (mirrors the core-loop flow). External results stream in automatically
+// ~400ms after typing (debounced SSE); rely on auto-waiting for the row.
 async function searchEverywhere(page: Page) {
   const topSearch = page.getByPlaceholder(/or everywhere/)
   await topSearch.fill(externalTrack.title)
   await topSearch.press('Enter')
-  await expect(page.getByRole('tab', { name: 'Everywhere' })).toBeVisible()
-  await page.getByRole('tab', { name: 'Everywhere' }).click()
   // exact:true → the track row's title span, not the results header.
   await expect(page.getByText(externalTrack.title, { exact: true })).toBeVisible()
 }

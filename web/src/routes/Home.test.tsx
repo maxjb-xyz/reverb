@@ -120,15 +120,13 @@ describe('Home feed', () => {
     vi.clearAllMocks()
   })
 
-  it('renders chip filter row with All, Music, Downloads when content exists', async () => {
+  it('renders the shortcut grid when content exists', async () => {
     const { useAlbums } = await import('../lib/libraryApi')
     vi.mocked(useAlbums).mockReturnValue({ data: [makeAlbum()], isLoading: false, error: null } as unknown as UseQueryResult<Album[], Error>)
 
     render(wrap(<Home />))
 
-    expect(screen.getByRole('button', { name: /^all$/i })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /^music$/i })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /^downloads$/i })).toBeInTheDocument()
+    expect(screen.getByTestId('shortcut-grid')).toBeInTheDocument()
   })
 
   it('shows the first-run welcome state (not a blank void) when there is no content', async () => {
@@ -140,8 +138,7 @@ describe('Home feed', () => {
     expect(screen.getByRole('heading', { name: /welcome to reverb/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /search music/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /connect a library/i })).toBeInTheDocument()
-    // The orphan chip row is hidden in the empty state.
-    expect(screen.queryByRole('button', { name: /^all$/i })).not.toBeInTheDocument()
+    expect(screen.queryByTestId('shortcut-grid')).not.toBeInTheDocument()
   })
 
   it('renders shortcut grid and "Jump back in" carousel when data is present', async () => {

@@ -134,6 +134,15 @@ paths:
       summary: List albums
       parameters: [{ name: type, in: query, required: false, schema: { type: string } }]
       responses: { "200": { description: ok } }
+  /library/track/{id}/peaks:
+    get:
+      summary: Waveform peaks for a local track (computed on demand; embedded library only)
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses: { "200": { description: waveform data }, "204": { description: peaks unavailable } }
+  /collection:
+    get:
+      summary: Cached discography coverage summary
+      responses: { "200": { description: collection summary } }
   /library/playlists:
     get:
       summary: List playlists

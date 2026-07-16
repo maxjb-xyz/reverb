@@ -9,6 +9,7 @@ import { getMyRequests, getAllRequests, useRequestStore, type RequestEventPayloa
 import { getNotifications, useNotificationStore, type Notification } from './notificationApi'
 import { useAuthStore } from './authStore'
 import { useToastStore } from './toastStore'
+import { usePendingPlay } from './pendingPlayStore'
 import type { DownloadEvent, DownloadRemovedEvent, LibraryUpdatedEvent, QueueStateEvent, RealtimeEvent, Track } from './types'
 
 // trackFromJob synthesizes a minimal library Track for play-when-ready auto-play,
@@ -62,7 +63,10 @@ export function useRealtime(makeSocket?: (url: string) => WebSocketLike): void {
         case 'download.queued':
         case 'download.progress':
         case 'download.failed': {
-          useDownloads.getState().applyEvent(frame.payload as DownloadEvent)
+          const event = frame.payload as DownloadEvent
+          useDownloads.getState().applyEvent(event)
+          if (event.status === 'running') usePendingPlay.getState().update(event.jobId, event.progress)
+          if (event.status === 'failed' || event.status === 'canceled') usePendingPlay.getState().fail(event.jobId)
           break
         }
         case 'download.complete': {
@@ -71,14 +75,19 @@ export function useRealtime(makeSocket?: (url: string) => WebSocketLike): void {
           // After applying, read the job to see if it was play-when-ready.
           const job = useDownloads.getState().jobs[ev.jobId]
           const trackId = ev.libraryTrackId || job?.libraryTrackId || ''
-          // playWhenReady auto-play: intentional forward-compat seam for M3; no UI
-          // affordance sets playWhenReady yet — M4 may add a "download & play" control.
+          // playWhenReady: auto-play only if nothing is currently playing. If the
+          // user is already listening to something else, don't hijack playback —
+          // queue the freshly-downloaded track instead and let them know via toast.
           if (job?.playWhenReady && trackId) {
-            playTrackList(
-              [trackFromJob(trackId, { title: job.title, album: job.album, artist: job.artist, isrc: job.isrc })],
-              0,
-            )
+            const track = trackFromJob(trackId, { title: job.title, album: job.album, artist: job.artist, isrc: job.isrc })
+            if (usePlayer.getState().current === null) {
+              playTrackList([track], 0)
+            } else {
+              usePlayer.getState().enqueue(track)
+              useToastStore.getState().push(`"${job.title}" is ready — added to your queue`, 'success')
+            }
           }
+          usePendingPlay.getState().clear(ev.jobId)
           invalidateLibrary({ artistId: ev.artistId, albumId: ev.albumId })
           // Bump the library revision so coverage streams re-open and chips flip.
           useLibraryRevision.getState().bump()

@@ -13,10 +13,17 @@ import type { WebSocketLike } from './realtime'
 import type { Request } from './requestApi'
 import type { Notification } from './notificationApi'
 
-// Player spy: usePlayer((s) => s.playTrackList) must return our spy.
+// Player spy: usePlayer((s) => s.playTrackList) must return our spy, and
+// usePlayer.getState() must expose a controllable `current` plus `enqueue`.
 const playTrackList = vi.fn()
+const enqueue = vi.fn()
+const playerState: { current: unknown } = { current: null }
+function usePlayerImpl(sel: (s: { playTrackList: typeof playTrackList }) => unknown) {
+  return sel({ playTrackList })
+}
+usePlayerImpl.getState = () => ({ current: playerState.current, enqueue, playTrackList })
 vi.mock('./playerStore', () => ({
-  usePlayer: (sel: (s: { playTrackList: typeof playTrackList }) => unknown) => sel({ playTrackList }),
+  usePlayer: usePlayerImpl,
 }))
 
 // downloadApi resync is stubbed (no real network).
@@ -79,6 +86,8 @@ describe('useRealtime', () => {
   beforeEach(() => {
     sockets.length = 0
     playTrackList.mockClear()
+    enqueue.mockClear()
+    playerState.current = null
     mockGetMyRequests.mockReset()
     mockGetAllRequests.mockReset()
     mockGetNotifications.mockReset()
@@ -182,6 +191,26 @@ describe('useRealtime', () => {
     renderHook(() => useRealtime((url) => new StubSocket(url)), { wrapper })
     sockets[0].onmessage?.(frame('download.complete', { jobId: 'j2', dedupKey: 'dk2', status: 'completed', progress: 100, source: 'spotify', externalId: 'sp2', libraryTrackId: 't5' }))
     expect(playTrackList).not.toHaveBeenCalled()
+  })
+
+  it('enqueues (instead of auto-playing) and toasts when a play-when-ready completion arrives while a track is already loaded', () => {
+    playerState.current = { id: 'now-playing' } as never
+    useDownloads.getState().upsert({
+      id: 'j4', dedupKey: 'dk4', status: 'running', progress: 0, downloaderName: 'spotdl',
+      priority: 0, attempts: 0, source: 'spotify', externalId: 'sp4', playWhenReady: true,
+      title: 'Song4', artist: 'Artist4', album: 'Album4', createdAt: 1, startedAt: 0, finishedAt: 0,
+    } as never)
+
+    renderHook(() => useRealtime((url) => new StubSocket(url)), { wrapper })
+    sockets[0].onmessage?.(frame('download.complete', { jobId: 'j4', dedupKey: 'dk4', status: 'completed', progress: 100, source: 'spotify', externalId: 'sp4', libraryTrackId: 't4' }))
+
+    expect(enqueue).toHaveBeenCalledTimes(1)
+    expect(playTrackList).not.toHaveBeenCalled()
+    const toasts = useToastStore.getState().toasts
+    expect(toasts).toHaveLength(1)
+    expect(toasts[0].kind).toBe('success')
+    expect(toasts[0].message).toContain('Song4')
+    expect(toasts[0].message).toContain('added to your queue')
   })
 
   it('handles download.queue (paused) and download.removed (drop jobs)', () => {

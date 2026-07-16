@@ -33,11 +33,9 @@ test('core loop: login -> search everywhere -> download -> in-library -> play', 
   await topSearch.fill(externalTrack.title)
   await topSearch.press('Enter')
 
-  // 4) The Segmented scope toggle is always visible on /search; switch to
-  //    Everywhere (role="tab" inside a role="tablist"). The SSE mock then returns
-  //    one not-in-library track.
-  await expect(page.getByRole('tab', { name: 'Everywhere' })).toBeVisible()
-  await page.getByRole('tab', { name: 'Everywhere' }).click()
+  // 4) Results are blended: library rows first, then external rows stream in
+  //    automatically ~400ms after typing (debounced SSE). The SSE mock returns
+  //    one not-in-library track; rely on auto-waiting for it to appear.
   // exact:true so we match the track row's title span, not the "Results for
   // \"Test Anthem\"" results header (which also contains the title).
   await expect(page.getByText(externalTrack.title, { exact: true })).toBeVisible()

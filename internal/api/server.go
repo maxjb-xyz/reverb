@@ -272,6 +272,8 @@ func (s *Server) routes() {
 			pr.Get("/library/artist/{id}", s.handleLibraryArtist)
 			pr.Get("/library/album/{id}", s.handleLibraryAlbum)
 			pr.Get("/library/albums", s.handleLibraryAlbums)
+			pr.Get("/library/track/{id}/peaks", s.handleTrackPeaks)
+			pr.Get("/collection", s.handleCollection)
 			pr.Get("/stream/{id}", s.handleStream)
 			pr.Get("/cover/{id}", s.handleCover)
 			pr.Get("/search/everywhere", s.handleEverywhere)

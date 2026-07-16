@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -21,11 +23,12 @@ var (
 
 // Adapter is the Subsonic/Navidrome LibraryAdapter. Configure it via Init.
 type Adapter struct {
-	baseURL    string
-	username   string
-	password   string
-	httpClient *http.Client
-	client     *Client
+	baseURL       string
+	username      string
+	password      string
+	httpClient    *http.Client
+	client        *Client
+	localMusicDir string
 }
 
 // New returns an unconfigured adapter (the registry factory).
@@ -36,6 +39,23 @@ func (a *Adapter) WithHTTPClient(h *http.Client) *Adapter {
 	a.httpClient = h
 	return a
 }
+
+// WithLocalMusicDir enables LocalTrackPath by pointing the adapter at the
+// filesystem directory the Subsonic server's `path` fields are relative to.
+// Only set this when the adapter talks to a Subsonic server that shares
+// Reverb's own filesystem (the bundled/embedded Navidrome) — never for
+// external/remote Subsonic servers, whose `path` values are meaningless
+// on this host. Default (unset) keeps LocalTrackPath returning ("", false),
+// preserving the flat-seek-rail fallback.
+func (a *Adapter) WithLocalMusicDir(dir string) *Adapter {
+	a.localMusicDir = dir
+	return a
+}
+
+// LocalMusicDir returns the configured local music directory (empty when
+// LocalTrackPath is disabled). Exported for wiring-level tests that need to
+// assert the embedded-vs-external split without a live Subsonic server.
+func (a *Adapter) LocalMusicDir() string { return a.localMusicDir }
 
 func (a *Adapter) Type() string { return "library" }
 func (a *Adapter) Name() string { return "subsonic" }
@@ -371,4 +391,34 @@ func (a *Adapter) GetAlbumsBrowse(ctx context.Context, listType string, size int
 		}
 	}
 	return out, nil
+}
+
+// LocalTrackPath resolves a track ID to an absolute filesystem path, for the
+// waveform-peaks endpoint. It only works when the adapter has been configured
+// via WithLocalMusicDir (i.e. the Subsonic server shares Reverb's filesystem —
+// the bundled/embedded Navidrome); external Subsonic servers always get
+// ("", false), which keeps the flat seek rail.
+func (a *Adapter) LocalTrackPath(id string) (string, bool) {
+	if a.localMusicDir == "" {
+		return "", false
+	}
+	params := url.Values{}
+	params.Set("id", id)
+	var resp subsonicResponse
+	if err := a.client.GetJSON(context.Background(), "getSong", params, &resp); err != nil {
+		return "", false
+	}
+	if resp.Song == nil || resp.Song.Path == "" {
+		return "", false
+	}
+	dir := filepath.Clean(a.localMusicDir)
+	joined := filepath.Clean(filepath.Join(dir, resp.Song.Path))
+	if joined != dir && !strings.HasPrefix(joined, dir+string(filepath.Separator)) {
+		// Path traversal (e.g. "../evil.mp3") escaped the music dir — reject it.
+		return "", false
+	}
+	if fi, err := os.Stat(joined); err != nil || fi.IsDir() {
+		return "", false
+	}
+	return joined, true
 }

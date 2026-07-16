@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -12,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/maxjb-xyz/reverb/internal/core"
+	"github.com/maxjb-xyz/reverb/internal/coverage"
 	"github.com/maxjb-xyz/reverb/internal/registry"
 	"github.com/maxjb-xyz/reverb/internal/store"
 )
@@ -27,7 +29,23 @@ type fakeCoverage struct {
 	covs       []core.AlbumCoverage
 	lastSource string
 	lastID     string
+
+	// discographies backs ListCachedDiscographies for collection tests.
+	discographies []collectionFakeDiscography
+	// artistTotal backs CountLibraryArtists.
+	artistTotal    int
+	artistCountErr error
 }
+
+// collectionFakeDiscography is a lightweight stand-in for
+// coverage.CachedArtistDiscography, used to build fakeCoverage.discographies
+// without importing db-shaped rows into api tests.
+type collectionFakeDiscography struct {
+	libraryArtistID, name, coverArtID, source, externalArtistID string
+	albums                                                      []core.DiscographyAlbum
+}
+
+var errFakeCount = errors.New("fake: library artist count unavailable")
 
 func (f *fakeCoverage) ArtistDetail(_ context.Context, source, id string) (core.ArtistDetail, error) {
 	f.lastSource, f.lastID = source, id
@@ -58,6 +76,27 @@ func (f *fakeCoverage) StreamCoverage(ctx context.Context, source, id string) <-
 		}
 	}()
 	return ch
+}
+
+func (f *fakeCoverage) ListCachedDiscographies(context.Context) ([]coverage.CachedArtistDiscography, error) {
+	if f.discographies == nil {
+		return nil, nil
+	}
+	out := make([]coverage.CachedArtistDiscography, 0, len(f.discographies))
+	for _, d := range f.discographies {
+		out = append(out, coverage.CachedArtistDiscography{
+			LibraryArtistID: d.libraryArtistID, Name: d.name, CoverArtID: d.coverArtID,
+			Source: d.source, ExternalArtistID: d.externalArtistID, Albums: d.albums,
+		})
+	}
+	return out, nil
+}
+
+func (f *fakeCoverage) CountLibraryArtists(context.Context) (int, error) {
+	if f.artistCountErr != nil {
+		return 0, f.artistCountErr
+	}
+	return f.artistTotal, nil
 }
 
 // coverageTestServer builds a Server with a fake coverage service + download manager.

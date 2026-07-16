@@ -36,6 +36,7 @@ type CoverageCache interface {
 	GetAlbumExternalMap(ctx context.Context, libraryAlbumID, source string) (AlbumMapRow, error)
 	UpsertAlbumExternalMap(ctx context.Context, libraryAlbumID, source, externalID string, confidence float64, now int64) error
 	GetDiscographyCache(ctx context.Context, source, externalArtistID string) (DiscoRow, error)
+	ListCachedDiscographies(ctx context.Context) ([]CachedDiscographyRow, error)
 	UpsertDiscographyCache(ctx context.Context, source, externalArtistID, albumsJSON string, now int64) error
 	GetAlbumCoverage(ctx context.Context, source, externalAlbumID string) (CoverageRow, error)
 	UpsertAlbumCoverage(ctx context.Context, source, externalAlbumID, coverageJSON, libraryAlbumID string, libraryVersion int64, now int64) error
@@ -53,6 +54,11 @@ type AlbumMapRow struct {
 	Confidence      float64
 }
 type DiscoRow struct{ AlbumsJSON string }
+type CachedDiscographyRow struct{ LibraryArtistID, Source, ExternalArtistID, AlbumsJSON string }
+type CachedArtistDiscography struct {
+	LibraryArtistID, Name, CoverArtID, Source, ExternalArtistID string
+	Albums                                                      []core.DiscographyAlbum
+}
 type CoverageRow struct {
 	CoverageJSON, LibraryAlbumID string
 	LibraryVersion               int64
@@ -199,6 +205,55 @@ func (s *Service) discography(ctx context.Context, source, extID string) ([]core
 		_ = s.cache.UpsertDiscographyCache(ctx, source, extID, string(b), s.now())
 	}
 	return albums, nil
+}
+
+// artistBrowser is an optional capability implemented by library adapters that
+// can list every artist (e.g. the Subsonic adapter's browse endpoint). It's
+// used only to compute the total-artist count for the collection summary.
+type artistBrowser interface {
+	GetArtistsBrowse(ctx context.Context) ([]core.Artist, error)
+}
+
+// CountLibraryArtists returns the total number of artists known to the
+// library, for display alongside the resolved (cached-discography) count in
+// the collection summary. Returns an error when the underlying library
+// adapter doesn't support artist browsing; callers should degrade gracefully.
+func (s *Service) CountLibraryArtists(ctx context.Context) (int, error) {
+	br, ok := s.lib.(artistBrowser)
+	if !ok {
+		return 0, fmt.Errorf("library adapter does not support artist browsing")
+	}
+	arts, err := br.GetArtistsBrowse(ctx)
+	if err != nil {
+		return 0, err
+	}
+	return len(arts), nil
+}
+
+// ListCachedDiscographies exposes only previously persisted discographies. It
+// intentionally performs no external lookup, making it safe for collection views.
+func (s *Service) ListCachedDiscographies(ctx context.Context) ([]CachedArtistDiscography, error) {
+	rows, err := s.cache.ListCachedDiscographies(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]CachedArtistDiscography, 0, len(rows))
+	for _, row := range rows {
+		var external []core.ExternalAlbum
+		if json.Unmarshal([]byte(row.AlbumsJSON), &external) != nil {
+			continue
+		}
+		artist, err := s.lib.GetArtist(ctx, row.LibraryArtistID)
+		if err != nil {
+			continue
+		}
+		albums := Canonicalize(external)
+		for i := range albums {
+			albums[i].LibraryAlbumID = s.cache.GetLibraryAlbumIDByExternal(ctx, albums[i].Source, albums[i].ExternalID)
+		}
+		out = append(out, CachedArtistDiscography{LibraryArtistID: row.LibraryArtistID, Name: artist.Name, CoverArtID: artist.CoverArtID, Source: row.Source, ExternalArtistID: row.ExternalArtistID, Albums: albums})
+	}
+	return out, nil
 }
 
 // libraryAlbumsByArtistName searches the library for albums whose artist name

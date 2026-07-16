@@ -54,6 +54,7 @@ type subsonicResponse struct {
 	Playlists     *playlistsList  `json:"playlists,omitempty"`
 	Playlist      *playlistDetail `json:"playlist,omitempty"`
 	ScanStatus    *scanStatusDTO  `json:"scanStatus,omitempty"`
+	Song          *childDTO       `json:"song,omitempty"`
 }
 
 type subsonicError struct {
@@ -78,6 +79,7 @@ type childDTO struct {
 	ContentType string     `json:"contentType"`
 	IsDir       bool       `json:"isDir"`
 	Isrc        flexString `json:"isrc"` // OpenSubsonic: string OR array; empty on classic Subsonic
+	Path        string     `json:"path"` // relative to the server's music folder; used for local waveform peaks
 }
 
 type albumDTO struct {

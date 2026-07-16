@@ -6,6 +6,7 @@ import { useUI } from '../../lib/uiStore'
 import type { Track } from '../../lib/types'
 import { useAlbumPalette } from '../../lib/useAlbumPalette'
 vi.mock('../../lib/useAlbumPalette', () => ({ useAlbumPalette: vi.fn(() => null) }))
+vi.mock('../../lib/peaksApi', () => ({ usePeaks: vi.fn(() => ({ data: null })) }))
 
 const mockNavigate = vi.fn()
 vi.mock('react-router-dom', async (importOriginal) => {
@@ -139,6 +140,12 @@ describe('PlayerBar (shell)', () => {
     expect(useUI.getState().rightPanel).toBe('nowplaying')
     fireEvent.click(screen.getByRole('button', { name: /queue/i }))
     expect(useUI.getState().rightPanel).toBe(null)
+  })
+
+  it('toggles the cinema view from the expand button', () => {
+    render(<PlayerBar />)
+    fireEvent.click(screen.getByLabelText('Full screen'))
+    expect(useUI.getState().cinemaOpen).toBe(true)
   })
 
   it('volume button mutes and restores the previous volume', () => {

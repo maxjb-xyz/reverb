@@ -84,6 +84,18 @@ func (c *coverageCache) GetDiscographyCache(ctx context.Context, source, externa
 	return coverage.DiscoRow{AlbumsJSON: row.AlbumsJson}, nil
 }
 
+func (c *coverageCache) ListCachedDiscographies(ctx context.Context) ([]coverage.CachedDiscographyRow, error) {
+	rows, err := c.q.ListCachedDiscographies(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]coverage.CachedDiscographyRow, len(rows))
+	for i, row := range rows {
+		out[i] = coverage.CachedDiscographyRow{LibraryArtistID: row.LibraryArtistID, Source: row.Source, ExternalArtistID: row.ExternalArtistID, AlbumsJSON: row.AlbumsJson}
+	}
+	return out, nil
+}
+
 func (c *coverageCache) UpsertDiscographyCache(ctx context.Context, source, externalArtistID, albumsJSON string, now int64) error {
 	return c.q.UpsertDiscographyCache(ctx, db.UpsertDiscographyCacheParams{
 		Source:           source,
