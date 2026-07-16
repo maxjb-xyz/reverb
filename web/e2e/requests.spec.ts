@@ -69,13 +69,13 @@ async function loginAndLand(page: Page, authed: { value: boolean }) {
   await expect(page.getByTestId('app-shell-root')).toBeVisible()
 }
 
-// Drive the Everywhere search so the not-in-library track renders in the results.
+// Drive the blended search so the not-in-library track renders in the results.
+// External results stream in automatically ~400ms after typing (debounced
+// SSE); rely on auto-waiting for the row.
 async function searchEverywhere(page: Page) {
   const topSearch = page.getByPlaceholder(/or everywhere/)
   await topSearch.fill(externalTrack.title)
   await topSearch.press('Enter')
-  await expect(page.getByRole('tab', { name: 'Everywhere' })).toBeVisible()
-  await page.getByRole('tab', { name: 'Everywhere' }).click()
   // exact:true → the track row's title span, not the results header.
   await expect(page.getByText(externalTrack.title, { exact: true })).toBeVisible()
 }
