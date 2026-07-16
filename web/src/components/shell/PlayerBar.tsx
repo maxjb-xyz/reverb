@@ -14,7 +14,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { usePlayer } from '../../lib/playerStore'
 import { useUI } from '../../lib/uiStore'
-import { trackCoverUrl } from '../../lib/libraryApi'
+import { coverUrl, trackCoverUrl } from '../../lib/libraryApi'
 import { formatDuration } from '../../lib/types'
 import { useAlbumPalette } from '../../lib/useAlbumPalette'
 import { rgbToCss } from '../../lib/palette'
@@ -22,6 +22,8 @@ import { Cover } from '../ui/Cover'
 import { IconButton } from '../ui/IconButton'
 import { Icon } from '../ui/Icon'
 import { AddToPlaylistMenu } from '../AddToPlaylistMenu'
+import { ProgressRing } from '../ui/ProgressRing'
+import { usePendingPlay } from '../../lib/pendingPlayStore'
 
 // ---------------------------------------------------------------------------
 // SeekBar — thin 4 px track with a thumb that appears on hover, driven by
@@ -85,17 +87,14 @@ function SeekBar() {
         onKeyDown={onKeyDown}
         className="group relative h-1 flex-1 cursor-pointer rounded-full bg-border-subtle focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
       >
-        {/* Buffered range */}
         <div
           className="pointer-events-none absolute inset-y-0 left-0 rounded-full bg-raised-hover"
           style={{ width: `${bufPct}%` }}
         />
-        {/* Played range */}
         <div
           className="pointer-events-none absolute inset-y-0 left-0 rounded-full bg-text-primary group-hover:bg-accent"
           style={{ width: `${pct}%` }}
         />
-        {/* Thumb — visible on hover */}
         <div
           className="pointer-events-none absolute top-1/2 hidden h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full bg-text-primary group-hover:block"
           style={{ left: `${pct}%` }}
@@ -128,6 +127,8 @@ export function PlayerBar() {
   const togglePanel = useUI((s) => s.togglePanel)
   const toggleCinema = useUI((s) => s.toggleCinema)
   const rightPanel = useUI((s) => s.rightPanel)
+  const pending = usePendingPlay((s) => s.pending)
+  const clearPending = usePendingPlay((s) => s.clear)
 
   const navigate = useNavigate()
   const [addMenuOpen, setAddMenuOpen] = useState(false)
@@ -199,15 +200,15 @@ export function PlayerBar() {
       {/* ── LEFT: cover + meta (hugs left; add-to-playlist control lands here) ─ */}
       <div className="relative z-10 flex items-center gap-3.5 pl-2">
         <Cover
-          src={coverSrc}
-          alt={current?.title ?? 'Nothing playing'}
+          src={coverSrc ?? (pending?.coverArtId ? coverUrl(pending.coverArtId, 80) : undefined)}
+          alt={current?.title ?? pending?.title ?? 'Nothing playing'}
           size={56}
           rounded="md"
           className="shadow-cover flex-none"
         />
         <div className="min-w-0">
-          <div className={['truncate text-sm font-semibold', palette ? '' : 'text-text-primary'].filter(Boolean).join(' ')}>
-            {current ? current.title : 'Nothing playing'}
+          <div className={['truncate text-sm font-semibold', palette ? '' : 'text-text-primary', !current && pending ? 'opacity-70' : ''].filter(Boolean).join(' ')}>
+            {current ? current.title : pending?.title ?? 'Nothing playing'}
           </div>
           {current?.artist && (current.artistExternalId || current.artistId) ? (
             <button
@@ -223,10 +224,13 @@ export function PlayerBar() {
             </button>
           ) : (
             <div className={['truncate text-xs', palette ? 'opacity-70' : 'text-text-secondary'].filter(Boolean).join(' ')}>
-              {current?.artist ?? ''}
+              {current?.artist ?? pending?.artist ?? ''}
             </div>
           )}
+          {!current && pending && <div className={pending.failed ? 'text-xs text-error' : 'text-xs text-text-muted'}>{pending.failed ? 'Download failed' : 'Starts when ready'}</div>}
         </div>
+
+        {!current && pending && (pending.failed ? <IconButton name="x" label="Dismiss" size="sm" onClick={() => clearPending(pending.jobId)} /> : <ProgressRing size={20} value={pending.progress} indeterminate={pending.progress < 0} />)}
 
         {current && (
           <div className="relative flex-none">
