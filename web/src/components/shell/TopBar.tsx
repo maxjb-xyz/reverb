@@ -21,6 +21,7 @@ export function TopBar() {
   // capability (the backend enforces this regardless). Account/Settings stay
   // available to every authenticated user.
   const isManager = useAuthStore((s) => isManagerCaps(s.me?.capabilities))
+  const username = useAuthStore((s) => s.me?.username)
   const canRequest = useAuthStore((s) => s.can('request'))
   const canManageRequests = useAuthStore((s) => s.can('manage_requests'))
   const pendingRequestCount = useRequestStore((s) => s.pending().length)
@@ -226,7 +227,7 @@ export function TopBar() {
               'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
             ].join(' ')}
           >
-            R
+            {username?.trim().charAt(0).toUpperCase() || 'R'}
           </button>
 
           {menuOpen && (

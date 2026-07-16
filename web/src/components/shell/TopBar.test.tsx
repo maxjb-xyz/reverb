@@ -8,10 +8,10 @@ import { useSearch } from '../../lib/searchStore'
 import { useAuthStore } from '../../lib/authStore'
 import type { DownloadJob } from '../../lib/types'
 
-function setMe(capabilities: string[]) {
+function setMe(capabilities: string[], username = 'u') {
   useAuthStore.setState({
     me: {
-      id: 'u1', username: 'u', roleId: 'r', roleName: 'R', isOwner: false, capabilities, createdAt: 1700000000,
+      id: 'u1', username, roleId: 'r', roleName: 'R', isOwner: false, capabilities, createdAt: 1700000000,
     },
     loading: false,
   })
@@ -111,6 +111,12 @@ describe('TopBar', () => {
     renderBar()
     fireEvent.click(screen.getByRole('button', { name: /account|user|avatar|menu/i }))
     expect(screen.getByRole('menuitem', { name: /logout/i })).toBeInTheDocument()
+  })
+
+  it('uses the signed-in user’s initial for the avatar', () => {
+    setMe([], 'alice')
+    renderBar()
+    expect(screen.getByRole('button', { name: /account menu/i })).toHaveTextContent('A')
   })
 
   it('exactly one Settings menu item (no separate Account item)', () => {
