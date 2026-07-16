@@ -91,7 +91,7 @@ function SeekBar() {
         className="group relative h-1 flex-1 cursor-pointer rounded-full bg-border-subtle focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
       >
         {peaks?.length ? (
-          <div data-testid="waveform" className="flex h-6 items-center gap-px">
+          <div data-testid="waveform" className="absolute inset-x-0 top-1/2 flex h-6 -translate-y-1/2 items-center gap-px">
             {peaks.map((peak, index) => <div key={index} className={index / peaks.length * 100 <= pct ? 'flex-1 rounded-full bg-text-primary group-hover:bg-accent' : 'flex-1 rounded-full bg-border-subtle'} style={{ minHeight: '2px', height: `${Math.max(8, peak * 100)}%` }} />)}
           </div>
         ) : <>

@@ -7,6 +7,7 @@ import (
 
 	"github.com/maxjb-xyz/reverb/internal/library"
 	"github.com/maxjb-xyz/reverb/internal/library/embedded"
+	"github.com/maxjb-xyz/reverb/internal/library/subsonic"
 	"github.com/maxjb-xyz/reverb/internal/registry"
 	"github.com/maxjb-xyz/reverb/internal/store/db"
 )
@@ -82,6 +83,52 @@ func (s *stubLibInitFails) Name() string                             { return "s
 func (s *stubLibInitFails) ConfigSchema() registry.ConfigSchema      { return registry.ConfigSchema{} }
 func (s *stubLibInitFails) Init(cfg map[string]any) error            { return errors.New("boom") }
 func (s *stubLibInitFails) TestConnection(ctx context.Context) error { return nil }
+
+// TestBuildLibraryAdapterBuiltInSetsLocalMusicDir verifies the wiring site that
+// enables waveform peaks: built-in mode must pass embedded.MusicDir(getenv) into
+// the subsonic adapter's local-music-dir option (Task 7, item 2).
+func TestBuildLibraryAdapterBuiltInSetsLocalMusicDir(t *testing.T) {
+	reg := registry.NewRegistry("library")
+	reg.Register("subsonic", func() registry.Plugin { return subsonic.New() })
+
+	env := map[string]string{"REVERB_DOWNLOAD_DIR": "/music"}
+	got, err := BuildLibraryAdapter(context.Background(), reg, nil, func(k string) string { return env[k] }, embedded.ModeBuiltIn, embedded.Credentials{Username: "u", Password: "p"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sa, ok := got.(*subsonic.Adapter)
+	if !ok {
+		t.Fatalf("expected *subsonic.Adapter, got %T", got)
+	}
+	if sa.LocalMusicDir() != "/music" {
+		t.Fatalf("LocalMusicDir() = %q, want %q", sa.LocalMusicDir(), "/music")
+	}
+}
+
+// TestBuildLibraryAdapterExternalLeavesLocalMusicDirEmpty verifies external
+// (non-embedded) Subsonic configs never get a local music dir, preserving the
+// 204/flat-seek-rail fallback for remote servers (Task 7 constraint).
+func TestBuildLibraryAdapterExternalLeavesLocalMusicDirEmpty(t *testing.T) {
+	reg := registry.NewRegistry("library")
+	reg.Register("subsonic", func() registry.Plugin { return subsonic.New() })
+
+	instances := []db.AdapterInstance{{
+		ID: "i1", Type: "library", Name: "subsonic", Enabled: 1, Priority: 0,
+		ConfigJson: `{"url":"http://nav:4533","username":"alice","password":"secret"}`,
+	}}
+	env := map[string]string{"REVERB_DOWNLOAD_DIR": "/music"}
+	got, err := BuildLibraryAdapter(context.Background(), reg, instances, func(k string) string { return env[k] }, embedded.ModeExternal, embedded.Credentials{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sa, ok := got.(*subsonic.Adapter)
+	if !ok {
+		t.Fatalf("expected *subsonic.Adapter, got %T", got)
+	}
+	if sa.LocalMusicDir() != "" {
+		t.Fatalf("LocalMusicDir() = %q, want empty for external mode", sa.LocalMusicDir())
+	}
+}
 
 func TestBuildLibraryAdapterInitFails(t *testing.T) {
 	reg := registry.NewRegistry("library")

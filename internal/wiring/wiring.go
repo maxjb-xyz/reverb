@@ -17,6 +17,7 @@ import (
 	"github.com/maxjb-xyz/reverb/internal/download"
 	"github.com/maxjb-xyz/reverb/internal/library"
 	"github.com/maxjb-xyz/reverb/internal/library/embedded"
+	"github.com/maxjb-xyz/reverb/internal/library/subsonic"
 	"github.com/maxjb-xyz/reverb/internal/matching"
 	"github.com/maxjb-xyz/reverb/internal/playlistsync"
 	"github.com/maxjb-xyz/reverb/internal/registry"
@@ -52,6 +53,13 @@ func BuildLibraryAdapter(
 			"password": creds.Password,
 		}); err != nil {
 			return nil, fmt.Errorf("built-in library init: %w", err)
+		}
+		// Built-in mode runs a bundled Navidrome that shares Reverb's own music
+		// directory, so track paths reported by getSong resolve on this filesystem.
+		// This enables the waveform-peaks endpoint (LocalTrackPath); external
+		// Subsonic servers below get no music dir, keeping the flat seek rail.
+		if sa, ok := lib.(*subsonic.Adapter); ok {
+			sa.WithLocalMusicDir(embedded.MusicDir(getenv))
 		}
 		return lib, nil
 	}
