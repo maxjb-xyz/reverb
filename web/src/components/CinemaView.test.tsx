@@ -1,9 +1,11 @@
 import { fireEvent, render, screen } from '@testing-library/react'
-import { beforeEach, describe, expect, it } from 'vitest'
-import { usePlayer, engine } from '../lib/playerStore'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { engine } from '../lib/playerStore'
 import type { Track } from '../lib/types'
 import { useUI } from '../lib/uiStore'
 import { CinemaView } from './CinemaView'
+
+vi.mock('../lib/useAlbumPalette', () => ({ useAlbumPalette: vi.fn(() => null) }))
 
 const track: Track = { id: 't1', title: 'Karma Police', albumId: 'al1', album: 'OK Computer', artistId: 'ar1', artist: 'Radiohead', coverArtId: 'c1', trackNumber: 1, discNumber: 1, durationMs: 238000, bitRate: 0, suffix: '', contentType: '' }
 
