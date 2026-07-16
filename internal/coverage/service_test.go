@@ -156,6 +156,10 @@ func (m *memCache) UpsertDiscographyCache(_ context.Context, source, externalArt
 	return nil
 }
 
+func (m *memCache) ListCachedDiscographies(_ context.Context) ([]CachedDiscographyRow, error) {
+	return []CachedDiscographyRow{}, nil
+}
+
 func (m *memCache) GetAlbumCoverage(_ context.Context, source, externalAlbumID string) (CoverageRow, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()

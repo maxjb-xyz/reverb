@@ -97,6 +97,47 @@ func (q *Queries) GetDiscographyCache(ctx context.Context, arg GetDiscographyCac
 	return i, err
 }
 
+const listCachedDiscographies = `-- name: ListCachedDiscographies :many
+SELECT m.library_artist_id, m.source, m.external_artist_id, d.albums_json
+FROM artist_external_map m
+JOIN discography_cache d ON d.source = m.source AND d.external_artist_id = m.external_artist_id
+`
+
+type ListCachedDiscographiesRow struct {
+	LibraryArtistID  string `json:"library_artist_id"`
+	Source           string `json:"source"`
+	ExternalArtistID string `json:"external_artist_id"`
+	AlbumsJson       string `json:"albums_json"`
+}
+
+func (q *Queries) ListCachedDiscographies(ctx context.Context) ([]ListCachedDiscographiesRow, error) {
+	rows, err := q.db.QueryContext(ctx, listCachedDiscographies)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListCachedDiscographiesRow
+	for rows.Next() {
+		var i ListCachedDiscographiesRow
+		if err := rows.Scan(
+			&i.LibraryArtistID,
+			&i.Source,
+			&i.ExternalArtistID,
+			&i.AlbumsJson,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const upsertAlbumCoverage = `-- name: UpsertAlbumCoverage :exec
 INSERT INTO album_coverage (source, external_album_id, coverage_json, library_album_id, library_version, fetched_at)
 VALUES (?, ?, ?, ?, ?, ?)

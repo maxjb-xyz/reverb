@@ -7,6 +7,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/maxjb-xyz/reverb/internal/core"
+	"github.com/maxjb-xyz/reverb/internal/coverage"
 )
 
 // CoverageService is the slice of *coverage.Service the API needs. *coverage.Service
@@ -17,6 +18,7 @@ type CoverageService interface {
 	ArtistProfile(ctx context.Context, source, id string) (core.ExternalArtist, error)
 	StreamCoverage(ctx context.Context, source, id string) <-chan core.AlbumCoverage
 	AlbumDetail(ctx context.Context, source, id string) (core.AlbumDetail, error)
+	ListCachedDiscographies(ctx context.Context) ([]coverage.CachedArtistDiscography, error)
 }
 
 // coverage returns the currently active coverage service under the read lock.

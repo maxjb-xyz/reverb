@@ -134,6 +134,10 @@ paths:
       summary: List albums
       parameters: [{ name: type, in: query, required: false, schema: { type: string } }]
       responses: { "200": { description: ok } }
+  /collection:
+    get:
+      summary: Cached discography coverage summary
+      responses: { "200": { description: collection summary } }
   /library/playlists:
     get:
       summary: List playlists
