@@ -55,5 +55,10 @@ func (s *Server) handleCollection(w http.ResponseWriter, r *http.Request) {
 		}
 		return a.OwnedAlbums*b.TotalAlbums < b.OwnedAlbums*a.TotalAlbums
 	})
-	writeJSON(w, http.StatusOK, map[string]any{"artists": artists, "resolvedCount": len(artists), "artistCount": len(artists)})
+	resolvedCount := len(artists)
+	artistCount := resolvedCount
+	if n, err := cov.CountLibraryArtists(r.Context()); err == nil {
+		artistCount = n
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"artists": artists, "resolvedCount": resolvedCount, "artistCount": artistCount})
 }

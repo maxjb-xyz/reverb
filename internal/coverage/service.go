@@ -207,6 +207,29 @@ func (s *Service) discography(ctx context.Context, source, extID string) ([]core
 	return albums, nil
 }
 
+// artistBrowser is an optional capability implemented by library adapters that
+// can list every artist (e.g. the Subsonic adapter's browse endpoint). It's
+// used only to compute the total-artist count for the collection summary.
+type artistBrowser interface {
+	GetArtistsBrowse(ctx context.Context) ([]core.Artist, error)
+}
+
+// CountLibraryArtists returns the total number of artists known to the
+// library, for display alongside the resolved (cached-discography) count in
+// the collection summary. Returns an error when the underlying library
+// adapter doesn't support artist browsing; callers should degrade gracefully.
+func (s *Service) CountLibraryArtists(ctx context.Context) (int, error) {
+	br, ok := s.lib.(artistBrowser)
+	if !ok {
+		return 0, fmt.Errorf("library adapter does not support artist browsing")
+	}
+	arts, err := br.GetArtistsBrowse(ctx)
+	if err != nil {
+		return 0, err
+	}
+	return len(arts), nil
+}
+
 // ListCachedDiscographies exposes only previously persisted discographies. It
 // intentionally performs no external lookup, making it safe for collection views.
 func (s *Service) ListCachedDiscographies(ctx context.Context) ([]CachedArtistDiscography, error) {

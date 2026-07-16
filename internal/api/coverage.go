@@ -19,6 +19,7 @@ type CoverageService interface {
 	StreamCoverage(ctx context.Context, source, id string) <-chan core.AlbumCoverage
 	AlbumDetail(ctx context.Context, source, id string) (core.AlbumDetail, error)
 	ListCachedDiscographies(ctx context.Context) ([]coverage.CachedArtistDiscography, error)
+	CountLibraryArtists(ctx context.Context) (int, error)
 }
 
 // coverage returns the currently active coverage service under the read lock.
