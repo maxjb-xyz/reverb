@@ -8,7 +8,6 @@ import { api } from '../lib/api'
 import * as statsApi from '../lib/statsApi'
 import type { RecentRow } from '../lib/statsApi'
 import {
-  Chip,
   Carousel,
   MediaCard,
   Cover,
@@ -18,8 +17,7 @@ import {
   Icon,
 } from '../components/ui'
 import type { Album, DownloadJob, Track } from '../lib/types'
-
-type FilterChip = 'All' | 'Music' | 'Downloads'
+import { useDocumentTitle } from '../lib/useDocumentTitle'
 
 // Synthesize a minimal library Track from a completed download job so it can be
 // played. Only valid once the job has a libraryTrackId (i.e. the scan matched the
@@ -155,7 +153,7 @@ function SkeletonCardRow({ count = 5 }: { count?: number }) {
 // Main Home component
 // ------------------------------------------------------------------
 export default function Home() {
-  const [activeChip, setActiveChip] = useState<FilterChip>('All')
+  useDocumentTitle('Home')
   const navigate = useNavigate()
 
   // Real recently-played rows from the stats API
@@ -277,15 +275,6 @@ export default function Home() {
 
   return (
     <div className="relative">
-      {/* Chip filter row */}
-      <div className="flex gap-2 mb-6">
-        {(['All', 'Music', 'Downloads'] as FilterChip[]).map((chip) => (
-          <Chip key={chip} selected={activeChip === chip} onClick={() => setActiveChip(chip)}>
-            {chip}
-          </Chip>
-        ))}
-      </div>
-
       {/* Shortcut grid — 2-column, 8 items */}
       {isLoading ? (
         <div className="grid grid-cols-2 gap-2 mb-8" data-testid="shortcut-grid-skeleton">
