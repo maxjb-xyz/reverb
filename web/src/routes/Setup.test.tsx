@@ -6,8 +6,13 @@ import Setup from './Setup'
 
 vi.mock('../lib/api', () => ({ api: { post: vi.fn(() => Promise.resolve({ ok: true })), put: vi.fn(() => Promise.resolve({})) }, loginErrorMessage: vi.fn(() => 'Incorrect username or password') }))
 vi.mock('../lib/adaptersApi', () => ({
-  useAvailableAdapters: vi.fn(() => ({ data: [{ type: 'library', name: 'subsonic', configSchema: { fields: [] }, capabilities: [] }] })),
+  useAvailableAdapters: vi.fn(() => ({ data: [
+    { type: 'library', name: 'subsonic', configSchema: { fields: [] }, capabilities: [] },
+    { type: 'downloader', name: 'spotdl', configSchema: { fields: [] }, capabilities: [] },
+  ] })),
+  useAdapters: vi.fn(() => ({ data: [] })),
   createAdapter: vi.fn(() => Promise.resolve({ data: {}, pendingRestart: true })),
+  updateAdapter: vi.fn(() => Promise.resolve({ data: {}, pendingRestart: false })),
   // testAdapter + SECRET_SENTINEL must be included: Setup imports AdapterForm which
   // imports { testAdapter, SECRET_SENTINEL } from adaptersApi. A full vi.mock factory
   // must export every symbol or Vitest throws "No 'testAdapter' export" at import time.
@@ -93,5 +98,33 @@ describe('Setup wizard', () => {
     await waitFor(() =>
       expect(api.put).toHaveBeenCalledWith('/settings', { libraryBackendMode: 'built-in' }),
     )
+  })
+
+  it('uses descriptive cards for built-in and external library choices', async () => {
+    renderSetup()
+    fireEvent.change(screen.getByPlaceholderText('Choose a username'), { target: { value: 'admin' } })
+    fireEvent.change(screen.getByPlaceholderText('Choose a password'), { target: { value: 'hunter2' } })
+    fireEvent.click(screen.getByRole('button', { name: /continue/i }))
+
+    expect(await screen.findByText('Recommended')).toBeInTheDocument()
+    expect(screen.getByText(/reverb manages a music server/i)).toBeInTheDocument()
+    expect(screen.getByText(/connect an existing navidrome/i)).toBeInTheDocument()
+  })
+
+  it('offers optional configuration for the bundled downloader during setup', async () => {
+    renderSetup()
+    fireEvent.change(screen.getByPlaceholderText('Choose a username'), { target: { value: 'admin' } })
+    fireEvent.change(screen.getByPlaceholderText('Choose a password'), { target: { value: 'hunter2' } })
+    fireEvent.click(screen.getByRole('button', { name: /continue/i }))
+    await screen.findByText(/add a library/i)
+
+    fireEvent.click(screen.getByRole('button', { name: /skip this step/i }))
+    await screen.findByText(/add a search source/i)
+    fireEvent.click(screen.getByRole('button', { name: /skip this step/i }))
+
+    expect(await screen.findByText(/configure downloads/i)).toBeInTheDocument()
+    expect(screen.getByText(/spotify credentials are optional/i)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /skip this step/i }))
+    expect(await screen.findByText(/you're all set/i)).toBeInTheDocument()
   })
 })

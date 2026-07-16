@@ -3,7 +3,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { api } from '../lib/api'
 import { setupOwner } from '../lib/session'
 import { useAuthStore } from '../lib/authStore'
-import { useAvailableAdapters, createAdapter, type AvailableAdapter } from '../lib/adaptersApi'
+import { useAvailableAdapters, useAdapters, createAdapter, updateAdapter, type AvailableAdapter } from '../lib/adaptersApi'
 import { AdapterForm } from '../components/AdapterForm'
 import { Button } from '../components/ui/Button'
 import { Icon } from '../components/ui/Icon'
@@ -22,11 +22,21 @@ const NEXT: Record<Step, Step> = {
 const STEP_COPY: Record<Exclude<Step, 'password' | 'done'>, { type: string; title: string; description: string }> = {
   library: { type: 'library', title: 'Add a Library', description: 'Connect a source for your music collection.' },
   search: { type: 'search', title: 'Add a Search source', description: 'Choose how Reverb finds music.' },
-  downloader: { type: 'downloader', title: 'Add a Downloader', description: 'Select a service to download tracks.' },
+  downloader: { type: 'downloader', title: 'Configure Downloads', description: 'spotDL is bundled and ready to use.' },
 }
 
 // Ordered steps (excludes done) for the progress indicator
 const ORDERED_STEPS: Exclude<Step, 'done'>[] = ['password', 'library', 'search', 'downloader']
+
+function adapterDescription(type: string, name: string): string {
+  if (type === 'library') return 'Connect an existing Navidrome or Subsonic-compatible server.'
+  switch (name.toLowerCase()) {
+    case 'deezer': return 'Search a large catalog with no account or API keys required.'
+    case 'spotify': return 'Search Spotify’s catalog using your own app credentials.'
+    case 'spotdl': return 'Download music with the bundled downloader. Spotify credentials are optional.'
+    default: return `Connect ${name} to expand your music search.`
+  }
+}
 
 function stepIndex(step: Step): number {
   return ORDERED_STEPS.indexOf(step as Exclude<Step, 'done'>)
@@ -84,7 +94,9 @@ export default function Setup() {
   const [pw, setPw] = useState('')
   const [err, setErr] = useState('')
   const available = useAvailableAdapters()
+  const configured = useAdapters()
   const [chosen, setChosen] = useState<AvailableAdapter | null>(null)
+  const [spotifyCredentials, setSpotifyCredentials] = useState<Record<string, unknown>>({})
 
   async function submitPassword(e: React.FormEvent) {
     e.preventDefault()
@@ -98,6 +110,7 @@ export default function Setup() {
       // The catalog query first ran pre-auth (401). Now that /setup/admin issued a
       // session, refetch it so the library/search/downloader steps show their adapters.
       await qc.invalidateQueries({ queryKey: ['adapters', 'available'] })
+      await qc.invalidateQueries({ queryKey: ['adapters', 'list'] })
       await useAuthStore.getState().refresh()
       setStep('library')
     } catch {
@@ -185,6 +198,10 @@ export default function Setup() {
 
   const copy = STEP_COPY[step]
   const choices = (available.data ?? []).filter((a) => a.type === copy.type)
+  const seededSpotdl = configured.data?.find((a) => a.type === 'downloader' && a.name === 'spotdl')
+  const downloaderInitial = step === 'downloader'
+    ? { output_dir: './downloads', ...seededSpotdl?.config, ...spotifyCredentials }
+    : undefined
 
   return (
     <Shell>
@@ -204,35 +221,52 @@ export default function Setup() {
       {!chosen && (
         <div className="space-y-4">
           {step === 'library' && (
-            <>
-              <button
-                type="button"
-                onClick={async () => {
-                  setErr('')
-                  try {
-                    await api.put('/settings', { libraryBackendMode: 'built-in' })
-                    advance()
-                  } catch {
-                    setErr("Couldn't save your library choice. Please try again.")
-                  }
-                }}
-                className="w-full rounded-xl border border-border-subtle bg-raised p-4 text-left hover:border-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent transition-colors"
-              >
-                <div className="font-semibold text-text-primary">Use built-in library (recommended)</div>
-                <div className="text-sm text-text-secondary">Reverb manages a music server for your folder — no setup.</div>
-              </button>
-              <div className="text-xs uppercase tracking-wide text-text-muted">or connect an existing server</div>
-            </>
+            <button
+              type="button"
+              aria-label="Use built-in library"
+              onClick={async () => {
+                setErr('')
+                try {
+                  await api.put('/settings', { libraryBackendMode: 'built-in' })
+                  advance()
+                } catch {
+                  setErr("Couldn't save your library choice. Please try again.")
+                }
+              }}
+              className="w-full rounded-xl border border-accent/50 bg-accent/5 p-4 text-left transition-colors hover:bg-accent/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+            >
+              <div className="flex items-start gap-3">
+                <span className="flex h-10 w-10 flex-none items-center justify-center rounded-lg bg-accent text-on-accent">
+                  <Icon name="browse" className="text-lg" aria-hidden="true" />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="flex items-center gap-2">
+                    <span className="font-semibold text-text-primary">Built-in library</span>
+                    <span className="rounded-full bg-accent px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-on-accent">Recommended</span>
+                  </span>
+                  <span className="mt-1 block text-sm text-text-secondary">Reverb manages a music server for your folder — no extra setup.</span>
+                </span>
+              </div>
+            </button>
           )}
-          <div className="flex flex-wrap gap-2">
+          <div className="space-y-3">
             {choices.map((c) => (
               <button
                 key={c.name}
                 type="button"
                 onClick={() => setChosen(c)}
-                className="rounded-full border border-border-subtle px-3 py-1.5 text-sm text-text-primary hover:bg-raised focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent transition-colors"
+                className="group w-full rounded-xl border border-border-subtle bg-raised p-4 text-left transition-colors hover:border-accent hover:bg-raised-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
               >
-                {c.name}
+                <div className="flex items-start gap-3">
+                  <span className="flex h-10 w-10 flex-none items-center justify-center rounded-lg bg-surface text-lg font-black text-text-secondary group-hover:text-accent">
+                    {c.name.charAt(0).toUpperCase()}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block font-semibold capitalize text-text-primary">{c.name}</span>
+                    <span className="mt-1 block text-sm text-text-secondary">{adapterDescription(c.type, c.name)}</span>
+                  </span>
+                  <Icon name="fwd" className="mt-1 text-text-muted group-hover:text-accent" aria-hidden="true" />
+                </div>
               </button>
             ))}
             {choices.length === 0 && step !== 'library' && (
@@ -265,6 +299,7 @@ export default function Setup() {
           <AdapterForm
             name={chosen.name}
             schema={chosen.configSchema}
+            initial={chosen.name === 'spotdl' ? downloaderInitial : undefined}
             submitLabel="Add"
             onSubmit={async (config) => {
               setErr('')
@@ -273,7 +308,22 @@ export default function Setup() {
                 if (step === 'library') {
                   await api.put('/settings', { libraryBackendMode: 'external' })
                 }
-                await createAdapter({ type: copy.type, name: chosen.name, enabled: true, priority: 0, config })
+                if (step === 'search' && chosen.name === 'spotify') {
+                  setSpotifyCredentials({
+                    client_id: config.client_id,
+                    client_secret: config.client_secret,
+                  })
+                }
+                if (step === 'downloader' && chosen.name === 'spotdl' && seededSpotdl) {
+                  await updateAdapter(seededSpotdl.id, {
+                    name: seededSpotdl.name,
+                    enabled: true,
+                    priority: seededSpotdl.priority,
+                    config,
+                  })
+                } else {
+                  await createAdapter({ type: copy.type, name: chosen.name, enabled: true, priority: 0, config })
+                }
                 advance()
               } catch {
                 setErr("Couldn't save this step. Please check the details and try again.")
