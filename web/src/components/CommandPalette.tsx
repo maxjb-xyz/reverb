@@ -36,19 +36,34 @@ export function CommandPalette() {
     if (open) requestAnimationFrame(() => input.current?.focus())
   }, [open])
 
+  // Reset the highlighted row whenever the query changes, so a narrowed
+  // result list doesn't leave `active` pointing past the visible commands.
   useEffect(() => {
-    function handleKey(e: KeyboardEvent) {
+    setActive(0)
+  }, [query])
+
+  // The ⌘K toggle listens globally, always-on (it's how the palette opens).
+  useEffect(() => {
+    function handleToggle(e: KeyboardEvent) {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault()
         setActive(0)
         setOpen((v) => !v)
-      } else if (e.key === 'Escape') {
-        setOpen(false)
       }
     }
-    window.addEventListener('keydown', handleKey)
-    return () => window.removeEventListener('keydown', handleKey)
+    window.addEventListener('keydown', handleToggle)
+    return () => window.removeEventListener('keydown', handleToggle)
   }, [])
+
+  // Escape-to-close only matters — and should only be registered — while open.
+  useEffect(() => {
+    if (!open) return
+    function handleEscape(e: KeyboardEvent) {
+      if (e.key === 'Escape') setOpen(false)
+    }
+    window.addEventListener('keydown', handleEscape)
+    return () => window.removeEventListener('keydown', handleEscape)
+  }, [open])
 
   function run(index: number) {
     const command = commands[index]

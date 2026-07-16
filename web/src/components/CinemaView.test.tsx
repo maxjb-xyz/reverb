@@ -21,4 +21,27 @@ describe('CinemaView', () => {
     fireEvent.keyDown(window, { key: 'Escape' })
     expect(useUI.getState().cinemaOpen).toBe(false)
   })
+
+  it('seek bar is keyboard operable via ArrowRight (+5s)', () => {
+    const eng = engine as unknown as { durationMs: number; currentTimeMs: number; emit(): void }
+    engine.playTrackList([track], 0)
+    eng.durationMs = 200000
+    eng.currentTimeMs = 10000
+    eng.emit()
+    useUI.setState({ cinemaOpen: true })
+
+    const seekSpy = vi.spyOn(engine, 'seekMs')
+    render(<CinemaView />)
+
+    const seekBar = screen.getByRole('slider', { name: /seek/i })
+    seekBar.focus()
+    fireEvent.keyDown(seekBar, { key: 'ArrowRight' })
+
+    expect(seekSpy).toHaveBeenCalledWith(10000 + 5000)
+
+    seekSpy.mockRestore()
+    eng.durationMs = 0
+    eng.currentTimeMs = 0
+    eng.emit()
+  })
 })

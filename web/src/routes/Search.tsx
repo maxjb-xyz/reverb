@@ -6,6 +6,7 @@ import { useSearch } from '../lib/searchStore'
 import { postDownload, reqFromResult } from '../lib/downloadApi'
 import { useDownloads } from '../lib/downloadStore'
 import { useAuthStore } from '../lib/authStore'
+import { useToastStore } from '../lib/toastStore'
 import { DownloadAction } from '../components/download/DownloadAction'
 import { useState } from 'react'
 import {
@@ -312,10 +313,17 @@ export default function Search() {
                       } else {
                         // Not in your library yet — clicking the song downloads it
                         // (server picks the downloader via the fallback chain).
+                        const wasPlaying = usePlayer.getState().current !== null
                         postDownload({ ...reqFromResult(r), playWhenReady: true })
                           .then((j) => {
                             useDownloads.getState().upsert(j)
                             usePendingPlay.getState().begin({ jobId: j.id, title: r.title, artist: r.artist, coverArtId: r.coverArtId })
+                            // The pending-play indicator in PlayerBar only shows when
+                            // nothing is playing — if the user is mid-listen, a toast
+                            // is their only feedback that the download was queued.
+                            if (wasPlaying) {
+                              useToastStore.getState().push(`Downloading "${r.title}" — it'll be added to your queue`, 'info')
+                            }
                           })
                           .catch(() => {})
                       }

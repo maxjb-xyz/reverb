@@ -75,13 +75,17 @@ export function useRealtime(makeSocket?: (url: string) => WebSocketLike): void {
           // After applying, read the job to see if it was play-when-ready.
           const job = useDownloads.getState().jobs[ev.jobId]
           const trackId = ev.libraryTrackId || job?.libraryTrackId || ''
-          // playWhenReady auto-play: intentional forward-compat seam for M3; no UI
-          // affordance sets playWhenReady yet — M4 may add a "download & play" control.
+          // playWhenReady: auto-play only if nothing is currently playing. If the
+          // user is already listening to something else, don't hijack playback —
+          // queue the freshly-downloaded track instead and let them know via toast.
           if (job?.playWhenReady && trackId) {
-            playTrackList(
-              [trackFromJob(trackId, { title: job.title, album: job.album, artist: job.artist, isrc: job.isrc })],
-              0,
-            )
+            const track = trackFromJob(trackId, { title: job.title, album: job.album, artist: job.artist, isrc: job.isrc })
+            if (usePlayer.getState().current === null) {
+              playTrackList([track], 0)
+            } else {
+              usePlayer.getState().enqueue(track)
+              useToastStore.getState().push(`"${job.title}" is ready — added to your queue`, 'success')
+            }
           }
           usePendingPlay.getState().clear(ev.jobId)
           invalidateLibrary({ artistId: ev.artistId, albumId: ev.albumId })

@@ -45,6 +45,32 @@ export function CinemaView() {
     seekMs(Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width)) * durationMs)
   }
 
+  // Keyboard operability for the slider role — mirrors PlayerBar's SeekBar
+  // shortcuts (±5s via Arrow keys, Home/End to jump to the ends of the track).
+  function onSeekKeyDown(event: React.KeyboardEvent<HTMLDivElement>) {
+    if (durationMs <= 0) return
+    switch (event.key) {
+      case 'ArrowRight':
+      case 'ArrowUp':
+        event.preventDefault()
+        seekMs(Math.min(durationMs, currentTimeMs + 5000))
+        break
+      case 'ArrowLeft':
+      case 'ArrowDown':
+        event.preventDefault()
+        seekMs(Math.max(0, currentTimeMs - 5000))
+        break
+      case 'Home':
+        event.preventDefault()
+        seekMs(0)
+        break
+      case 'End':
+        event.preventDefault()
+        seekMs(durationMs)
+        break
+    }
+  }
+
   return (
     <div data-testid="cinema-view" className="fixed inset-0 z-40 hidden flex-col bg-canvas p-8 md:flex" style={ambient}>
       <div className="flex justify-end">
@@ -74,7 +100,7 @@ export function CinemaView() {
         <div className="truncate text-3xl font-black text-text-primary">{current?.title ?? 'Nothing playing'}</div>
         <div className="mb-4 truncate text-sm text-text-secondary">{current?.artist ?? ''}</div>
         <div className="mb-1 flex items-center justify-between text-xs tabular-nums text-text-muted"><span>{formatDuration(currentTimeMs)}</span><span>{formatDuration(durationMs)}</span></div>
-        <div role="slider" aria-label="Seek" aria-valuemin={0} aria-valuemax={durationMs} aria-valuenow={currentTimeMs} tabIndex={0} onClick={seek} className="h-1 w-full cursor-pointer rounded-full bg-border-subtle focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"><div className="h-full rounded-full bg-text-primary" style={{ width: `${pct}%` }} /></div>
+        <div role="slider" aria-label="Seek" aria-valuemin={0} aria-valuemax={durationMs} aria-valuenow={currentTimeMs} tabIndex={0} onClick={seek} onKeyDown={onSeekKeyDown} className="h-1 w-full cursor-pointer rounded-full bg-border-subtle focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"><div className="h-full rounded-full bg-text-primary" style={{ width: `${pct}%` }} /></div>
         <div className="mt-6 flex items-center justify-center gap-8">
           <button type="button" aria-label="Previous" onClick={prev} className="flex h-11 w-11 items-center justify-center rounded-full text-text-secondary transition-colors hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"><Icon name="prev" className="h-6 w-6" /></button>
           <button type="button" aria-label={playing ? 'Pause' : 'Play'} onClick={toggle} className="flex h-16 w-16 items-center justify-center rounded-full bg-text-primary text-surface transition-transform hover:scale-105 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"><Icon name={playing ? 'pause' : 'play'} className="h-7 w-7" /></button>

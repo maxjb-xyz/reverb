@@ -136,7 +136,7 @@ paths:
       responses: { "200": { description: ok } }
   /library/track/{id}/peaks:
     get:
-      summary: Cached waveform peaks for a local track
+      summary: Waveform peaks for a local track (computed on demand; embedded library only)
       parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
       responses: { "200": { description: waveform data }, "204": { description: peaks unavailable } }
   /collection:

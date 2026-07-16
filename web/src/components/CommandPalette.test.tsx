@@ -65,6 +65,27 @@ describe('CommandPalette', () => {
     expect(screen.queryByRole('dialog', { name: /command palette/i })).not.toBeInTheDocument()
   })
 
+  it('resets the active index when the query narrows the list, so Enter runs the first visible command', () => {
+    renderPalette()
+    fireEvent.keyDown(window, { key: 'k', metaKey: true })
+
+    const input = screen.getByRole('textbox', { name: /type a command/i })
+
+    // Move the highlight down twice in the full, unfiltered list (active -> 2).
+    fireEvent.keyDown(input, { key: 'ArrowDown' })
+    fireEvent.keyDown(input, { key: 'ArrowDown' })
+
+    // Narrow to a query that title-matches exactly one command: "Stats".
+    // If `active` were not reset, Enter would fall through to the search-query
+    // path (navigating to /search) instead of running the sole visible command.
+    fireEvent.change(input, { target: { value: 'stats' } })
+    expect(screen.getByRole('option', { name: /stats/i })).toBeInTheDocument()
+
+    fireEvent.keyDown(input, { key: 'Enter' })
+
+    expect(mockNavigate).toHaveBeenCalledWith('/stats')
+  })
+
   it('shows fallthrough search row for non-matching query', () => {
     renderPalette()
     fireEvent.keyDown(window, { key: 'k', metaKey: true })

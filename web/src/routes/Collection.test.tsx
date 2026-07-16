@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { UseQueryResult } from '@tanstack/react-query'
 import Collection from './Collection'
 import { useDownloads } from '../lib/downloadStore'
+import { useAuthStore } from '../lib/authStore'
 import type { DownloadJob, DiscographyAlbum } from '../lib/types'
 import type { CollectionSummary, CollectionArtist } from '../lib/collectionApi'
 
@@ -102,14 +103,25 @@ vi.mock('../lib/libraryApi', async (importOriginal) => {
   }
 })
 
+vi.mock('../lib/authStore', () => ({
+  useAuthStore: vi.fn((selector: (s: any) => unknown) => selector({ can: () => false })),
+}))
+
 // ------------------------------------------------------------------
 // Tests
 // ------------------------------------------------------------------
+
+function setAuth(caps: string[]) {
+  vi.mocked(useAuthStore).mockImplementation((selector: (s: any) => unknown) =>
+    selector({ can: (cap: string) => caps.includes(cap) }),
+  )
+}
 
 describe('Collection page', () => {
   beforeEach(() => {
     useDownloads.setState({ jobs: {}, paused: false })
     vi.clearAllMocks()
+    setAuth([])
   })
 
   it('renders artist name, album coverage label, and missing album ghost cards', async () => {
@@ -216,5 +228,47 @@ describe('Collection page', () => {
 
     const skeletons = document.querySelectorAll('.animate-pulse')
     expect(skeletons.length).toBeGreaterThan(0)
+  })
+
+  it('shows a download button on ghost cards when the user can auto_approve', async () => {
+    setAuth(['auto_approve'])
+    const { useCollection } = await import('../lib/collectionApi')
+    const artist = makeArtist({
+      name: 'Radiohead',
+      missingAlbums: [
+        makeDiscographyAlbum({ externalId: 'missing-1', name: 'Missing Album 1' }),
+      ],
+    })
+
+    vi.mocked(useCollection).mockReturnValue({
+      data: { artists: [artist], resolvedCount: 1, artistCount: 1 },
+      isLoading: false,
+      error: null,
+    } as unknown as UseQueryResult<CollectionSummary, Error>)
+
+    render(wrap(<Collection />))
+
+    expect(screen.getByLabelText('Download Missing Album 1')).toBeInTheDocument()
+  })
+
+  it('hides the download button on ghost cards when the user cannot auto_approve', async () => {
+    setAuth([])
+    const { useCollection } = await import('../lib/collectionApi')
+    const artist = makeArtist({
+      name: 'Radiohead',
+      missingAlbums: [
+        makeDiscographyAlbum({ externalId: 'missing-1', name: 'Missing Album 1' }),
+      ],
+    })
+
+    vi.mocked(useCollection).mockReturnValue({
+      data: { artists: [artist], resolvedCount: 1, artistCount: 1 },
+      isLoading: false,
+      error: null,
+    } as unknown as UseQueryResult<CollectionSummary, Error>)
+
+    render(wrap(<Collection />))
+
+    expect(screen.queryByLabelText(/^Download /)).toBeNull()
   })
 })
