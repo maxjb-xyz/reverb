@@ -11,7 +11,7 @@ export interface Command { id: string; title: string; hint?: string; icon: IconN
 export function baseCommands(isManager: boolean): Command[] {
   const nav = (id: string, title: string, to: string, icon: IconName): Command => ({ id, title, icon, keywords: ['navigate'], run: (ctx) => ctx.navigate(to) })
   const commands: Command[] = [
-    nav('nav-home', 'Go to Home', '/', 'home'), nav('nav-search', 'Search', '/search', 'search'), nav('nav-library', 'Library', '/library', 'browse'),
+    nav('nav-home', 'Go to Home', '/', 'home'), nav('nav-search', 'Search', '/search', 'search'), nav('nav-library', 'Library', '/library', 'browse'), nav('nav-collection', 'Collection', '/collection', 'browse'),
     { id: 'panel-downloads', title: 'Downloads', icon: 'dl', keywords: ['download', 'panel'], run: (ctx) => ctx.ui.togglePanel('downloads') },
     nav('nav-requests', 'Requests', '/requests', 'bell'), nav('nav-stats', 'Stats', '/stats', 'chart'), nav('nav-settings', 'Settings', '/settings', 'full'),
     { id: 'player-toggle', title: 'Play / Pause', icon: 'play', hint: 'Space', keywords: ['pause', 'resume'], run: (ctx) => ctx.player.toggle() },

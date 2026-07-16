@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/maxjb-xyz/reverb/internal/core"
+	"github.com/maxjb-xyz/reverb/internal/coverage"
 	"github.com/maxjb-xyz/reverb/internal/registry"
 	"github.com/maxjb-xyz/reverb/internal/store"
 )
@@ -58,6 +59,10 @@ func (f *fakeCoverage) StreamCoverage(ctx context.Context, source, id string) <-
 		}
 	}()
 	return ch
+}
+
+func (f *fakeCoverage) ListCachedDiscographies(context.Context) ([]coverage.CachedArtistDiscography, error) {
+	return nil, nil
 }
 
 // coverageTestServer builds a Server with a fake coverage service + download manager.

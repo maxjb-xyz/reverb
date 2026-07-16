@@ -10,6 +10,11 @@ ON CONFLICT(library_artist_id, source) DO UPDATE SET
 -- name: GetDiscographyCache :one
 SELECT * FROM discography_cache WHERE source = ? AND external_artist_id = ?;
 
+-- name: ListCachedDiscographies :many
+SELECT m.library_artist_id, m.source, m.external_artist_id, d.albums_json
+FROM artist_external_map m
+JOIN discography_cache d ON d.source = m.source AND d.external_artist_id = m.external_artist_id;
+
 -- name: UpsertDiscographyCache :exec
 INSERT INTO discography_cache (source, external_artist_id, albums_json, fetched_at)
 VALUES (?, ?, ?, ?)

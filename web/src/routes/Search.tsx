@@ -22,6 +22,7 @@ import type { SourceStatus } from '../lib/everywhereStore'
 import type { ExternalResult, EnvelopeStatus, Track } from '../lib/types'
 import { useDocumentTitle } from '../lib/useDocumentTitle'
 import { useDebouncedValue } from '../lib/useDebouncedValue'
+import { usePendingPlay } from '../lib/pendingPlayStore'
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -217,7 +218,6 @@ export default function Search() {
             <EmptyState
               icon="search"
               title="No results"
-              hint={`Nothing in your library matches "${q}". Try Everywhere to discover it.`}
             />
           )}
 
@@ -361,8 +361,11 @@ export default function Search() {
                         } else {
                           // Not in your library yet — clicking the song downloads it
                           // (server picks the downloader via the fallback chain).
-                          postDownload(reqFromResult(r))
-                            .then((j) => useDownloads.getState().upsert(j))
+                          postDownload({ ...reqFromResult(r), playWhenReady: true })
+                            .then((j) => {
+                              useDownloads.getState().upsert(j)
+                              usePendingPlay.getState().begin({ jobId: j.id, title: r.title, artist: r.artist, coverArtId: r.coverArtId })
+                            })
                             .catch(() => {})
                         }
                       }}

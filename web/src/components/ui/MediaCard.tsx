@@ -20,6 +20,8 @@ interface MediaCardProps {
   onDownload?: () => void
   /** When active, replaces the download button with a progress ring (always visible, not hover-gated). */
   downloadProgress?: { active: boolean; value: number; indeterminate: boolean }
+  /** Ghost cards represent known-but-unowned library items. */
+  ghost?: boolean
 }
 
 export function MediaCard({
@@ -34,6 +36,7 @@ export function MediaCard({
   coverage,
   onDownload,
   downloadProgress,
+  ghost = false,
 }: MediaCardProps) {
   const src = coverSrc ?? (coverId ? coverUrl(coverId, 300) : undefined)
 
@@ -50,12 +53,13 @@ export function MediaCard({
       className={[
         'group relative w-full text-left p-3 rounded-lg',
         'bg-raised hover:bg-raised-hover transition-colors',
+        ghost ? 'border border-dashed border-border-subtle' : '',
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
       ].join(' ')}
     >
       {/* Cover */}
       <div
-        className={['relative mb-3', rounded === 'full' ? 'rounded-full overflow-hidden' : ''].filter(Boolean).join(' ')}
+        className={['relative mb-3', rounded === 'full' ? 'rounded-full overflow-hidden' : '', ghost ? 'opacity-60 saturate-50' : ''].filter(Boolean).join(' ')}
         data-testid="mediacard-cover"
       >
         <Cover
@@ -71,7 +75,7 @@ export function MediaCard({
         )}
         {badge && !coverage && <div className="absolute left-2 top-2">{badge}</div>}
         {/* Play button — accent reveal on hover */}
-        {onPlay && (
+        {onPlay && !ghost && (
           <button
             type="button"
             aria-label={`Play ${title}`}
@@ -90,7 +94,7 @@ export function MediaCard({
           </button>
         )}
         {/* Download progress ring — always visible when active, replaces the download button */}
-        {!onPlay && downloadProgress?.active && (
+        {(!onPlay || ghost) && downloadProgress?.active && (
           <div className="absolute right-3 bottom-3 text-accent">
             <ProgressRing
               value={downloadProgress.value}
@@ -100,7 +104,7 @@ export function MediaCard({
           </div>
         )}
         {/* Download button — accent reveal on hover, only when no onPlay and no active download */}
-        {!onPlay && onDownload && !downloadProgress?.active && (
+        {(!onPlay || ghost) && onDownload && !downloadProgress?.active && (
           <button
             type="button"
             aria-label={`Download ${title}`}

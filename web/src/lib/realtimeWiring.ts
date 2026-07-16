@@ -9,6 +9,7 @@ import { getMyRequests, getAllRequests, useRequestStore, type RequestEventPayloa
 import { getNotifications, useNotificationStore, type Notification } from './notificationApi'
 import { useAuthStore } from './authStore'
 import { useToastStore } from './toastStore'
+import { usePendingPlay } from './pendingPlayStore'
 import type { DownloadEvent, DownloadRemovedEvent, LibraryUpdatedEvent, QueueStateEvent, RealtimeEvent, Track } from './types'
 
 // trackFromJob synthesizes a minimal library Track for play-when-ready auto-play,
@@ -62,7 +63,10 @@ export function useRealtime(makeSocket?: (url: string) => WebSocketLike): void {
         case 'download.queued':
         case 'download.progress':
         case 'download.failed': {
-          useDownloads.getState().applyEvent(frame.payload as DownloadEvent)
+          const event = frame.payload as DownloadEvent
+          useDownloads.getState().applyEvent(event)
+          if (event.status === 'running') usePendingPlay.getState().update(event.jobId, event.progress)
+          if (event.status === 'failed' || event.status === 'canceled') usePendingPlay.getState().fail(event.jobId)
           break
         }
         case 'download.complete': {
@@ -79,6 +83,7 @@ export function useRealtime(makeSocket?: (url: string) => WebSocketLike): void {
               0,
             )
           }
+          usePendingPlay.getState().clear(ev.jobId)
           invalidateLibrary({ artistId: ev.artistId, albumId: ev.albumId })
           // Bump the library revision so coverage streams re-open and chips flip.
           useLibraryRevision.getState().bump()
