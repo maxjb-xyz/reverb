@@ -161,4 +161,44 @@ describe('MediaCard', () => {
     const img = container.querySelector('img')
     expect(img?.src).toBe('https://cdn.example.com/kida.jpg')
   })
+
+  // ── Ghost card tests ────────────────────────────────────────────────────────
+
+  it('ghost card has border-dashed on the root button', () => {
+    const { container } = render(<MediaCard title="Ghost Album" ghost={true} />)
+    const root = container.firstChild as HTMLElement
+    expect(root.className).toMatch(/border-dashed/)
+  })
+
+  it('ghost card suppresses the play button even when onPlay is provided', () => {
+    render(<MediaCard title="Ghost Album" onPlay={vi.fn()} ghost={true} />)
+    expect(screen.queryByLabelText('Play Ghost Album')).not.toBeInTheDocument()
+  })
+
+  it('ghost card still renders the download button when onDownload is provided', () => {
+    const onDownload = vi.fn()
+    render(<MediaCard title="Ghost Album" onDownload={onDownload} ghost={true} />)
+    const dlBtn = screen.getByRole('button', { name: 'Download Ghost Album' })
+    expect(dlBtn).toBeInTheDocument()
+  })
+
+  it('ghost card does not suppress download button even when onPlay is also provided', () => {
+    const onDownload = vi.fn()
+    render(
+      <MediaCard
+        title="Ghost Album"
+        onPlay={vi.fn()}
+        onDownload={onDownload}
+        ghost={true}
+      />,
+    )
+    const dlBtn = screen.getByRole('button', { name: 'Download Ghost Album' })
+    expect(dlBtn).toBeInTheDocument()
+  })
+
+  it('non-ghost card does not have border-dashed', () => {
+    const { container } = render(<MediaCard title="Regular Album" ghost={false} />)
+    const root = container.firstChild as HTMLElement
+    expect(root.className).not.toMatch(/border-dashed/)
+  })
 })

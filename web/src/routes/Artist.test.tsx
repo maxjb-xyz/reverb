@@ -706,4 +706,77 @@ describe('Artist page', () => {
     wrapper(<Artist />)
     expect(screen.getByRole('button', { name: /download kid a/i })).toBeInTheDocument()
   })
+
+  // ── Ghost card tests (albums without libraryAlbumId) ────────────────────────
+
+  it('album without libraryAlbumId renders with border-dashed (ghost card)', () => {
+    // Use default STUB_DETAIL where albums have no libraryAlbumId → both are ghost cards
+    wrapper(<Artist />)
+    const kidABtn = screen.getByRole('button', { name: 'Kid A' })
+    expect(kidABtn.className).toMatch(/border-dashed/)
+  })
+
+  it('album with libraryAlbumId does NOT render with border-dashed', () => {
+    // Override with library-mapped album that has libraryAlbumId
+    vi.mocked(useArtistDetail).mockReturnValue({
+      data: {
+        ...STUB_DETAIL,
+        albums: [
+          {
+            source: 'spotify',
+            externalId: 'AL',
+            name: 'Kid A',
+            year: 2000,
+            kind: 'album' as const,
+            totalTracks: 10,
+            coverUrl: 'https://cdn.example.com/kida.jpg',
+            libraryAlbumId: 'libAlbum1', // This album IS owned
+          },
+        ],
+      },
+      isLoading: false,
+      isError: false,
+    } as ReturnType<typeof useArtistDetail>)
+    wrapper(<Artist />)
+    const kidABtn = screen.getByRole('button', { name: 'Kid A' })
+    expect(kidABtn.className).not.toMatch(/border-dashed/)
+  })
+
+  it('discography can have both ghost and non-ghost cards', () => {
+    // Override with mixed: one owned (with libraryAlbumId), one not
+    vi.mocked(useArtistDetail).mockReturnValue({
+      data: {
+        ...STUB_DETAIL,
+        albums: [
+          {
+            source: 'spotify',
+            externalId: 'AL',
+            name: 'Kid A',
+            year: 2000,
+            kind: 'album' as const,
+            totalTracks: 10,
+            coverUrl: 'https://cdn.example.com/kida.jpg',
+            libraryAlbumId: 'libAlbum1', // OWNED
+          },
+          {
+            source: 'spotify',
+            externalId: 'S1',
+            name: 'Creep',
+            year: 1992,
+            kind: 'single' as const,
+            totalTracks: 1,
+            coverUrl: 'https://cdn.example.com/creep.jpg',
+            // NO libraryAlbumId → GHOST
+          },
+        ],
+      },
+      isLoading: false,
+      isError: false,
+    } as ReturnType<typeof useArtistDetail>)
+    wrapper(<Artist />)
+    const kidABtn = screen.getByRole('button', { name: 'Kid A' })
+    const creepBtn = screen.getByRole('button', { name: 'Creep' })
+    expect(kidABtn.className).not.toMatch(/border-dashed/)
+    expect(creepBtn.className).toMatch(/border-dashed/)
+  })
 })
