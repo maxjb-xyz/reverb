@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"testing"
 	"time"
 
 	"github.com/google/uuid"
@@ -36,7 +37,14 @@ var (
 )
 
 func HashPassword(pw string) (string, error) {
-	b, err := bcrypt.GenerateFromPassword([]byte(pw), bcrypt.DefaultCost)
+	cost := bcrypt.DefaultCost
+	if testing.Testing() {
+		// Real bcrypt cost is deliberately slow; paid hundreds of times across the
+		// test suite it dominates CI wall time (worse under -race). The cost is
+		// embedded in the hash, so VerifyPassword still works unchanged.
+		cost = bcrypt.MinCost
+	}
+	b, err := bcrypt.GenerateFromPassword([]byte(pw), cost)
 	return string(b), err
 }
 
