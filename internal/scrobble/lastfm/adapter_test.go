@@ -217,7 +217,7 @@ func TestScrobbleSendsPrimaryArtistForCompositeCredit(t *testing.T) {
 		t.Errorf("artist[0] = %q; want Egzod (primary artist of the composite credit)", capturedForm.Get("artist[0]"))
 	}
 	// Bare "/" names are single artists and must pass through untouched.
-	plays[0].Track.Artist = "AC/DC"
+	plays[0].Artist = "AC/DC"
 	if _, err := a.Scrobble(context.Background(), scrobble.Creds{APIKey: "ak", APISecret: "as", SessionKey: "sk1"}, plays); err != nil {
 		t.Fatalf("Scrobble: %v", err)
 	}
