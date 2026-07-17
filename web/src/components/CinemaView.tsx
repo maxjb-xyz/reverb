@@ -5,6 +5,7 @@ import { usePlayer } from '../lib/playerStore'
 import { formatDuration } from '../lib/types'
 import { useUI } from '../lib/uiStore'
 import { useAlbumPalette } from '../lib/useAlbumPalette'
+import { usePeaks } from '../lib/peaksApi'
 import { Cover } from './ui/Cover'
 import { Icon } from './ui/Icon'
 
@@ -23,6 +24,7 @@ export function CinemaView() {
   const currentTimeMs = usePlayer((s) => s.currentTimeMs)
   const durationMs = usePlayer((s) => s.durationMs)
   const palette = useAlbumPalette(current ? trackCoverUrl(current, 80) : undefined)
+  const peaks = usePeaks(current?.id).data
 
   useEffect(() => {
     if (!open) return
@@ -105,7 +107,15 @@ export function CinemaView() {
         <div className="truncate text-3xl font-black text-text-primary">{current?.title ?? 'Nothing playing'}</div>
         <div className="mb-4 truncate text-sm text-text-secondary">{current?.artist ?? ''}</div>
         <div className="mb-1 flex items-center justify-between text-xs tabular-nums text-text-muted"><span>{formatDuration(currentTimeMs)}</span><span>{formatDuration(durationMs)}</span></div>
-        <div role="slider" aria-label="Seek" aria-valuemin={0} aria-valuemax={durationMs} aria-valuenow={currentTimeMs} tabIndex={0} onClick={seek} onKeyDown={onSeekKeyDown} className="h-1 w-full cursor-pointer rounded-full bg-border-subtle focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"><div className="h-full rounded-full bg-text-primary" style={{ width: `${pct}%` }} /></div>
+        <div role="slider" aria-label="Seek" aria-valuemin={0} aria-valuemax={durationMs} aria-valuenow={currentTimeMs} tabIndex={0} onClick={seek} onKeyDown={onSeekKeyDown} className="group relative h-1 w-full cursor-pointer rounded-full bg-border-subtle focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent">
+          {peaks?.length ? (
+            <div data-testid="waveform" className="absolute inset-x-0 top-1/2 flex h-8 -translate-y-1/2 items-center gap-px">
+              {peaks.map((peak, i) => <div key={i} className={i / peaks.length * 100 <= pct ? 'flex-1 rounded-full bg-text-primary group-hover:bg-accent' : 'flex-1 rounded-full bg-border-subtle'} style={{ minHeight: '2px', height: `${Math.max(8, peak * 100)}%` }} />)}
+            </div>
+          ) : (
+            <div className="h-full rounded-full bg-text-primary" style={{ width: `${pct}%` }} />
+          )}
+        </div>
         <div className="mt-6 flex items-center justify-center gap-8">
           <button type="button" aria-label="Previous" onClick={prev} className="flex h-11 w-11 items-center justify-center rounded-full text-text-secondary transition-colors hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"><Icon name="prev" className="h-6 w-6" /></button>
           <button type="button" aria-label={playing ? 'Pause' : 'Play'} onClick={toggle} className="flex h-16 w-16 items-center justify-center rounded-full bg-text-primary text-surface transition-transform hover:scale-105 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"><Icon name={playing ? 'pause' : 'play'} className="h-7 w-7" /></button>
