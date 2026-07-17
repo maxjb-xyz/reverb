@@ -15,7 +15,12 @@ import (
 
 const (
 	apiVersion = "1.16.1"
-	clientName = "reverb"
+	// Navidrome keys per-player settings on this client name, and settings like
+	// Subsonic.DefaultReportRealPath only seed NEWLY-registered players — an
+	// existing player row keeps the value it was created with forever. Bump the
+	// suffix whenever a new player-level default must actually take effect
+	// (v2: real paths for waveform peaks).
+	clientName = "reverb-v2"
 )
 
 // Client is a low-level Subsonic API client using token auth. The *http.Client

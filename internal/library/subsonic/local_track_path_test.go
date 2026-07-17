@@ -79,3 +79,33 @@ func TestLocalTrackPath_PathTraversalReturnsFalse(t *testing.T) {
 		t.Fatal("expected ok=false for a path-traversal attempt")
 	}
 }
+
+// Some Subsonic servers report the ABSOLUTE real path; the join must not double
+// the music dir (/music + /music/x.mp3 → /music/music/x.mp3 would never stat).
+func TestLocalTrackPath_AbsoluteReportedPathResolves(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "x.mp3"), []byte("audio"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	a := newSongPathAdapter(t, filepath.Join(dir, "x.mp3"), dir)
+	got, ok := a.LocalTrackPath("t1")
+	if !ok {
+		t.Fatal("expected ok=true for an absolute in-dir path")
+	}
+	if want := filepath.Join(dir, "x.mp3"); got != want {
+		t.Errorf("path = %q, want %q", got, want)
+	}
+}
+
+// An absolute path OUTSIDE the music dir must still be rejected.
+func TestLocalTrackPath_AbsoluteOutsidePathRejected(t *testing.T) {
+	dir := t.TempDir()
+	outside := t.TempDir()
+	if err := os.WriteFile(filepath.Join(outside, "evil.mp3"), []byte("audio"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	a := newSongPathAdapter(t, filepath.Join(outside, "evil.mp3"), dir)
+	if _, ok := a.LocalTrackPath("t1"); ok {
+		t.Fatal("expected ok=false for an absolute path outside the music dir")
+	}
+}

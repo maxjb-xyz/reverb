@@ -78,7 +78,7 @@ function AlbumCard({ album, cov, resolved, canAutoApprove, onNavigate }: AlbumCa
   return (
     <MediaCard
       title={album.name}
-      subtitle={String(album.year)}
+      subtitle={album.year ? String(album.year) : undefined}
       coverSrc={album.coverUrl}
       rounded="md"
       coverage={
@@ -351,7 +351,7 @@ export default function Artist() {
               <MediaCard
                 key={al.libraryAlbumId ?? al.externalId}
                 title={al.name}
-                subtitle={String(al.year)}
+                subtitle={al.year ? String(al.year) : undefined}
                 coverSrc={al.coverUrl || undefined}
                 coverId={al.libraryAlbumId}
                 rounded="md"

@@ -77,16 +77,28 @@ export default function Library() {
       )}
 
       {/* Page header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3">
         <h1 className="text-2xl font-bold text-text-primary">Your Library</h1>
-        <Button
-          size="sm"
-          variant="secondary"
-          aria-label="Import from Spotify"
-          onClick={() => setImportOpen(true)}
-        >
-          + Import from Spotify
-        </Button>
+        <div className="flex items-center gap-2">
+          {/* Collection is a lens on the library (what you're missing), so it
+              lives here rather than as a standalone rail entry. */}
+          <Button
+            size="sm"
+            variant="ghost"
+            aria-label="Open collection"
+            onClick={() => navigate('/collection')}
+          >
+            Collection
+          </Button>
+          <Button
+            size="sm"
+            variant="secondary"
+            aria-label="Import from Spotify"
+            onClick={() => setImportOpen(true)}
+          >
+            + Import from Spotify
+          </Button>
+        </div>
       </div>
 
       {/* Filter chips */}
