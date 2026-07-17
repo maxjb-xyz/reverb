@@ -456,6 +456,30 @@ describe('Artist page', () => {
     expect(screen.getByRole('button', { name: 'OK Computer' })).toBeInTheDocument()
   })
 
+  it('"In your library" card without an external coverUrl falls back to the library cover proxy', () => {
+    vi.mocked(useArtistDetail).mockReturnValue({
+      data: {
+        ...STUB_DETAIL,
+        libraryAlbums: [
+          {
+            source: 'library',
+            externalId: '',
+            name: 'Royalty',
+            year: 2021,
+            kind: 'album' as const,
+            totalTracks: 1,
+            libraryAlbumId: 'lib-royalty',
+          },
+        ],
+      },
+      isLoading: false,
+      isError: false,
+    } as ReturnType<typeof useArtistDetail>)
+    wrapper(<Artist />)
+    const img = screen.getByRole('img', { name: 'Royalty' })
+    expect(img).toHaveAttribute('src', expect.stringContaining('/cover/lib-royalty'))
+  })
+
   it('"In your library" card links to /album/library/:libraryAlbumId', () => {
     const mockNavigate = vi.fn()
     vi.mocked(useNavigate).mockReturnValue(mockNavigate)
