@@ -268,12 +268,13 @@ func (s *Service) libraryAlbumsByArtistName(ctx context.Context, artistName stri
 		log.Printf("coverage: libraryAlbumsByArtistName search error for %q: %v", artistName, err)
 		return []core.DiscographyAlbum{}
 	}
-	normArtist := matching.Normalize(artistName)
 	seen := map[string]struct{}{}
 	out := []core.DiscographyAlbum{}
 	for _, al := range res.Albums {
-		// Only include albums whose artist matches this artist (normalized).
-		if matching.Normalize(al.Artist) != normArtist {
+		// Composite-credit tolerant: a joint album ("Egzod & Neoni") must appear
+		// in BOTH artists' library sections, and exact normalized equality missed
+		// every composite albumartist tag.
+		if !matching.ArtistMatches(artistName, al.Artist) {
 			continue
 		}
 		key := fmt.Sprintf("%s|%s", matching.Normalize(al.Name), al.ID)

@@ -74,6 +74,37 @@ func splitFold(s, sep string) []string {
 	return out
 }
 
+// primaryArtistSeparators are the UNAMBIGUOUS composite joins used when a single
+// primary artist must be extracted (fingerprinting, scrobbling). Unlike
+// artistSeparators above, bare "/" and "&" are excluded: they appear in
+// legitimate single-artist names (AC/DC, Simon & Garfunkel), and a wrong split
+// here changes persisted identities rather than just widening a fuzzy match.
+var primaryArtistSeparators = []string{"; ", ";", " / ", " • ", " · ", " featuring ", " feat. ", " feat ", " ft. ", " ft ", " with "}
+
+// PrimaryArtist extracts the primary artist from a composite credit joined with
+// an unambiguous separator ("Egzod; Maestro Chives; Neoni" → "Egzod"). Names
+// containing bare "/" or "&" are returned untouched. Falls back to the input
+// when splitting would yield an empty name.
+func PrimaryArtist(artist string) string {
+	first := artist
+	for _, sep := range primaryArtistSeparators {
+		if parts := splitFold(first, sep); len(parts) > 0 {
+			first = parts[0]
+		}
+	}
+	first = strings.TrimSpace(first)
+	if first == "" {
+		return artist
+	}
+	return first
+}
+
+// ArtistMatches is the exported form of artistMatches for callers outside the
+// matcher (e.g. coverage's library-albums-by-artist lookup).
+func ArtistMatches(extArtist, libArtist string) bool {
+	return artistMatches(extArtist, libArtist)
+}
+
 // artistMatches reports whether the external and library artist strings name the
 // same primary artist, tolerating Navidrome's composite "Composer/Performer/…"
 // joins. True when the normalized strings are equal, OR when one side's token set

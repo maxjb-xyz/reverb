@@ -576,3 +576,33 @@ func TestMatch_EmptyExternalDoesNotWriteMatchCache(t *testing.T) {
 		t.Fatalf("match_cache must be empty for empty-external match, got %d rows: %v", len(cache.rows), cache.rows)
 	}
 }
+
+func TestPrimaryArtist(t *testing.T) {
+	cases := []struct{ in, want string }{
+		{"Egzod; Maestro Chives; Neoni", "Egzod"},
+		{"Egzod;Maestro Chives", "Egzod"},
+		{"Chopin / Rubinstein", "Chopin"},
+		{"Sigrid feat. Bring Me The Horizon", "Sigrid"},
+		{"Elton John with Dua Lipa", "Elton John"},
+		{"Egzod • Neoni", "Egzod"},
+		// Ambiguous separators must NOT split: these are single-artist names.
+		{"AC/DC", "AC/DC"},
+		{"Simon & Garfunkel", "Simon & Garfunkel"},
+		{"Egzod/Maestro Chives/Neoni", "Egzod/Maestro Chives/Neoni"},
+		{"", ""},
+	}
+	for _, c := range cases {
+		if got := PrimaryArtist(c.in); got != c.want {
+			t.Errorf("PrimaryArtist(%q) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}
+
+func TestArtistMatchesExported(t *testing.T) {
+	if !ArtistMatches("Egzod", "Egzod/Maestro Chives/Neoni") {
+		t.Error("primary artist should match the composite library credit")
+	}
+	if ArtistMatches("Neoni", "Egzod") {
+		t.Error("unrelated artists must not match")
+	}
+}

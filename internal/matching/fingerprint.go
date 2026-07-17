@@ -43,7 +43,11 @@ func Fingerprint(title, artist, album string, durationMs int) string {
 	bucket := durationMs / 5000
 
 	var b strings.Builder
-	b.WriteString(Normalize(artist))
+	// Key on the PRIMARY artist so external metadata ("Egzod") and a library tag
+	// carrying the full credit ("Egzod; Maestro Chives; Neoni") converge on one
+	// identity. PrimaryArtist only splits unambiguous separators, so names like
+	// AC/DC — and therefore their persisted fingerprints — are unchanged.
+	b.WriteString(Normalize(PrimaryArtist(artist)))
 	b.WriteByte('\x1f')
 	b.WriteString(nt)
 	b.WriteByte('\x1f')
