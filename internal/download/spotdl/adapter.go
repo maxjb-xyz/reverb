@@ -269,6 +269,11 @@ func (a *Adapter) Start(ctx context.Context, req core.DownloadRequest, onProgres
 	// Prefer YouTube Music but fall back to plain YouTube when a track is absent
 	// from YT-Music's catalog (common for obscure/regional/classical releases).
 	args = append(args, "--audio", "youtube-music", "youtube")
+	// spotDL's default id3_separator is "/", which Navidrome deliberately does NOT
+	// split on (bare "/" would break artists like AC/DC) — multi-artist tracks then
+	// index as one combined artist ("A/B/C"). "; " is in Navidrome's default split
+	// set, so each collaborator becomes a real artist.
+	args = append(args, "--id3-separator", "; ")
 	args = append(args, "--simple-tui", "--output", outputTemplate, "download", query)
 
 	// Pre-create spotDL's shared temp dir to defeat a concurrency race: spotDL does

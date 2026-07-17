@@ -142,6 +142,24 @@ func TestStartPassesOutputDirAndQuery(t *testing.T) {
 	}
 }
 
+// spotDL's default id3_separator is "/", which Navidrome will not split (bare
+// "/" would break AC/DC) — multi-artist downloads then index as one combined
+// artist. "; " is in Navidrome's default split set.
+func TestStartPassesID3Separator(t *testing.T) {
+	r := &fakeRunner{lines: []string{`Downloaded: ok`}}
+	a := newAdapter(t, r)
+	_, _ = a.Start(context.Background(), core.DownloadRequest{Source: "youtube", Artist: "Egzod", Title: "Royalty"}, func(int) {})
+	for i, arg := range r.gotArgs {
+		if arg == "--id3-separator" {
+			if i+1 >= len(r.gotArgs) || r.gotArgs[i+1] != "; " {
+				t.Fatalf("--id3-separator value = %q, want %q", r.gotArgs[i+1], "; ")
+			}
+			return
+		}
+	}
+	t.Fatalf("--id3-separator not passed in args: %v", r.gotArgs)
+}
+
 func TestStartPassesSpotifyCredentials(t *testing.T) {
 	r := &fakeRunner{lines: []string{`Downloaded: ok`}}
 	a := New().WithRunner(r)
