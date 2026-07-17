@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/maxjb-xyz/reverb/internal/matching"
 	"github.com/maxjb-xyz/reverb/internal/registry"
 	"github.com/maxjb-xyz/reverb/internal/scrobble"
 )
@@ -124,8 +125,11 @@ func (a *Adapter) NowPlaying(ctx context.Context, c scrobble.Creds, t scrobble.T
 		"method":  "track.updateNowPlaying",
 		"api_key": c.APIKey,
 		"sk":      c.SessionKey,
-		"artist":  t.Artist,
-		"track":   t.Title,
+		// Last.fm matches on a single canonical artist; a composite library
+		// credit ("Egzod; Maestro Chives; Neoni") would scrobble as an unknown
+		// artist. PrimaryArtist never splits names like AC/DC.
+		"artist": matching.PrimaryArtist(t.Artist),
+		"track":  t.Title,
 	}
 	if t.Album != "" {
 		params["album"] = t.Album
@@ -173,7 +177,7 @@ func (a *Adapter) scrobbleBatch(ctx context.Context, c scrobble.Creds, plays []s
 	}
 	for i, p := range plays {
 		idx := strconv.Itoa(i)
-		params["artist["+idx+"]"] = p.Artist
+		params["artist["+idx+"]"] = matching.PrimaryArtist(p.Artist)
 		params["track["+idx+"]"] = p.Title
 		params["timestamp["+idx+"]"] = strconv.FormatInt(p.PlayedAt, 10)
 		if p.Album != "" {

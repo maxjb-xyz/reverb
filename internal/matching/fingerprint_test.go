@@ -36,3 +36,23 @@ func TestFingerprint_DurationWobbleWithinBucketStable(t *testing.T) {
 		t.Fatal("sub-bucket duration wobble must not split identity")
 	}
 }
+
+// External metadata carries the primary artist while a library tag can carry the
+// full "; "-joined credit — both must fingerprint to the same identity.
+func TestFingerprint_CompositeCreditConvergesOnPrimaryArtist(t *testing.T) {
+	a := Fingerprint("Royalty", "Egzod", "Royalty", 221000)
+	b := Fingerprint("Royalty", "Egzod; Maestro Chives; Neoni", "Royalty", 221000)
+	if a != b {
+		t.Errorf("composite credit fingerprint diverged from primary-artist fingerprint")
+	}
+}
+
+// Bare "/" is a literal in real band names and must never split — an AC/DC
+// fingerprint keyed on the full name is a PERSISTED identity that cannot churn.
+func TestFingerprint_BareSlashNameUnsplit(t *testing.T) {
+	acdc := Fingerprint("Thunderstruck", "AC/DC", "The Razors Edge", 292000)
+	ac := Fingerprint("Thunderstruck", "AC", "The Razors Edge", 292000)
+	if acdc == ac {
+		t.Errorf("AC/DC fingerprint collapsed to its first slash segment")
+	}
+}

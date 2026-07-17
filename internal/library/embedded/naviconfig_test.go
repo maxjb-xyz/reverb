@@ -34,6 +34,12 @@ func TestBuildNavidromeEnv_LocalhostAndCreds(t *testing.T) {
 	if m["ND_DEVAUTOCREATEADMINPASSWORD"] != "s3cret" {
 		t.Errorf("ND_DEVAUTOCREATEADMINPASSWORD = %q", m["ND_DEVAUTOCREATEADMINPASSWORD"])
 	}
+	// Real Subsonic paths are required for the waveform-peaks endpoint: Navidrome
+	// synthesizes `path` fields unless this is set, and the synthesized path never
+	// resolves on disk (LocalTrackPath stats it → 204 → flat seek rail).
+	if m["ND_SUBSONIC_DEFAULTREPORTREALPATH"] != "true" {
+		t.Errorf("ND_SUBSONIC_DEFAULTREPORTREALPATH = %q, want true", m["ND_SUBSONIC_DEFAULTREPORTREALPATH"])
+	}
 }
 
 func TestMusicDir_DefaultsToMusic(t *testing.T) {

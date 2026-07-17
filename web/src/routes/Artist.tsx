@@ -352,7 +352,8 @@ export default function Artist() {
                 key={al.libraryAlbumId ?? al.externalId}
                 title={al.name}
                 subtitle={String(al.year)}
-                coverSrc={al.coverUrl}
+                coverSrc={al.coverUrl || undefined}
+                coverId={al.libraryAlbumId}
                 rounded="md"
                 onClick={() =>
                   navigate(`/album/library/${al.libraryAlbumId ?? al.externalId}`)

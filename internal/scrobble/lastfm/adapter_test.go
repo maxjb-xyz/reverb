@@ -193,6 +193,39 @@ func TestScrobble(t *testing.T) {
 	}
 }
 
+// A composite library credit scrobbles as the primary artist — Last.fm matches
+// on a single canonical artist name.
+func TestScrobbleSendsPrimaryArtistForCompositeCredit(t *testing.T) {
+	var capturedForm url.Values
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r.ParseForm()
+		capturedForm = r.Form
+		json.NewEncoder(w).Encode(map[string]any{
+			"scrobbles": map[string]any{"@attr": map[string]any{"accepted": float64(1)}},
+		})
+	}))
+	defer srv.Close()
+
+	a := newTestAdapter(srv.URL)
+	plays := []scrobble.ScrobblePlay{
+		{Track: scrobble.Track{Title: "Royalty", Artist: "Egzod; Maestro Chives; Neoni"}, PlayedAt: 1700000001},
+	}
+	if _, err := a.Scrobble(context.Background(), scrobble.Creds{APIKey: "ak", APISecret: "as", SessionKey: "sk1"}, plays); err != nil {
+		t.Fatalf("Scrobble: %v", err)
+	}
+	if capturedForm.Get("artist[0]") != "Egzod" {
+		t.Errorf("artist[0] = %q; want Egzod (primary artist of the composite credit)", capturedForm.Get("artist[0]"))
+	}
+	// Bare "/" names are single artists and must pass through untouched.
+	plays[0].Artist = "AC/DC"
+	if _, err := a.Scrobble(context.Background(), scrobble.Creds{APIKey: "ak", APISecret: "as", SessionKey: "sk1"}, plays); err != nil {
+		t.Fatalf("Scrobble: %v", err)
+	}
+	if capturedForm.Get("artist[0]") != "AC/DC" {
+		t.Errorf("artist[0] = %q; want AC/DC unsplit", capturedForm.Get("artist[0]"))
+	}
+}
+
 // ----------------------------------------------------------------------------
 // Test 7 — ErrAuth: error code 9 in response body → scrobble.ErrAuth
 // ----------------------------------------------------------------------------

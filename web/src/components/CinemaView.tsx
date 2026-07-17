@@ -35,8 +35,13 @@ export function CinemaView() {
 
   if (!open) return null
 
+  // Full-screen deserves a full wash: the dominant color carries the whole view
+  // (Spotify-cinema style) rather than a thin header tint fading to black.
   const ambient = palette
-    ? { background: `linear-gradient(180deg, ${rgbToCss(palette.rgb, 0.45)} 0%, var(--bg-base) 70%)`, color: palette.text }
+    ? {
+        background: `linear-gradient(180deg, ${rgbToCss(palette.rgb, 0.75)} 0%, ${rgbToCss(palette.rgb, 0.3)} 55%, var(--bg-base) 100%)`,
+        color: palette.text,
+      }
     : undefined
   const pct = durationMs > 0 ? (currentTimeMs / durationMs) * 100 : 0
   function seek(event: React.MouseEvent<HTMLDivElement>) {
