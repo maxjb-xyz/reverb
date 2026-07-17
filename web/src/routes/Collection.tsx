@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { Cover, EmptyState, MediaCard, Skeleton } from '../components/ui'
 import { useCollection } from '../lib/collectionApi'
@@ -12,6 +12,7 @@ import { useAuthStore } from '../lib/authStore'
 
 export default function Collection() {
   useDocumentTitle('Collection')
+  const navigate = useNavigate()
   const collection = useCollection()
   const queryClient = useQueryClient()
   const revision = useLibraryRevision((state) => state.revision)
@@ -60,16 +61,22 @@ export default function Collection() {
         <section key={artist.libraryArtistId} className="space-y-3">
           {/* Artist header with coverage */}
           <div className="flex items-center gap-3">
-            <Cover
-              src={
-                artist.coverArtId
-                  ? coverUrl(artist.coverArtId, 80)
-                  : undefined
-              }
-              alt={artist.name}
-              size={48}
-              rounded="full"
-            />
+            <Link
+              to={`/artist/library/${artist.libraryArtistId}`}
+              aria-label={`Open artist ${artist.name}`}
+              className="flex-none rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+            >
+              <Cover
+                src={
+                  artist.coverArtId
+                    ? coverUrl(artist.coverArtId, 80)
+                    : undefined
+                }
+                alt={artist.name}
+                size={48}
+                rounded="full"
+              />
+            </Link>
             <div className="min-w-0 flex-1">
               <Link
                 className={[
@@ -114,6 +121,7 @@ export default function Collection() {
                     title={album.name}
                     subtitle={album.year ? String(album.year) : undefined}
                     coverSrc={album.coverUrl}
+                    onClick={() => navigate(`/album/${album.source}/${album.externalId}`)}
                     onDownload={
                       canAutoApprove
                         ? () =>

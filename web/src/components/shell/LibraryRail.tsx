@@ -76,7 +76,6 @@ export function LibraryRail() {
             />
           </div>
         </div>
-        <button type="button" onClick={() => navigate('/collection')} className="mt-3 flex items-center gap-2 text-sm text-text-secondary hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent" aria-label="Open collection"><Icon name="browse" className="h-4 w-4" />Collection</button>
       </div>
 
       {/* Filter chips */}
