@@ -59,7 +59,14 @@ ARG SPOTDL_VERSION=4.5.0
 # retaining the vulnerable FastAPI/Starlette stack in every image. Make that import
 # lazy and remove the unsupported web-server dependencies; package metadata is
 # updated too, so `pip check` remains meaningful for the shipped runtime.
-RUN pip install --no-cache-dir --upgrade pip \
+# YTDLP_BUILD_STAMP exists solely to bust this layer's cache: CI builds with
+# cache-from/cache-to, which would otherwise reuse this RUN layer forever and
+# silently freeze yt-dlp at whatever was latest when the layer was last built —
+# exactly the staleness the --upgrade below is supposed to prevent. release.yml
+# passes a per-run value; local/CI builds keep the default and stay cached.
+ARG YTDLP_BUILD_STAMP=cached
+RUN echo "yt-dlp refresh stamp: ${YTDLP_BUILD_STAMP}" \
+ && pip install --no-cache-dir --upgrade pip \
  && pip install --no-cache-dir "spotdl==${SPOTDL_VERSION}" \
  && pip install --no-cache-dir --upgrade yt-dlp \
  && sed -i '/from spotdl.console.web import web/d' /usr/local/lib/python3.12/site-packages/spotdl/console/entry_point.py \

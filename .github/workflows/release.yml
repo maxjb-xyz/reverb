@@ -74,6 +74,7 @@ jobs:
           cache-to: type=gha,scope=reverb-amd64,mode=max
           build-args: |
             VERSION=${{ github.event.release.tag_name }}
+            YTDLP_BUILD_STAMP=${{ github.run_id }}
           provenance: true
 
   build-arm64:
@@ -104,6 +105,7 @@ jobs:
           cache-to: type=gha,scope=reverb-arm64,mode=max
           build-args: |
             VERSION=${{ github.event.release.tag_name }}
+            YTDLP_BUILD_STAMP=${{ github.run_id }}
           provenance: true
 
   publish-manifest:
