@@ -38,7 +38,7 @@ func fixtureServer(t *testing.T) *httptest.Server {
 	})
 	mux.HandleFunc("/artist/", func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasSuffix(r.URL.Path, "/albums") {
-			w.Write([]byte(`{"data": [{"id": 302127, "title": "Discovery", "cover_medium": "https://cdn.example/m.jpg", "artist": {"id": 27, "name": "Daft Punk"}}]}`))
+			w.Write([]byte(`{"data": [{"id": 302127, "title": "Discovery", "cover_medium": "https://cdn.example/m.jpg", "release_date": "2001-03-07", "artist": {"id": 27, "name": "Daft Punk"}}]}`))
 			return
 		}
 		w.Write([]byte(`{"id": 27, "name": "Daft Punk", "picture_medium": "https://cdn.example/a.jpg", "picture_big": "https://cdn.example/a-big.jpg"}`))
@@ -148,6 +148,11 @@ func TestGetArtistDiscography(t *testing.T) {
 	}
 	if len(albums) != 1 || albums[0].Source != "deezer" || albums[0].ExternalID != "302127" {
 		t.Fatalf("albums = %+v", albums)
+	}
+	// release_date must map to Year — a zero year renders as a bare "0" subtitle
+	// on every artist-page album card.
+	if albums[0].Year != 2001 {
+		t.Errorf("Year = %d, want 2001", albums[0].Year)
 	}
 }
 

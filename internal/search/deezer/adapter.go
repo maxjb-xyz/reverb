@@ -194,6 +194,7 @@ func (a *Adapter) GetArtistDiscography(ctx context.Context, externalID string) (
 		albums = append(albums, core.ExternalAlbum{
 			Source: "deezer", ExternalID: id64(album.ID), Name: album.Title,
 			Artist: album.Artist.Name, CoverURL: album.CoverMedium,
+			Year:   yearFromReleaseDate(album.ReleaseDate),
 			Tracks: []core.ExternalResult{},
 		})
 	}

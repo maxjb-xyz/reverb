@@ -26,6 +26,7 @@ type albumSearchDTO struct {
 	ID          int64        `json:"id"`
 	Title       string       `json:"title"`
 	CoverMedium string       `json:"cover_medium"`
+	ReleaseDate string       `json:"release_date"` // "2006-01-02"; present on artist-albums rows
 	Artist      artistRefDTO `json:"artist"`
 }
 
