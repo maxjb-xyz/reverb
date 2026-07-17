@@ -412,7 +412,15 @@ func (a *Adapter) LocalTrackPath(id string) (string, bool) {
 		return "", false
 	}
 	dir := filepath.Clean(a.localMusicDir)
-	joined := filepath.Clean(filepath.Join(dir, resp.Song.Path))
+	// Navidrome reports paths relative to the music folder, but tolerate an
+	// absolute form: strip the dir prefix so the join below cannot double it
+	// (/music + /music/x.mp3 → /music/x.mp3, not /music/music/x.mp3). The
+	// containment check still rejects anything outside the music dir.
+	songPath := resp.Song.Path
+	if filepath.IsAbs(songPath) {
+		songPath = strings.TrimPrefix(songPath, dir)
+	}
+	joined := filepath.Clean(filepath.Join(dir, songPath))
 	if joined != dir && !strings.HasPrefix(joined, dir+string(filepath.Separator)) {
 		// Path traversal (e.g. "../evil.mp3") escaped the music dir — reject it.
 		return "", false
