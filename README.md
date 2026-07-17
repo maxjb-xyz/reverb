@@ -165,7 +165,7 @@ The HTTP API is documented in OpenAPI, served live at `/api/v1/openapi.yaml`.
 
 ## Development & contributing
 
-See [CONTRIBUTING.md](contributing.md)
+See [CONTRIBUTING.md](CONTRIBUTING.md)
 
 ## License
 
