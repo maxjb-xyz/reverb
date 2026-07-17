@@ -40,6 +40,11 @@ func BuildNavidromeEnv(o NaviOptions) []string {
 		"ND_PORT="+strconv.Itoa(o.Port),
 		"ND_DEVAUTOCREATEADMINPASSWORD="+o.AdminPassword,
 		"ND_SCANSCHEDULE="+o.ScanSchedule,
+		// Navidrome synthesizes Subsonic `path` fields by default (a privacy
+		// default for internet-facing servers). The bundled instance is
+		// loopback-only and shares Reverb's filesystem, and the waveform-peaks
+		// endpoint stats the getSong path on disk — report the real path.
+		"ND_SUBSONIC_DEFAULTREPORTREALPATH=true",
 	)
 }
 
