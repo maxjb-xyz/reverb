@@ -4,7 +4,7 @@
 
 <h1 align="center">Reverb</h1>
 <p align="center">
-  Self-hosted music, done right.<br/>
+  Self-hosted music, done right. Search, download, play. All in app.<br/>
 </p>
 
 <p align="center">
