@@ -135,13 +135,6 @@ header so Reverb can tell that the original request was HTTPS. See
 [docs/deployment.md](docs/deployment.md#reverse-proxy--tls) for ready-to-use
 Caddy and nginx configs.
 
-### First-run wizard
-
-On first launch Reverb detects that no admin password is set and shows a setup
-screen. Set a password (or pre-seed `REVERB_ADMIN_PASSWORD`), then configure
-adapters in Settings. Adapter config changes that require a restart surface a
-"Restart to apply" banner.
-
 ## Legal & ethical use
 
 Reverb is a tool for **personal use with content you have the legal right to
@@ -172,25 +165,7 @@ The HTTP API is documented in OpenAPI, served live at `/api/v1/openapi.yaml`.
 
 ## Development & contributing
 
-```bash
-# Backend tests (scoped — never use ./... ; web/node_modules has vendored Go)
-go test ./cmd/... ./internal/...
-
-# Frontend (from web/)
-cd web && npm install && npm run test
-
-# Run locally (two shells)
-cd web && npm run dev          # shell 1: Vite dev server
-go run ./cmd/reverb --dev       # shell 2: Go server proxying Vite
-
-# End-to-end (hermetic, mocked)
-cd web && npm run e2e
-```
-
-Contributions are welcome. Please open an issue to discuss substantial changes
-first, keep tests green (`make test`), and follow the existing adapter/seam
-patterns. New adapters should register at the composition root and ship with
-tests.
+See [CONTRIBUTING.md](contributing.md)
 
 ## License
 
