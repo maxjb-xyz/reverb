@@ -1,8 +1,11 @@
 name: Release
 
-# A release may publish only the current main commit after its CI workflow has
-# succeeded. This prevents an arbitrary tag or a commit with failed CI from
-# becoming a public image.
+# A stable release may publish only the current main commit after its CI
+# workflow has succeeded. A prerelease (alpha/beta/rc, marked "prerelease" on
+# the GitHub Release) may publish any commit as long as CI succeeded for it —
+# this lets alphas be cut from a feature branch/PR commit without waiting for
+# it to land on main. Either way, a commit with failed (or no) CI can never
+# become a public image.
 on:
   release:
     types: [published]
@@ -24,14 +27,19 @@ jobs:
           ref: ${{ github.event.release.tag_name }}
           fetch-depth: 0
       - id: source
-        name: Require the release tag to match main
+        name: Resolve the release commit
         env:
           TAG: ${{ github.event.release.tag_name }}
         run: |
           tag_sha="$(git rev-parse "${TAG}^{commit}")"
-          main_sha="$(git rev-parse origin/main)"
-          test "$tag_sha" = "$main_sha"
           echo "sha=$tag_sha" >> "$GITHUB_OUTPUT"
+      - name: Require the release tag to match main (stable releases only)
+        if: github.event.release.prerelease == false
+        env:
+          SHA: ${{ steps.source.outputs.sha }}
+        run: |
+          main_sha="$(git rev-parse origin/main)"
+          test "$SHA" = "$main_sha"
       - name: Require successful CI for the release commit
         env:
           GH_TOKEN: ${{ github.token }}
@@ -120,14 +128,27 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Publish image manifest
+        env:
+          PRERELEASE: ${{ github.event.release.prerelease }}
         run: |
           tag=${{ github.event.release.tag_name }}
           version=${tag#v}
+          image="ghcr.io/${{ github.repository_owner }}/reverb"
+
+          # Prereleases (alpha/beta/rc) get their exact version tag plus a
+          # moving `alpha` tag, and never touch `latest`. Stable releases get
+          # their version tag plus `latest`.
+          tag_args=(-t "${image}:${version}")
+          if [ "$PRERELEASE" = "true" ]; then
+            tag_args+=(-t "${image}:alpha")
+          else
+            tag_args+=(-t "${image}:latest")
+          fi
+
           docker buildx imagetools create \
-            -t "ghcr.io/${{ github.repository_owner }}/reverb:${version}" \
-            -t "ghcr.io/${{ github.repository_owner }}/reverb:latest" \
-            "ghcr.io/${{ github.repository_owner }}/reverb@${{ needs.build-amd64.outputs.digest }}" \
-            "ghcr.io/${{ github.repository_owner }}/reverb@${{ needs.build-arm64.outputs.digest }}"
+            "${tag_args[@]}" \
+            "${image}@${{ needs.build-amd64.outputs.digest }}" \
+            "${image}@${{ needs.build-arm64.outputs.digest }}"
       - name: Attach notes to GitHub Release
         uses: softprops/action-gh-release@v2
         with:

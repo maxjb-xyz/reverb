@@ -33,6 +33,14 @@ curl -o .env https://raw.githubusercontent.com/maxjb-xyz/reverb/main/.env.exampl
 - `REVERB_ADMIN_PASSWORD` skips the first-run password screen; remove it after
   the first boot.
 
+### Trying alpha/prerelease builds
+
+Prereleases (tagged e.g. `v0.3.0-alpha.1` on GitHub) are published under their
+exact version *and* a moving `alpha` tag — they never update `latest`. Set
+`REVERB_VERSION=alpha` to follow the newest prerelease, or pin an exact one
+(e.g. `REVERB_VERSION=0.3.0-alpha.1`). Prereleases may include unfinished or
+breaking changes; don't run them against a library you can't afford to lose.
+
 To use your own library server, select **External Subsonic** in Settings →
 Library backend and add its details there. Configure optional Spotify credentials
 in `.env`.
