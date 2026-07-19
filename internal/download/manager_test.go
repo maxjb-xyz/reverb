@@ -3335,3 +3335,63 @@ func TestManagerAcceptsNilSafeResolverProvider(t *testing.T) {
 	}
 	_ = m3
 }
+
+// TestAdaptivePacingPausesAfterConsecutiveRateLimitFailures verifies that once
+// a downloader hits Config.PacingThreshold consecutive rate_limited/bot_challenge
+// failures, the Manager auto-pauses dispatch and auto-resumes after
+// Config.PacingCooldown, without any manual Pause()/Resume() call.
+func TestAdaptivePacingPausesAfterConsecutiveRateLimitFailures(t *testing.T) {
+	dl := &fakeDL{name: "spotdl", canDownload: true, errOnStart: ClassifiedError{Class: ClassRateLimited, Err: errors.New("429")}}
+	store := newMemStore()
+	bus := events.New()
+	scanner := &fakeScanner{}
+	m := NewManager(
+		Config{Workers: 1, DebounceWindow: 5 * time.Second, ScanPollEvery: time.Millisecond, ScanPollMax: time.Second, ScanSettleMax: 10 * time.Millisecond,
+			PacingThreshold: 2, PacingCooldown: 30 * time.Millisecond},
+		wrapDownloaders([]Downloader{dl}), store, bus, scanner, &fakeRematcher{trackID: "t1"}, &fakeVersion{v: 1}, nil, nil, nil,
+	)
+	t.Cleanup(m.Stop)
+	m.Start()
+
+	for i := 0; i < 2; i++ {
+		if _, err := m.Enqueue(context.Background(), core.DownloadRequest{Source: "spotify", ExternalID: fmt.Sprintf("e%d", i), Artist: "A", Title: "T"}); err != nil {
+			t.Fatal(err)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+
+	if !m.IsPaused() {
+		t.Fatal("expected Manager to auto-pause after 2 consecutive rate-limited failures")
+	}
+
+	time.Sleep(60 * time.Millisecond) // longer than PacingCooldown
+	if m.IsPaused() {
+		t.Fatal("expected Manager to auto-resume after PacingCooldown elapses")
+	}
+}
+
+// TestAdaptivePacingResetsOnSuccess verifies a successful download resets the
+// consecutive-failure counter, so an isolated failure afterward doesn't
+// immediately re-trigger pacing.
+func TestAdaptivePacingResetsOnSuccess(t *testing.T) {
+	dl := &fakeDL{name: "spotdl", canDownload: true}
+	store := newMemStore()
+	m, _ := testManager(t, []Downloader{dl}, store, nil, nil, nil)
+	m.cfg.PacingThreshold = 2
+	m.cfg.PacingCooldown = 30 * time.Millisecond
+
+	if _, err := m.Enqueue(context.Background(), core.DownloadRequest{Source: "spotify", ExternalID: "e1", Artist: "A", Title: "T"}); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(20 * time.Millisecond)
+
+	dl.errOnStart = ClassifiedError{Class: ClassRateLimited, Err: errors.New("429")}
+	if _, err := m.Enqueue(context.Background(), core.DownloadRequest{Source: "spotify", ExternalID: "e2", Artist: "A", Title: "T"}); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(20 * time.Millisecond)
+
+	if m.IsPaused() {
+		t.Fatal("a single failure after a success should not trigger pacing (threshold=2)")
+	}
+}

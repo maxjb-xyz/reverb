@@ -145,6 +145,15 @@ type Config struct {
 	// AsyncMaxAge bounds how long an async job may stay in-flight before it's
 	// failed (Lidarr never found/imported a release).
 	AsyncMaxAge time.Duration
+	// PacingThreshold is how many CONSECUTIVE rate_limited/bot_challenge
+	// failures from the same downloader trigger an automatic pause (see
+	// PacingCooldown). Other failure classes (unavailable, no_match,
+	// spotify_api_error, unknown) never count toward this — they aren't signs
+	// of being rate-limited.
+	PacingThreshold int
+	// PacingCooldown is how long dispatch stays auto-paused after
+	// PacingThreshold is reached, before automatically resuming.
+	PacingCooldown time.Duration
 }
 
 func (c Config) withDefaults() Config {
@@ -175,6 +184,12 @@ func (c Config) withDefaults() Config {
 	if c.AsyncMaxAge <= 0 {
 		c.AsyncMaxAge = 7 * 24 * time.Hour
 	}
+	if c.PacingThreshold <= 0 {
+		c.PacingThreshold = 3
+	}
+	if c.PacingCooldown <= 0 {
+		c.PacingCooldown = 5 * time.Minute
+	}
 	return c
 }
 
@@ -195,13 +210,14 @@ type Manager struct {
 
 	queue chan string // job IDs to process
 
-	mu       sync.Mutex
-	cancels  map[string]context.CancelFunc // in-flight job cancel funcs
-	reqs     map[string]core.DownloadRequest
-	debounce func() bool   // active debounce timer stop (or nil)
-	pending  bool          // a completion is awaiting the scan window
-	paused   bool          // dispatch gate: workers stop pulling NEW jobs while true
-	resumeCh chan struct{} // closed when running; a fresh OPEN channel while paused
+	mu              sync.Mutex
+	cancels         map[string]context.CancelFunc // in-flight job cancel funcs
+	reqs            map[string]core.DownloadRequest
+	consecutiveFail map[string]int // downloader name -> consecutive rate/bot-challenge failures
+	debounce        func() bool    // active debounce timer stop (or nil)
+	pending         bool           // a completion is awaiting the scan window
+	paused          bool           // dispatch gate: workers stop pulling NEW jobs while true
+	resumeCh        chan struct{}  // closed when running; a fresh OPEN channel while paused
 
 	wg       sync.WaitGroup
 	stopOnce sync.Once
@@ -234,21 +250,22 @@ func NewManager(cfg Config, downloaders []DownloaderEntry, store JobStore, bus P
 	}
 	cfg = cfg.withDefaults()
 	return &Manager{
-		cfg:         cfg,
-		downloaders: downloaders,
-		store:       store,
-		bus:         bus,
-		scanner:     scanner,
-		rematcher:   rematcher,
-		version:     version,
-		clock:       clock,
-		playlists:   playlists,
-		resolve:     resolve,
-		queue:       make(chan string, 256),
-		cancels:     map[string]context.CancelFunc{},
-		reqs:        map[string]core.DownloadRequest{},
-		stopCh:      make(chan struct{}),
-		resumeCh:    closedChan(),
+		cfg:             cfg,
+		downloaders:     downloaders,
+		store:           store,
+		bus:             bus,
+		scanner:         scanner,
+		rematcher:       rematcher,
+		version:         version,
+		clock:           clock,
+		playlists:       playlists,
+		resolve:         resolve,
+		queue:           make(chan string, 256),
+		cancels:         map[string]context.CancelFunc{},
+		reqs:            map[string]core.DownloadRequest{},
+		consecutiveFail: map[string]int{},
+		stopCh:          make(chan struct{}),
+		resumeCh:        closedChan(),
 	}
 }
 
@@ -958,6 +975,7 @@ func (m *Manager) process(id string) {
 			m.publishEvent(TopicProgress, cur, "")
 		})
 		close(hbStop)
+		m.recordAttemptOutcome(dl.Name(), serr)
 
 		if serr == nil {
 			// Success — break out of the loop to the completion path below.
@@ -1474,6 +1492,43 @@ func (m *Manager) IsPaused() bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.paused
+}
+
+// recordAttemptOutcome updates the per-downloader consecutive-failure counter
+// used by adaptive pacing. err == nil (a successful attempt) resets the
+// counter. A failure only counts toward the threshold when it classifies as
+// ClassRateLimited or ClassBotChallenge — other classes are left untouched
+// (they aren't signs of being rate-limited, so a string of "no_match" results
+// must not trigger a pause). Reaching Config.PacingThreshold auto-pauses
+// dispatch and schedules an auto-Resume after Config.PacingCooldown.
+func (m *Manager) recordAttemptOutcome(downloaderName string, err error) {
+	if err == nil {
+		m.mu.Lock()
+		m.consecutiveFail[downloaderName] = 0
+		m.mu.Unlock()
+		return
+	}
+	var ce ClassifiedError
+	class := ClassUnknown
+	if errors.As(err, &ce) {
+		class = ce.Class
+	}
+	if class != ClassRateLimited && class != ClassBotChallenge {
+		return
+	}
+	m.mu.Lock()
+	m.consecutiveFail[downloaderName]++
+	n := m.consecutiveFail[downloaderName]
+	threshold := m.cfg.PacingThreshold
+	if n >= threshold {
+		m.consecutiveFail[downloaderName] = 0
+	}
+	m.mu.Unlock()
+	if n >= threshold {
+		log.Printf("download: %q hit %d consecutive rate-limit/bot-challenge failures — pausing dispatch for %s", downloaderName, n, m.cfg.PacingCooldown)
+		m.Pause()
+		time.AfterFunc(m.cfg.PacingCooldown, m.Resume)
+	}
 }
 
 // publishQueueState emits download.queue with the current paused flag.
