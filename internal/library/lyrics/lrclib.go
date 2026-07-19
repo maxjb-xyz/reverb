@@ -126,10 +126,10 @@ func (c *LRCLibClient) getJSON(ctx context.Context, path string, out any) (int, 
 		return 0, err
 	}
 	defer resp.Body.Close()
-	switch {
-	case resp.StatusCode == http.StatusOK:
+	switch resp.StatusCode {
+	case http.StatusOK:
 		return resp.StatusCode, json.NewDecoder(resp.Body).Decode(out)
-	case resp.StatusCode == http.StatusNotFound:
+	case http.StatusNotFound:
 		return resp.StatusCode, nil
 	default:
 		return resp.StatusCode, fmt.Errorf("lrclib %s: status %d", path, resp.StatusCode)

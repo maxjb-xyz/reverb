@@ -29,10 +29,7 @@ func (f *fakeStore) GetLyrics(_ context.Context, key string) (db.Lyric, error) {
 
 func (f *fakeStore) UpsertLyrics(_ context.Context, arg db.UpsertLyricsParams) error {
 	f.upserts++
-	f.rows[arg.TrackKey] = db.Lyric{
-		TrackKey: arg.TrackKey, Synced: arg.Synced, Body: arg.Body,
-		Source: arg.Source, FetchedAt: arg.FetchedAt,
-	}
+	f.rows[arg.TrackKey] = db.Lyric(arg)
 	return nil
 }
 
