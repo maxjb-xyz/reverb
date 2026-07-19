@@ -75,6 +75,7 @@ export default function Album() {
   const palette = useAlbumPalette(album?.coverArtId ? coverUrl(album.coverArtId, 300) : album?.coverUrl)
   const canRequest = useAuthStore((s) => s.can('request'))
   const canAutoApprove = useAuthStore((s) => s.can('auto_approve'))
+  const [bulkSubmitting, setBulkSubmitting] = useState(false)
   const [requestDisclosureOpen, setRequestDisclosureOpen] = useState(false)
   const requestModalRef = useRef<HTMLDivElement>(null)
   const closeRequestModal = useCallback(() => setRequestDisclosureOpen(false), [])
@@ -269,10 +270,14 @@ export default function Album() {
                 <Button
                   variant="secondary"
                   size="md"
-                  onClick={() => postBatchDownload(missingRefs)}
+                  disabled={bulkSubmitting}
+                  onClick={() => {
+                    setBulkSubmitting(true)
+                    void postBatchDownload(missingRefs).finally(() => setBulkSubmitting(false))
+                  }}
                   aria-label={`Download missing · ${missingRefs.length}`}
                 >
-                  Download missing · {missingRefs.length}
+                  {bulkSubmitting ? 'Starting downloads…' : `Download missing · ${missingRefs.length}`}
                 </Button>
               )}
               {!canAutoApprove && canRequest && (

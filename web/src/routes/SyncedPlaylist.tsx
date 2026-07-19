@@ -95,6 +95,7 @@ export default function SyncedPlaylist() {
   // no bulk-request path here; a user without auto_approve sees no bulk-download
   // button (per-item DownloadAction on missing rows is unaffected).
   const canAutoApprove = useAuthStore((s) => s.can('auto_approve'))
+  const [bulkSubmitting, setBulkSubmitting] = useState(false)
 
   // "…" menu state
   const [menuOpen, setMenuOpen] = useState(false)
@@ -201,11 +202,15 @@ export default function SyncedPlaylist() {
   }
 
   async function handleDownloadMissing() {
+    if (bulkSubmitting) return
+    setBulkSubmitting(true)
     try {
       await downloadMissingForPlaylist(id)
     } catch (err) {
       console.error('Download missing failed:', err)
       useToastStore.getState().push("Couldn't start downloading missing tracks", 'error')
+    } finally {
+      setBulkSubmitting(false)
     }
   }
 
@@ -441,10 +446,11 @@ export default function SyncedPlaylist() {
                 <Button
                   variant="secondary"
                   size="md"
+                  disabled={bulkSubmitting}
                   onClick={() => void handleDownloadMissing()}
                   aria-label={`Download all missing · ${missingCount}`}
                 >
-                  Download all missing · {missingCount}
+                  {bulkSubmitting ? 'Starting downloads…' : `Download all missing · ${missingCount}`}
                 </Button>
               )}
               {detail.mode !== 'once' && (

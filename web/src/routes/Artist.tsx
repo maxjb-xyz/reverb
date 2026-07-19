@@ -72,7 +72,7 @@ function AlbumCard({ album, cov, resolved, canAutoApprove, onNavigate }: AlbumCa
   function handleDownload() {
     if (!cov) return
     setOptimistic(true)
-    postBatchDownload(cov.missingTracks).catch(() => setOptimistic(false))
+    void postBatchDownload(cov.missingTracks).finally(() => setOptimistic(false))
   }
 
   return (
@@ -107,6 +107,7 @@ export default function Artist() {
   const [filter, setFilter] = useState<KindFilter>('all')
   const canRequest = useAuthStore((s) => s.can('request'))
   const canAutoApprove = useAuthStore((s) => s.can('auto_approve'))
+  const [bulkSubmitting, setBulkSubmitting] = useState(false)
   const [requestAllOpen, setRequestAllOpen] = useState(false)
 
   // Per-entity listening stats — fetched once detail.name is known
@@ -300,17 +301,19 @@ export default function Artist() {
                   <Button
                     variant="secondary"
                     size="md"
+                    disabled={bulkSubmitting}
                     onClick={() => {
                       if (
                         window.confirm(
                           `Download ${allMissingTracks.length} missing tracks?`,
                         )
                       ) {
-                        postBatchDownload(allMissingTracks)
+                        setBulkSubmitting(true)
+                        void postBatchDownload(allMissingTracks).finally(() => setBulkSubmitting(false))
                       }
                     }}
                   >
-                    Download all missing · {allMissingTracks.length}
+                    {bulkSubmitting ? 'Starting downloads…' : `Download all missing · ${allMissingTracks.length}`}
                   </Button>
                 )}
                 {!canAutoApprove && canRequest && notOwnedRequestItems.length > 0 && (
