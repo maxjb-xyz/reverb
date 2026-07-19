@@ -2,6 +2,7 @@ package spotdl
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -320,6 +321,68 @@ func TestStartTreatsAudioErrorAsFailure(t *testing.T) {
 	}
 }
 
+func TestClassifyFailureRateLimited(t *testing.T) {
+	class, reason, _ := classifyFailure("AudioProviderError: YT-DLP download error -\nWARNING: [youtube] x: Unable to download webpage: HTTP Error 429: Too Many Requests")
+	if class != download.ClassRateLimited {
+		t.Errorf("class = %q, want %q", class, download.ClassRateLimited)
+	}
+	if reason == "" {
+		t.Error("reason should not be empty")
+	}
+}
+
+func TestClassifyFailureBotChallenge(t *testing.T) {
+	class, _, hint := classifyFailure("ERROR: [youtube] x: Sign in to confirm you're not a bot. Use --cookies-from-browser or --cookies")
+	if class != download.ClassBotChallenge {
+		t.Errorf("class = %q, want %q", class, download.ClassBotChallenge)
+	}
+	if hint == "" {
+		t.Error("hint should point at configuring cookies")
+	}
+}
+
+func TestClassifyFailureNoMatch(t *testing.T) {
+	class, reason, _ := classifyFailure(`LookupError: No results found for song: Ludovico Einaudi - Einaudi: Una mattina`)
+	if class != download.ClassNoMatch {
+		t.Errorf("class = %q, want %q", class, download.ClassNoMatch)
+	}
+	if reason != "track not found on the audio source" {
+		t.Errorf("reason = %q", reason)
+	}
+}
+
+func TestClassifyFailureUnknownFallsBackToGenericMessage(t *testing.T) {
+	class, reason, hint := classifyFailure("AudioProviderError: YT-DLP download error - https://music.youtube.com/watch?v=x")
+	if class != download.ClassUnknown {
+		t.Errorf("class = %q, want %q", class, download.ClassUnknown)
+	}
+	if !strings.Contains(reason, "bundled yt-dlp is likely out of date") {
+		t.Errorf("reason = %q, want the generic yt-dlp-stale message", reason)
+	}
+	if hint == "" {
+		t.Error("hint should still suggest updating yt-dlp for the unknown case")
+	}
+}
+
+func TestStartReturnsClassifiedErrorOnFailure(t *testing.T) {
+	r := &fakeRunner{lines: []string{
+		"AudioProviderError: YT-DLP download error -",
+		"WARNING: Unable to download webpage: HTTP Error 429: Too Many Requests",
+	}}
+	a := newAdapter(t, r)
+	_, err := a.Start(context.Background(), core.DownloadRequest{Artist: "A", Title: "T"}, func(int) {})
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	var ce download.ClassifiedError
+	if !errors.As(err, &ce) {
+		t.Fatalf("expected a download.ClassifiedError, got %T: %v", err, err)
+	}
+	if ce.Class != download.ClassRateLimited {
+		t.Errorf("Class = %q, want %q", ce.Class, download.ClassRateLimited)
+	}
+}
+
 func TestExplainFailure(t *testing.T) {
 	cases := []struct {
 		name       string
@@ -354,7 +417,7 @@ func TestExplainFailure(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			reason, hint := explainFailure(c.raw)
+			_, reason, hint := classifyFailure(c.raw)
 			low := strings.ToLower(reason)
 			for _, want := range c.wantReason {
 				if !strings.Contains(low, want) {
