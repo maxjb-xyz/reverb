@@ -78,6 +78,46 @@ func TestLRCLib_NoResultsIsMissNotError(t *testing.T) {
 	}
 }
 
+func TestLRCLib_SearchFallbackRejectsFarCandidates(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/get":
+			w.WriteHeader(404)
+		case "/api/search":
+			// Closest candidate is still 60s away from the 180s query; must be a miss.
+			w.Write([]byte(`[{"duration":300,"syncedLyrics":"[00:01.00]Wrong","plainLyrics":"W"},{"duration":240,"syncedLyrics":"[00:01.00]AlsoWrong","plainLyrics":"W2"}]`))
+		}
+	}))
+	defer srv.Close()
+	c := &LRCLibClient{BaseURL: srv.URL}
+	raw, found, err := c.Fetch(context.Background(), Query{Artist: "A", Title: "T", DurationMs: 180_000})
+	if err != nil || found {
+		t.Fatalf("candidates far from query duration must be a clean miss: raw=%q found=%v err=%v", raw, found, err)
+	}
+}
+
+func TestLRCLib_UnknownDurationSkipsSearchFallback(t *testing.T) {
+	searchCalled := false
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/get":
+			w.WriteHeader(404)
+		case "/api/search":
+			searchCalled = true
+			w.Write([]byte(`[{"duration":1,"syncedLyrics":"[00:01.00]Shortest","plainLyrics":"S"}]`))
+		}
+	}))
+	defer srv.Close()
+	c := &LRCLibClient{BaseURL: srv.URL}
+	raw, found, err := c.Fetch(context.Background(), Query{Artist: "A", Title: "T", DurationMs: 0})
+	if err != nil || found {
+		t.Fatalf("unknown duration must be a clean miss without guessing: raw=%q found=%v err=%v", raw, found, err)
+	}
+	if searchCalled {
+		t.Fatalf("search fallback must be skipped when duration is unknown")
+	}
+}
+
 func TestLRCLib_ServerErrorIsTransient(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(500)

@@ -16,6 +16,12 @@ type Query struct {
 	DurationMs           int
 }
 
+// maxSearchDurationDiffSeconds bounds how far a /api/search candidate's
+// duration may differ from the query duration before it's rejected. Without
+// this bound the "closest duration wins" fallback can confidently return
+// lyrics for a completely different song on a genuine miss.
+const maxSearchDurationDiffSeconds = 15.0
+
 // LRCLibClient talks to lrclib.net (no API key; identify via User-Agent).
 type LRCLibClient struct {
 	BaseURL   string // default "https://lrclib.net"
@@ -60,7 +66,14 @@ func (c *LRCLibClient) Fetch(ctx context.Context, q Query) (string, bool, error)
 			return body, true, nil
 		}
 	}
-	// One search fallback: closest duration wins.
+	// Without a known duration we have nothing to bound the search fallback
+	// against, so guessing (e.g. picking the shortest result) risks
+	// confidently-wrong lyrics. Treat it as a clean miss instead.
+	if q.DurationMs == 0 {
+		return "", false, nil
+	}
+	// One search fallback: closest duration wins, but only within
+	// maxSearchDurationDiffSeconds — otherwise it's a miss, not a guess.
 	search := url.Values{"artist_name": {q.Artist}, "track_name": {q.Title}}
 	var recs []lrclibRecord
 	status, err = c.getJSON(ctx, "/api/search?"+search.Encode(), &recs)
@@ -76,6 +89,9 @@ func (c *LRCLibClient) Fetch(ctx context.Context, q Query) (string, bool, error)
 			continue
 		}
 		diff := math.Abs(r.Duration - float64(q.DurationMs)/1000)
+		if diff > maxSearchDurationDiffSeconds {
+			continue
+		}
 		if diff < bestDiff {
 			best, bestDiff = i, diff
 		}
