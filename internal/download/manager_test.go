@@ -46,9 +46,10 @@ func (d *fakeDL) CanDownload(context.Context, core.DownloadRequest) (bool, error
 func (d *fakeDL) Start(ctx context.Context, req core.DownloadRequest, onProgress func(int)) (string, error) {
 	d.mu.Lock()
 	d.startCount++
+	err := d.errOnStart
 	d.mu.Unlock()
-	if d.errOnStart != nil {
-		return "", d.errOnStart
+	if err != nil {
+		return "", err
 	}
 	onProgress(50)
 	if d.block != nil {
@@ -62,6 +63,15 @@ func (d *fakeDL) Start(ctx context.Context, req core.DownloadRequest, onProgress
 	return "/out/" + req.ExternalID + ".mp3", nil
 }
 func (d *fakeDL) starts() int { d.mu.Lock(); defer d.mu.Unlock(); return d.startCount }
+
+// setErrOnStart sets errOnStart under the mutex, safe for use after the
+// Manager has started dispatching jobs to this fakeDL (i.e. concurrently
+// with worker goroutines calling Start).
+func (d *fakeDL) setErrOnStart(err error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.errOnStart = err
+}
 
 // fakeScanner records StartScan calls and models the Navidrome scan lifecycle.
 //
@@ -3385,7 +3395,7 @@ func TestAdaptivePacingResetsOnSuccess(t *testing.T) {
 	}
 	time.Sleep(20 * time.Millisecond)
 
-	dl.errOnStart = ClassifiedError{Class: ClassRateLimited, Err: errors.New("429")}
+	dl.setErrOnStart(ClassifiedError{Class: ClassRateLimited, Err: errors.New("429")})
 	if _, err := m.Enqueue(context.Background(), core.DownloadRequest{Source: "spotify", ExternalID: "e2", Artist: "A", Title: "T"}); err != nil {
 		t.Fatal(err)
 	}
