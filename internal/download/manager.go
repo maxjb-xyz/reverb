@@ -154,6 +154,11 @@ type Config struct {
 	// PacingCooldown is how long dispatch stays auto-paused after
 	// PacingThreshold is reached, before automatically resuming.
 	PacingCooldown time.Duration
+	// MaxAutoRetries bounds how many times a job may be automatically retried
+	// after a rate_limited/bot_challenge terminal failure before it's left
+	// failed for manual intervention. Counts against the same Attempts field a
+	// manual Retry() increments.
+	MaxAutoRetries int
 }
 
 func (c Config) withDefaults() Config {
@@ -189,6 +194,9 @@ func (c Config) withDefaults() Config {
 	}
 	if c.PacingCooldown <= 0 {
 		c.PacingCooldown = 5 * time.Minute
+	}
+	if c.MaxAutoRetries <= 0 {
+		c.MaxAutoRetries = 5
 	}
 	return c
 }
@@ -1045,6 +1053,7 @@ func (m *Manager) process(id string) {
 		m.mu.Lock()
 		delete(m.reqs, id)
 		m.mu.Unlock()
+		m.scheduleAutoRetryIfRetryable(id, lastErr, cur.Attempts)
 		return
 	}
 
@@ -1400,6 +1409,32 @@ func (m *Manager) Retry(ctx context.Context, jobID string, manualURL string) (co
 	case <-m.stopCh:
 	}
 	return job, nil
+}
+
+// scheduleAutoRetryIfRetryable auto-re-enqueues a just-failed job after
+// Config.PacingCooldown when lastErr classifies as ClassRateLimited or
+// ClassBotChallenge — waiting genuinely helps those, unlike unavailable/
+// no_match/spotify_api_error/unknown, which are left failed for a human.
+// Bounded by Config.MaxAutoRetries so a permanently rate-limited setup
+// doesn't retry forever.
+func (m *Manager) scheduleAutoRetryIfRetryable(jobID string, lastErr error, attemptsSoFar int) {
+	var ce ClassifiedError
+	if !errors.As(lastErr, &ce) {
+		return
+	}
+	if ce.Class != ClassRateLimited && ce.Class != ClassBotChallenge {
+		return
+	}
+	if attemptsSoFar >= m.cfg.MaxAutoRetries {
+		log.Printf("download: job %s exhausted %d auto-retries, leaving failed", shortID(jobID), m.cfg.MaxAutoRetries)
+		return
+	}
+	log.Printf("download: job %s failed as %s — auto-retrying in %s", shortID(jobID), ce.Class, m.cfg.PacingCooldown)
+	time.AfterFunc(m.cfg.PacingCooldown, func() {
+		if _, err := m.Retry(context.Background(), jobID, ""); err != nil {
+			log.Printf("download: auto-retry of job %s failed: %v", shortID(jobID), err)
+		}
+	})
 }
 
 // Clear hard-deletes a single terminal job (completed/failed/canceled) and
