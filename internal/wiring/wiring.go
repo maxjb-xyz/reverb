@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"strconv"
 	"sync"
 	"time"
 
@@ -25,6 +26,26 @@ import (
 	"github.com/maxjb-xyz/reverb/internal/search"
 	"github.com/maxjb-xyz/reverb/internal/store/db"
 )
+
+const (
+	defaultDownloadWorkers = 2
+	maxDownloadWorkers     = 4
+)
+
+// downloadWorkers reads the bounded outer download concurrency. This controls
+// how many independent downloader processes Reverb runs at once; it does not
+// increase the transfer rate of a single YouTube/spotDL download. Keep the cap
+// conservative to avoid provider throttling and CPU contention from ffmpeg.
+func downloadWorkers(getenv func(string) string) int {
+	v, err := strconv.Atoi(getenv("REVERB_DOWNLOAD_WORKERS"))
+	if err != nil || v < 1 {
+		return defaultDownloadWorkers
+	}
+	if v > maxDownloadWorkers {
+		return maxDownloadWorkers
+	}
+	return v
+}
 
 // BuildLibraryAdapter builds the active library adapter. In built-in mode it
 // synthesizes a subsonic adapter pointed at the bundled localhost Navidrome with
@@ -661,7 +682,7 @@ func (b *Builder) Build(ctx context.Context) (ServiceBundle, error) {
 			}
 		}
 		bundle.Manager = download.NewManager(
-			download.Config{Workers: 2, DebounceWindow: 5 * time.Second},
+			download.Config{Workers: downloadWorkers(b.getenv), DebounceWindow: 5 * time.Second},
 			downloaders,
 			download.NewSQLStore(b.queries),
 			b.bus,
