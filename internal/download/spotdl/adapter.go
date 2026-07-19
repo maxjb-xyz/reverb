@@ -87,6 +87,7 @@ type Adapter struct {
 	binary       string
 	clientID     string
 	clientSecret string
+	cookiesFile  string // path to a written cookies.txt, or "" if not configured
 }
 
 func New() *Adapter {
@@ -111,6 +112,11 @@ func (a *Adapter) ConfigSchema() registry.ConfigSchema {
 		{Key: "binary_path", Label: "spotDL binary path", Type: "string", Required: false},
 		{Key: "client_id", Label: "Spotify Client ID", Type: "string", Required: false},
 		{Key: "client_secret", Label: "Spotify Client Secret", Type: "string", Required: false, Secret: true},
+		{
+			Key: "youtube_cookies", Label: "YouTube cookies (Netscape format) — optional",
+			Type: "textarea", Required: false, Secret: true,
+			Help: "Export cookies while logged into YouTube using a browser extension (e.g. \"Get cookies.txt LOCALLY\"), then paste the entire file's contents here. This ties downloads to that Google account, and heavy automated use carries some risk of that account being flagged by YouTube.",
+		},
 	}}
 }
 
@@ -131,6 +137,17 @@ func (a *Adapter) Init(cfg map[string]any) error {
 	}
 	if v, ok := cfg["client_secret"].(string); ok {
 		a.clientSecret = v
+	}
+	if v, ok := cfg["youtube_cookies"].(string); ok {
+		if strings.TrimSpace(v) != "" {
+			path, err := writeCookiesFile(v)
+			if err != nil {
+				return fmt.Errorf("spotdl: writing youtube cookies file: %w", err)
+			}
+			a.cookiesFile = path
+		} else {
+			a.cookiesFile = ""
+		}
 	}
 	if a.runner == nil {
 		a.runner = ExecRunner{}
@@ -177,6 +194,35 @@ func ensureSpotdlTempDir() {
 		return
 	}
 	_ = os.MkdirAll(filepath.Join(cfg, "spotdl", "temp"), 0o755)
+}
+
+// cookiesFilePath returns the path spotDL/yt-dlp's --cookie-file should point
+// at, alongside spotDL's own config dir (the same <user-config-dir>/spotdl
+// directory ensureSpotdlTempDir uses for its temp dir). Returns "" if the
+// user config dir can't be resolved.
+func cookiesFilePath() string {
+	cfg, err := os.UserConfigDir()
+	if err != nil || cfg == "" {
+		return ""
+	}
+	return filepath.Join(cfg, "spotdl", "cookies.txt")
+}
+
+// writeCookiesFile persists the admin-pasted cookies.txt content to disk so it
+// can be handed to yt-dlp as a real file path. Mode 0600: this is authenticated
+// session data.
+func writeCookiesFile(content string) (string, error) {
+	path := cookiesFilePath()
+	if path == "" {
+		return "", fmt.Errorf("could not resolve user config dir")
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return "", err
+	}
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		return "", err
+	}
+	return path, nil
 }
 
 // spotifyTargetURL returns the Spotify URL for the given request. It chooses the
@@ -278,6 +324,9 @@ func (a *Adapter) Start(ctx context.Context, req core.DownloadRequest, onProgres
 	args := []string{}
 	if a.clientID != "" && a.clientSecret != "" {
 		args = append(args, "--client-id", a.clientID, "--client-secret", a.clientSecret)
+	}
+	if a.cookiesFile != "" {
+		args = append(args, "--cookie-file", a.cookiesFile)
 	}
 	// Prefer YouTube Music but fall back to plain YouTube when a track is absent
 	// from YT-Music's catalog (common for obscure/regional/classical releases).

@@ -10,6 +10,7 @@ import (
 
 	"github.com/maxjb-xyz/reverb/internal/core"
 	"github.com/maxjb-xyz/reverb/internal/download"
+	"github.com/maxjb-xyz/reverb/internal/registry"
 )
 
 // fakeRunner replays canned stdout lines (incl. one malformed line) and records
@@ -737,6 +738,82 @@ func TestNormalizeAppliedInStart(t *testing.T) {
 	want := "https://www.youtube.com/watch?v=jh5u0wmau54|https://open.spotify.com/track/abc123track"
 	if r.gotArgs[n-1] != want {
 		t.Fatalf("trailing query arg: got %q, want %q", r.gotArgs[n-1], want)
+	}
+}
+
+func TestConfigSchemaIncludesYoutubeCookies(t *testing.T) {
+	a := New()
+	var field *registry.ConfigField
+	for i, f := range a.ConfigSchema().Fields {
+		if f.Key == "youtube_cookies" {
+			field = &a.ConfigSchema().Fields[i]
+		}
+	}
+	if field == nil {
+		t.Fatal("schema missing youtube_cookies")
+	}
+	if field.Type != "textarea" || !field.Secret {
+		t.Errorf("youtube_cookies field = %+v, want type=textarea secret=true", *field)
+	}
+}
+
+func TestInitWritesCookiesFileWhenConfigured(t *testing.T) {
+	content := "# Netscape HTTP Cookie File\n.youtube.com\tTRUE\t/\tTRUE\t0\tCONSENT\tYES+1\n"
+	a := New().WithRunner(&fakeRunner{})
+	if err := a.Init(map[string]any{"output_dir": "/tmp/music", "youtube_cookies": content}); err != nil {
+		t.Fatal(err)
+	}
+	path := cookiesFilePath()
+	t.Cleanup(func() { os.Remove(path) })
+
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("cookies file not written at %s: %v", path, err)
+	}
+	if string(got) != content {
+		t.Errorf("cookies file content = %q, want %q", got, content)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0o600 {
+		t.Errorf("cookies file mode = %v, want 0600", info.Mode().Perm())
+	}
+}
+
+func TestStartIncludesCookieFileArgWhenConfigured(t *testing.T) {
+	r := &fakeRunner{}
+	a := New().WithRunner(r)
+	if err := a.Init(map[string]any{"output_dir": "/tmp/music", "youtube_cookies": "cookie-content"}); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Remove(cookiesFilePath()) })
+
+	if _, err := a.Start(context.Background(), core.DownloadRequest{Artist: "A", Title: "T"}, func(int) {}); err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for i, arg := range r.gotArgs {
+		if arg == "--cookie-file" && i+1 < len(r.gotArgs) && r.gotArgs[i+1] == cookiesFilePath() {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("args %v missing --cookie-file %s", r.gotArgs, cookiesFilePath())
+	}
+}
+
+func TestStartOmitsCookieFileArgWhenNotConfigured(t *testing.T) {
+	r := &fakeRunner{}
+	a := newAdapter(t, r) // newAdapter's Init doesn't set youtube_cookies
+	if _, err := a.Start(context.Background(), core.DownloadRequest{Artist: "A", Title: "T"}, func(int) {}); err != nil {
+		t.Fatal(err)
+	}
+	for _, arg := range r.gotArgs {
+		if arg == "--cookie-file" {
+			t.Fatalf("args %v should not include --cookie-file", r.gotArgs)
+		}
 	}
 }
 
