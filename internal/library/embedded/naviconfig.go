@@ -29,6 +29,18 @@ func DefaultNaviOptions(reverbDataDir, musicDir, adminPassword string) NaviOptio
 	}
 }
 
+// ListenAddress returns the address the bundled Navidrome listens on. Keep it
+// on the container loopback by default so it is not reachable from other
+// containers, even when a host port has accidentally been published. Operators
+// who deliberately publish the port to localhost or join a private Docker
+// network can set REVERB_NAVIDROME_LISTEN_ADDRESS=0.0.0.0.
+func ListenAddress(getenv func(string) string) string {
+	if address := getenv("REVERB_NAVIDROME_LISTEN_ADDRESS"); address != "" {
+		return address
+	}
+	return "127.0.0.1"
+}
+
 // BuildNavidromeEnv renders the ND_* environment for the child process. The
 // process inherits the parent env plus these (later entries win in os/exec).
 func BuildNavidromeEnv(o NaviOptions) []string {

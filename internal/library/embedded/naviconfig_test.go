@@ -55,3 +55,17 @@ func TestMusicDir_DefaultsToMusic(t *testing.T) {
 		t.Errorf("MusicDir override = %q, want /songs", got)
 	}
 }
+
+func TestListenAddress(t *testing.T) {
+	if got := ListenAddress(func(string) string { return "" }); got != "127.0.0.1" {
+		t.Errorf("ListenAddress default = %q, want 127.0.0.1", got)
+	}
+	if got := ListenAddress(func(key string) string {
+		if key == "REVERB_NAVIDROME_LISTEN_ADDRESS" {
+			return "0.0.0.0"
+		}
+		return ""
+	}); got != "0.0.0.0" {
+		t.Errorf("ListenAddress override = %q, want 0.0.0.0", got)
+	}
+}

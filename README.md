@@ -118,6 +118,7 @@ Reverb is configured by flags, environment variables, and the in-app Settings UI
 | `REVERB_LIBRARY_PASSWORD` | Subsonic/Navidrome library adapter password (overrides stored config) |
 | `REVERB_SPOTDL_PATH` | Path to the spotDL binary. Defaults to the bundled one; rarely needed |
 | `REVERB_NAVIDROME_BIN` | Path to the Navidrome binary for bundled library mode. Defaults to the bundled one; rarely needed |
+| `REVERB_NAVIDROME_LISTEN_ADDRESS` | Address for bundled Navidrome. Defaults to `127.0.0.1` inside the container; set to `0.0.0.0` only when deliberately sharing it through a private Docker network or localhost-only port mapping. |
 
 Secrets (`REVERB_*_SECRET`, `REVERB_*_PASSWORD`, `REVERB_ADMIN_PASSWORD`) should be
 provided via environment / `.env` only — never committed. `.env` is gitignored;

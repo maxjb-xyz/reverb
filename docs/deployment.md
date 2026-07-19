@@ -67,6 +67,28 @@ For downloads to appear in an external Subsonic/Navidrome server, it MUST scan
 the same host music folder that you set with `REVERB_MUSIC_DIR`. After a download
 completes, Reverb triggers a library scan and the track becomes playable.
 
+## Expose bundled Navidrome locally
+
+Bundled Navidrome listens only on `127.0.0.1` *inside* the Reverb container by
+default. To connect a local development tool, make it listen on the container
+network interface and publish the port only to your host loopback interface:
+
+```yaml
+# docker-compose.navidrome-local.yml
+services:
+  reverb:
+    environment:
+      REVERB_NAVIDROME_LISTEN_ADDRESS: 0.0.0.0
+    ports:
+      - "127.0.0.1:4533:4533"
+```
+
+Start with `docker compose -f docker-compose.yml -f docker-compose.navidrome-local.yml up -d`.
+Navidrome is then reachable at `http://localhost:4533`, but not from your LAN.
+Do not publish this port on all interfaces. Reverb generates its bundled
+Navidrome credentials internally, so this is intended for trusted local
+development and diagnostics rather than a public Navidrome deployment.
+
 ## Reverse proxy + TLS
 
 Run Reverb behind a TLS-terminating reverse proxy. Reverb serves plain HTTP on

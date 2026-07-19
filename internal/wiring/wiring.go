@@ -590,6 +590,7 @@ func (b *Builder) Build(ctx context.Context) (ServiceBundle, error) {
 	var naviEnv []string
 	if mode == embedded.ModeBuiltIn {
 		opts := embedded.DefaultNaviOptions(b.dataDir, embedded.MusicDir(b.getenv), creds.Password)
+		opts.Address = embedded.ListenAddress(b.getenv)
 		naviEnv = embedded.BuildNavidromeEnv(opts)
 	}
 	// RELOAD-PATH CONTRACT: Build is called both at boot (main.go) AND on every live
