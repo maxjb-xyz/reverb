@@ -30,7 +30,7 @@ describe('useLyrics', () => {
 
   it('returns synced payload on 200', async () => {
     const fetchMock = vi.fn(
-      async () =>
+      async (_input: RequestInfo | URL) =>
         new Response(
           JSON.stringify({ synced: true, lines: [{ timeMs: 1000, text: 'a' }] }),
           { status: 200, headers: { 'Content-Type': 'application/json' } },
@@ -43,7 +43,7 @@ describe('useLyrics', () => {
 
     expect(result.current.data).toEqual({ synced: true, lines: [{ timeMs: 1000, text: 'a' }] })
 
-    const url = fetchMock.mock.calls[0][0] as string
+    const url = String(fetchMock.mock.calls[0][0])
     expect(url).toContain('/library/track/t1/lyrics')
     const query = new URLSearchParams(url.split('?')[1])
     expect(query.get('artist')).toBe('Artist Name')
