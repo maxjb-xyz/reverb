@@ -139,6 +139,16 @@ paths:
       summary: Waveform peaks for a local track (computed on demand; embedded library only)
       parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
       responses: { "200": { description: waveform data }, "204": { description: peaks unavailable } }
+  /library/track/{id}/lyrics:
+    get:
+      summary: Lyrics for a track (local tags/sidecar → LRCLIB, DB-cached)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - { name: artist, in: query, schema: { type: string } }
+        - { name: title, in: query, schema: { type: string } }
+        - { name: album, in: query, schema: { type: string } }
+        - { name: durationMs, in: query, schema: { type: integer } }
+      responses: { "200": { description: lyrics payload }, "204": { description: lyrics unavailable } }
   /collection:
     get:
       summary: Cached discography coverage summary
