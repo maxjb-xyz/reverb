@@ -1,13 +1,16 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { trackCoverUrl } from '../lib/libraryApi'
+import { useLyrics } from '../lib/lyricsApi'
 import { rgbToCss } from '../lib/palette'
 import { usePlayer } from '../lib/playerStore'
 import { formatDuration } from '../lib/types'
 import { useUI } from '../lib/uiStore'
+import { useActiveLyricLine } from '../lib/useActiveLyricLine'
 import { useAlbumPalette } from '../lib/useAlbumPalette'
 import { usePeaks } from '../lib/peaksApi'
 import { Cover } from './ui/Cover'
 import { Icon } from './ui/Icon'
+import { LyricsLines } from './lyrics/LyricsLines'
 
 export function CinemaView() {
   const open = useUI((s) => s.cinemaOpen)
@@ -25,6 +28,9 @@ export function CinemaView() {
   const durationMs = usePlayer((s) => s.durationMs)
   const palette = useAlbumPalette(current ? trackCoverUrl(current, 80) : undefined)
   const peaks = usePeaks(current?.id).data
+  const [sideView, setSideView] = useState<'queue' | 'lyrics'>('queue')
+  const { data: lyrics } = useLyrics(open ? current : null)
+  const activeIndex = useActiveLyricLine(lyrics?.synced ? lyrics.lines : undefined)
 
   useEffect(() => {
     if (!open) return
@@ -34,6 +40,12 @@ export function CinemaView() {
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [open, close])
+
+  useEffect(() => {
+    /* eslint-disable react-hooks/set-state-in-effect -- intentional: reset side column when the track changes */
+    setSideView('queue')
+    /* eslint-enable react-hooks/set-state-in-effect */
+  }, [current?.id])
 
   if (!open) return null
 
@@ -89,18 +101,43 @@ export function CinemaView() {
         <div className="w-full max-w-[420px]">
           <Cover src={current ? trackCoverUrl(current, 600) || undefined : undefined} alt={current?.title ?? 'Nothing playing'} size="full" rounded="md" className="aspect-square shadow-pop" />
         </div>
-        <div className="w-full max-w-xs">
-          <h2 className="mb-2 text-xs font-bold uppercase tracking-widest text-text-muted">Up next</h2>
-          <ul className="space-y-1">
-            {queue.slice(index + 1, index + 6).map((track, offset) => (
-              <li key={`${track.id}-${offset}`}>
-                <button type="button" onClick={() => jumpTo(index + 1 + offset)} className="flex w-full items-center gap-3 rounded p-2 text-left hover:bg-raised-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent">
-                  <Cover src={trackCoverUrl(track, 80) || undefined} alt={track.title} size={40} rounded="md" />
-                  <span className="min-w-0"><span className="block truncate text-sm font-semibold text-text-primary">{track.title}</span><span className="block truncate text-xs text-text-secondary">{track.artist}</span></span>
-                </button>
-              </li>
-            ))}
-          </ul>
+        <div className="flex h-full max-h-[60vh] w-full max-w-xs flex-col">
+          <div className="mb-2 flex items-center justify-between">
+            <h2 className="text-xs font-bold uppercase tracking-widest text-text-muted">
+              {sideView === 'lyrics' ? 'Lyrics' : 'Up next'}
+            </h2>
+            {lyrics != null && (
+              <button
+                type="button"
+                onClick={() => setSideView(sideView === 'lyrics' ? 'queue' : 'lyrics')}
+                className="text-xs font-bold uppercase tracking-widest text-text-secondary hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+              >
+                {sideView === 'lyrics' ? 'Show queue' : 'Show lyrics'}
+              </button>
+            )}
+          </div>
+          {sideView === 'lyrics' && lyrics != null ? (
+            <div className="min-h-0 flex-1">
+              {lyrics.synced ? (
+                <LyricsLines lines={lyrics.lines} activeIndex={activeIndex} onLineClick={(line) => seekMs(line.timeMs)} size="md" />
+              ) : (
+                <div className="h-full overflow-y-auto whitespace-pre-wrap text-sm font-semibold leading-6 text-text-secondary">
+                  {lyrics.plain}
+                </div>
+              )}
+            </div>
+          ) : (
+            <ul className="space-y-1">
+              {queue.slice(index + 1, index + 6).map((track, offset) => (
+                <li key={`${track.id}-${offset}`}>
+                  <button type="button" onClick={() => jumpTo(index + 1 + offset)} className="flex w-full items-center gap-3 rounded p-2 text-left hover:bg-raised-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent">
+                    <Cover src={trackCoverUrl(track, 80) || undefined} alt={track.title} size={40} rounded="md" />
+                    <span className="min-w-0"><span className="block truncate text-sm font-semibold text-text-primary">{track.title}</span><span className="block truncate text-xs text-text-secondary">{track.artist}</span></span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
       </div>
       <div className="mx-auto w-full max-w-5xl">

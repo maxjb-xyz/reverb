@@ -4,15 +4,23 @@ import { engine } from '../lib/playerStore'
 import type { Track } from '../lib/types'
 import { useUI } from '../lib/uiStore'
 import { usePeaks } from '../lib/peaksApi'
+import { useLyrics } from '../lib/lyricsApi'
 import { CinemaView } from './CinemaView'
 
 vi.mock('../lib/useAlbumPalette', () => ({ useAlbumPalette: vi.fn(() => null) }))
 vi.mock('../lib/peaksApi', () => ({ usePeaks: vi.fn(() => ({ data: null })) }))
+vi.mock('../lib/lyricsApi', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../lib/lyricsApi')>()
+  return { ...actual, useLyrics: vi.fn(() => ({ data: null })) }
+})
 
 const track: Track = { id: 't1', title: 'Karma Police', albumId: 'al1', album: 'OK Computer', artistId: 'ar1', artist: 'Radiohead', coverArtId: 'c1', trackNumber: 1, discNumber: 1, durationMs: 238000, bitRate: 0, suffix: '', contentType: '' }
 
 describe('CinemaView', () => {
-  beforeEach(() => useUI.setState({ cinemaOpen: false }))
+  beforeEach(() => {
+    useUI.setState({ cinemaOpen: false })
+    vi.mocked(useLyrics).mockReturnValue({ data: null } as ReturnType<typeof useLyrics>)
+  })
   it('renders nothing when closed', () => { render(<CinemaView />); expect(screen.queryByTestId('cinema-view')).toBeNull() })
   it('shows the current track and closes on Escape', () => {
     engine.playTrackList([track], 0)
@@ -53,5 +61,41 @@ describe('CinemaView', () => {
     useUI.setState({ cinemaOpen: true })
     render(<CinemaView />)
     expect(screen.getByTestId('waveform')).toBeInTheDocument()
+  })
+
+  it('toggles between the queue and lyrics in the side column', () => {
+    vi.mocked(useLyrics).mockReturnValue({
+      data: {
+        synced: true,
+        lines: [
+          { timeMs: 0, text: 'line one' },
+          { timeMs: 1000, text: 'line two' },
+        ],
+      },
+    } as ReturnType<typeof useLyrics>)
+    engine.playTrackList([track], 0)
+    useUI.setState({ cinemaOpen: true })
+    render(<CinemaView />)
+
+    const button = screen.getByRole('button', { name: 'Show lyrics' })
+    expect(screen.getByText('Up next')).toBeInTheDocument()
+
+    fireEvent.click(button)
+    expect(screen.getByTestId('lyrics-lines')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Show queue' })).toBeInTheDocument()
+    expect(screen.queryByText('Up next')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Show queue' }))
+    expect(screen.queryByTestId('lyrics-lines')).not.toBeInTheDocument()
+    expect(screen.getByText('Up next')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Show lyrics' })).toBeInTheDocument()
+  })
+
+  it('does not show a lyrics toggle when there are no lyrics', () => {
+    vi.mocked(useLyrics).mockReturnValue({ data: null } as ReturnType<typeof useLyrics>)
+    engine.playTrackList([track], 0)
+    useUI.setState({ cinemaOpen: true })
+    render(<CinemaView />)
+    expect(screen.queryByRole('button', { name: 'Show lyrics' })).not.toBeInTheDocument()
   })
 })
