@@ -758,6 +758,12 @@ func TestConfigSchemaIncludesYoutubeCookies(t *testing.T) {
 }
 
 func TestInitWritesCookiesFileWhenConfigured(t *testing.T) {
+	// Sandbox the config dir so this never touches the real user's/CI runner's
+	// actual ~/.config/spotdl/cookies.txt (see TestEnsureSpotdlTempDirCreatesDir).
+	tmp := t.TempDir()
+	t.Setenv("HOME", tmp)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(tmp, ".config"))
+
 	content := "# Netscape HTTP Cookie File\n.youtube.com\tTRUE\t/\tTRUE\t0\tCONSENT\tYES+1\n"
 	a := New().WithRunner(&fakeRunner{})
 	if err := a.Init(map[string]any{"output_dir": "/tmp/music", "youtube_cookies": content}); err != nil {
@@ -783,6 +789,11 @@ func TestInitWritesCookiesFileWhenConfigured(t *testing.T) {
 }
 
 func TestStartIncludesCookieFileArgWhenConfigured(t *testing.T) {
+	// Sandbox the config dir — see TestEnsureSpotdlTempDirCreatesDir.
+	tmp := t.TempDir()
+	t.Setenv("HOME", tmp)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(tmp, ".config"))
+
 	r := &fakeRunner{}
 	a := New().WithRunner(r)
 	if err := a.Init(map[string]any{"output_dir": "/tmp/music", "youtube_cookies": "cookie-content"}); err != nil {
@@ -805,6 +816,13 @@ func TestStartIncludesCookieFileArgWhenConfigured(t *testing.T) {
 }
 
 func TestStartOmitsCookieFileArgWhenNotConfigured(t *testing.T) {
+	// Sandbox the config dir — Start() unconditionally calls ensureSpotdlTempDir,
+	// which would otherwise create a temp dir under the real user's config dir
+	// (see TestEnsureSpotdlTempDirCreatesDir).
+	tmp := t.TempDir()
+	t.Setenv("HOME", tmp)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(tmp, ".config"))
+
 	r := &fakeRunner{}
 	a := newAdapter(t, r) // newAdapter's Init doesn't set youtube_cookies
 	if _, err := a.Start(context.Background(), core.DownloadRequest{Artist: "A", Title: "T"}, func(int) {}); err != nil {

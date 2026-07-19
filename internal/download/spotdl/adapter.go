@@ -222,6 +222,13 @@ func writeCookiesFile(content string) (string, error) {
 	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
 		return "", err
 	}
+	// os.WriteFile's mode argument only applies when the file is newly created;
+	// if cookies.txt already existed (e.g. from an earlier run or created with
+	// looser permissions some other way), rewriting its content would not
+	// correct its mode. Chmod explicitly so 0600 is enforced on every write.
+	if err := os.Chmod(path, 0o600); err != nil {
+		return "", err
+	}
 	return path, nil
 }
 
