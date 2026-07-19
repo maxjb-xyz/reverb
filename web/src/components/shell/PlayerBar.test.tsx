@@ -5,8 +5,10 @@ import { usePlayer, engine } from '../../lib/playerStore'
 import { useUI } from '../../lib/uiStore'
 import type { Track } from '../../lib/types'
 import { useAlbumPalette } from '../../lib/useAlbumPalette'
+import { useLyrics } from '../../lib/lyricsApi'
 vi.mock('../../lib/useAlbumPalette', () => ({ useAlbumPalette: vi.fn(() => null) }))
 vi.mock('../../lib/peaksApi', () => ({ usePeaks: vi.fn(() => ({ data: null })) }))
+vi.mock('../../lib/lyricsApi', () => ({ useLyrics: vi.fn(() => ({ data: null })) }))
 
 const mockNavigate = vi.fn()
 vi.mock('react-router-dom', async (importOriginal) => {
@@ -146,6 +148,22 @@ describe('PlayerBar (shell)', () => {
     render(<PlayerBar />)
     fireEvent.click(screen.getByLabelText('Full screen'))
     expect(useUI.getState().cinemaOpen).toBe(true)
+  })
+
+  // --- lyrics button ---
+
+  it('shows a "Lyrics" button when lyrics are available and clicking it toggles lyricsOpen', () => {
+    vi.mocked(useLyrics).mockReturnValue({ data: { synced: false, plain: 'la la la' } } as ReturnType<typeof useLyrics>)
+    render(<PlayerBar />)
+    const button = screen.getByRole('button', { name: 'Lyrics' })
+    fireEvent.click(button)
+    expect(useUI.getState().lyricsOpen).toBe(true)
+  })
+
+  it('hides the "Lyrics" button when useLyrics returns null', () => {
+    vi.mocked(useLyrics).mockReturnValue({ data: null } as ReturnType<typeof useLyrics>)
+    render(<PlayerBar />)
+    expect(screen.queryByRole('button', { name: 'Lyrics' })).not.toBeInTheDocument()
   })
 
   it('volume button mutes and restores the previous volume', () => {
