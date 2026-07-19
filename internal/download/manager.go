@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -701,6 +702,25 @@ func (m *Manager) Enqueue(ctx context.Context, req core.DownloadRequest) (core.D
 	} else if ok {
 		m.mu.Unlock()
 		return existing, nil // dedup-join: no second dispatch
+	}
+	// The active-job key above protects normal concurrent submissions. Also use
+	// the stable source/external-id identity as a terminal guard: a coverage page
+	// remains "missing" until a post-download scan completes, and repeatedly
+	// clicking its bulk action must not create another completed/failed job for
+	// the same catalog track. Retrying a terminal job is intentionally explicit
+	// through Retry, where attempts and an optional manual URL are preserved.
+	if source, externalID := strings.TrimSpace(req.Source), strings.TrimSpace(req.ExternalID); source != "" && externalID != "" {
+		jobs, lerr := m.store.List(ctx)
+		if lerr != nil {
+			m.mu.Unlock()
+			return core.DownloadJob{}, lerr
+		}
+		for _, job := range jobs {
+			if strings.EqualFold(job.Source, source) && job.ExternalID == externalID {
+				m.mu.Unlock()
+				return job, nil
+			}
+		}
 	}
 
 	dl, err := m.pick(ctx, req)

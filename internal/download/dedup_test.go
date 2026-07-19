@@ -26,6 +26,18 @@ func TestDedupKeyDistinguishesDifferentTracks(t *testing.T) {
 	}
 }
 
+func TestDedupKeyUsesStableExternalIdentity(t *testing.T) {
+	a := core.DownloadRequest{Source: "spotify", ExternalID: "5abc", Artist: "Artist", Title: "Original title", Album: "Album"}
+	b := core.DownloadRequest{Source: "Spotify", ExternalID: "5abc", Artist: "Different artist", Title: "Display title changed", Album: "Other"}
+	if DedupKey(a) != DedupKey(b) {
+		t.Fatal("same source/external id must deduplicate despite metadata differences")
+	}
+	c := core.DownloadRequest{Source: "spotify", ExternalID: "5Abc", Artist: "Artist", Title: "Original title", Album: "Album"}
+	if DedupKey(a) == DedupKey(c) {
+		t.Fatal("external ids are case-sensitive and must remain distinct")
+	}
+}
+
 func TestDedupKeyDeterministicLength(t *testing.T) {
 	k := DedupKey(core.DownloadRequest{Artist: "x", Title: "y", Album: "z"})
 	if len(k) != 64 {

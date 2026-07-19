@@ -491,6 +491,27 @@ func TestDedupJoinWhileInFlight(t *testing.T) {
 	}
 }
 
+func TestEnqueueReturnsExistingTerminalJobByExternalID(t *testing.T) {
+	store := newMemStore()
+	existing := core.DownloadJob{ID: "failed-job", DedupKey: "old-key", Status: core.DownloadFailed, DownloaderName: "dl", Source: "spotify", ExternalID: "stable-id", Artist: "Old Artist", Title: "Old Title"}
+	if err := store.Insert(context.Background(), existing, core.DownloadRequest{Source: "spotify", ExternalID: "stable-id", Artist: "Old Artist", Title: "Old Title"}); err != nil {
+		t.Fatal(err)
+	}
+	dl := &fakeDL{name: "dl", canDownload: true}
+	m, _ := testManager(t, []Downloader{dl}, store, nil, nil, nil)
+
+	got, err := m.Enqueue(context.Background(), core.DownloadRequest{Source: "spotify", ExternalID: "stable-id", Artist: "New Artist", Title: "New Display Title", Album: "New Album"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.ID != existing.ID {
+		t.Fatalf("enqueue = %q, want existing terminal job %q", got.ID, existing.ID)
+	}
+	if dl.starts() != 0 {
+		t.Fatalf("terminal duplicate started %d downloader calls, want 0", dl.starts())
+	}
+}
+
 func TestConcurrentEnqueueSameKeyOneJob(t *testing.T) {
 	block := make(chan struct{})
 	dl := &fakeDL{name: "dl", canDownload: true, block: block}
