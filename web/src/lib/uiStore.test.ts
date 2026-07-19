@@ -83,7 +83,7 @@ describe('uiStore now-playing overlay', () => {
 })
 
 describe('cinema', () => {
-  beforeEach(() => useUI.setState({ cinemaOpen: false }))
+  beforeEach(() => useUI.setState({ cinemaOpen: false, lyricsOpen: false }))
 
   it('opens, closes and toggles the cinema view', () => {
     useUI.getState().openCinema()
@@ -92,5 +92,30 @@ describe('cinema', () => {
     expect(useUI.getState().cinemaOpen).toBe(false)
     useUI.getState().toggleCinema()
     expect(useUI.getState().cinemaOpen).toBe(true)
+  })
+})
+
+describe('lyricsOpen', () => {
+  beforeEach(() => useUI.setState({ lyricsOpen: false, cinemaOpen: false }))
+
+  it('toggles', () => {
+    useUI.getState().toggleLyrics()
+    expect(useUI.getState().lyricsOpen).toBe(true)
+    useUI.getState().toggleLyrics()
+    expect(useUI.getState().lyricsOpen).toBe(false)
+  })
+
+  it('opening lyrics closes cinema', () => {
+    useUI.getState().openCinema()
+    useUI.getState().openLyrics()
+    expect(useUI.getState().lyricsOpen).toBe(true)
+    expect(useUI.getState().cinemaOpen).toBe(false)
+  })
+
+  it('opening cinema closes lyrics', () => {
+    useUI.getState().openLyrics()
+    useUI.getState().openCinema()
+    expect(useUI.getState().cinemaOpen).toBe(true)
+    expect(useUI.getState().lyricsOpen).toBe(false)
   })
 })

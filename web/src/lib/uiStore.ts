@@ -22,6 +22,12 @@ interface UIStore {
   openCinema(): void
   closeCinema(): void
   toggleCinema(): void
+  // Lyrics is the desktop fullscreen lyrics view. It shares the "one fullscreen
+  // player surface" slot with cinema — opening either closes the other.
+  lyricsOpen: boolean
+  openLyrics(): void
+  closeLyrics(): void
+  toggleLyrics(): void
 }
 
 export const useUI = create<UIStore>((set, get) => ({
@@ -34,7 +40,11 @@ export const useUI = create<UIStore>((set, get) => ({
   closeNowPlaying: () => set({ nowPlayingOpen: false }),
   toggleNowPlaying: () => set({ nowPlayingOpen: !get().nowPlayingOpen }),
   cinemaOpen: false,
-  openCinema: () => set({ cinemaOpen: true }),
+  openCinema: () => set({ cinemaOpen: true, lyricsOpen: false }),
   closeCinema: () => set({ cinemaOpen: false }),
-  toggleCinema: () => set({ cinemaOpen: !get().cinemaOpen }),
+  toggleCinema: () => set({ cinemaOpen: !get().cinemaOpen, lyricsOpen: false }),
+  lyricsOpen: false,
+  openLyrics: () => set({ lyricsOpen: true, cinemaOpen: false }),
+  closeLyrics: () => set({ lyricsOpen: false }),
+  toggleLyrics: () => set({ lyricsOpen: !get().lyricsOpen, cinemaOpen: false }),
 }))
