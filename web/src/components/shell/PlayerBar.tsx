@@ -25,6 +25,7 @@ import { AddToPlaylistMenu } from '../AddToPlaylistMenu'
 import { ProgressRing } from '../ui/ProgressRing'
 import { usePendingPlay } from '../../lib/pendingPlayStore'
 import { usePeaks } from '../../lib/peaksApi'
+import { useLyrics } from '../../lib/lyricsApi'
 
 // ---------------------------------------------------------------------------
 // SeekBar — thin 4 px track with a thumb that appears on hover, driven by
@@ -127,8 +128,12 @@ export function PlayerBar() {
   const togglePanel = useUI((s) => s.togglePanel)
   const toggleCinema = useUI((s) => s.toggleCinema)
   const rightPanel = useUI((s) => s.rightPanel)
+  const lyricsOpen = useUI((s) => s.lyricsOpen)
+  const toggleLyrics = useUI((s) => s.toggleLyrics)
   const pending = usePendingPlay((s) => s.pending)
   const clearPending = usePendingPlay((s) => s.clear)
+  const { data: lyricsData } = useLyrics(current)
+  const hasLyrics = lyricsData != null
 
   const navigate = useNavigate()
   const [addMenuOpen, setAddMenuOpen] = useState(false)
@@ -305,6 +310,15 @@ export function PlayerBar() {
 
       {/* ── RIGHT: queue + volume ───────────────────────────────────────── */}
       <div className="relative z-10 flex items-center justify-end gap-3 pr-2">
+        {current && hasLyrics && (
+          <IconButton
+            name="mic"
+            label="Lyrics"
+            active={lyricsOpen}
+            size="sm"
+            onClick={toggleLyrics}
+          />
+        )}
         <IconButton
           name="queue"
           label="Queue"

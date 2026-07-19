@@ -10,6 +10,7 @@ import { MobileTabNav } from './MobileTabNav'
 import { MiniPlayer } from './MiniPlayer'
 import { NowPlayingOverlay } from './NowPlayingOverlay'
 import { CinemaView } from './CinemaView'
+import { LyricsView } from './lyrics/LyricsView'
 import { CommandPalette } from './CommandPalette'
 import { Toaster } from './ui/Toaster'
 import { Skeleton } from './ui/Skeleton'
@@ -161,6 +162,7 @@ export function AppShell() {
       <MobileTabNav />
       <NowPlayingOverlay />
       <CinemaView />
+      <LyricsView />
       <CommandPalette />
       <Toaster />
     </div>

@@ -29,6 +29,11 @@ vi.mock('../../lib/coverageApi', () => ({
 }))
 import { useArtistProfile } from '../../lib/coverageApi'
 
+vi.mock('../../lib/lyricsApi', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../lib/lyricsApi')>()
+  return { ...actual, useLyrics: vi.fn(() => ({ data: null })) }
+})
+
 function track(id: string, extra: Partial<Track> = {}): Track {
   return {
     id,

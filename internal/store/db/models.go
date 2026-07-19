@@ -115,6 +115,14 @@ type Invite struct {
 	CreatedAt int64          `json:"created_at"`
 }
 
+type Lyric struct {
+	TrackKey  string `json:"track_key"`
+	Synced    int64  `json:"synced"`
+	Body      string `json:"body"`
+	Source    string `json:"source"`
+	FetchedAt int64  `json:"fetched_at"`
+}
+
 type MatchCache struct {
 	Source         string         `json:"source"`
 	ExternalID     string         `json:"external_id"`

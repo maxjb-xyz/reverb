@@ -21,6 +21,7 @@ import (
 	"github.com/maxjb-xyz/reverb/internal/download/spotdl"
 	"github.com/maxjb-xyz/reverb/internal/events"
 	"github.com/maxjb-xyz/reverb/internal/library/embedded"
+	"github.com/maxjb-xyz/reverb/internal/library/lyrics"
 	"github.com/maxjb-xyz/reverb/internal/library/subsonic"
 	"github.com/maxjb-xyz/reverb/internal/notification"
 	"github.com/maxjb-xyz/reverb/internal/play"
@@ -228,6 +229,12 @@ func main() {
 		Play:          playSvc,
 		Stats:         statsSvc,
 		Scrobble:      scrobbleSvc,
+		Lyrics: &lyrics.Service{
+			Store: st.Q(),
+			Client: &lyrics.LRCLibClient{
+				UserAgent: "Reverb/" + version + " (https://github.com/maxjb-xyz/reverb)",
+			},
+		},
 	}
 	// Guard against the "non-nil interface wrapping a nil pointer" trap: only set
 	// the interface fields when the concrete service is actually present.

@@ -143,6 +143,9 @@ type Deps struct {
 	// Scrobble submits plays to external scrobbling providers (e.g. Last.fm).
 	// Nil in tests/legacy that don't exercise the scrobbling boundary.
 	Scrobble *scrobble.Service
+	// Lyrics resolves track lyrics (local tags → LRCLIB, DB-cached). Nil in
+	// tests/legacy wiring — the lyrics endpoint serves 204.
+	Lyrics LyricsProvider
 }
 
 type Server struct {
@@ -273,6 +276,7 @@ func (s *Server) routes() {
 			pr.Get("/library/album/{id}", s.handleLibraryAlbum)
 			pr.Get("/library/albums", s.handleLibraryAlbums)
 			pr.Get("/library/track/{id}/peaks", s.handleTrackPeaks)
+			pr.Get("/library/track/{id}/lyrics", s.handleTrackLyrics)
 			pr.Get("/collection", s.handleCollection)
 			pr.Get("/stream/{id}", s.handleStream)
 			pr.Get("/cover/{id}", s.handleCover)
