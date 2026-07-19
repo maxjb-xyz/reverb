@@ -7,7 +7,9 @@
  *   2. Cover   — large square cover art
  *   3. Meta    — title / artist + add-to-playlist
  *   4. "Next in queue" card — up-next tracks; click → jumpTo
- *   5. "About the artist" card — cover, name, "In your library · N albums"
+ *   5. Lyrics teaser card — 3-line window around the active line; click opens
+ *      the fullscreen lyrics view
+ *   6. "About the artist" card — cover, name, "In your library · N albums"
  */
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
@@ -18,6 +20,7 @@ import { useArtistProfile } from '../../lib/coverageApi'
 import { Cover } from '../ui/Cover'
 import { IconButton } from '../ui/IconButton'
 import { AddToPlaylistMenu } from '../AddToPlaylistMenu'
+import { LyricsCard } from '../lyrics/LyricsCard'
 
 // ---------------------------------------------------------------------------
 // Artist card
@@ -222,6 +225,8 @@ export function NowPlayingPanel() {
             ))}
           </ul>
         </div>
+
+        <LyricsCard />
 
         {/* About the artist */}
         {(current?.artistExternalId || current?.artistId) && (
