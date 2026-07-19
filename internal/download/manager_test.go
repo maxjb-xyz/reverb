@@ -866,6 +866,57 @@ func TestCancelInFlight(t *testing.T) {
 	}
 }
 
+func TestCancelOrphanedRunningJob(t *testing.T) {
+	store := newMemStore()
+	job := core.DownloadJob{ID: "orphaned", DedupKey: "dk", Status: core.DownloadRunning, DownloaderName: "dl", Source: "s", ExternalID: "e1"}
+	if err := store.Insert(context.Background(), job, core.DownloadRequest{Source: "s", ExternalID: "e1", Artist: "A", Title: "T"}); err != nil {
+		t.Fatal(err)
+	}
+	m := NewManager(Config{}, wrapDownloaders([]Downloader{&fakeDL{name: "dl", canDownload: true}}), store, events.New(), &fakeScanner{}, nil, nil, RealClock{}, nil, nil)
+
+	if err := m.Cancel(context.Background(), job.ID); err != nil {
+		t.Fatal(err)
+	}
+	got, _, _ := store.Get(context.Background(), job.ID)
+	if got.Status != core.DownloadCanceled {
+		t.Fatalf("orphaned running job status = %q, want canceled", got.Status)
+	}
+}
+
+func TestStartRecoversInterruptedAndQueuedSyncJobs(t *testing.T) {
+	store := newMemStore()
+	running := core.DownloadJob{ID: "interrupted", DedupKey: "dk-running", Status: core.DownloadRunning, DownloaderName: "dl", Source: "s", ExternalID: "running"}
+	queued := core.DownloadJob{ID: "queued", DedupKey: "dk-queued", Status: core.DownloadQueued, DownloaderName: "dl", Source: "s", ExternalID: "queued"}
+	for _, job := range []core.DownloadJob{running, queued} {
+		if err := store.Insert(context.Background(), job, core.DownloadRequest{Source: "s", ExternalID: job.ExternalID, Artist: "A", Title: job.ExternalID}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	block := make(chan struct{})
+	defer close(block)
+	dl := &fakeDL{name: "dl", canDownload: true, block: block}
+	m, _ := testManager(t, []Downloader{dl}, store, nil, nil, nil)
+
+	interrupted, _, _ := store.Get(context.Background(), running.ID)
+	if interrupted.Status != core.DownloadFailed || interrupted.Error != "interrupted by restart" {
+		t.Fatalf("interrupted job = %+v, want failed with restart error", interrupted)
+	}
+	deadline := time.After(2 * time.Second)
+	for dl.starts() == 0 {
+		select {
+		case <-deadline:
+			t.Fatal("queued job was not re-dispatched after restart")
+		default:
+			time.Sleep(time.Millisecond)
+		}
+	}
+	got, _, _ := store.Get(context.Background(), queued.ID)
+	if got.Status != core.DownloadRunning {
+		t.Fatalf("queued job status = %q, want running after recovery dispatch", got.Status)
+	}
+	_ = m // retain the manager until t.Cleanup stops its worker
+}
+
 func TestRetryResetsFailedJob(t *testing.T) {
 	store := newMemStore()
 	// Seed a failed job directly.

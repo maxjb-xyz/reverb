@@ -305,6 +305,11 @@ func (m *Manager) Start() {
 		go m.worker()
 	}
 	log.Printf("download manager: %d worker(s) started, %d downloader(s) available", m.cfg.Workers, len(m.downloaders))
+	// A sync downloader process cannot survive a Reverb restart. Without this
+	// recovery pass, its persisted "running" row has no process or cancel func
+	// behind it forever, and persisted queued rows are never put back on the
+	// in-memory worker channel. Repair both states before accepting new work.
+	m.recoverAfterRestart()
 	if m.hasAsync() {
 		m.wg.Add(1)
 		go m.reconcileLoop()
@@ -314,6 +319,52 @@ func (m *Manager) Start() {
 	// Converge legacy completed+linked jobs (canonical_id=='') onto the canonical
 	// path so retiring the clear-dance doesn't rot their covers on a backend swap.
 	go m.BackfillCanonicalIDs()
+}
+
+// recoverAfterRestart repairs jobs that were in flight when this process stopped
+// and re-dispatches jobs that were queued in SQLite. Async jobs with a downloader
+// ref are deliberately left running: their external downloader can still be
+// reconciled after Reverb restarts. A synchronous job has no such durable process,
+// so it is failed rather than falsely left "running" forever.
+func (m *Manager) recoverAfterRestart() {
+	ctx := context.Background()
+	jobs, err := m.store.List(ctx)
+	if err != nil {
+		log.Printf("download recovery: list jobs failed: %v", err)
+		return
+	}
+	for _, job := range jobs {
+		switch job.Status {
+		case core.DownloadRunning:
+			if job.DownloaderRef != "" {
+				continue // async job; reconcileLoop resumes observing it
+			}
+			job.Status = core.DownloadFailed
+			job.Error = "interrupted by restart"
+			job.FinishedAt = m.clock.Now().Unix()
+			if err := m.store.Update(ctx, job); err != nil {
+				log.Printf("download recovery: fail interrupted job %s: %v", shortID(job.ID), err)
+				continue
+			}
+			m.publishEvent(TopicFailed, job, job.Error)
+			log.Printf("download recovery: marked interrupted job %s as failed", shortID(job.ID))
+		case core.DownloadQueued:
+			if async := m.asyncFor(job.DownloaderName); async != nil {
+				req, ok, _ := m.store.GetRequest(ctx, job.ID)
+				if !ok {
+					req = core.DownloadRequest{Source: job.Source, ExternalID: job.ExternalID, Artist: job.Artist, Title: job.Title, Album: job.Album, ISRC: job.ISRC, DurationMs: job.DurationMs, PlayWhenReady: job.PlayWhenReady, AddToPlaylistID: job.AddToPlaylistID}
+				}
+				go m.submitAsync(ctx, job, req, async)
+				continue
+			}
+			select {
+			case m.queue <- job.ID:
+				log.Printf("download recovery: re-dispatched queued job %s", shortID(job.ID))
+			case <-m.stopCh:
+				return
+			}
+		}
+	}
 }
 
 // BackfillUnlinked is a one-shot pass that re-matches every completed job whose
@@ -1197,6 +1248,22 @@ func (m *Manager) Cancel(ctx context.Context, jobID string) error {
 			return err
 		}
 		m.publishEvent(TopicFailed, job, "canceled")
+		return nil
+	}
+
+	// A synchronous job that was running before a restart has no entry in
+	// m.cancels and no process left to signal. It must still be cancelable so it
+	// cannot remain active (and hold its dedup key) indefinitely.
+	if job.Status == core.DownloadRunning {
+		job.Status = core.DownloadCanceled
+		job.FinishedAt = m.clock.Now().Unix()
+		if err := m.store.Update(ctx, job); err != nil {
+			return err
+		}
+		m.publishEvent(TopicFailed, job, "canceled")
+		m.mu.Lock()
+		delete(m.reqs, jobID)
+		m.mu.Unlock()
 	}
 	return nil
 }
