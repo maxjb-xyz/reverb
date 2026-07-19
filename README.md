@@ -112,6 +112,7 @@ Reverb is configured by flags, environment variables, and the in-app Settings UI
 | `REVERB_DB` | SQLite path (same as `--db`); the Docker image defaults this to `/data/reverb.db` |
 | `REVERB_DEV=1` | Enable dev mode |
 | `REVERB_DOWNLOAD_DIR` | Directory spotDL downloads into **and** the folder the bundled Navidrome serves. The Docker image defaults this to `/music` |
+| `REVERB_DOWNLOAD_WORKERS` | Concurrent spotDL jobs; defaults to `2`, accepts `1`–`4`. This improves batch throughput, not a single track's transfer rate. |
 | `REVERB_ADMIN_PASSWORD` | Seed the admin password on first run only (ignored once setup is complete). **Unset it after first boot.** |
 | `REVERB_SPOTIFY_CLIENT_ID` | Spotify app Client ID (alternative to setting it in the Settings UI) |
 | `REVERB_SPOTIFY_CLIENT_SECRET` | Spotify search adapter Client Secret (overrides stored config) |

@@ -16,6 +16,26 @@ func libReg() *registry.Registry {
 	return reg
 }
 
+func TestDownloadWorkers(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		value string
+		want  int
+	}{
+		{name: "unset", want: 2},
+		{name: "invalid", value: "fast", want: 2},
+		{name: "zero", value: "0", want: 2},
+		{name: "configured", value: "3", want: 3},
+		{name: "capped", value: "99", want: 4},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := downloadWorkers(func(string) string { return tc.value }); got != tc.want {
+				t.Fatalf("downloadWorkers() = %d, want %d", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestBuildLibraryAdapter_BuiltIn_IgnoresInstancesUsesLocalhost(t *testing.T) {
 	// No library instances at all, built-in mode -> still get a configured adapter.
 	lib, err := BuildLibraryAdapter(

@@ -32,6 +32,8 @@ curl -o .env https://raw.githubusercontent.com/maxjb-xyz/reverb/main/.env.exampl
 - `REVERB_VERSION=0.1.0` pins the image instead of following `latest`.
 - `REVERB_ADMIN_PASSWORD` skips the first-run password screen; remove it after
   the first boot.
+- `REVERB_DOWNLOAD_WORKERS=3` runs up to three downloads at once (default: two;
+  maximum: four). This speeds up batches, not individual transfers.
 
 ### Trying alpha/prerelease builds
 
