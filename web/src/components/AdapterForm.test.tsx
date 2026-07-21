@@ -109,6 +109,26 @@ describe('AdapterForm', () => {
     fireEvent.click(screen.getByRole('button', { name: /^save$/i }))
     await waitFor(() => expect(onSubmit).toHaveBeenCalledWith({}))
   })
+
+  it('renders a textarea with help text for type "textarea" and submits its value', async () => {
+    const textareaSchema: ConfigSchema = {
+      fields: [
+        { key: 'youtube_cookies', label: 'YouTube cookies', type: 'textarea', required: false, secret: true, help: 'Paste your cookies.txt contents here.' },
+      ],
+    }
+    const onSubmit = vi.fn()
+    render(<AdapterForm name="spotdl" schema={textareaSchema} onSubmit={onSubmit} />)
+
+    expect(screen.getByText('Paste your cookies.txt contents here.')).toBeInTheDocument()
+    const box = screen.getByLabelText('YouTube cookies') as HTMLTextAreaElement
+    expect(box.tagName).toBe('TEXTAREA')
+
+    fireEvent.change(box, { target: { value: '# Netscape HTTP Cookie File\n.youtube.com\tTRUE\t/\tTRUE\t0\tCONSENT\tYES+1' } })
+    fireEvent.click(screen.getByText('Save'))
+
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled())
+    expect(onSubmit.mock.calls[0][0].youtube_cookies).toContain('CONSENT')
+  })
 })
 
 describe('AdapterForm — granularity checkboxes', () => {

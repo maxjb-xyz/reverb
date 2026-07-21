@@ -7,6 +7,7 @@ export interface ConfigField {
   type: string
   required: boolean
   secret: boolean
+  help?: string
 }
 export interface ConfigSchema {
   fields: ConfigField[]

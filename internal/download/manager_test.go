@@ -46,9 +46,10 @@ func (d *fakeDL) CanDownload(context.Context, core.DownloadRequest) (bool, error
 func (d *fakeDL) Start(ctx context.Context, req core.DownloadRequest, onProgress func(int)) (string, error) {
 	d.mu.Lock()
 	d.startCount++
+	err := d.errOnStart
 	d.mu.Unlock()
-	if d.errOnStart != nil {
-		return "", d.errOnStart
+	if err != nil {
+		return "", err
 	}
 	onProgress(50)
 	if d.block != nil {
@@ -62,6 +63,15 @@ func (d *fakeDL) Start(ctx context.Context, req core.DownloadRequest, onProgress
 	return "/out/" + req.ExternalID + ".mp3", nil
 }
 func (d *fakeDL) starts() int { d.mu.Lock(); defer d.mu.Unlock(); return d.startCount }
+
+// setErrOnStart sets errOnStart under the mutex, safe for use after the
+// Manager has started dispatching jobs to this fakeDL (i.e. concurrently
+// with worker goroutines calling Start).
+func (d *fakeDL) setErrOnStart(err error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.errOnStart = err
+}
 
 // fakeScanner records StartScan calls and models the Navidrome scan lifecycle.
 //
@@ -3334,4 +3344,126 @@ func TestManagerAcceptsNilSafeResolverProvider(t *testing.T) {
 		t.Fatalf("resolve provider called %d times during NewManager construction; expected 0", callCount)
 	}
 	_ = m3
+}
+
+// TestAdaptivePacingPausesAfterConsecutiveRateLimitFailures verifies that once
+// a downloader hits Config.PacingThreshold consecutive rate_limited/bot_challenge
+// failures, the Manager auto-pauses dispatch and auto-resumes after
+// Config.PacingCooldown, without any manual Pause()/Resume() call.
+func TestAdaptivePacingPausesAfterConsecutiveRateLimitFailures(t *testing.T) {
+	dl := &fakeDL{name: "spotdl", canDownload: true, errOnStart: ClassifiedError{Class: ClassRateLimited, Err: errors.New("429")}}
+	store := newMemStore()
+	bus := events.New()
+	scanner := &fakeScanner{}
+	m := NewManager(
+		Config{Workers: 1, DebounceWindow: 5 * time.Second, ScanPollEvery: time.Millisecond, ScanPollMax: time.Second, ScanSettleMax: 10 * time.Millisecond,
+			PacingThreshold: 2, PacingCooldown: 30 * time.Millisecond},
+		wrapDownloaders([]Downloader{dl}), store, bus, scanner, &fakeRematcher{trackID: "t1"}, &fakeVersion{v: 1}, nil, nil, nil,
+	)
+	t.Cleanup(m.Stop)
+	m.Start()
+
+	for i := 0; i < 2; i++ {
+		if _, err := m.Enqueue(context.Background(), core.DownloadRequest{Source: "spotify", ExternalID: fmt.Sprintf("e%d", i), Artist: "A", Title: "T"}); err != nil {
+			t.Fatal(err)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+
+	if !m.IsPaused() {
+		t.Fatal("expected Manager to auto-pause after 2 consecutive rate-limited failures")
+	}
+
+	// Both failed jobs are also auto-retried (Task 6) after PacingCooldown. Clear
+	// errOnStart now so those auto-retries succeed instead of failing again and
+	// re-triggering pacing indefinitely — this test is about the pause/resume
+	// gate, not about the interaction with unbounded repeated failures.
+	dl.setErrOnStart(nil)
+
+	time.Sleep(60 * time.Millisecond) // longer than PacingCooldown
+	if m.IsPaused() {
+		t.Fatal("expected Manager to auto-resume after PacingCooldown elapses")
+	}
+}
+
+// TestAdaptivePacingResetsOnSuccess verifies a successful download resets the
+// consecutive-failure counter, so an isolated failure afterward doesn't
+// immediately re-trigger pacing.
+func TestAdaptivePacingResetsOnSuccess(t *testing.T) {
+	dl := &fakeDL{name: "spotdl", canDownload: true}
+	store := newMemStore()
+	m, _ := testManager(t, []Downloader{dl}, store, nil, nil, nil)
+	m.cfg.PacingThreshold = 2
+	m.cfg.PacingCooldown = 30 * time.Millisecond
+
+	if _, err := m.Enqueue(context.Background(), core.DownloadRequest{Source: "spotify", ExternalID: "e1", Artist: "A", Title: "T"}); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(20 * time.Millisecond)
+
+	dl.setErrOnStart(ClassifiedError{Class: ClassRateLimited, Err: errors.New("429")})
+	if _, err := m.Enqueue(context.Background(), core.DownloadRequest{Source: "spotify", ExternalID: "e2", Artist: "A", Title: "T"}); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(20 * time.Millisecond)
+
+	if m.IsPaused() {
+		t.Fatal("a single failure after a success should not trigger pacing (threshold=2)")
+	}
+}
+
+// TestAutoRetryRateLimitedFailureAfterCooldown verifies a job whose ENTIRE
+// downloader chain fails with a retryable class (rate_limited/bot_challenge)
+// is automatically re-queued after Config.PacingCooldown, without a manual
+// Retry() call, up to Config.MaxAutoRetries attempts.
+func TestAutoRetryRateLimitedFailureAfterCooldown(t *testing.T) {
+	dl := &fakeDL{name: "spotdl", canDownload: true, errOnStart: ClassifiedError{Class: ClassRateLimited, Err: errors.New("429")}}
+	store := newMemStore()
+	bus := events.New()
+	scanner := &fakeScanner{}
+	m := NewManager(
+		Config{Workers: 1, DebounceWindow: 5 * time.Second, ScanPollEvery: time.Millisecond, ScanPollMax: time.Second, ScanSettleMax: 10 * time.Millisecond,
+			PacingThreshold: 100, PacingCooldown: 20 * time.Millisecond, MaxAutoRetries: 5},
+		wrapDownloaders([]Downloader{dl}), store, bus, scanner, &fakeRematcher{trackID: "t1"}, &fakeVersion{v: 1}, nil, nil, nil,
+	)
+	t.Cleanup(m.Stop)
+	m.Start()
+
+	job, err := m.Enqueue(context.Background(), core.DownloadRequest{Source: "spotify", ExternalID: "e1", Artist: "A", Title: "T"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(15 * time.Millisecond)
+
+	got, _, _ := store.Get(context.Background(), job.ID)
+	if got.Status != core.DownloadFailed {
+		t.Fatalf("job status = %v, want DownloadFailed before the auto-retry fires", got.Status)
+	}
+
+	time.Sleep(40 * time.Millisecond) // longer than PacingCooldown
+	got, _, _ = store.Get(context.Background(), job.ID)
+	if got.Attempts < 1 {
+		t.Fatalf("job Attempts = %d, want >= 1 after an automatic retry", got.Attempts)
+	}
+}
+
+// TestNoAutoRetryForNonRetryableClass verifies a no_match/unavailable/
+// spotify_api_error failure is left failed and never auto-retried.
+func TestNoAutoRetryForNonRetryableClass(t *testing.T) {
+	dl := &fakeDL{name: "spotdl", canDownload: true, errOnStart: ClassifiedError{Class: ClassNoMatch, Err: errors.New("no results")}}
+	store := newMemStore()
+	m, _ := testManager(t, []Downloader{dl}, store, nil, nil, nil)
+	m.cfg.PacingCooldown = 20 * time.Millisecond
+	m.cfg.MaxAutoRetries = 5
+
+	job, err := m.Enqueue(context.Background(), core.DownloadRequest{Source: "spotify", ExternalID: "e1", Artist: "A", Title: "T"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(50 * time.Millisecond) // well past PacingCooldown
+
+	got, _, _ := store.Get(context.Background(), job.ID)
+	if got.Status != core.DownloadFailed || got.Attempts != 0 {
+		t.Fatalf("job = %+v, want DownloadFailed with Attempts=0 (never auto-retried)", got)
+	}
 }

@@ -79,3 +79,45 @@ type AsyncStatus struct {
 	Progress int
 	Error    string
 }
+
+// FailureClass categorizes why a Downloader.Start call failed, so the Manager
+// can decide whether a burst of failures warrants pacing back off and whether
+// a given failure is worth automatically retrying. Adapters that can tell
+// these apart (e.g. spotDL parsing yt-dlp's error text) return a
+// ClassifiedError; adapters that can't return a plain error, which the
+// Manager treats as ClassUnknown.
+type FailureClass string
+
+const (
+	// ClassRateLimited means the provider returned a rate-limit response (e.g.
+	// HTTP 429). Worth backing off and retrying later.
+	ClassRateLimited FailureClass = "rate_limited"
+	// ClassBotChallenge means the provider is demanding proof of a real,
+	// authenticated session (e.g. YouTube's "sign in to confirm you're not a
+	// bot"). Worth backing off and retrying later — resolved long-term by
+	// configuring authenticated cookies.
+	ClassBotChallenge FailureClass = "bot_challenge"
+	// ClassUnavailable means the specific media is unavailable (removed,
+	// region-locked, private). Retrying will not help.
+	ClassUnavailable FailureClass = "unavailable"
+	// ClassNoMatch means the provider's search found nothing for this query.
+	// Retrying will not help.
+	ClassNoMatch FailureClass = "no_match"
+	// ClassSpotifyAPIError means the failure originated from the Spotify API
+	// (metadata lookup), not the audio provider. Retrying will not help.
+	ClassSpotifyAPIError FailureClass = "spotify_api_error"
+	// ClassUnknown is the fallback for any failure the adapter could not
+	// classify further. Never retried automatically; never triggers pacing.
+	ClassUnknown FailureClass = "unknown"
+)
+
+// ClassifiedError wraps a downloader failure with the FailureClass that
+// explains it, so the Manager can drive adaptive pacing and auto-retry
+// without parsing error strings itself.
+type ClassifiedError struct {
+	Class FailureClass
+	Err   error
+}
+
+func (e ClassifiedError) Error() string { return e.Err.Error() }
+func (e ClassifiedError) Unwrap() error { return e.Err }

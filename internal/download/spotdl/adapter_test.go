@@ -2,6 +2,7 @@ package spotdl
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/maxjb-xyz/reverb/internal/core"
 	"github.com/maxjb-xyz/reverb/internal/download"
+	"github.com/maxjb-xyz/reverb/internal/registry"
 )
 
 // fakeRunner replays canned stdout lines (incl. one malformed line) and records
@@ -320,6 +322,68 @@ func TestStartTreatsAudioErrorAsFailure(t *testing.T) {
 	}
 }
 
+func TestClassifyFailureRateLimited(t *testing.T) {
+	class, reason, _ := classifyFailure("AudioProviderError: YT-DLP download error -\nWARNING: [youtube] x: Unable to download webpage: HTTP Error 429: Too Many Requests")
+	if class != download.ClassRateLimited {
+		t.Errorf("class = %q, want %q", class, download.ClassRateLimited)
+	}
+	if reason == "" {
+		t.Error("reason should not be empty")
+	}
+}
+
+func TestClassifyFailureBotChallenge(t *testing.T) {
+	class, _, hint := classifyFailure("ERROR: [youtube] x: Sign in to confirm you're not a bot. Use --cookies-from-browser or --cookies")
+	if class != download.ClassBotChallenge {
+		t.Errorf("class = %q, want %q", class, download.ClassBotChallenge)
+	}
+	if hint == "" {
+		t.Error("hint should point at configuring cookies")
+	}
+}
+
+func TestClassifyFailureNoMatch(t *testing.T) {
+	class, reason, _ := classifyFailure(`LookupError: No results found for song: Ludovico Einaudi - Einaudi: Una mattina`)
+	if class != download.ClassNoMatch {
+		t.Errorf("class = %q, want %q", class, download.ClassNoMatch)
+	}
+	if reason != "track not found on the audio source" {
+		t.Errorf("reason = %q", reason)
+	}
+}
+
+func TestClassifyFailureUnknownFallsBackToGenericMessage(t *testing.T) {
+	class, reason, hint := classifyFailure("AudioProviderError: YT-DLP download error - https://music.youtube.com/watch?v=x")
+	if class != download.ClassUnknown {
+		t.Errorf("class = %q, want %q", class, download.ClassUnknown)
+	}
+	if !strings.Contains(reason, "bundled yt-dlp is likely out of date") {
+		t.Errorf("reason = %q, want the generic yt-dlp-stale message", reason)
+	}
+	if hint == "" {
+		t.Error("hint should still suggest updating yt-dlp for the unknown case")
+	}
+}
+
+func TestStartReturnsClassifiedErrorOnFailure(t *testing.T) {
+	r := &fakeRunner{lines: []string{
+		"AudioProviderError: YT-DLP download error -",
+		"WARNING: Unable to download webpage: HTTP Error 429: Too Many Requests",
+	}}
+	a := newAdapter(t, r)
+	_, err := a.Start(context.Background(), core.DownloadRequest{Artist: "A", Title: "T"}, func(int) {})
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	var ce download.ClassifiedError
+	if !errors.As(err, &ce) {
+		t.Fatalf("expected a download.ClassifiedError, got %T: %v", err, err)
+	}
+	if ce.Class != download.ClassRateLimited {
+		t.Errorf("Class = %q, want %q", ce.Class, download.ClassRateLimited)
+	}
+}
+
 func TestExplainFailure(t *testing.T) {
 	cases := []struct {
 		name       string
@@ -354,7 +418,7 @@ func TestExplainFailure(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			reason, hint := explainFailure(c.raw)
+			_, reason, hint := classifyFailure(c.raw)
 			low := strings.ToLower(reason)
 			for _, want := range c.wantReason {
 				if !strings.Contains(low, want) {
@@ -674,6 +738,100 @@ func TestNormalizeAppliedInStart(t *testing.T) {
 	want := "https://www.youtube.com/watch?v=jh5u0wmau54|https://open.spotify.com/track/abc123track"
 	if r.gotArgs[n-1] != want {
 		t.Fatalf("trailing query arg: got %q, want %q", r.gotArgs[n-1], want)
+	}
+}
+
+func TestConfigSchemaIncludesYoutubeCookies(t *testing.T) {
+	a := New()
+	var field *registry.ConfigField
+	for i, f := range a.ConfigSchema().Fields {
+		if f.Key == "youtube_cookies" {
+			field = &a.ConfigSchema().Fields[i]
+		}
+	}
+	if field == nil {
+		t.Fatal("schema missing youtube_cookies")
+	}
+	if field.Type != "textarea" || !field.Secret {
+		t.Errorf("youtube_cookies field = %+v, want type=textarea secret=true", *field)
+	}
+}
+
+func TestInitWritesCookiesFileWhenConfigured(t *testing.T) {
+	// Sandbox the config dir so this never touches the real user's/CI runner's
+	// actual ~/.config/spotdl/cookies.txt (see TestEnsureSpotdlTempDirCreatesDir).
+	tmp := t.TempDir()
+	t.Setenv("HOME", tmp)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(tmp, ".config"))
+
+	content := "# Netscape HTTP Cookie File\n.youtube.com\tTRUE\t/\tTRUE\t0\tCONSENT\tYES+1\n"
+	a := New().WithRunner(&fakeRunner{})
+	if err := a.Init(map[string]any{"output_dir": "/tmp/music", "youtube_cookies": content}); err != nil {
+		t.Fatal(err)
+	}
+	path := cookiesFilePath()
+	t.Cleanup(func() { os.Remove(path) })
+
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("cookies file not written at %s: %v", path, err)
+	}
+	if string(got) != content {
+		t.Errorf("cookies file content = %q, want %q", got, content)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0o600 {
+		t.Errorf("cookies file mode = %v, want 0600", info.Mode().Perm())
+	}
+}
+
+func TestStartIncludesCookieFileArgWhenConfigured(t *testing.T) {
+	// Sandbox the config dir — see TestEnsureSpotdlTempDirCreatesDir.
+	tmp := t.TempDir()
+	t.Setenv("HOME", tmp)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(tmp, ".config"))
+
+	r := &fakeRunner{}
+	a := New().WithRunner(r)
+	if err := a.Init(map[string]any{"output_dir": "/tmp/music", "youtube_cookies": "cookie-content"}); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Remove(cookiesFilePath()) })
+
+	if _, err := a.Start(context.Background(), core.DownloadRequest{Artist: "A", Title: "T"}, func(int) {}); err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for i, arg := range r.gotArgs {
+		if arg == "--cookie-file" && i+1 < len(r.gotArgs) && r.gotArgs[i+1] == cookiesFilePath() {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("args %v missing --cookie-file %s", r.gotArgs, cookiesFilePath())
+	}
+}
+
+func TestStartOmitsCookieFileArgWhenNotConfigured(t *testing.T) {
+	// Sandbox the config dir — Start() unconditionally calls ensureSpotdlTempDir,
+	// which would otherwise create a temp dir under the real user's config dir
+	// (see TestEnsureSpotdlTempDirCreatesDir).
+	tmp := t.TempDir()
+	t.Setenv("HOME", tmp)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(tmp, ".config"))
+
+	r := &fakeRunner{}
+	a := newAdapter(t, r) // newAdapter's Init doesn't set youtube_cookies
+	if _, err := a.Start(context.Background(), core.DownloadRequest{Artist: "A", Title: "T"}, func(int) {}); err != nil {
+		t.Fatal(err)
+	}
+	for _, arg := range r.gotArgs {
+		if arg == "--cookie-file" {
+			t.Fatalf("args %v should not include --cookie-file", r.gotArgs)
+		}
 	}
 }
 

@@ -13,6 +13,9 @@ type ConfigField struct {
 	Type     string `json:"type"`
 	Required bool   `json:"required"`
 	Secret   bool   `json:"secret"`
+	// Help is optional instructional copy rendered under the field (e.g. how to
+	// obtain a value). Empty means no help text.
+	Help string `json:"help,omitempty"`
 }
 
 type ConfigSchema struct {

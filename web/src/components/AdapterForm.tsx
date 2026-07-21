@@ -150,6 +150,7 @@ export function AdapterForm({
             </label>
             {f.required && <span className="text-accent text-sm" aria-hidden="true">*</span>}
           </div>
+          {f.help && <p className="text-xs text-text-muted">{f.help}</p>}
           {f.type === 'bool' ? (
             <input
               id={`field-${f.key}`}
@@ -157,6 +158,20 @@ export function AdapterForm({
               checked={Boolean(values[f.key])}
               onChange={(e) => set(f.key, e.target.checked)}
             />
+          ) : f.type === 'textarea' ? (
+            <>
+              <textarea
+                id={`field-${f.key}`}
+                value={String(values[f.key] ?? '')}
+                onChange={(e) => set(f.key, e.target.value)}
+                placeholder={f.secret && secretIsSet[f.key] ? 'Leave blank to keep current value' : ''}
+                rows={6}
+                className="w-full rounded bg-input border border-border-subtle px-3 py-2 font-mono text-xs"
+              />
+              {f.secret && secretIsSet[f.key] && (
+                <p className="text-xs text-text-muted">Leave blank to keep the current value.</p>
+              )}
+            </>
           ) : (
             <>
               <input

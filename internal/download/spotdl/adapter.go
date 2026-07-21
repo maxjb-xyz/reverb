@@ -32,23 +32,36 @@ var progressRe = regexp.MustCompile(`(\d{1,3})\s*%`)
 // though the process exits 0 (per-song failures don't change the exit code).
 var failureRe = regexp.MustCompile(`AudioProviderError|YT-DLP download error|LookupError|DownloaderError`)
 
-// explainFailure turns a raw spotDL failure marker into a human-readable reason
-// plus an optional operator hint. Because we run spotDL with --simple-tui it emits
-// only a terse marker (e.g. "AudioProviderError: YT-DLP download error -") with no
-// underlying detail, so classifying the marker is more useful than surfacing the
-// bare line — a stale bundled yt-dlp is by far the most common cause of the
-// YouTube/audio-provider failure, and it is fixable.
-func explainFailure(raw string) (reason, hint string) {
+// classifyFailure turns the captured spotDL failure context into a FailureClass
+// plus a human-readable reason and an optional operator hint. Order matters:
+// the specific YouTube-side classes (rate limit, bot challenge) are checked
+// before the generic AudioProviderError/YT-DLP-download-error fallback, since
+// a real failure blob may contain both the outer wrapper text AND the more
+// specific inner detail.
+func classifyFailure(raw string) (class download.FailureClass, reason, hint string) {
 	raw = strings.TrimSpace(raw)
 	low := strings.ToLower(raw)
 	switch {
-	case strings.Contains(low, "yt-dlp download error"), strings.Contains(low, "audioprovidererror"):
-		return "YouTube download failed (yt-dlp): the bundled yt-dlp is likely out of date, or the track is unavailable or region-locked",
-			"if downloads are failing across the board, update yt-dlp — rebuild the image, or run 'pip install --upgrade yt-dlp' inside the container"
+	case strings.Contains(low, "429"), strings.Contains(low, "too many requests"):
+		return download.ClassRateLimited,
+			"YouTube is rate-limiting this server (HTTP 429 Too Many Requests)",
+			"downloads will pause and resume automatically; configuring authenticated YouTube cookies in this downloader's settings reduces how often this happens"
+	case strings.Contains(low, "sign in to confirm"), strings.Contains(low, "login_required"):
+		return download.ClassBotChallenge,
+			"YouTube is requiring sign-in to confirm this request isn't a bot",
+			"configure YouTube cookies in this downloader's settings to authenticate as a real browser session"
 	case strings.Contains(low, "lookuperror"):
-		return "track not found on the audio source", ""
+		return download.ClassNoMatch, "track not found on the audio source", ""
+	case strings.Contains(low, "video unavailable"), strings.Contains(low, "not available in your country"):
+		return download.ClassUnavailable, "the track is unavailable or region-locked on the audio source", ""
+	case strings.Contains(low, "spotifyexception"), strings.Contains(low, "invalid_client"):
+		return download.ClassSpotifyAPIError, "Spotify API request failed", ""
+	case strings.Contains(low, "yt-dlp download error"), strings.Contains(low, "audioprovidererror"):
+		return download.ClassUnknown,
+			"YouTube download failed (yt-dlp): the bundled yt-dlp is likely out of date, or the track is unavailable or region-locked",
+			"if downloads are failing across the board, update yt-dlp — rebuild the image, or run 'pip install --upgrade yt-dlp' inside the container"
 	default:
-		return raw, ""
+		return download.ClassUnknown, raw, ""
 	}
 }
 
@@ -74,6 +87,7 @@ type Adapter struct {
 	binary       string
 	clientID     string
 	clientSecret string
+	cookiesFile  string // path to a written cookies.txt, or "" if not configured
 }
 
 func New() *Adapter {
@@ -98,6 +112,11 @@ func (a *Adapter) ConfigSchema() registry.ConfigSchema {
 		{Key: "binary_path", Label: "spotDL binary path", Type: "string", Required: false},
 		{Key: "client_id", Label: "Spotify Client ID", Type: "string", Required: false},
 		{Key: "client_secret", Label: "Spotify Client Secret", Type: "string", Required: false, Secret: true},
+		{
+			Key: "youtube_cookies", Label: "YouTube cookies (Netscape format) — optional",
+			Type: "textarea", Required: false, Secret: true,
+			Help: "Export cookies while logged into YouTube using a browser extension (e.g. \"Get cookies.txt LOCALLY\"), then paste the entire file's contents here. This ties downloads to that Google account, and heavy automated use carries some risk of that account being flagged by YouTube.",
+		},
 	}}
 }
 
@@ -118,6 +137,17 @@ func (a *Adapter) Init(cfg map[string]any) error {
 	}
 	if v, ok := cfg["client_secret"].(string); ok {
 		a.clientSecret = v
+	}
+	if v, ok := cfg["youtube_cookies"].(string); ok {
+		if strings.TrimSpace(v) != "" {
+			path, err := writeCookiesFile(v)
+			if err != nil {
+				return fmt.Errorf("spotdl: writing youtube cookies file: %w", err)
+			}
+			a.cookiesFile = path
+		} else {
+			a.cookiesFile = ""
+		}
 	}
 	if a.runner == nil {
 		a.runner = ExecRunner{}
@@ -164,6 +194,42 @@ func ensureSpotdlTempDir() {
 		return
 	}
 	_ = os.MkdirAll(filepath.Join(cfg, "spotdl", "temp"), 0o755)
+}
+
+// cookiesFilePath returns the path spotDL/yt-dlp's --cookie-file should point
+// at, alongside spotDL's own config dir (the same <user-config-dir>/spotdl
+// directory ensureSpotdlTempDir uses for its temp dir). Returns "" if the
+// user config dir can't be resolved.
+func cookiesFilePath() string {
+	cfg, err := os.UserConfigDir()
+	if err != nil || cfg == "" {
+		return ""
+	}
+	return filepath.Join(cfg, "spotdl", "cookies.txt")
+}
+
+// writeCookiesFile persists the admin-pasted cookies.txt content to disk so it
+// can be handed to yt-dlp as a real file path. Mode 0600: this is authenticated
+// session data.
+func writeCookiesFile(content string) (string, error) {
+	path := cookiesFilePath()
+	if path == "" {
+		return "", fmt.Errorf("could not resolve user config dir")
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return "", err
+	}
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		return "", err
+	}
+	// os.WriteFile's mode argument only applies when the file is newly created;
+	// if cookies.txt already existed (e.g. from an earlier run or created with
+	// looser permissions some other way), rewriting its content would not
+	// correct its mode. Chmod explicitly so 0600 is enforced on every write.
+	if err := os.Chmod(path, 0o600); err != nil {
+		return "", err
+	}
+	return path, nil
 }
 
 // spotifyTargetURL returns the Spotify URL for the given request. It chooses the
@@ -266,6 +332,9 @@ func (a *Adapter) Start(ctx context.Context, req core.DownloadRequest, onProgres
 	if a.clientID != "" && a.clientSecret != "" {
 		args = append(args, "--client-id", a.clientID, "--client-secret", a.clientSecret)
 	}
+	if a.cookiesFile != "" {
+		args = append(args, "--cookie-file", a.cookiesFile)
+	}
 	// Prefer YouTube Music but fall back to plain YouTube when a track is absent
 	// from YT-Music's catalog (common for obscure/regional/classical releases).
 	args = append(args, "--audio", "youtube-music", "youtube")
@@ -287,7 +356,12 @@ func (a *Adapter) Start(ctx context.Context, req core.DownloadRequest, onProgres
 	log.Printf("spotdl: exec %s %s", a.binary, redactArgs(args))
 
 	sawProgress := false
-	var failure string // first fatal error line spotDL emitted, if any
+	// failureBuf accumulates lines from the first fatal-marker line onward (bounded),
+	// since spotDL under --simple-tui sometimes prints one or two extra detail lines
+	// (e.g. the offending URL) after the terse marker itself — classifyFailure needs
+	// whatever is there, not just the marker line.
+	const failureContextLines = 8
+	var failureBuf []string
 	rerr := a.runner.Run(ctx, a.binary, args, func(line string) {
 		// Echo spotDL's own output (stdout+stderr) so a slow/stuck/failing
 		// download is diagnosable from the Reverb logs.
@@ -297,8 +371,8 @@ func (a *Adapter) Start(ctx context.Context, req core.DownloadRequest, onProgres
 		// spotDL exits 0 even when a song fails to download (it just logs the
 		// error and moves on), so the exit code alone would report a non-existent
 		// file as a success. Detect the fatal markers and surface them as an error.
-		if failure == "" && failureRe.MatchString(line) {
-			failure = strings.TrimSpace(line)
+		if s := strings.TrimSpace(line); (failureRe.MatchString(line) || len(failureBuf) > 0) && len(failureBuf) < failureContextLines {
+			failureBuf = append(failureBuf, s)
 		}
 		if m := progressRe.FindStringSubmatch(line); m != nil {
 			if p, err := strconv.Atoi(m[1]); err == nil && p >= 0 && p <= 100 {
@@ -321,13 +395,13 @@ func (a *Adapter) Start(ctx context.Context, req core.DownloadRequest, onProgres
 		log.Printf("spotdl: %q failed: %v", query, rerr)
 		return "", fmt.Errorf("spotdl download %q: %w", query, rerr)
 	}
-	if failure != "" {
-		reason, hint := explainFailure(failure)
-		log.Printf("spotdl: %q failed: %s", query, failure)
+	if len(failureBuf) > 0 {
+		class, reason, hint := classifyFailure(strings.Join(failureBuf, "\n"))
+		log.Printf("spotdl: %q failed: %s", query, failureBuf[0])
 		if hint != "" {
 			log.Printf("spotdl: hint — %s", hint)
 		}
-		return "", fmt.Errorf("spotdl download %q: %s", query, reason)
+		return "", download.ClassifiedError{Class: class, Err: fmt.Errorf("spotdl download %q: %s", query, reason)}
 	}
 	if !sawProgress {
 		onProgress(-1) // indeterminate: spotDL gave no parseable percentage
