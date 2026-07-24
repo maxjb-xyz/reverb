@@ -343,6 +343,15 @@ func (a *Adapter) Start(ctx context.Context, req core.DownloadRequest, onProgres
 	// index as one combined artist ("A/B/C"). "; " is in Navidrome's default split
 	// set, so each collaborator becomes a real artist.
 	args = append(args, "--id3-separator", "; ")
+	// spotDL's default log level (INFO) drops the real yt-dlp failure detail
+	// (e.g. "HTTP Error 429", "Sign in to confirm you're not a bot") on the
+	// floor — its own source only logs that detail via logger.debug(exception)
+	// immediately before raising the terse "AudioProviderError: YT-DLP download
+	// error - <url>" that failureRe matches. --log-level DEBUG (independent of
+	// --simple-tui, which only controls the progress-display format, not
+	// logging) is what actually makes that detail reach stdout, where
+	// classifyFailure can see it.
+	args = append(args, "--log-level", "DEBUG")
 	args = append(args, "--simple-tui", "--output", outputTemplate, "download", query)
 
 	// Pre-create spotDL's shared temp dir to defeat a concurrency race: spotDL does
@@ -356,11 +365,16 @@ func (a *Adapter) Start(ctx context.Context, req core.DownloadRequest, onProgres
 	log.Printf("spotdl: exec %s %s", a.binary, redactArgs(args))
 
 	sawProgress := false
-	// failureBuf accumulates lines from the first fatal-marker line onward (bounded),
-	// since spotDL under --simple-tui sometimes prints one or two extra detail lines
-	// (e.g. the offending URL) after the terse marker itself — classifyFailure needs
-	// whatever is there, not just the marker line.
+	// failureBuf accumulates the classifiable context around a fatal-marker line
+	// (bounded). Critically, spotDL logs the real yt-dlp detail (via --log-level
+	// DEBUG above) BEFORE it raises the terse "AudioProviderError: YT-DLP
+	// download error - <url>" that failureRe matches — so the useful detail
+	// arrives on a line BEFORE the marker, not just after it. recentLines is a
+	// small rolling window of recent output; once the marker fires, that window
+	// is prepended to failureBuf so classifyFailure sees the DEBUG detail too,
+	// then subsequent lines (e.g. the offending URL) keep appending as before.
 	const failureContextLines = 8
+	var recentLines []string
 	var failureBuf []string
 	rerr := a.runner.Run(ctx, a.binary, args, func(line string) {
 		// Echo spotDL's own output (stdout+stderr) so a slow/stuck/failing
@@ -371,8 +385,19 @@ func (a *Adapter) Start(ctx context.Context, req core.DownloadRequest, onProgres
 		// spotDL exits 0 even when a song fails to download (it just logs the
 		// error and moves on), so the exit code alone would report a non-existent
 		// file as a success. Detect the fatal markers and surface them as an error.
-		if s := strings.TrimSpace(line); (failureRe.MatchString(line) || len(failureBuf) > 0) && len(failureBuf) < failureContextLines {
-			failureBuf = append(failureBuf, s)
+		s := strings.TrimSpace(line)
+		switch {
+		case len(failureBuf) > 0:
+			if len(failureBuf) < failureContextLines {
+				failureBuf = append(failureBuf, s)
+			}
+		case failureRe.MatchString(line):
+			failureBuf = append(append([]string{}, recentLines...), s)
+		default:
+			recentLines = append(recentLines, s)
+			if len(recentLines) > failureContextLines {
+				recentLines = recentLines[1:]
+			}
 		}
 		if m := progressRe.FindStringSubmatch(line); m != nil {
 			if p, err := strconv.Atoi(m[1]); err == nil && p >= 0 && p <= 100 {

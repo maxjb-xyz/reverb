@@ -384,6 +384,56 @@ func TestStartReturnsClassifiedErrorOnFailure(t *testing.T) {
 	}
 }
 
+// TestStartCapturesPreMarkerDebugContextForClassification: spotDL's own source
+// (spotdl/providers/audio/base.py) logs the real yt-dlp exception via
+// logger.debug(exception) BEFORE raising the terse "AudioProviderError: YT-DLP
+// download error - <url>" that failureRe matches — so with --log-level DEBUG
+// enabled, the classifiable detail (e.g. "HTTP Error 429") arrives on a line
+// BEFORE the marker line, not after. A capture window that only starts once
+// the marker matches would miss it entirely.
+func TestStartCapturesPreMarkerDebugContextForClassification(t *testing.T) {
+	r := &fakeRunner{lines: []string{
+		"DEBUG: HTTPError('HTTP Error 429: Too Many Requests')",
+		"AudioProviderError: YT-DLP download error -",
+		"https://music.youtube.com/watch?v=x",
+	}}
+	a := newAdapter(t, r)
+	_, err := a.Start(context.Background(), core.DownloadRequest{Artist: "A", Title: "T"}, func(int) {})
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	var ce download.ClassifiedError
+	if !errors.As(err, &ce) {
+		t.Fatalf("expected a download.ClassifiedError, got %T: %v", err, err)
+	}
+	if ce.Class != download.ClassRateLimited {
+		t.Errorf("Class = %q, want %q (pre-marker DEBUG line should have been captured)", ce.Class, download.ClassRateLimited)
+	}
+}
+
+func TestStartIncludesLogLevelDebugArg(t *testing.T) {
+	r := &fakeRunner{}
+	a := newAdapter(t, r)
+	if _, err := a.Start(context.Background(), core.DownloadRequest{Artist: "A", Title: "T"}, func(int) {}); err != nil {
+		t.Fatal(err)
+	}
+	logIdx, downloadIdx := -1, -1
+	for i, arg := range r.gotArgs {
+		if arg == "--log-level" && i+1 < len(r.gotArgs) && r.gotArgs[i+1] == "DEBUG" {
+			logIdx = i
+		}
+		if arg == "download" {
+			downloadIdx = i
+		}
+	}
+	if logIdx == -1 {
+		t.Fatalf("args %v missing --log-level DEBUG", r.gotArgs)
+	}
+	if downloadIdx == -1 || logIdx > downloadIdx {
+		t.Fatalf("--log-level must precede the download operation: %v", r.gotArgs)
+	}
+}
+
 func TestExplainFailure(t *testing.T) {
 	cases := []struct {
 		name       string
