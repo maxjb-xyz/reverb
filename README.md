@@ -51,9 +51,13 @@ _The web player — queue, shuffle, repeat, seek, and keyboard shortcuts._
   Subsonic/Navidrome server.
 - Gapless-feeling web player with queue, shuffle, repeat, seek, and keyboard
   shortcuts.
+- Live synced lyrics from local LRC files or LRCLIB, with an in-player preview,
+  fullscreen view, synchronized scrolling, and click-to-seek.
 - "Search Everywhere" with live per-source streaming (SSE) and library matching
   — Deezer works keyless out of the box; add Spotify credentials for its catalog.
-- One-click spotDL downloads with live progress and auto play-when-ready.
+- One-click spotDL downloads with live progress and auto play-when-ready, plus
+  optional authenticated YouTube cookies and automatic cooldown/retry pacing for
+  rate limits and bot challenges.
 - Pluggable adapters (library / search / downloader) configured in-app, with a
   first-run setup wizard.
 - Single static binary, SPA embedded; ships as one Docker image (Python3 +
