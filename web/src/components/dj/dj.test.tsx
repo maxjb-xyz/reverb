@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { act, render, screen, fireEvent, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { MemoryRouter } from 'react-router-dom'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 
 const get = vi.fn()
 const post = vi.fn()
@@ -22,6 +23,11 @@ vi.mock('../../lib/toastStore', () => ({
 import { DJTile } from './DJTile'
 import { DJBar } from './DJBar'
 import { _resetDJ, useDJ } from '../../lib/dj'
+import { useAuthStore } from '../../lib/authStore'
+
+function signIn(capabilities: string[]) {
+  useAuthStore.setState({ me: { id: 'u1', username: 'max', roleId: 'r', roleName: 'Owner', isOwner: true, capabilities, createdAt: 0 } })
+}
 
 const track = (id: string) => ({ id, title: `Song ${id}`, albumId: 'al', album: 'Album', artistId: 'ar', artist: 'Bonobo', coverArtId: 'c', trackNumber: 1, discNumber: 1, durationMs: 200000, bitRate: 320, suffix: 'mp3', contentType: 'audio/mpeg' })
 const lane = (name: string, ids: string[]) => ({
@@ -30,7 +36,12 @@ const lane = (name: string, ids: string[]) => ({
 })
 
 function wrap(ui: ReactNode) {
-  return render(<MemoryRouter>{ui}</MemoryRouter>)
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  return render(
+    <QueryClientProvider client={qc}>
+      <MemoryRouter>{ui}</MemoryRouter>
+    </QueryClientProvider>,
+  )
 }
 
 beforeEach(() => {
@@ -48,6 +59,8 @@ beforeEach(() => {
 
 afterEach(() => {
   act(() => _resetDJ())
+  useAuthStore.setState({ me: null })
+  localStorage.clear()
 })
 
 describe('DJTile', () => {
@@ -138,5 +151,45 @@ describe('DJBar', () => {
     fireEvent.change(screen.getByRole('textbox', { name: 'Ask the DJ' }), { target: { value: 'blorp' } })
     fireEvent.submit(screen.getByRole('textbox', { name: 'Ask the DJ' }))
     await waitFor(() => expect(push).toHaveBeenCalledWith(expect.stringMatching(/didn't catch that/), 'info'))
+  })
+})
+
+describe('VoiceNudge', () => {
+  it('offers a manager the built-in voice and turns it on', async () => {
+    signIn(['can_manage_library'])
+    get.mockImplementation(async (p: string) => (p === '/adapters' ? [{ id: 'a1', type: 'llm', name: 'openai-chat' }] : null))
+    post.mockImplementation(async (p: string) => (p === '/adapters' ? { data: { id: 'v1' } } : null))
+    act(() => useDJ.setState({ active: true, label: 'On repeat', voice: false }))
+    wrap(<DJBar />)
+    fireEvent.click(screen.getByRole('button', { name: 'Turn on built-in voice' }))
+    await waitFor(() =>
+      expect(post).toHaveBeenCalledWith('/adapters', { type: 'voice', name: 'kokoro', enabled: true, priority: 0, config: {} }),
+    )
+    await waitFor(() => expect(useDJ.getState().voice).toBe(true))
+    expect(screen.queryByTestId('dj-voice-nudge')).toBeNull()
+    expect(push).toHaveBeenCalledWith(expect.stringMatching(/Setting up the built-in voice/), 'info')
+  })
+
+  it('sends a manager to Admin when a voice exists but is not working', async () => {
+    signIn(['can_manage_library'])
+    get.mockImplementation(async (p: string) => (p === '/adapters' ? [{ id: 'v0', type: 'voice', name: 'elevenlabs' }] : null))
+    act(() => useDJ.setState({ active: true, label: 'On repeat', voice: false }))
+    wrap(<DJBar />)
+    fireEvent.click(screen.getByRole('button', { name: 'Turn on built-in voice' }))
+    await waitFor(() => expect(navigate).toHaveBeenCalledWith('/admin'))
+    expect(post).not.toHaveBeenCalledWith('/adapters', expect.anything())
+  })
+
+  it('stays hidden for listeners who cannot set up providers, and once dismissed', () => {
+    signIn([])
+    act(() => useDJ.setState({ active: true, label: 'On repeat', voice: false }))
+    const { unmount } = wrap(<DJBar />)
+    expect(screen.queryByTestId('dj-voice-nudge')).toBeNull()
+    unmount()
+    signIn(['can_manage_library'])
+    wrap(<DJBar />)
+    fireEvent.click(screen.getByRole('button', { name: 'Not now' }))
+    expect(screen.queryByTestId('dj-voice-nudge')).toBeNull()
+    expect(localStorage.getItem('reverb.dj.voiceNudge.dismissed')).toBe('1')
   })
 })

@@ -206,11 +206,11 @@ type promptFacts struct {
 
 var laneMeaning = map[string]string{
 	LaneOnRepeat:   "songs the listener has played a lot lately",
-	LaneThrowback:  "songs the listener loved a while ago and has not played in some time",
+	LaneThrowback:  "songs from an earlier period, see the songs' years",
 	LaneDeepCuts:   "lesser-played songs by artists the listener likes",
 	LaneSoundsLike: "songs that sound like the seed",
 	LaneNewToYou:   "songs in the listener's library they have never played",
-	LaneFreshFinds: "new songs picked for the listener this week",
+	LaneFreshFinds: "songs recently added to the listener's library",
 	LaneRequest:    "songs for what the listener asked for",
 }
 
@@ -284,7 +284,9 @@ var laneLines = map[string][]variant{
 	},
 	LaneThrowback: {
 		{[]string{"last_played"}, "Going back to something you loved {last_played}: {next}."},
-		{nil, "Here's a throwback you haven't played in a while. {next}."},
+		{[]string{"year"}, "Let's go back to {year}. {next}."},
+		{[]string{"year"}, "A throwback to {year}: {next}."},
+		{nil, "Here's a throwback. {next}."},
 	},
 	LaneDeepCuts: {
 		{[]string{"artist"}, "A deeper cut from {artist}: {title}."},
@@ -299,8 +301,8 @@ var laneLines = map[string][]variant{
 		{nil, "Something new to you, from your own shelves: {next}."},
 	},
 	LaneFreshFinds: {
-		{nil, "A fresh find picked for you this week: {next}."},
-		{nil, "New for you this week. {next}."},
+		{nil, "Fresh in your library: {next}."},
+		{nil, "Just added to your library, here's {next}."},
 	},
 	LaneRequest: {
 		{[]string{"request"}, "You asked for {request}. Here's {next}."},
@@ -352,6 +354,9 @@ func (w *Writer) template(s Segment) string {
 	}
 	if s.Reason.PlayCount > 1 {
 		facts["count"] = fmt.Sprint(s.Reason.PlayCount)
+	}
+	if n.Year > 0 {
+		facts["year"] = fmt.Sprint(n.Year)
 	}
 	if s.Previous != nil {
 		facts["prev_title"], facts["prev_artist"] = s.Previous.Title, s.Previous.Artist

@@ -160,11 +160,12 @@ function plainLine(b: { label: string; tracks: Track[] }): string {
 }
 
 function segmentFor(s: Session, lane: Lane | 'request', items: EngineItem[], previous?: Track, request?: string): DJSegment {
-  const r = items[0].reason
+  // seedTitle comes with the engine's optional audio analysis ("sounds like <song>").
+  const r: EngineItem['reason'] & { seedTitle?: string } = items[0].reason
   return {
     lane,
     request,
-    reason: { artist: r.artist, play_count: r.playCount, seed: r.seedArtist },
+    reason: { artist: r.artist, play_count: r.playCount, seed: r.seedTitle ?? r.seedArtist },
     previous: previous ? toDJ(previous) : undefined,
     next: items.slice(0, 5).map((it) => toDJ(it.track as Track, it.year)),
     listener: s.deps.listener(),
@@ -468,6 +469,12 @@ export async function askDJ(text: string): Promise<AskResult> {
     if (session === s) s.fetching = false
     useDJ.setState({ busy: false })
   }
+}
+
+/** A voice was just set up: speak the lines from now on. */
+export function setDJVoice(on: boolean): void {
+  if (session) session.voice = on
+  useDJ.setState({ voice: on })
 }
 
 /** Turn the DJ off. What is queued keeps playing. */
