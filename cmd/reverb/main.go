@@ -35,10 +35,10 @@ import (
 	"github.com/maxjb-xyz/reverb/internal/search/spotify"
 	"github.com/maxjb-xyz/reverb/internal/store"
 	"github.com/maxjb-xyz/reverb/internal/store/db"
+	"github.com/maxjb-xyz/reverb/internal/taste"
 	"github.com/maxjb-xyz/reverb/internal/voice"
 	"github.com/maxjb-xyz/reverb/internal/voice/elevenlabs"
 	"github.com/maxjb-xyz/reverb/internal/voice/openaispeech"
-	"github.com/maxjb-xyz/reverb/internal/taste"
 	"github.com/maxjb-xyz/reverb/internal/wiring"
 )
 
