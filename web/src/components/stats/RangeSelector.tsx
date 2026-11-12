@@ -1,24 +1,21 @@
 import { useState } from 'react'
 import { presetRange, customRange } from '../../lib/range'
 import type { Range, PresetKey } from '../../lib/range'
+import { Chip } from '../ui/Chip'
+import { Button } from '../ui/Button'
 
 interface Props {
   value: Range
   onChange: (r: Range) => void
 }
 
-const ROLLING_PRESETS: { key: PresetKey; label: string }[] = [
-  { key: '7d', label: '7d' },
-  { key: '30d', label: '30d' },
-  { key: '90d', label: '90d' },
-  { key: 'year', label: 'Year' },
-  { key: 'all', label: 'All time' },
-]
-
-const CALENDAR_PRESETS: { key: PresetKey; label: string }[] = [
-  { key: 'thisWeek', label: 'This week' },
-  { key: 'thisMonth', label: 'This month' },
+// Five choices cover what people actually ask of a stats page; the calendar
+// and 90-day variants were near-duplicates that made the row wrap on phones.
+const PRESETS: { key: PresetKey; label: string }[] = [
+  { key: '7d', label: '7 days' },
+  { key: '30d', label: '30 days' },
   { key: 'thisYear', label: 'This year' },
+  { key: 'all', label: 'All time' },
 ]
 
 function toInputDate(sec: number): string {
@@ -32,7 +29,7 @@ function fromInputDate(s: string): Date {
 }
 
 /**
- * RangeSelector — preset chips (rolling + calendar-aligned) and a custom
+ * RangeSelector — four preset chips and a custom
  * date-range picker. Token-styled; no raw hex / text-black / text-white.
  */
 export function RangeSelector({ value, onChange }: Props) {
@@ -58,65 +55,18 @@ export function RangeSelector({ value, onChange }: Props) {
   function isPresetActive(key: PresetKey): boolean {
     return value.label === presetRange(key).label
   }
+  const isCustom = !PRESETS.some(({ key }) => isPresetActive(key))
 
   return (
-    <div className="flex flex-wrap items-center gap-1.5">
-      {/* Rolling preset chips */}
-      {ROLLING_PRESETS.map(({ key, label }) => {
-        const active = isPresetActive(key)
-        return (
-          <button
-            key={key}
-            aria-pressed={active}
-            onClick={() => selectPreset(key)}
-            className={[
-              'px-3 py-1 rounded-full text-sm font-medium transition-colors',
-              active
-                ? 'bg-accent text-on-accent'
-                : 'bg-raised text-text-muted hover:bg-raised-hover',
-            ].join(' ')}
-          >
-            {label}
-          </button>
-        )
-      })}
-
-      {/* Divider */}
-      <span className="w-px h-4 bg-border mx-0.5" aria-hidden />
-
-      {/* Calendar-aligned chips */}
-      {CALENDAR_PRESETS.map(({ key, label }) => {
-        const active = isPresetActive(key)
-        return (
-          <button
-            key={key}
-            aria-pressed={active}
-            onClick={() => selectPreset(key)}
-            className={[
-              'px-3 py-1 rounded-full text-sm font-medium transition-colors',
-              active
-                ? 'bg-accent text-on-accent'
-                : 'bg-raised text-text-muted hover:bg-raised-hover',
-            ].join(' ')}
-          >
-            {label}
-          </button>
-        )
-      })}
-
-      {/* Custom range trigger */}
-      <button
-        aria-pressed={showCustom}
-        onClick={() => setShowCustom((v) => !v)}
-        className={[
-          'px-3 py-1 rounded-full text-sm font-medium transition-colors',
-          showCustom
-            ? 'bg-accent text-on-accent'
-            : 'bg-raised text-text-muted hover:bg-raised-hover',
-        ].join(' ')}
-      >
+    <div className="flex flex-wrap items-center gap-2">
+      {PRESETS.map(({ key, label }) => (
+        <Chip key={key} asToggle selected={!showCustom && isPresetActive(key)} onClick={() => selectPreset(key)}>
+          {label}
+        </Chip>
+      ))}
+      <Chip asToggle selected={showCustom || isCustom} onClick={() => setShowCustom((v) => !v)}>
         Custom
-      </button>
+      </Chip>
 
       {/* Custom date range popover */}
       {showCustom && (
@@ -145,18 +95,12 @@ export function RangeSelector({ value, onChange }: Props) {
               className="px-2 py-1 rounded text-sm bg-surface border border-border text-text-primary"
             />
           </div>
-          <button
-            onClick={applyCustom}
-            className="px-3 py-1 rounded text-sm font-medium bg-accent text-on-accent hover:bg-accent-hover"
-          >
+          <Button size="sm" variant="primary" onClick={applyCustom}>
             Apply
-          </button>
-          <button
-            onClick={() => setShowCustom(false)}
-            className="px-3 py-1 rounded text-sm text-text-muted hover:bg-raised-hover"
-          >
+          </Button>
+          <Button size="sm" variant="ghost" onClick={() => setShowCustom(false)}>
             Cancel
-          </button>
+          </Button>
         </div>
       )}
     </div>
