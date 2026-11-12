@@ -8,6 +8,7 @@ import (
 	"github.com/maxjb-xyz/reverb/internal/library"
 	"github.com/maxjb-xyz/reverb/internal/llm"
 	"github.com/maxjb-xyz/reverb/internal/resolver"
+	"github.com/maxjb-xyz/reverb/internal/search"
 	"github.com/maxjb-xyz/reverb/internal/voice"
 	"github.com/maxjb-xyz/reverb/internal/wiring"
 )
@@ -16,6 +17,13 @@ import (
 // (atomic.Pointer needs a concrete pointee). The wrapped matcher may be nil when no
 // library is configured.
 type matcherHolder struct{ m resolver.Rematcher }
+
+// liveServices is the library + search sources of the current bundle, for
+// long-lived services (the recommendation index) that must follow reloads.
+type liveServices struct {
+	lib     library.LibraryAdapter
+	sources []search.SearchSource
+}
 
 // bundleBuilder is the seam serviceReloader builds a fresh ServiceBundle through.
 // *wiring.Builder satisfies it; tests inject a stub to drive successive matchers.
@@ -41,7 +49,11 @@ type serviceReloader struct {
 	// voice, when set, receives the rebuilt DJ voice on every reload.
 	voice *voice.Service
 	// llm, when set, receives the rebuilt DJ writer model on every reload.
-	llm *llm.Service
+	llm  *llm.Service
+	live atomic.Pointer[liveServices]
+	// onReload runs after each successful rebuild (e.g. to re-index the library
+	// against the new adapters). May be nil.
+	onReload func()
 }
 
 var _ api.ServiceReloader = (*serviceReloader)(nil)
@@ -69,6 +81,22 @@ func (r *serviceReloader) publishMatcher(m resolver.Rematcher) {
 	r.liveMatcher.Store(&matcherHolder{m: m})
 }
 
+// publishServices installs the bundle's library and search sources as live.
+func (r *serviceReloader) publishServices(b wiring.ServiceBundle) {
+	r.live.Store(&liveServices{lib: b.Library, sources: b.Sources})
+}
+
+// servicesProvider returns a func reading the live library + sources.
+func (r *serviceReloader) servicesProvider() func() (library.LibraryAdapter, []search.SearchSource) {
+	return func() (library.LibraryAdapter, []search.SearchSource) {
+		l := r.live.Load()
+		if l == nil {
+			return nil, nil
+		}
+		return l.lib, l.sources
+	}
+}
+
 // matcherProvider returns the resolver.Service provider: a func that reads the
 // current live matcher on every call, so the resolver follows hot-reloads instead
 // of capturing a stale matcher. Returns nil safely before any publish or when no
@@ -92,6 +120,10 @@ func (r *serviceReloader) Reload(ctx context.Context) (library.LibraryAdapter, a
 	// Publish the freshly-built matcher (may be nil) so the resolver singleton
 	// re-matches against the live adapter rather than the one it was wired with.
 	r.publishMatcher(bundle.Matcher)
+	r.publishServices(bundle)
+	if r.onReload != nil {
+		r.onReload()
+	}
 
 	if r.voice != nil {
 		r.voice.Set(bundle.Voice)

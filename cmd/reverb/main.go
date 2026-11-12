@@ -20,6 +20,7 @@ import (
 	"github.com/maxjb-xyz/reverb/internal/download/lidarr"
 	"github.com/maxjb-xyz/reverb/internal/download/spotdl"
 	"github.com/maxjb-xyz/reverb/internal/events"
+	"github.com/maxjb-xyz/reverb/internal/libindex"
 	"github.com/maxjb-xyz/reverb/internal/library/embedded"
 	"github.com/maxjb-xyz/reverb/internal/library/lyrics"
 	"github.com/maxjb-xyz/reverb/internal/library/subsonic"
@@ -194,6 +195,26 @@ func main() {
 	reloader.publishMatcher(bundle.Matcher)
 	voiceSvc.Set(bundle.Voice)
 	llmSvc.Set(bundle.LLM)
+	reloader.publishServices(bundle)
+
+	// Recommendation index: the library's tracks with genres/years, plus the
+	// artist-similarity map from search sources. Follows hot-reloads through
+	// the reloader's live services; re-runs when the library changes.
+	indexSvc := libindex.New(st.DB(), reloader.servicesProvider(), time.Now, libindex.Options{})
+	reloader.onReload = indexSvc.Kick
+	libChanged := make(chan struct{}, 1)
+	{
+		evs, _ := bus.Subscribe(download.TopicLibraryUpdate)
+		go func() {
+			for range evs {
+				select {
+				case libChanged <- struct{}{}:
+				default:
+				}
+			}
+		}()
+	}
+	indexSvc.Start(ctx, libChanged, 45*time.Second, 6*time.Hour)
 
 	// Start the bundled-library supervisor (no-op in external mode).
 	if bundle.Supervisor != nil {
@@ -212,6 +233,10 @@ func main() {
 	// boot-race (backfill at Start() fires before Navidrome is serving) is healed.
 	if bundle.Supervisor != nil && bundle.Manager != nil {
 		go waitReadyThenBackfill(ctx, bundle.Supervisor.Ready, bundle.Manager.BackfillUnlinked)
+	}
+	// Index as soon as the bundled library is actually serving.
+	if bundle.Supervisor != nil {
+		go waitReadyThenBackfill(ctx, bundle.Supervisor.Ready, indexSvc.Kick)
 	}
 
 	// Start the playlist-sync scheduler when a sync service is configured. It ticks
@@ -268,6 +293,7 @@ func main() {
 		Stats:         statsSvc,
 		Scrobble:      scrobbleSvc,
 		Taste:         tasteSvc,
+		LibIndex:      indexSvc,
 		Lyrics: &lyrics.Service{
 			Store: st.Q(),
 			Client: &lyrics.LRCLibClient{

@@ -302,6 +302,9 @@ type ServiceBundle struct {
 	Voice voice.Voice
 	// LLM writes the DJ's lines; nil when no model provider is enabled.
 	LLM llm.LLM
+	// Sources are the enabled search sources, exposed so long-lived services
+	// (the recommendation index) can reach the live set after a hot-reload.
+	Sources []search.SearchSource
 }
 
 // VersionStore is the library_version reader/writer the Manager + matcher need.
@@ -664,6 +667,7 @@ func (b *Builder) Build(ctx context.Context) (ServiceBundle, error) {
 
 	// Search sources + matcher + aggregator.
 	sources := BuildSearchSources(b.searchReg, instances, b.getenv)
+	bundle.Sources = sources
 	if len(sources) > 0 {
 		var aggMatcher search.Matcher
 		if matcher != nil {

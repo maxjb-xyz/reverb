@@ -85,3 +85,16 @@ func TestNonAdminCannotCreateRole(t *testing.T) {
 		t.Fatalf("POST /roles with requester = %d, want 403: %s", rr.Code, rr.Body)
 	}
 }
+
+// TestNonAdminCannotManageRecommendationIndex asserts the index status and
+// rebuild endpoints are manager-only.
+func TestNonAdminCannotManageRecommendationIndex(t *testing.T) {
+	srv := newTestServer(t)
+	_, rtok := setupRequesterSession(t, srv)
+	if rr := doGET(t, srv, "/api/v1/engine/index", rtok); rr.Code != http.StatusForbidden {
+		t.Fatalf("GET /engine/index with requester = %d, want 403", rr.Code)
+	}
+	if rr := doPOST(t, srv, "/api/v1/engine/index/rebuild", rtok, ""); rr.Code != http.StatusForbidden {
+		t.Fatalf("POST /engine/index/rebuild with requester = %d, want 403", rr.Code)
+	}
+}

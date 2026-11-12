@@ -14,6 +14,7 @@ import (
 	"github.com/maxjb-xyz/reverb/internal/auth"
 	"github.com/maxjb-xyz/reverb/internal/core"
 	"github.com/maxjb-xyz/reverb/internal/events"
+	"github.com/maxjb-xyz/reverb/internal/libindex"
 	"github.com/maxjb-xyz/reverb/internal/library"
 	"github.com/maxjb-xyz/reverb/internal/notification"
 	"github.com/maxjb-xyz/reverb/internal/play"
@@ -159,6 +160,9 @@ type Deps struct {
 	// and serves per-user taste profiles. Nil in tests/legacy wiring — listen
 	// and feedback endpoints answer 503 and signal hooks are skipped.
 	Taste *taste.Service
+	// LibIndex is the recommendation engine's library index and artist-
+	// similarity map. Nil in tests/legacy wiring — its endpoints answer 503.
+	LibIndex *libindex.Service
 }
 
 type Server struct {
@@ -346,6 +350,7 @@ func (s *Server) routes() {
 			pr.Get("/taste/feedback", s.handleListTasteFeedback)
 			pr.Put("/taste/feedback", s.handleSetTasteFeedback)
 			pr.Delete("/taste/feedback/{kind}/{key}", s.handleClearTasteFeedback)
+			pr.Get("/artists/similar", s.handleSimilarArtists)
 
 			// manage library & integrations: adapter CRUD + server settings.
 			pr.Group(func(mr chi.Router) {
@@ -357,6 +362,8 @@ func (s *Server) routes() {
 				mr.Delete("/adapters/{id}", s.handleDeleteAdapter)
 				mr.Post("/adapters/test", s.handleTestAdapter)
 				mr.Get("/settings", s.handleGetSettings)
+				mr.Get("/engine/index", s.handleIndexStatus)
+				mr.Post("/engine/index/rebuild", s.handleIndexRebuild)
 				mr.Put("/settings", s.handlePutSettings)
 				mr.Get("/admin/integrations/lastfm", s.handleGetLastfmIntegration)
 				mr.Put("/admin/integrations/lastfm", s.handlePutLastfmIntegration)

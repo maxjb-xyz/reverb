@@ -80,6 +80,12 @@ type childDTO struct {
 	IsDir       bool       `json:"isDir"`
 	Isrc        flexString `json:"isrc"` // OpenSubsonic: string OR array; empty on classic Subsonic
 	Path        string     `json:"path"` // relative to the server's music folder; used for local waveform peaks
+	Year        int        `json:"year"`
+	Genre       string     `json:"genre"`
+	Genres      []struct {
+		Name string `json:"name"`
+	} `json:"genres"` // OpenSubsonic: every genre tag; classic servers only send Genre
+	Created string `json:"created"` // ISO-8601 time the file was added
 }
 
 type albumDTO struct {

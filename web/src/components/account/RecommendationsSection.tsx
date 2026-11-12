@@ -1,5 +1,32 @@
 import { Button, EmptyState } from '../ui'
 import { useTasteFeedback, useUnhide } from '../../lib/tasteApi'
+import { useIndexStatus, useRebuildIndex } from '../../lib/engineApi'
+import { useAuthStore, isManagerCaps } from '../../lib/authStore'
+
+/** Managers see how much of the library the recommendation index covers. */
+function IndexStatusRow() {
+  const { data, isError } = useIndexStatus(true)
+  const rebuild = useRebuildIndex()
+  const nf = new Intl.NumberFormat()
+  let text = 'Checking…'
+  if (isError) text = "Couldn't load the index status."
+  else if (data?.running) text = `Indexing… ${nf.format(data.tracks)} songs so far.`
+  else if (data && data.tracks === 0) text = 'Not indexed yet. It runs shortly after Reverb starts and whenever the library changes.'
+  else if (data)
+    text = `${nf.format(data.tracks)} songs by ${nf.format(data.artists)} artists. Similar artists found for ${nf.format(data.artistsWithSimilar)} of them.`
+  return (
+    <div className="flex items-start gap-5 border-b border-border-subtle pb-5">
+      <div className="min-w-0 flex-1">
+        <div className="text-sm font-bold text-text-primary">Recommendation index</div>
+        <div className="mt-0.5 text-xs text-text-secondary">{text}</div>
+        {data?.lastError && <div className="mt-1 text-xs text-error">Last run failed: {data.lastError}</div>}
+      </div>
+      <Button variant="secondary" size="sm" disabled={rebuild.isPending || data?.running} onClick={() => rebuild.mutate()}>
+        Rebuild now
+      </Button>
+    </div>
+  )
+}
 
 /**
  * Settings → Recommendations. Lists the songs and artists the user said "not
@@ -9,12 +36,14 @@ import { useTasteFeedback, useUnhide } from '../../lib/tasteApi'
 export function RecommendationsSection() {
   const { data, isLoading, isError } = useTasteFeedback()
   const unhide = useUnhide()
+  const isManager = useAuthStore((st) => isManagerCaps(st.me?.capabilities))
   const items = data ?? []
   const artists = items.filter((f) => f.targetKind === 'artist')
   const tracks = items.filter((f) => f.targetKind === 'track')
 
   return (
     <div className="space-y-6">
+      {isManager && <IndexStatusRow />}
       <div>
         <div className="text-sm font-bold text-text-primary">Hidden from recommendations</div>
         <div className="mt-0.5 text-xs text-text-secondary">
