@@ -56,6 +56,8 @@ type Intent struct {
 	Missing string `json:"missing,omitempty"`
 	// Source says how it was read: "rules" or "llm".
 	Source string `json:"source"`
+	// Try names a library artist and genre to suggest when nothing was understood.
+	Try []string `json:"try,omitempty"`
 }
 
 // Interpreter turns requests into intents.
