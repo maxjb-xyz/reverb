@@ -1,0 +1,165 @@
+name: Staging Image
+
+# Publishes ghcr.io/<owner>/reverb:staging from the `staging` branch so changes
+# can be run in a real container before they are released.
+#
+# Triggers:
+#   - CI finished on a push to `staging`: publish that commit once it is green.
+#   - Weekly schedule: rebuild the current staging head even with no new
+#     commits, so yt-dlp (floated at image-build time, see the Dockerfile) never
+#     goes stale the way it did when images were only built on release (#20).
+#   - Manual dispatch: rebuild on demand, e.g. right after YouTube breaks yt-dlp.
+#
+# As with releases, a commit without a successful CI run is never published.
+# Note: `workflow_run` and `schedule` only fire from the copy of this file on
+# the default branch, so it must be on main to take effect.
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [staging]
+  schedule:
+    - cron: '17 6 * * 1' # Mondays 06:17 UTC
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+  packages: write
+
+concurrency:
+  group: staging-image
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Resolve staging commit
+    # For workflow_run, only continue on a green CI run triggered by a push to
+    # staging (not a pull request whose head branch happens to be named staging).
+    if: >-
+      github.event_name != 'workflow_run' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push')
+    runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.source.outputs.sha }}
+      short: ${{ steps.source.outputs.short }}
+    steps:
+      - id: source
+        name: Resolve the commit to publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          if [ -n "$RUN_SHA" ]; then
+            sha="$RUN_SHA"
+          else
+            sha="$(gh api "repos/$GITHUB_REPOSITORY/commits/staging" --jq .sha)"
+          fi
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "short=${sha:0:7}" >> "$GITHUB_OUTPUT"
+      - name: Require successful CI for the commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ steps.source.outputs.sha }}
+        run: |
+          successful_runs="$(gh run list \
+            --repo "$GITHUB_REPOSITORY" \
+            --workflow ci.yml \
+            --commit "$SHA" \
+            --status completed \
+            --json conclusion \
+            --jq '[.[] | select(.conclusion == "success")] | length')"
+          if [ "$successful_runs" -eq 0 ]; then
+            echo "::error::No successful CI run for $SHA; not publishing."
+            exit 1
+          fi
+
+  build-amd64:
+    name: Build & Push AMD64
+    needs: verify
+    runs-on: ubuntu-latest
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.verify.outputs.sha }}
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and push AMD64 image
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          platforms: linux/amd64
+          tags: ghcr.io/${{ github.repository_owner }}/reverb:build-staging-${{ needs.verify.outputs.sha }}-amd64
+          cache-from: type=gha,scope=reverb-amd64
+          cache-to: type=gha,scope=reverb-amd64,mode=max
+          # A per-run stamp forces the yt-dlp layer to rebuild every time.
+          build-args: |
+            VERSION=staging-${{ needs.verify.outputs.short }}
+            YTDLP_BUILD_STAMP=${{ github.run_id }}
+          provenance: true
+
+  build-arm64:
+    name: Build & Push ARM64
+    needs: verify
+    runs-on: ubuntu-24.04-arm
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.verify.outputs.sha }}
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and push ARM64 image
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          platforms: linux/arm64
+          tags: ghcr.io/${{ github.repository_owner }}/reverb:build-staging-${{ needs.verify.outputs.sha }}-arm64
+          cache-from: type=gha,scope=reverb-arm64
+          cache-to: type=gha,scope=reverb-arm64,mode=max
+          build-args: |
+            VERSION=staging-${{ needs.verify.outputs.short }}
+            YTDLP_BUILD_STAMP=${{ github.run_id }}
+          provenance: true
+
+  publish-manifest:
+    name: Publish multi-arch staging image
+    needs: [verify, build-amd64, build-arm64]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Publish image manifest
+        env:
+          SHORT: ${{ needs.verify.outputs.short }}
+          AMD64: ${{ needs.build-amd64.outputs.digest }}
+          ARM64: ${{ needs.build-arm64.outputs.digest }}
+        run: |
+          image="ghcr.io/${{ github.repository_owner }}/reverb"
+          # `staging` moves with the branch; `staging-<sha>` pins one build so a
+          # regression can be bisected or rolled back to.
+          docker buildx imagetools create \
+            -t "${image}:staging" \
+            -t "${image}:staging-${SHORT}" \
+            "${image}@${AMD64}" \
+            "${image}@${ARM64}"

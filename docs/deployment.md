@@ -43,6 +43,14 @@ exact version *and* a moving `alpha` tag — they never update `latest`. Set
 (e.g. `REVERB_VERSION=0.3.0-alpha.1`). Prereleases may include unfinished or
 breaking changes; don't run them against a library you can't afford to lose.
 
+### Staging builds
+
+The `staging` branch is published as `REVERB_VERSION=staging` whenever a push to
+it passes CI, and rebuilt weekly so its bundled yt-dlp stays current. Each build
+is also tagged `staging-<short-sha>` for pinning or rollback. Staging is where
+changes are checked before a release, so expect it to be less stable than
+`alpha`.
+
 To use your own library server, select **External Subsonic** in Settings →
 Library backend and add its details there. Configure optional Spotify credentials
 in `.env`.
