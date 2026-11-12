@@ -1,9 +1,13 @@
 import { create } from 'zustand'
 import { AudioEngine, type PlayerState } from './audioEngine'
+import { loadPlaybackPrefs, savePlaybackPrefs } from './playbackPrefs'
 import type { Track } from './types'
 
 // Single imperative engine instance, living OUTSIDE React.
 export const engine = new AudioEngine()
+// Device-level playback preferences. Nothing is routed through Web Audio here:
+// that waits for the first play, which is a user gesture.
+engine.setCrossfade(loadPlaybackPrefs().crossfadeMs)
 
 interface PlayerActions {
   playTrackList(tracks: Track[], startIndex: number): void
@@ -20,6 +24,8 @@ interface PlayerActions {
   setVolume(v: number): void
   toggleShuffle(): void
   cycleRepeat(): void
+  /** Crossfade length in ms (0 = off); remembered on this device. */
+  setCrossfade(ms: number): void
 }
 
 export type PlayerStore = PlayerState & PlayerActions
@@ -43,5 +49,9 @@ export const usePlayer = create<PlayerStore>((set) => {
     setVolume: (v) => engine.setVolume(v),
     toggleShuffle: () => engine.toggleShuffle(),
     cycleRepeat: () => engine.cycleRepeat(),
+    setCrossfade: (ms) => {
+      engine.setCrossfade(ms)
+      savePlaybackPrefs({ ...loadPlaybackPrefs(), crossfadeMs: engine.getState().crossfadeMs })
+    },
   }
 })
