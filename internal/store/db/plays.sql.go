@@ -806,3 +806,30 @@ func (q *Queries) StatsTopTracksByCatalogID(ctx context.Context, arg StatsTopTra
 	}
 	return items, nil
 }
+
+const updatePlayProgress = `-- name: UpdatePlayProgress :exec
+UPDATE plays
+SET ms_played = MAX(ms_played, CAST(?1 AS INTEGER)),
+    completed = MAX(completed, CAST(?2 AS INTEGER))
+WHERE id = ?3 AND user_id = ?4
+`
+
+type UpdatePlayProgressParams struct {
+	MsPlayed  int64  `json:"ms_played"`
+	Completed int64  `json:"completed"`
+	ID        string `json:"id"`
+	UserID    string `json:"user_id"`
+}
+
+// Raises (never lowers) the listened time and completed flag of a play owned
+// by the user. The play is recorded once it qualifies, part-way through the
+// song; this records how much of the song was actually heard in the end.
+func (q *Queries) UpdatePlayProgress(ctx context.Context, arg UpdatePlayProgressParams) error {
+	_, err := q.db.ExecContext(ctx, updatePlayProgress,
+		arg.MsPlayed,
+		arg.Completed,
+		arg.ID,
+		arg.UserID,
+	)
+	return err
+}

@@ -593,8 +593,8 @@ func TestPlays_LinkedUserEnqueuesScrobble(t *testing.T) {
 		"PlayedAt": 1719000000
 	}`
 	rec := do(t, srv, cookie, http.MethodPost, "/api/v1/plays", body)
-	if rec.Code != http.StatusNoContent {
-		t.Fatalf("POST /plays = %d, want 204; body: %s", rec.Code, rec.Body.String())
+	if rec.Code != http.StatusOK {
+		t.Fatalf("POST /plays = %d, want 200; body: %s", rec.Code, rec.Body.String())
 	}
 
 	// DB-level: scrobble_queue must have exactly 1 row for the owner.
@@ -627,8 +627,8 @@ func TestPlays_UnlinkedUserDoesNotEnqueue(t *testing.T) {
 		"PlayedAt": 1719001000
 	}`
 	rec := do(t, srv, cookie, http.MethodPost, "/api/v1/plays", body)
-	if rec.Code != http.StatusNoContent {
-		t.Fatalf("POST /plays = %d, want 204; body: %s", rec.Code, rec.Body.String())
+	if rec.Code != http.StatusOK {
+		t.Fatalf("POST /plays = %d, want 200; body: %s", rec.Code, rec.Body.String())
 	}
 
 	n := countScrobbleQueueRows(t, st, ownerID)
@@ -653,8 +653,8 @@ func TestPlays_ScrobbleQueuePlayedAtNonZeroWhenBodyPlayedAtIsZero(t *testing.T) 
 		"Completed": true
 	}`
 	rec := do(t, srv, cookie, http.MethodPost, "/api/v1/plays", body)
-	if rec.Code != http.StatusNoContent {
-		t.Fatalf("POST /plays = %d, want 204; body: %s", rec.Code, rec.Body.String())
+	if rec.Code != http.StatusOK {
+		t.Fatalf("POST /plays = %d, want 200; body: %s", rec.Code, rec.Body.String())
 	}
 
 	playedAt := scrobbleQueuePlayedAt(t, st, ownerID)

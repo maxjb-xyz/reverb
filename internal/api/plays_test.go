@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"testing"
@@ -61,7 +62,7 @@ func playsTestServer(t *testing.T) (*Server, *http.Cookie, string, *store.Store)
 }
 
 // TestHandlePlay_RecordsForSessionUser verifies that an authenticated POST /plays
-// with a valid body returns 204 and records the play scoped to the session user.
+// with a valid body returns 200 and records the play scoped to the session user.
 func TestHandlePlay_RecordsForSessionUser(t *testing.T) {
 	srv, cookie, ownerID, st := playsTestServer(t)
 	ctx := context.Background()
@@ -79,8 +80,8 @@ func TestHandlePlay_RecordsForSessionUser(t *testing.T) {
 	}`
 
 	rec := do(t, srv, cookie, http.MethodPost, "/api/v1/plays", body)
-	if rec.Code != http.StatusNoContent {
-		t.Fatalf("POST /plays = %d, want 204; body: %s", rec.Code, rec.Body.String())
+	if rec.Code != http.StatusOK {
+		t.Fatalf("POST /plays = %d, want 200; body: %s", rec.Code, rec.Body.String())
 	}
 
 	// Assert DB-level user attribution: exactly one play was recorded, and it is
@@ -125,10 +126,10 @@ func TestHandlePlay_IgnoresBodyUserID(t *testing.T) {
 		"PlayedAt": 1719001000
 	}`
 
-	// Should succeed with 204 — stray fields are silently ignored by json.Decode.
+	// Should succeed with 200 — stray fields are silently ignored by json.Decode.
 	rec := do(t, srv, cookie, http.MethodPost, "/api/v1/plays", body)
-	if rec.Code != http.StatusNoContent {
-		t.Fatalf("POST /plays with stray UserID = %d, want 204; body: %s", rec.Code, rec.Body.String())
+	if rec.Code != http.StatusOK {
+		t.Fatalf("POST /plays with stray UserID = %d, want 200; body: %s", rec.Code, rec.Body.String())
 	}
 
 	// The play must be recorded under the SESSION user, not the body-supplied id.
@@ -193,8 +194,8 @@ func recordAndGetPlayID(t *testing.T, srv *Server, cookie *http.Cookie, st *stor
 		"PlayedAt": 1719000000
 	}`
 	rec := do(t, srv, cookie, http.MethodPost, "/api/v1/plays", body)
-	if rec.Code != http.StatusNoContent {
-		t.Fatalf("POST /plays = %d, want 204; body: %s", rec.Code, rec.Body.String())
+	if rec.Code != http.StatusOK {
+		t.Fatalf("POST /plays = %d, want 200; body: %s", rec.Code, rec.Body.String())
 	}
 	rows, err := st.Q().ListRecentPlays(context.Background(), db.ListRecentPlaysParams{
 		UserID:   ownerID,
@@ -334,5 +335,81 @@ func TestHandlePlay_NilServiceReturns503(t *testing.T) {
 	rec := do(t, srv, cookie, http.MethodPost, "/api/v1/plays", body)
 	if rec.Code != http.StatusServiceUnavailable {
 		t.Fatalf("POST /plays with nil Play = %d, want 503", rec.Code)
+	}
+}
+
+// TestHandlePlay_ReturnsPlayID: POST /plays answers with the new play's id so
+// the player can report the final listened time with PATCH /plays/{id}.
+func TestHandlePlay_ReturnsPlayID(t *testing.T) {
+	srv, cookie, ownerID, st := playsTestServer(t)
+	body := `{"Title":"Hurt","Artist":"Johnny Cash","Album":"American IV","DurationMs":218000,"MsPlayed":109000}`
+	rec := do(t, srv, cookie, http.MethodPost, "/api/v1/plays", body)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("POST /plays = %d; body: %s", rec.Code, rec.Body.String())
+	}
+	var resp struct {
+		ID string `json:"id"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatal(err)
+	}
+	rows, _ := st.Q().ListRecentPlays(context.Background(), db.ListRecentPlaysParams{UserID: ownerID, PlayedAt: 9999999999, Limit: 10})
+	if len(rows) != 1 || resp.ID == "" || rows[0].ID != resp.ID {
+		t.Fatalf("response id %q does not match recorded play %+v", resp.ID, rows)
+	}
+}
+
+func playMsPlayed(t *testing.T, st *store.Store, userID string) int64 {
+	t.Helper()
+	sum, err := play.NewStats(st.Q()).Summary(context.Background(), userID, 0, 9999999999)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return sum.MsPlayed
+}
+
+// TestHandleUpdatePlay_RecordsFinalListenedTime: PATCH /plays/{id} raises the
+// play's listened time for its owner.
+func TestHandleUpdatePlay_RecordsFinalListenedTime(t *testing.T) {
+	srv, cookie, ownerID, st := playsTestServer(t)
+	body := `{"Title":"Hurt","Artist":"Johnny Cash","Album":"American IV","DurationMs":218000,"MsPlayed":109000}`
+	rec := do(t, srv, cookie, http.MethodPost, "/api/v1/plays", body)
+	var resp struct {
+		ID string `json:"id"`
+	}
+	_ = json.NewDecoder(rec.Body).Decode(&resp)
+
+	rec = do(t, srv, cookie, http.MethodPatch, "/api/v1/plays/"+resp.ID, `{"MsPlayed":217500,"Completed":true}`)
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("PATCH /plays/{id} = %d, want 204; body: %s", rec.Code, rec.Body.String())
+	}
+	if got := playMsPlayed(t, st, ownerID); got != 217500 {
+		t.Fatalf("MsPlayed = %d, want 217500", got)
+	}
+}
+
+// TestHandleUpdatePlay_CrossUserNoOp: another user cannot change the owner's
+// play, and gets the same 204 so nothing leaks about the id.
+func TestHandleUpdatePlay_CrossUserNoOp(t *testing.T) {
+	srv, ownerCookie, ownerID, st := playsTestServer(t)
+	playID := recordAndGetPlayID(t, srv, ownerCookie, st, ownerID)
+	before := playMsPlayed(t, st, ownerID)
+
+	attackerCookie := newAuthedUser(t, srv, st, "attacker", "attacker-pass-12345")
+	rec := do(t, srv, attackerCookie, http.MethodPatch, "/api/v1/plays/"+playID, `{"MsPlayed":999999999,"Completed":true}`)
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("PATCH as attacker = %d, want 204", rec.Code)
+	}
+	if got := playMsPlayed(t, st, ownerID); got != before {
+		t.Fatalf("cross-user update leaked: MsPlayed %d -> %d", before, got)
+	}
+}
+
+func TestHandleUpdatePlay_BadBodyReturns400(t *testing.T) {
+	srv, cookie, ownerID, st := playsTestServer(t)
+	playID := recordAndGetPlayID(t, srv, cookie, st, ownerID)
+	rec := do(t, srv, cookie, http.MethodPatch, "/api/v1/plays/"+playID, `{"MsPlayed":`)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("PATCH with bad body = %d, want 400", rec.Code)
 	}
 }

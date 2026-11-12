@@ -495,7 +495,7 @@ func TestTimeline_BucketsByDay(t *testing.T) {
 	from := day1
 	to := day3 + 86400
 
-	buckets, err := stats.Timeline(ctx, "u1", from, to, "day")
+	buckets, err := stats.Timeline(ctx, "u1", from, to, "day", 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -554,7 +554,7 @@ func TestTimeline_ExcludesOutsideWindow(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	buckets, err := stats.Timeline(ctx, "u1", day1, day2, "day")
+	buckets, err := stats.Timeline(ctx, "u1", day1, day2, "day", 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -589,7 +589,7 @@ func TestTimeline_WeekBucket(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	buckets, err := stats.Timeline(ctx, "u1", mon1, mon2+86400, "week")
+	buckets, err := stats.Timeline(ctx, "u1", mon1, mon2+86400, "week", 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -604,6 +604,48 @@ func TestTimeline_WeekBucket(t *testing.T) {
 	}
 	if buckets[0].Start != mon1 {
 		t.Errorf("week1 start: want %d got %d", mon1, buckets[0].Start)
+	}
+}
+
+// Days are the listener's days, not UTC days: at UTC-5 a play at 03:00 UTC on
+// Jan 2 happened at 22:00 on Jan 1, and the bucket starts at local midnight.
+func TestTimeline_BucketsByLocalDay(t *testing.T) {
+	stats, svc := newTestStatsHarness(t)
+	ctx := context.Background()
+
+	day1 := int64(946684800) // 2000-01-01 00:00 UTC
+	const tz = -300          // UTC-5, in minutes east of UTC
+	localMidnightJan1 := day1 + 5*3600
+
+	if err := svc.Record(ctx, "u1", play.PlayInput{
+		Title: "T1", Artist: "A", Album: "B", DurationMs: 100000, MsPlayed: 100000, PlayedAt: day1 + 86400 + 3*3600,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	buckets, err := stats.Timeline(ctx, "u1", day1, day1+3*86400, "day", tz)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(buckets) != 1 || buckets[0].Start != localMidnightJan1 {
+		t.Fatalf("want one bucket at local midnight Jan 1 (%d), got %+v", localMidnightJan1, buckets)
+	}
+
+	// Weeks and months follow the same local calendar.
+	weeks, err := stats.Timeline(ctx, "u1", day1-7*86400, day1+3*86400, "week", tz)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Jan 1 2000 was a Saturday; its week starts Monday Dec 27 1999, local midnight.
+	if want := day1 - 5*86400 + 5*3600; len(weeks) != 1 || weeks[0].Start != want {
+		t.Fatalf("want one week bucket at %d, got %+v", want, weeks)
+	}
+	months, err := stats.Timeline(ctx, "u1", day1-40*86400, day1+3*86400, "month", tz)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(months) != 1 || months[0].Start != localMidnightJan1 {
+		t.Fatalf("want one month bucket at %d, got %+v", localMidnightJan1, months)
 	}
 }
 
