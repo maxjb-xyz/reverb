@@ -8,10 +8,11 @@ describe('Badge', () => {
     expect(screen.getByText('In Library')).toBeInTheDocument()
   })
 
-  it('applies accent color for in-library', () => {
+  it('in-library is neutral (accent is reserved for actions and the playing track)', () => {
     const { container } = render(<Badge kind="in-library">In Library</Badge>)
     const el = container.firstChild as HTMLElement
-    expect(el.className).toMatch(/text-accent/)
+    expect(el.className).toMatch(/text-text-secondary/)
+    expect(el.className).not.toMatch(/text-accent/)
   })
 
   it('applies accent color for downloaded', () => {

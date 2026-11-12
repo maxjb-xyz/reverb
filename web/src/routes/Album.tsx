@@ -247,6 +247,7 @@ export default function Album() {
                 onClick={() => ownedTracks.length && playTrackList(ownedTracks, 0)}
                 aria-label={`Play ${album.name}`}
               >
+                <Icon name="play" className="w-5 h-5 mr-1" />
                 Play
               </Button>
               <IconButton
@@ -378,13 +379,18 @@ export default function Album() {
                 artistTo={t.artistExternalId ? `/artist/spotify/${t.artistExternalId}` : undefined}
                 albumTo={t.albumExternalId ? `/album/spotify/${t.albumExternalId}` : undefined}
                 caption={playCount > 0 ? `Played ${playCount}×` : undefined}
+                variant="album"
+                // Only mark owned rows when some of the album is missing —
+                // on a fully owned album the label is noise on every row.
                 right={
-                  <Badge kind="in-library">
-                    <Icon name="check" className="text-xs" />
-                    In Library
-                  </Badge>
+                  hasMissing ? (
+                    <Badge kind="in-library">
+                      <Icon name="check" className="text-xs" />
+                      In Library
+                    </Badge>
+                  ) : undefined
                 }
-                rightWidth="120px"
+                rightWidth={hasMissing ? '120px' : '0px'}
               />
             )
           }
@@ -407,6 +413,7 @@ export default function Album() {
               index={i}
               onPlay={() => {}}
               coverSrc={t.coverUrl ?? album.coverUrl}
+              variant="album"
               right={right}
               rightWidth={right ? '120px' : undefined}
             />

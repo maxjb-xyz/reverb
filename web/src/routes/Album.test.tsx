@@ -216,16 +216,11 @@ describe('Album page', () => {
     expect(links[0]).toHaveAttribute('href', '/artist/library/art1')
   })
 
-  it('owned rows render artist + album as links (libraryTrack ids wired through)', async () => {
+  it('owned rows link the artist but do not repeat the album name or cover', async () => {
     await renderLoaded()
-    // ownedTrack1/2 carry makeTrack defaults: artistId 'ar1', albumId 'al1', album
-    // 'Test Album'. The owned rows pass the real libraryTrack to TrackRow, which now
-    // renders the album cell as a link to /album/library/:albumId.
-    const albumLinks = screen.getAllByRole('link', { name: 'Test Album' })
-    expect(albumLinks.length).toBe(2) // both owned rows
-    expect(albumLinks.every((l) => l.getAttribute('href') === '/album/library/al1')).toBe(true)
-    // Owned-row artist links point at the library artist id (ar1), distinct from the
-    // header link (art1) — TrackRow links the row's own artistId.
+    // Every row on an album page belongs to the same album, so the album column
+    // and per-row artwork are dropped; the artist stays linked (ar1 = row's own id).
+    expect(screen.queryByRole('link', { name: 'Test Album' })).not.toBeInTheDocument()
     const artistLinks = screen.getAllByRole('link', { name: 'Radiohead' })
     expect(artistLinks.some((l) => l.getAttribute('href') === '/artist/library/ar1')).toBe(true)
   })
@@ -266,29 +261,9 @@ describe('Album page', () => {
     expect(mockPlayTrackList).toHaveBeenCalledWith([ownedTrack1, ownedTrack2], 0)
   })
 
-  it('owned row receives coverSrc from coverUrl when libraryTrack has no coverArtId', async () => {
-    const { useAlbumDetail } = await import('../lib/coverageApi')
-    const albumWithCoverUrl: AlbumDetail = {
-      ...partialAlbum,
-      tracks: [
-        {
-          ...partialAlbum.tracks[0], // state:'full', libraryTrack has coverArtId:''
-          coverUrl: 'https://img/per-track-cover.jpg',
-        },
-        ...partialAlbum.tracks.slice(1),
-      ],
-    }
-    vi.mocked(useAlbumDetail).mockReturnValue({
-      data: albumWithCoverUrl,
-      isLoading: false,
-      isError: false,
-    } as ReturnType<typeof useAlbumDetail>)
-    wrapper(<Album />)
-    await waitFor(() => expect(screen.getByRole('heading', { name: 'Kid A' })).toBeInTheDocument())
-    // The per-track coverUrl must appear as an img src (Cover renders an <img>)
-    const imgs = document.querySelectorAll('img')
-    const srcs = Array.from(imgs).map((img) => img.getAttribute('src'))
-    expect(srcs).toContain('https://img/per-track-cover.jpg')
+  it('track rows carry no artwork of their own — only the header cover is an image', async () => {
+    await renderLoaded()
+    expect(document.querySelectorAll('[role="button"] img').length).toBe(0)
   })
 
   it('renders every track row even when a track has an unexpected state (pending, no externalRef)', async () => {
