@@ -77,10 +77,11 @@ SELECT * FROM library_tracks WHERE artist_key IN (sqlc.slice('keys'));
 SELECT t.* FROM library_tracks t
 JOIN library_track_genres g ON g.library_track_id = t.library_track_id
 WHERE g.genre_key = ?
+ORDER BY RANDOM()
 LIMIT ?;
 
 -- name: ListLibraryTracksByYearRange :many
-SELECT * FROM library_tracks WHERE year >= ? AND year <= ? LIMIT ?;
+SELECT * FROM library_tracks WHERE year >= ? AND year <= ? ORDER BY RANDOM() LIMIT ?;
 
 -- name: ListRecentlyAddedLibraryTracks :many
 SELECT * FROM library_tracks WHERE added_at > 0 ORDER BY added_at DESC LIMIT ?;
@@ -88,3 +89,21 @@ SELECT * FROM library_tracks WHERE added_at > 0 ORDER BY added_at DESC LIMIT ?;
 -- name: ListLibraryGenres :many
 SELECT genre_key, COUNT(*) AS tracks FROM library_track_genres
 GROUP BY genre_key ORDER BY COUNT(*) DESC LIMIT ?;
+
+-- name: ListLibraryTrackGenreKeys :many
+SELECT genre_key FROM library_track_genres WHERE library_track_id = ? ORDER BY genre_key;
+
+-- name: ListLibraryTracksByIDs :many
+SELECT * FROM library_tracks WHERE library_track_id IN (sqlc.slice('ids'));
+
+-- name: ListRandomLibraryTracks :many
+SELECT * FROM library_tracks ORDER BY RANDOM() LIMIT ?;
+
+-- name: ListGenresForArtistKeys :many
+-- The genres a set of artists' tracks carry, most common first: how the
+-- engine turns a user's favourite artists into genre stations.
+SELECT g.genre_key, COUNT(*) AS tracks
+FROM library_track_genres g
+JOIN library_tracks t ON t.library_track_id = g.library_track_id
+WHERE t.artist_key IN (sqlc.slice('keys'))
+GROUP BY g.genre_key ORDER BY COUNT(*) DESC LIMIT ?;

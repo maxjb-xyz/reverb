@@ -36,6 +36,7 @@ export type IconName =
   | 'grip'
   | 'chart'
   | 'thumbs-down'
+  | 'radio'
 
 /**
  * Per-icon descriptor.
@@ -238,6 +239,18 @@ const icons: Record<IconName, IconDef> = {
       <>
         <path d="M17 14V3" />
         <path d="M9 18.1 10 14H4.2a2 2 0 0 1-1.9-2.6l2.3-7A2 2 0 0 1 6.5 3H20a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1h-2.8a2 2 0 0 0-1.8 1.1L12 22a3.1 3.1 0 0 1-3-3.9Z" />
+      </>
+    ),
+  },
+  // radio: broadcast waves (start a station)
+  radio: {
+    content: (
+      <>
+        <path d="M4.9 19.1C1 15.2 1 8.8 4.9 4.9" />
+        <path d="M7.8 16.2c-2.3-2.3-2.3-6.1 0-8.5" />
+        <circle cx="12" cy="12" r="2" />
+        <path d="M16.2 7.8c2.3 2.3 2.3 6.1 0 8.5" />
+        <path d="M19.1 4.9C23 8.8 23 15.1 19.1 19" />
       </>
     ),
   },

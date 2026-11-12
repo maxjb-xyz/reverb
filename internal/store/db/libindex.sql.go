@@ -226,6 +226,60 @@ func (q *Queries) ListArtistsNeedingSimilar(ctx context.Context, arg ListArtists
 	return items, nil
 }
 
+const listGenresForArtistKeys = `-- name: ListGenresForArtistKeys :many
+SELECT g.genre_key, COUNT(*) AS tracks
+FROM library_track_genres g
+JOIN library_tracks t ON t.library_track_id = g.library_track_id
+WHERE t.artist_key IN (/*SLICE:keys*/?)
+GROUP BY g.genre_key ORDER BY COUNT(*) DESC LIMIT ?
+`
+
+type ListGenresForArtistKeysParams struct {
+	Keys  []string `json:"keys"`
+	Limit int64    `json:"limit"`
+}
+
+type ListGenresForArtistKeysRow struct {
+	GenreKey string `json:"genre_key"`
+	Tracks   int64  `json:"tracks"`
+}
+
+// The genres a set of artists' tracks carry, most common first: how the
+// engine turns a user's favourite artists into genre stations.
+func (q *Queries) ListGenresForArtistKeys(ctx context.Context, arg ListGenresForArtistKeysParams) ([]ListGenresForArtistKeysRow, error) {
+	query := listGenresForArtistKeys
+	var queryParams []interface{}
+	if len(arg.Keys) > 0 {
+		for _, v := range arg.Keys {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:keys*/?", strings.Repeat(",?", len(arg.Keys))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:keys*/?", "NULL", 1)
+	}
+	queryParams = append(queryParams, arg.Limit)
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListGenresForArtistKeysRow
+	for rows.Next() {
+		var i ListGenresForArtistKeysRow
+		if err := rows.Scan(&i.GenreKey, &i.Tracks); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listLibraryArtistKeys = `-- name: ListLibraryArtistKeys :many
 SELECT artist_key, CAST(MIN(artist) AS TEXT) AS name, COUNT(*) AS tracks
 FROM library_tracks WHERE artist_key != ''
@@ -284,6 +338,33 @@ func (q *Queries) ListLibraryGenres(ctx context.Context, limit int64) ([]ListLib
 			return nil, err
 		}
 		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listLibraryTrackGenreKeys = `-- name: ListLibraryTrackGenreKeys :many
+SELECT genre_key FROM library_track_genres WHERE library_track_id = ? ORDER BY genre_key
+`
+
+func (q *Queries) ListLibraryTrackGenreKeys(ctx context.Context, libraryTrackID string) ([]string, error) {
+	rows, err := q.db.QueryContext(ctx, listLibraryTrackGenreKeys, libraryTrackID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var genre_key string
+		if err := rows.Scan(&genre_key); err != nil {
+			return nil, err
+		}
+		items = append(items, genre_key)
 	}
 	if err := rows.Close(); err != nil {
 		return nil, err
@@ -355,6 +436,7 @@ const listLibraryTracksByGenre = `-- name: ListLibraryTracksByGenre :many
 SELECT t.library_track_id, t.title, t.artist, t.artist_key, t.artist_id, t.album, t.album_id, t.cover_art_id, t.track_number, t.disc_number, t.duration_ms, t.bit_rate, t.suffix, t.content_type, t.isrc, t.year, t.genres, t.added_at, t.epoch FROM library_tracks t
 JOIN library_track_genres g ON g.library_track_id = t.library_track_id
 WHERE g.genre_key = ?
+ORDER BY RANDOM()
 LIMIT ?
 `
 
@@ -406,8 +488,65 @@ func (q *Queries) ListLibraryTracksByGenre(ctx context.Context, arg ListLibraryT
 	return items, nil
 }
 
+const listLibraryTracksByIDs = `-- name: ListLibraryTracksByIDs :many
+SELECT library_track_id, title, artist, artist_key, artist_id, album, album_id, cover_art_id, track_number, disc_number, duration_ms, bit_rate, suffix, content_type, isrc, year, genres, added_at, epoch FROM library_tracks WHERE library_track_id IN (/*SLICE:ids*/?)
+`
+
+func (q *Queries) ListLibraryTracksByIDs(ctx context.Context, ids []string) ([]LibraryTrack, error) {
+	query := listLibraryTracksByIDs
+	var queryParams []interface{}
+	if len(ids) > 0 {
+		for _, v := range ids {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:ids*/?", strings.Repeat(",?", len(ids))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:ids*/?", "NULL", 1)
+	}
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []LibraryTrack
+	for rows.Next() {
+		var i LibraryTrack
+		if err := rows.Scan(
+			&i.LibraryTrackID,
+			&i.Title,
+			&i.Artist,
+			&i.ArtistKey,
+			&i.ArtistID,
+			&i.Album,
+			&i.AlbumID,
+			&i.CoverArtID,
+			&i.TrackNumber,
+			&i.DiscNumber,
+			&i.DurationMs,
+			&i.BitRate,
+			&i.Suffix,
+			&i.ContentType,
+			&i.Isrc,
+			&i.Year,
+			&i.Genres,
+			&i.AddedAt,
+			&i.Epoch,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listLibraryTracksByYearRange = `-- name: ListLibraryTracksByYearRange :many
-SELECT library_track_id, title, artist, artist_key, artist_id, album, album_id, cover_art_id, track_number, disc_number, duration_ms, bit_rate, suffix, content_type, isrc, year, genres, added_at, epoch FROM library_tracks WHERE year >= ? AND year <= ? LIMIT ?
+SELECT library_track_id, title, artist, artist_key, artist_id, album, album_id, cover_art_id, track_number, disc_number, duration_ms, bit_rate, suffix, content_type, isrc, year, genres, added_at, epoch FROM library_tracks WHERE year >= ? AND year <= ? ORDER BY RANDOM() LIMIT ?
 `
 
 type ListLibraryTracksByYearRangeParams struct {
@@ -418,6 +557,53 @@ type ListLibraryTracksByYearRangeParams struct {
 
 func (q *Queries) ListLibraryTracksByYearRange(ctx context.Context, arg ListLibraryTracksByYearRangeParams) ([]LibraryTrack, error) {
 	rows, err := q.db.QueryContext(ctx, listLibraryTracksByYearRange, arg.Year, arg.Year_2, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []LibraryTrack
+	for rows.Next() {
+		var i LibraryTrack
+		if err := rows.Scan(
+			&i.LibraryTrackID,
+			&i.Title,
+			&i.Artist,
+			&i.ArtistKey,
+			&i.ArtistID,
+			&i.Album,
+			&i.AlbumID,
+			&i.CoverArtID,
+			&i.TrackNumber,
+			&i.DiscNumber,
+			&i.DurationMs,
+			&i.BitRate,
+			&i.Suffix,
+			&i.ContentType,
+			&i.Isrc,
+			&i.Year,
+			&i.Genres,
+			&i.AddedAt,
+			&i.Epoch,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listRandomLibraryTracks = `-- name: ListRandomLibraryTracks :many
+SELECT library_track_id, title, artist, artist_key, artist_id, album, album_id, cover_art_id, track_number, disc_number, duration_ms, bit_rate, suffix, content_type, isrc, year, genres, added_at, epoch FROM library_tracks ORDER BY RANDOM() LIMIT ?
+`
+
+func (q *Queries) ListRandomLibraryTracks(ctx context.Context, limit int64) ([]LibraryTrack, error) {
+	rows, err := q.db.QueryContext(ctx, listRandomLibraryTracks, limit)
 	if err != nil {
 		return nil, err
 	}
