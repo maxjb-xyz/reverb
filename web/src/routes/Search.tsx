@@ -1,4 +1,5 @@
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { adapterDisplayName } from '../lib/displayNames'
 import { useLibrarySearch } from '../lib/libraryApi'
 import { dedupKey, useEverywhere } from '../lib/everywhereStore'
 import { usePlayer } from '../lib/playerStore'
@@ -45,14 +46,14 @@ function sourceTone(status: EnvelopeStatus): 'success' | 'warning' | 'error' {
 }
 
 function sourceName(s: SourceStatus): string {
-  return s.source.charAt(0).toUpperCase() + s.source.slice(1)
+  return adapterDisplayName(s.source)
 }
 
 function sourceLabel(s: SourceStatus): string {
   const name = sourceName(s)
   if (s.status === 'ok') return name
   if (s.status === 'timeout') return `${name} timed out`
-  return `${name} error`
+  return `${name} unavailable`
 }
 
 /** Minimal library Track synthesised from an external result + matched library id. */
@@ -81,35 +82,48 @@ function SourceChipsRow({
   sources,
   hiddenSources,
   onToggle,
+  onRetry,
 }: {
   sources: SourceStatus[]
   hiddenSources: ReadonlySet<string>
   onToggle: (source: string) => void
+  onRetry: () => void
 }) {
   if (sources.length === 0) return null
   return (
     <div className="flex flex-wrap items-center gap-2" aria-label="Source status">
-      {sources.map((s) => (
-        <button
-          key={s.source}
-          type="button"
-          aria-pressed={!hiddenSources.has(s.source)}
-          aria-label={`${hiddenSources.has(s.source) ? 'Show' : 'Hide'} ${sourceName(s)} results`}
-          onClick={() => onToggle(s.source)}
-          className="rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-        >
+      {sources.map((s) =>
+        s.status === 'ok' ? (
+          <button
+            key={s.source}
+            type="button"
+            aria-pressed={!hiddenSources.has(s.source)}
+            aria-label={`${hiddenSources.has(s.source) ? 'Show' : 'Hide'} ${sourceName(s)} results`}
+            onClick={() => onToggle(s.source)}
+            className="rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+          >
+            <Badge kind="status" tone="success">
+              {sourceName(s)}
+              {!hiddenSources.has(s.source) && <Icon name="check" className="ml-1 text-xs" aria-hidden="true" />}
+            </Badge>
+          </button>
+        ) : (
+          // A source that failed has no results to show or hide, so it is a
+          // plain status with a way to try again rather than a toggle.
           <Badge key={s.source} kind="status" tone={sourceTone(s.status)}>
-            {s.status === 'ok' ? (
-              <>
-                {sourceName(s)}
-                {!hiddenSources.has(s.source) && <Icon name="check" className="ml-1 text-xs" aria-hidden="true" />}
-              </>
-            ) : (
-              sourceLabel(s)
-            )}
+            {sourceLabel(s)}
           </Badge>
+        ),
+      )}
+      {sources.some((s) => s.status !== 'ok') && (
+        <button
+          type="button"
+          onClick={onRetry}
+          className="rounded-full px-2 py-0.5 text-xs font-semibold text-text-secondary underline-offset-2 hover:text-text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+        >
+          Retry
         </button>
-      ))}
+      )}
     </div>
   )
 }
@@ -118,7 +132,7 @@ function SourceChipsRow({
 
 function SectionHeading({ children }: { children: React.ReactNode }) {
   return (
-    <h2 className="mb-2 text-sm font-bold uppercase tracking-wider text-text-muted">
+    <h2 className="mb-2 text-base font-bold text-text-primary">
       {children}
     </h2>
   )
@@ -176,7 +190,8 @@ export default function Search() {
   const lib = useLibrarySearch(q)
 
   // Everywhere mode: SSE stream via reducer (transport stays entirely in useEverywhere)
-  const everywhere = useEverywhere(debouncedQ, 'track', debouncedQ.trim() !== '')
+  const [attempt, setAttempt] = useState(0)
+  const everywhere = useEverywhere(debouncedQ, 'track', debouncedQ.trim() !== '', attempt)
 
   const libTracks = lib.data?.tracks ?? []
   const libAlbums = lib.data?.albums ?? []
@@ -234,7 +249,7 @@ export default function Search() {
       )}
 
       {/* Source chips */}
-      <SourceChipsRow sources={everywhere.sources} hiddenSources={hiddenSources} onToggle={toggleSource} />
+      <SourceChipsRow sources={everywhere.sources} hiddenSources={hiddenSources} onToggle={toggleSource} onRetry={() => setAttempt((n) => n + 1)} />
 
       <div className="overflow-x-auto pb-1">
         <Segmented options={RESULT_FILTERS} value={resultFilter} onChange={setResultFilter} />
@@ -262,7 +277,6 @@ export default function Search() {
                 <TrackRow
                   key={t.id}
                   track={t}
-                  index={i}
                   active={currentTrackId === t.id}
                   onPlay={() => playTrackList(libTracks, i)}
                 />

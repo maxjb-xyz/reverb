@@ -329,7 +329,7 @@ export default function Home() {
 
           {/* Info */}
           <div className="min-w-0">
-            <p className="flex items-center gap-1.5 text-xs font-bold text-accent mb-2">
+            <p className="flex items-center gap-1.5 text-xs font-bold text-text-secondary mb-2">
               <Icon name="dl" className="w-3.5 h-3.5" />
               Just added to your library
             </p>

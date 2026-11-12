@@ -176,7 +176,7 @@ export function SearchSuggest({ query, onNavigateAll, onClose, onEmptyChange }: 
 function SuggestSection({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="pb-1">
-      <p className="px-2.5 pb-1 pt-2 text-xs font-bold uppercase tracking-wider text-text-muted">
+      <p className="px-2.5 pb-1 pt-2 text-xs font-bold text-text-secondary">
         {label}
       </p>
       <div role="group" aria-label={label}>

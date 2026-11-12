@@ -2,7 +2,7 @@ import { Toggle } from '../ui'
 import { AccentSwatches } from '../AccentSwatches'
 import { useSettings, useUpdateSettings } from '../../lib/settingsApi'
 
-/** Appearance tab panel — accent color, dynamic-bg toggle, theme. */
+/** Appearance tab panel — accent color and dynamic-bg toggle. */
 export function AppearanceSection() {
   const settings = useSettings()
   const updateSettings = useUpdateSettings()
@@ -39,19 +39,6 @@ export function AppearanceSection() {
               updateSettings.mutate({ dynamicBackground: v })
             }}
           />
-        </div>
-      </div>
-
-      {/* Theme row — dark only, honest */}
-      <div className="flex items-center gap-5 py-5">
-        <div className="flex-1 min-w-0">
-          <div className="text-sm font-bold text-text-primary">Theme</div>
-          <div className="text-xs text-text-secondary mt-0.5">
-            Dark-first. Light theme is on the roadmap.
-          </div>
-        </div>
-        <div className="flex-none">
-          <span className="text-sm font-semibold text-text-secondary">Dark</span>
         </div>
       </div>
     </div>

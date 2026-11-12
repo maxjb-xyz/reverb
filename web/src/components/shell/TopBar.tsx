@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { IconButton, Button, Icon, Logo } from '../ui'
 import { SearchSuggest } from '../search/SearchSuggest'
 import { useUI } from '../../lib/uiStore'
@@ -28,6 +28,7 @@ export function TopBar() {
   // Typeahead dropdown — typing only updates the shared query; submitting
   // (Enter) navigates to the full /search results page.
   const [suggestOpen, setSuggestOpen] = useState(false)
+  const onSearchPage = useLocation().pathname === '/search'
   const searchRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -127,7 +128,9 @@ export function TopBar() {
             />
           </form>
 
-          {suggestOpen && query.trim() !== '' && (
+          {/* The results page already shows everything for this query; a
+              dropdown on top of it would just cover the results. */}
+          {suggestOpen && !onSearchPage && query.trim() !== '' && (
             <SearchSuggest
               query={query}
               onNavigateAll={goToResults}

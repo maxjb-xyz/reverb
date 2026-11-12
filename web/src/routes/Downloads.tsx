@@ -99,7 +99,7 @@ function Group({
   if (jobs.length === 0) return null
   return (
     <section>
-      <h2 className="mb-1 mt-4 px-2 text-[11px] font-bold uppercase tracking-wider text-text-muted">
+      <h2 className="mb-1 mt-5 px-2 text-base font-bold text-text-primary">
         {title} · {jobs.length}
       </h2>
       <ul className="space-y-1">

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { adapterDisplayName } from '../../lib/displayNames'
 import { Button, EmptyState, Icon } from '../ui'
 import { AdapterCard } from './AdapterCard'
 import { AdapterForm } from '../AdapterForm'
@@ -154,7 +155,7 @@ export function AdapterSection({
                       onClick={() => setChosenName(a.name)}
                       className="rounded-full border border-border-subtle px-3 py-1.5 text-sm font-semibold text-text-primary transition-colors hover:bg-raised-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
                     >
-                      {a.name}
+                      {adapterDisplayName(a.name)}
                     </button>
                   ))}
                 </div>
@@ -177,7 +178,7 @@ export function AdapterSection({
                   </button>
                 )}
                 <h3 className="text-sm font-extrabold text-text-primary">
-                  {chosen ? `Add ${chosen.name}` : `Edit ${editing?.name}`}
+                  {chosen ? `Add ${adapterDisplayName(chosen.name)}` : `Edit ${adapterDisplayName(editing?.name ?? '')}`}
                 </h3>
               </div>
               <AdapterForm
@@ -257,7 +258,7 @@ export function AdapterSection({
                         data-testid="downloader-name"
                         className="text-sm font-semibold text-text-primary"
                       >
-                        {dl.name}
+                        {adapterDisplayName(dl.name)}
                       </span>
                     </div>
                     <div className="flex gap-1">
@@ -296,7 +297,7 @@ export function AdapterSection({
                         data-testid="downloader-name"
                         className="text-sm font-semibold text-text-primary"
                       >
-                        {dl.name}
+                        {adapterDisplayName(dl.name)}
                       </span>
                     </div>
                     <div className="flex gap-1">

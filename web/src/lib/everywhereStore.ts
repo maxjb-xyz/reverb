@@ -119,7 +119,7 @@ function reducer(state: EverywhereState, action: Action): EverywhereState {
 // useEverywhere opens a SearchStream for (q,type) when enabled, accumulating
 // per-source envelopes via the pure reducer. The stream is closed on unmount /
 // when q/type/enabled change (no leaked connections).
-export function useEverywhere(q: string, type: 'track' | 'album' | 'artist' | 'playlist', enabled: boolean): EverywhereState {
+export function useEverywhere(q: string, type: 'track' | 'album' | 'artist' | 'playlist', enabled: boolean, attempt = 0): EverywhereState {
   const [state, dispatch] = useReducer(reducer, emptyEverywhere)
 
   useEffect(() => {
@@ -131,7 +131,8 @@ export function useEverywhere(q: string, type: 'track' | 'album' | 'artist' | 'p
       onError: () => dispatch({ type: 'finishSearch' }),
     })
     return () => stream.close()
-  }, [q, type, enabled])
+  // `attempt` is only a re-run trigger: bumping it repeats the same search.
+  }, [q, type, enabled, attempt])
 
   return state
 }

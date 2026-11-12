@@ -1,14 +1,15 @@
+import { adapterDisplayName } from '../lib/displayNames'
 import type { SourceStatus } from '../lib/everywhereStore'
 
 function label(s: SourceStatus): string {
-  const name = s.source.charAt(0).toUpperCase() + s.source.slice(1)
+  const name = adapterDisplayName(s.source)
   switch (s.status) {
     case 'ok':
       return `${name} ok`
     case 'timeout':
       return `${name} timed out`
     case 'error':
-      return `${name} error`
+      return `${name} unavailable`
   }
 }
 
