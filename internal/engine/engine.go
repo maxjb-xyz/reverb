@@ -951,6 +951,15 @@ func (e *Engine) draw(cands []*Candidate, n int, seed seedInfo) []Candidate {
 	if n >= 20 {
 		maxAlbum = max(maxAlbum, n/8)
 	}
+	// Likewise for albums: a genre one band covers over two records would
+	// otherwise stop at four songs.
+	albums := map[string]bool{}
+	for _, c := range cands {
+		albums[c.albumKey] = true
+	}
+	if len(albums)*maxAlbum < n {
+		maxAlbum = (n + len(albums) - 1) / len(albums)
+	}
 
 	weights := make([]float64, len(cands))
 	for i, c := range cands {

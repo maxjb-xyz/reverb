@@ -10,6 +10,7 @@ import (
 
 	"github.com/maxjb-xyz/reverb/internal/libindex"
 	"github.com/maxjb-xyz/reverb/internal/matching"
+	"github.com/maxjb-xyz/reverb/internal/store/db"
 )
 
 var errIndexUnavailable = map[string]string{"error": "recommendation index unavailable"}
@@ -153,4 +154,53 @@ func (s *Server) handleEngineGenres(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"genres": gs})
+}
+
+// engineSettings is the server-wide recommendation switches (managers).
+type engineSettings struct {
+	// Deezer: use Deezer's public API for similar artists and new songs even
+	// when it isn't an enabled search source.
+	Deezer bool `json:"deezer"`
+}
+
+func (s *Server) currentEngineSettings(r *http.Request) engineSettings {
+	v, _ := s.deps.Adapters.GetSetting(r.Context(), libindex.SettingDeezer)
+	return engineSettings{Deezer: v != "off"}
+}
+
+// handleGetEngineSettings serves GET /api/v1/engine/settings (managers).
+func (s *Server) handleGetEngineSettings(w http.ResponseWriter, r *http.Request) {
+	if s.deps.Adapters == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "config store unavailable"})
+		return
+	}
+	writeJSON(w, http.StatusOK, s.currentEngineSettings(r))
+}
+
+// handlePutEngineSettings serves PUT /api/v1/engine/settings (managers) and
+// re-runs the index so the change shows up in the similar-artist map.
+func (s *Server) handlePutEngineSettings(w http.ResponseWriter, r *http.Request) {
+	if s.deps.Adapters == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "config store unavailable"})
+		return
+	}
+	var body struct {
+		Deezer *bool `json:"deezer"`
+	}
+	if err := decode(r, &body); err != nil || body.Deezer == nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "deezer (true or false) is required"})
+		return
+	}
+	v := "on"
+	if !*body.Deezer {
+		v = "off"
+	}
+	if err := s.deps.Adapters.UpsertSetting(r.Context(), db.UpsertSettingParams{Key: libindex.SettingDeezer, Value: v}); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not save settings"})
+		return
+	}
+	if s.deps.LibIndex != nil {
+		s.deps.LibIndex.Kick()
+	}
+	writeJSON(w, http.StatusOK, s.currentEngineSettings(r))
 }

@@ -512,11 +512,21 @@ paths:
   /engine/index:
     get:
       summary: Recommendation index status (managers). Tracks and artists indexed, artists with a similarity list, last run.
-      responses: { "200": { description: "{ running, tracks, artists, artistsWithSimilar, lastIndexedAt, lastError }" }, "403": { description: not a manager } }
+      responses: { "200": { description: "{ running, tracks, artists, artistsWithSimilar, similarSources, lastIndexedAt, lastError }. similarSources names where similar artists come from (empty when nothing can look them up)" }, "403": { description: not a manager } }
   /engine/index/rebuild:
     post:
       summary: Queue a re-index of the library and similarity map now (managers).
       responses: { "202": { description: queued }, "403": { description: not a manager } }
+  /engine/settings:
+    get:
+      summary: >
+        Server-wide recommendation switches (managers). deezer (default true)
+        lets the engine use Deezer's public API for similar artists and new
+        songs even when Deezer isn't an enabled search source.
+      responses: { "200": { description: "{ deezer }" }, "403": { description: not a manager } }
+    put:
+      summary: Change the recommendation switches (managers). Body { deezer }. Re-runs the index.
+      responses: { "200": { description: "{ deezer }" }, "400": { description: deezer missing }, "403": { description: not a manager } }
   /engine/analysis:
     get:
       summary: >

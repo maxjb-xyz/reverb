@@ -45,3 +45,22 @@ func waitReadyThenBackfillEvery(ctx context.Context, ready func() bool, backfill
 		}
 	}
 }
+
+// whenReady runs fn once ready() reports true, polling like the backfill but
+// without its log line. Gives up silently after the backfill timeout.
+func whenReady(ctx context.Context, ready func() bool, fn func()) {
+	deadline := time.Now().Add(backfillDefaultTimeout)
+	t := time.NewTicker(backfillDefaultInterval)
+	defer t.Stop()
+	for !ready() {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			if time.Now().After(deadline) {
+				return
+			}
+		}
+	}
+	fn()
+}

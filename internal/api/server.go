@@ -398,6 +398,8 @@ func (s *Server) routes() {
 				mr.Get("/settings", s.handleGetSettings)
 				mr.Get("/engine/index", s.handleIndexStatus)
 				mr.Post("/engine/index/rebuild", s.handleIndexRebuild)
+				mr.Get("/engine/settings", s.handleGetEngineSettings)
+				mr.Put("/engine/settings", s.handlePutEngineSettings)
 				mr.Get("/engine/analysis", s.handleAnalysisStatus)
 				mr.Post("/engine/analysis/run", s.handleAnalysisRun)
 				mr.Get("/discover/settings", s.handleGetDiscoverSettings)
