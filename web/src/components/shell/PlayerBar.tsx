@@ -17,10 +17,11 @@ import { useUI } from '../../lib/uiStore'
 import { coverUrl, trackCoverUrl } from '../../lib/libraryApi'
 import { formatDuration } from '../../lib/types'
 import { useAlbumPalette } from '../../lib/useAlbumPalette'
-import { rgbToCss } from '../../lib/palette'
+import { playerTint } from '../../lib/palette'
 import { Cover } from '../ui/Cover'
 import { IconButton } from '../ui/IconButton'
 import { Icon } from '../ui/Icon'
+import { Waveform } from '../ui/Waveform'
 import { AddToPlaylistMenu } from '../AddToPlaylistMenu'
 import { ProgressRing } from '../ui/ProgressRing'
 import { usePendingPlay } from '../../lib/pendingPlayStore'
@@ -89,12 +90,10 @@ function SeekBar() {
         tabIndex={0}
         onClick={onClick}
         onKeyDown={onKeyDown}
-        className="group relative h-1 flex-1 cursor-pointer rounded-full bg-border-subtle focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+        className={['group relative h-1 flex-1 cursor-pointer rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent', peaks?.length ? '' : 'bg-border-subtle'].join(' ')}
       >
         {peaks?.length ? (
-          <div data-testid="waveform" className="absolute inset-x-0 top-1/2 flex h-6 -translate-y-1/2 items-center gap-px">
-            {peaks.map((peak, index) => <div key={index} className={index / peaks.length * 100 <= pct ? 'flex-1 rounded-full bg-text-primary group-hover:bg-accent' : 'flex-1 rounded-full bg-border-subtle'} style={{ minHeight: '2px', height: `${Math.max(8, peak * 100)}%` }} />)}
-          </div>
+          <Waveform peaks={peaks} pct={pct} />
         ) : <>
           <div data-testid="flat-rail" className="pointer-events-none absolute inset-y-0 left-0 rounded-full bg-raised-hover" style={{ width: `${bufPct}%` }} />
           <div className="pointer-events-none absolute inset-y-0 left-0 rounded-full bg-text-primary group-hover:bg-accent" style={{ width: `${pct}%` }} />
@@ -190,17 +189,13 @@ export function PlayerBar() {
       className={[
         'relative hidden h-20 md:grid',
         'grid-cols-[30%_40%_30%] items-center px-2',
-        palette ? '' : 'border-t border-border-subtle bg-surface',
+        'border-t border-border-subtle bg-surface',
       ].join(' ')}
-      style={
-        palette
-          ? { backgroundColor: rgbToCss(palette.rgb), color: palette.text }
-          : undefined
-      }
+      // The bar stays dark; the album only lends a soft wash from the cover
+      // side. A solid album-colour fill fought the rest of the UI and made
+      // control contrast depend on the artwork.
+      style={palette ? { backgroundImage: playerTint(palette.rgb) } : undefined}
     >
-      {palette?.scrim && (
-        <div className="pointer-events-none absolute inset-0 bg-black/20" />
-      )}
 
       {/* ── LEFT: cover + meta (hugs left; add-to-playlist control lands here) ─ */}
       <div className="relative z-10 flex items-center gap-3.5 pl-2">
@@ -212,7 +207,7 @@ export function PlayerBar() {
           className="shadow-cover flex-none"
         />
         <div className="min-w-0">
-          <div className={['truncate text-sm font-semibold', palette ? '' : 'text-text-primary', !current && pending ? 'opacity-70' : ''].filter(Boolean).join(' ')}>
+          <div className={['truncate text-sm font-semibold', 'text-text-primary', !current && pending ? 'opacity-70' : ''].filter(Boolean).join(' ')}>
             {current ? current.title : pending?.title ?? 'Nothing playing'}
           </div>
           {current?.artist && (current.artistExternalId || current.artistId) ? (
@@ -223,12 +218,12 @@ export function PlayerBar() {
                   ? navigate(`/artist/spotify/${current.artistExternalId}`)
                   : navigate(`/artist/library/${current.artistId}`)
               }
-              className={['block max-w-full truncate text-left text-xs hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent', palette ? 'opacity-70 hover:opacity-100' : 'text-text-secondary hover:text-text-primary'].filter(Boolean).join(' ')}
+              className={['block max-w-full truncate text-left text-xs hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent', 'text-text-secondary hover:text-text-primary'].filter(Boolean).join(' ')}
             >
               {current.artist}
             </button>
           ) : (
-            <div className={['truncate text-xs', palette ? 'opacity-70' : 'text-text-secondary'].filter(Boolean).join(' ')}>
+            <div className={['truncate text-xs', 'text-text-secondary'].filter(Boolean).join(' ')}>
               {current?.artist ?? pending?.artist ?? ''}
             </div>
           )}
@@ -262,6 +257,7 @@ export function PlayerBar() {
         <div className="flex items-center gap-5">
           <IconButton
             name="shuffle"
+            disabled={!current}
             label="Shuffle"
             active={shuffle}
             size="sm"
@@ -269,6 +265,7 @@ export function PlayerBar() {
           />
           <IconButton
             name="prev"
+            disabled={!current}
             label="Previous"
             size="sm"
             onClick={prev}
@@ -279,10 +276,11 @@ export function PlayerBar() {
             type="button"
             aria-label={playing ? 'Pause' : 'Play'}
             onClick={toggle}
+            disabled={!current}
             className={[
               'inline-grid h-9 w-9 place-items-center rounded-full',
               'bg-text-primary text-surface',
-              'transition-transform hover:scale-105',
+              'transition-transform enabled:hover:scale-105 disabled:cursor-not-allowed disabled:opacity-40',
               'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
             ].join(' ')}
           >
@@ -291,12 +289,14 @@ export function PlayerBar() {
 
           <IconButton
             name="next"
+            disabled={!current}
             label="Next"
             size="sm"
             onClick={next}
           />
           <IconButton
             name="repeat"
+            disabled={!current}
             label={`Repeat ${repeat}`}
             active={repeat !== 'off'}
             size="sm"
