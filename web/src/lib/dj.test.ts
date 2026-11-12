@@ -5,7 +5,7 @@ import type { DJClip, DJIntent, DJLine, DJSegment, DJStatus } from './djApi'
 import { getPlayContext, setPlayContext, type PlayContext } from './playContext'
 import type { Track } from './types'
 import {
-  _resetDJ, askDJ, BLOCK_SIZE, CARD_MS, changeVibe, DJEmptyError, startDJ, startDJWatcher, stopDJ, TALK_WINDOW_MS,
+  _resetDJ, askDJ, requestLabel, BLOCK_SIZE, CARD_MS, changeVibe, DJEmptyError, startDJ, startDJWatcher, stopDJ, TALK_WINDOW_MS,
   throwbackYears, useDJ, type DJDeps,
 } from './dj'
 
@@ -268,6 +268,15 @@ describe('the DJ keeping the music going', () => {
   })
 })
 
+describe('requestLabel', () => {
+  it('names what the DJ understood, and quotes the request otherwise', () => {
+    expect(requestLabel('play asap rocky', { understood: true, seed: { kind: 'artist', id: 'a ap rocky', label: 'A$AP Rocky' }, source: 'rules' })).toBe('A$AP Rocky')
+    expect(requestLabel('more like bonobo', { understood: true, seed: { kind: 'artist', id: 'bonobo', label: 'Bonobo' }, lane: 'sounds-like', source: 'rules' })).toBe('More like Bonobo')
+    expect(requestLabel('rap 2012 to 2015', { understood: true, seed: { kind: 'genre', id: 'rap', label: 'Rap' }, fromYear: 2012, toYear: 2015, source: 'rules' })).toBe('Rap, 2012–2015')
+    expect(requestLabel('something I haven\'t heard', { understood: true, lane: 'new-to-you', source: 'rules' })).toBe('“something I haven\'t heard”')
+  })
+})
+
 describe('asking the DJ', () => {
   it('plays what was asked for now, introduces it with the request, and labels it', async () => {
     const { deps, next, line, eng, intent } = setup()
@@ -284,7 +293,7 @@ describe('asking the DJ', () => {
     expect(seg).toMatchObject({ lane: 'request', request: '90s hip hop', previous: { title: 'Song a1' } })
     await flush()
     expect(eng.speak).toHaveBeenLastCalledWith('/clip/Line%20for%20Song%20r1')
-    expect(useDJ.getState().label).toBe('“90s hip hop”')
+    expect(useDJ.getState().label).toBe('Hip hop, 1990s')
   })
 
   it('keeps to the request for one more block, then goes back to its lanes', async () => {

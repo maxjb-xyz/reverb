@@ -20,6 +20,7 @@ import { useAlbumPalette } from '../../lib/useAlbumPalette'
 import { playerTint } from '../../lib/palette'
 import { Cover } from '../ui/Cover'
 import { IconButton } from '../ui/IconButton'
+import { DJControl } from '../dj/DJControl'
 import { Icon } from '../ui/Icon'
 import { Waveform } from '../ui/Waveform'
 import { AddToPlaylistMenu } from '../AddToPlaylistMenu'
@@ -316,6 +317,7 @@ export function PlayerBar() {
 
       {/* ── RIGHT: queue + volume ───────────────────────────────────────── */}
       <div className="relative z-10 flex items-center justify-end gap-3 pr-2">
+        <DJControl />
         {current && hasLyrics && (
           <IconButton
             name="mic"

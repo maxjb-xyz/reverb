@@ -37,7 +37,10 @@ export function useStartDJ() {
         return true
       case 'not-understood':
         // A missing artist gets its own offer in the bar.
-        if (!r.missing) push("The DJ didn't catch that. Try an artist, a genre, a decade or a mood.", 'info')
+        if (!r.missing) push(notUnderstood(r.try), 'info')
+        return false
+      case 'error':
+        push(r.limited ? 'Give the DJ a moment, then ask again.' : "Couldn't reach the DJ. Try again in a moment.", 'error')
         return false
       case 'empty':
         if (!r.missing) push('Nothing in your library fits that yet.', 'info')
@@ -48,4 +51,11 @@ export function useStartDJ() {
   }
 
   return { start, change, ask, busy }
+}
+
+/** What to say when the DJ couldn't read a request, with library names to try. */
+export function notUnderstood(names?: string[]): string {
+  const base = "The DJ didn't catch that."
+  if (!names?.length) return `${base} Try an artist, a genre, a decade or a mood.`
+  return `${base} Try ${names.map((n) => `“${n}”`).join(' or ')}, a decade or a mood.`
 }

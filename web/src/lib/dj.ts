@@ -19,6 +19,7 @@ import { getNext, type EngineItem, type EngineNextRequest, type EngineResult, ty
 import { getDJStatus, readRequest, sayLine, writeLine, type DJClip, type DJIntent, type DJLine, type DJSegment, type DJStatus, type DJTrack } from './djApi'
 import { getPlayContext, setTrackContexts, type PlayContext } from './playContext'
 import type { Track } from './types'
+import { ApiError } from './api'
 
 /** The order the DJ moves through lanes; empty lanes are skipped. */
 export const DJ_LANES: Lane[] = ['on-repeat', 'sounds-like', 'new-to-you', 'throwback', 'deep-cuts', 'fresh-finds']
@@ -130,6 +131,8 @@ interface Session {
 interface ActiveRequest {
   req: EngineNextRequest
   text: string
+  /** How the request shows in the DJ's controls. */
+  label: string
   left: number
 }
 
@@ -229,11 +232,11 @@ async function requestBlock(s: Session, previous: Track | undefined, skip: Set<s
   let b: Block | null
   try {
     const exclude = s.handed.slice(-MAX_EXCLUDE)
-    b = makeBlock(s, 'request', requestLabel(r.text), await s.deps.next({ ...r.req, n: BLOCK_SIZE, exclude }), previous, skip, r.text)
+    b = makeBlock(s, 'request', r.label, await s.deps.next({ ...r.req, n: BLOCK_SIZE, exclude }), previous, skip, r.text)
     if (!b && r.req.seed && r.req.lane) {
       // "More like X" with nothing similar on hand: play X itself.
       r.req = { ...r.req, lane: undefined }
-      b = makeBlock(s, 'request', requestLabel(r.text), await s.deps.next({ ...r.req, n: BLOCK_SIZE, exclude }), previous, skip, r.text)
+      b = makeBlock(s, 'request', r.label, await s.deps.next({ ...r.req, n: BLOCK_SIZE, exclude }), previous, skip, r.text)
     }
   } catch {
     s.request = undefined
@@ -243,8 +246,19 @@ async function requestBlock(s: Session, previous: Track | undefined, skip: Set<s
   return b
 }
 
-/** How a request shows in the bar. */
-export function requestLabel(text: string): string {
+/**
+ * How a request shows in the DJ's controls: what the DJ understood ("A$AP
+ * Rocky", "More like Bonobo", "Hip hop, 1990s"), or the request itself in
+ * quotes when it was a lane or a period alone.
+ */
+export function requestLabel(text: string, it?: DJIntent): string {
+  const name = it?.seed?.label || it?.seed?.artist
+  if (name) {
+    const base = it?.lane === 'sounds-like' ? `More like ${name}` : name
+    if (!it?.fromYear || !it.toYear) return base
+    const decade = it.fromYear % 10 === 0 && it.toYear - it.fromYear === 9
+    return `${base}, ${decade ? `${it.fromYear}s` : `${it.fromYear}–${it.toYear}`}`
+  }
   const t = text.trim().replace(/\s+/g, ' ')
   return `“${t.length > 40 ? t.slice(0, 39) + '…' : t}”`
 }
@@ -419,12 +433,14 @@ function playNow(s: Session, b: Block) {
 export type AskResult =
   /** Playing what was asked for. `missing` names an artist it couldn't include. */
   | { status: 'playing'; missing?: string }
-  /** Nothing in the request could be read as music in the library. */
-  | { status: 'not-understood'; missing?: string }
+  /** Nothing in the request could be read as music in the library. `try` names things that would work. */
+  | { status: 'not-understood'; missing?: string; try?: string[] }
   /** Understood, but nothing in the library fits it. */
   | { status: 'empty'; missing?: string }
   /** The DJ is off or already busy. */
   | { status: 'busy' }
+  /** The request didn't reach the DJ. `limited` when it was asked too often. */
+  | { status: 'error'; limited: boolean }
 
 function engineRequest(it: DJIntent): EngineNextRequest {
   const req: EngineNextRequest = {}
@@ -451,14 +467,14 @@ export async function askDJ(text: string): Promise<AskResult> {
     let it: DJIntent
     try {
       it = await s.deps.intent(text)
-    } catch {
-      return { status: 'not-understood' }
+    } catch (e) {
+      return { status: 'error', limited: e instanceof ApiError && e.status === 429 }
     }
     if (session !== s) return { status: 'busy' }
     const missing = it.missing || undefined
     if (missing) useDJ.setState({ missing })
-    if (!it.understood) return { status: 'not-understood', missing }
-    s.request = { req: engineRequest(it), text, left: REQUEST_BLOCKS }
+    if (!it.understood) return { status: 'not-understood', missing, ...(it.try?.length ? { try: it.try } : {}) }
+    s.request = { req: engineRequest(it), text, label: requestLabel(text, it), left: REQUEST_BLOCKS }
     const cur = bound?.getState().current ?? undefined
     const b = await requestBlock(s, cur, new Set(cur ? [cur.id] : []))
     if (session !== s) return { status: 'busy' }

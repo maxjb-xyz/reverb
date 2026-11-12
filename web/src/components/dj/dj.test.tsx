@@ -6,7 +6,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 
 const get = vi.fn()
 const post = vi.fn()
-vi.mock('../../lib/api', () => ({
+vi.mock('../../lib/api', async (orig) => ({
+  ...(await orig<typeof import('../../lib/api')>()),
   api: { get: (p: string) => get(p), post: (p: string, b?: unknown) => post(p, b) },
 }))
 const playTrackList = vi.fn()
@@ -21,9 +22,10 @@ vi.mock('../../lib/toastStore', () => ({
 }))
 
 import { DJTile } from './DJTile'
-import { DJBar } from './DJBar'
+import { DJControl } from './DJControl'
 import { _resetDJ, useDJ } from '../../lib/dj'
 import { useAuthStore } from '../../lib/authStore'
+import { ApiError } from '../../lib/api'
 
 function signIn(capabilities: string[]) {
   useAuthStore.setState({ me: { id: 'u1', username: 'max', roleId: 'r', roleName: 'Owner', isOwner: true, capabilities, createdAt: 0 } })
@@ -83,37 +85,73 @@ describe('DJTile', () => {
   })
 })
 
-describe('DJBar', () => {
-  it('is hidden while the DJ is off', () => {
-    wrap(<DJBar />)
-    expect(screen.queryByTestId('dj-bar')).toBeNull()
+/** Start the DJ from its tile and open its controls in the player. */
+async function startAndOpen() {
+  fireEvent.click(screen.getByRole('button', { name: 'Start the DJ' }))
+  await waitFor(() => expect(screen.getByRole('button', { name: 'DJ' })).toHaveAttribute('aria-expanded', 'false'))
+  fireEvent.click(screen.getByRole('button', { name: 'DJ' }))
+  await screen.findByTestId('dj-panel')
+}
+
+/** Ask the DJ for something through its panel. */
+function askFor(text: string) {
+  fireEvent.change(screen.getByRole('textbox', { name: 'Ask the DJ' }), { target: { value: text } })
+  fireEvent.submit(screen.getByRole('textbox', { name: 'Ask the DJ' }))
+}
+
+describe('DJControl', () => {
+  it('starts the DJ from the player while it is off', async () => {
+    wrap(<DJControl />)
+    expect(screen.getByRole('button', { name: 'DJ' })).toHaveAttribute('title', 'Start the DJ')
+    expect(screen.queryByTestId('dj-panel')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'DJ' }))
+    await waitFor(() => expect(useDJ.getState().active).toBe(true))
   })
 
-  it('shows the lane and the latest line, and turns the DJ off', () => {
+  it('stays out of the phone player while the DJ is off', () => {
+    wrap(<DJControl look="mini" />)
+    expect(screen.queryByTestId('dj-button')).toBeNull()
+  })
+
+  it('shows the latest line in a bubble, opens the controls and turns the DJ off', () => {
     act(() => useDJ.setState({ active: true, label: 'On repeat', card: { key: 1, label: 'On repeat', text: 'Nine plays this week.' } }))
-    wrap(<DJBar />)
-    expect(screen.getByTestId('dj-lane')).toHaveTextContent('On repeat')
+    wrap(<DJControl />)
     expect(screen.getByTestId('dj-line')).toHaveTextContent('Nine plays this week.')
+    expect(screen.queryByTestId('dj-panel')).toBeNull()
+    fireEvent.click(screen.getByTestId('dj-line'))
+    expect(screen.getByTestId('dj-lane')).toHaveTextContent('On repeat')
+    expect(screen.getAllByTestId('dj-line')).toHaveLength(1)
     fireEvent.click(screen.getByRole('button', { name: 'Turn off the DJ' }))
-    expect(screen.queryByTestId('dj-bar')).toBeNull()
+    expect(useDJ.getState().active).toBe(false)
+    expect(screen.queryByTestId('dj-panel')).toBeNull()
+  })
+
+  it('closes the controls on Escape and on a click outside', () => {
+    act(() => useDJ.setState({ active: true, label: 'On repeat' }))
+    wrap(<><p>page</p><DJControl /></>)
+    fireEvent.click(screen.getByRole('button', { name: 'DJ' }))
+    expect(screen.getByTestId('dj-panel')).toBeInTheDocument()
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(screen.queryByTestId('dj-panel')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'DJ' }))
+    fireEvent.mouseDown(screen.getByText('page'))
+    expect(screen.queryByTestId('dj-panel')).toBeNull()
   })
 
   it('changes it up to the next lane', async () => {
-    wrap(<><DJTile /><DJBar /></>)
-    fireEvent.click(screen.getByRole('button', { name: 'Start the DJ' }))
-    await screen.findByTestId('dj-bar')
+    wrap(<><DJTile /><DJControl /></>)
+    await startAndOpen()
     fireEvent.click(screen.getByRole('button', { name: 'Change it up' }))
     await waitFor(() => expect(screen.getByTestId('dj-lane')).toHaveTextContent('Sounds like Bonobo'))
     expect(playTrackList).toHaveBeenLastCalledWith([track('b1'), track('b2'), track('b3'), track('b4')], 0, { kind: 'dj', id: 'dj' })
   })
 
   it('takes a request and plays it', async () => {
-    wrap(<><DJTile /><DJBar /></>)
-    fireEvent.click(screen.getByRole('button', { name: 'Start the DJ' }))
-    await screen.findByTestId('dj-bar')
+    wrap(<><DJTile /><DJControl /></>)
+    await startAndOpen()
     fireEvent.change(screen.getByRole('textbox', { name: 'Ask the DJ' }), { target: { value: 'more like Bonobo' } })
     fireEvent.click(screen.getByRole('button', { name: 'Send to the DJ' }))
-    await waitFor(() => expect(screen.getByTestId('dj-lane')).toHaveTextContent('“more like Bonobo”'))
+    await waitFor(() => expect(screen.getByTestId('dj-lane')).toHaveTextContent('More like Bonobo'))
     expect(post).toHaveBeenCalledWith('/dj/request', { text: 'more like Bonobo' })
     expect(post).toHaveBeenCalledWith('/engine/next', expect.objectContaining({ seed: { kind: 'artist', id: 'bonobo', artist: 'Bonobo' }, lane: 'sounds-like' }))
     expect(screen.getByRole('textbox', { name: 'Ask the DJ' })).toHaveValue('')
@@ -126,11 +164,9 @@ describe('DJBar', () => {
       if (p === '/dj/request') return { understood: false, missing: 'Radiohead', source: 'llm' }
       throw new Error(p)
     })
-    wrap(<><DJTile /><DJBar /></>)
-    fireEvent.click(screen.getByRole('button', { name: 'Start the DJ' }))
-    await screen.findByTestId('dj-bar')
-    fireEvent.change(screen.getByRole('textbox', { name: 'Ask the DJ' }), { target: { value: 'radiohed' } })
-    fireEvent.submit(screen.getByRole('textbox', { name: 'Ask the DJ' }))
+    wrap(<><DJTile /><DJControl /></>)
+    await startAndOpen()
+    askFor('radiohed')
     await screen.findByTestId('dj-missing')
     expect(screen.getByTestId('dj-missing')).toHaveTextContent("Radiohead isn't in your library yet.")
     expect(push).not.toHaveBeenCalled()
@@ -138,19 +174,33 @@ describe('DJBar', () => {
     expect(navigate).toHaveBeenCalledWith('/search?q=Radiohead')
   })
 
-  it("says so when it doesn't understand", async () => {
+  it("says so when it doesn't understand, with library names to try", async () => {
     post.mockImplementation(async (p: string, b: { lane?: string }) => {
       if (p === '/engine/next') return lane(b.lane ?? 'on-repeat', ['a1'])
       if (p === '/dj/line') return { text: 'Hi.', source: 'template' }
-      if (p === '/dj/request') return { understood: false, source: 'rules' }
+      if (p === '/dj/request') return { understood: false, source: 'rules', try: ['A$AP Rocky', 'Hip hop rap'] }
       throw new Error(p)
     })
-    wrap(<><DJTile /><DJBar /></>)
-    fireEvent.click(screen.getByRole('button', { name: 'Start the DJ' }))
-    await screen.findByTestId('dj-bar')
-    fireEvent.change(screen.getByRole('textbox', { name: 'Ask the DJ' }), { target: { value: 'blorp' } })
-    fireEvent.submit(screen.getByRole('textbox', { name: 'Ask the DJ' }))
-    await waitFor(() => expect(push).toHaveBeenCalledWith(expect.stringMatching(/didn't catch that/), 'info'))
+    wrap(<><DJTile /><DJControl /></>)
+    await startAndOpen()
+    askFor('blorp')
+    await waitFor(() =>
+      expect(push).toHaveBeenCalledWith("The DJ didn't catch that. Try “A$AP Rocky” or “Hip hop rap”, a decade or a mood.", 'info'),
+    )
+  })
+
+  it("says the DJ couldn't be reached rather than that it didn't understand", async () => {
+    post.mockImplementation(async (p: string, b: { lane?: string }) => {
+      if (p === '/engine/next') return lane(b.lane ?? 'on-repeat', ['a1'])
+      if (p === '/dj/line') return { text: 'Hi.', source: 'template' }
+      if (p === '/dj/request') throw new ApiError('POST', '/dj/request', 429)
+      throw new Error(p)
+    })
+    wrap(<><DJTile /><DJControl /></>)
+    await startAndOpen()
+    askFor('some rap')
+    await waitFor(() => expect(push).toHaveBeenCalledWith('Give the DJ a moment, then ask again.', 'error'))
+    expect(push).not.toHaveBeenCalledWith(expect.stringMatching(/didn't catch/), 'info')
   })
 })
 
@@ -160,7 +210,8 @@ describe('VoiceNudge', () => {
     get.mockImplementation(async (p: string) => (p === '/adapters' ? [{ id: 'a1', type: 'llm', name: 'openai-chat' }] : null))
     post.mockImplementation(async (p: string) => (p === '/adapters' ? { data: { id: 'v1' } } : null))
     act(() => useDJ.setState({ active: true, label: 'On repeat', voice: false }))
-    wrap(<DJBar />)
+    wrap(<DJControl />)
+    fireEvent.click(screen.getByRole('button', { name: 'DJ' }))
     fireEvent.click(screen.getByRole('button', { name: 'Turn on built-in voice' }))
     await waitFor(() =>
       expect(post).toHaveBeenCalledWith('/adapters', { type: 'voice', name: 'kokoro', enabled: true, priority: 0, config: {} }),
@@ -174,7 +225,8 @@ describe('VoiceNudge', () => {
     signIn(['can_manage_library'])
     get.mockImplementation(async (p: string) => (p === '/adapters' ? [{ id: 'v0', type: 'voice', name: 'elevenlabs' }] : null))
     act(() => useDJ.setState({ active: true, label: 'On repeat', voice: false }))
-    wrap(<DJBar />)
+    wrap(<DJControl />)
+    fireEvent.click(screen.getByRole('button', { name: 'DJ' }))
     fireEvent.click(screen.getByRole('button', { name: 'Turn on built-in voice' }))
     await waitFor(() => expect(navigate).toHaveBeenCalledWith('/admin'))
     expect(post).not.toHaveBeenCalledWith('/adapters', expect.anything())
@@ -183,11 +235,13 @@ describe('VoiceNudge', () => {
   it('stays hidden for listeners who cannot set up providers, and once dismissed', () => {
     signIn([])
     act(() => useDJ.setState({ active: true, label: 'On repeat', voice: false }))
-    const { unmount } = wrap(<DJBar />)
+    const { unmount } = wrap(<DJControl />)
+    fireEvent.click(screen.getByRole('button', { name: 'DJ' }))
     expect(screen.queryByTestId('dj-voice-nudge')).toBeNull()
     unmount()
     signIn(['can_manage_library'])
-    wrap(<DJBar />)
+    wrap(<DJControl />)
+    fireEvent.click(screen.getByRole('button', { name: 'DJ' }))
     fireEvent.click(screen.getByRole('button', { name: 'Not now' }))
     expect(screen.queryByTestId('dj-voice-nudge')).toBeNull()
     expect(localStorage.getItem('reverb.dj.voiceNudge.dismissed')).toBe('1')

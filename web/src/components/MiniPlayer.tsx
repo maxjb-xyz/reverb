@@ -5,6 +5,7 @@ import { useAlbumPalette } from '../lib/useAlbumPalette'
 import { playerTint } from '../lib/palette'
 import { Cover } from './ui/Cover'
 import { Icon } from './ui/Icon'
+import { DJControl } from './dj/DJControl'
 
 // MiniPlayer is the mobile-only compact player (shown < md), sitting above the
 // tab nav. Tapping the bar expands to the fullscreen now-playing overlay; the
@@ -21,7 +22,7 @@ export function MiniPlayer() {
   return (
     <div
       data-testid="mini-player"
-      className="flex items-center gap-3 border-t border-border-subtle px-3 py-2 md:hidden bg-surface"
+      className="relative flex items-center gap-3 border-t border-border-subtle px-3 py-2 md:hidden bg-surface"
       style={palette ? { backgroundImage: playerTint(palette.rgb) } : undefined}
     >
       <button
@@ -43,6 +44,8 @@ export function MiniPlayer() {
           <div className="truncate text-xs text-text-secondary">{current.artist}</div>
         </div>
       </button>
+
+      <DJControl look="mini" />
 
       <button
         type="button"
