@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/maxjb-xyz/reverb/internal/dj"
 	"github.com/maxjb-xyz/reverb/internal/llm"
 	"github.com/maxjb-xyz/reverb/internal/registry"
 	"github.com/maxjb-xyz/reverb/internal/store"
@@ -211,5 +212,40 @@ func TestDJLineFallsBackToTemplates(t *testing.T) {
 	}
 	if rec := do(t, srv, c, http.MethodPost, "/api/v1/dj/line", `nope`); rec.Code != http.StatusBadRequest {
 		t.Fatalf("bad json: %d", rec.Code)
+	}
+}
+
+type fakeDJCatalog struct{}
+
+func (fakeDJCatalog) Artists(context.Context) ([]dj.Name, error) {
+	return []dj.Name{{Key: "bonobo", Name: "Bonobo"}}, nil
+}
+func (fakeDJCatalog) Genres(context.Context) ([]dj.Name, error) {
+	return []dj.Name{{Key: "hip hop", Name: "Hip hop"}}, nil
+}
+
+func TestDJRequestReadsArtistsGenresAndPeriods(t *testing.T) {
+	srv, c := djLineServer(t, nil)
+	srv.deps.DJCatalog = fakeDJCatalog{}
+	rec := do(t, srv, c, http.MethodPost, "/api/v1/dj/request", `{"text":"more like Bonobo"}`)
+	want := `{"understood":true,"seed":{"kind":"artist","id":"bonobo","artist":"Bonobo","label":"Bonobo"},"lane":"sounds-like","source":"rules"}`
+	if rec.Code != http.StatusOK || strings.TrimSpace(rec.Body.String()) != want {
+		t.Fatalf("got %d %s", rec.Code, rec.Body.String())
+	}
+	rec = do(t, srv, c, http.MethodPost, "/api/v1/dj/request", `{"text":"90s hip hop"}`)
+	if !strings.Contains(rec.Body.String(), `"id":"hip hop"`) || !strings.Contains(rec.Body.String(), `"fromYear":1990,"toYear":1999`) {
+		t.Fatalf("got %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestDJRequestAsksTheModelWhenRulesFail(t *testing.T) {
+	srv, c := djLineServer(t, &fakeLLMSvc{name: "anthropic", out: `{"artist":"Radiohead"}`})
+	srv.deps.DJCatalog = fakeDJCatalog{}
+	rec := do(t, srv, c, http.MethodPost, "/api/v1/dj/request", `{"text":"that band with the creep song"}`)
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"missing":"Radiohead"`) || !strings.Contains(rec.Body.String(), `"understood":false`) {
+		t.Fatalf("got %d %s", rec.Code, rec.Body.String())
+	}
+	if rec := do(t, srv, c, http.MethodPost, "/api/v1/dj/request", `{"text":"  "}`); rec.Code != http.StatusBadRequest {
+		t.Fatalf("empty: %d", rec.Code)
 	}
 }
