@@ -274,14 +274,31 @@ func (g *gatewayBot) onComponent(e *events.ComponentInteractionCreate) {
 	if e.Data.Type() != discord.ComponentTypeButton {
 		return
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), replyWithin)
-	defer cancel()
-	r := g.core.Press(ctx, e.User().ID.String(), e.ButtonInteractionData().CustomID())
+	done := make(chan Reply, 1)
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		done <- g.core.Press(ctx, e.User().ID.String(), e.ButtonInteractionData().CustomID())
+	}()
 	var err error
-	if r.Ephemeral {
-		err = e.CreateMessage(messageCreate(r))
-	} else {
-		err = e.UpdateMessage(messageUpdate(r))
+	select {
+	case r := <-done:
+		if r.Ephemeral {
+			err = e.CreateMessage(messageCreate(r))
+		} else {
+			err = e.UpdateMessage(messageUpdate(r))
+		}
+	case <-time.After(replyWithin):
+		// Slow: acknowledge now, then edit the card (or reply privately).
+		if err := e.DeferUpdateMessage(); err != nil {
+			g.log.Warn("discord: defer button", "err", err)
+		}
+		r := <-done
+		if r.Ephemeral {
+			_, err = g.client.Rest.CreateFollowupMessage(e.ApplicationID(), e.Token(), messageCreate(r))
+		} else {
+			_, err = g.client.Rest.UpdateInteractionResponse(e.ApplicationID(), e.Token(), messageUpdate(r))
+		}
 	}
 	if err != nil {
 		g.log.Warn("discord: button", "err", err)

@@ -58,12 +58,9 @@ func (c *Core) Press(ctx context.Context, presserID, buttonID string) Reply {
 		return *errReply
 	}
 	if cmd != "" {
-		var before int64
-		if st := c.Hub.Snapshot(userID).State; st != nil {
-			before = st.UpdatedAt
-		}
-		if c.Hub.Command(userID, playback.Command{Action: cmd}) {
-			c.waitForState(ctx, userID, before)
+		before := c.Hub.Snapshot(userID).State
+		if c.Hub.Command(userID, playback.Command{Action: cmd}) && before != nil {
+			c.waitForState(ctx, userID, *before)
 		}
 	}
 	r := c.nowPlayingCard(presserID, userID)
@@ -75,11 +72,12 @@ func (c *Core) Press(ctx context.Context, presserID, buttonID string) Reply {
 }
 
 // waitForState gives the active device a moment to apply a command and
-// report back, so the refreshed card shows the result.
-func (c *Core) waitForState(ctx context.Context, userID string, before int64) {
+// report back, so the refreshed card shows the result. Routine position
+// reports don't count: only play/pause, the track or a jump back does.
+func (c *Core) waitForState(ctx context.Context, userID string, before playback.State) {
 	deadline := time.Now().Add(1500 * time.Millisecond)
 	for time.Now().Before(deadline) && ctx.Err() == nil {
-		if st := c.Hub.Snapshot(userID).State; st != nil && st.UpdatedAt != before {
+		if st := c.Hub.Snapshot(userID).State; st != nil && (st.Playing != before.Playing || st.Index != before.Index || st.PositionMs < before.PositionMs) {
 			return
 		}
 		time.Sleep(50 * time.Millisecond)
@@ -114,6 +112,10 @@ func (c *Core) request(ctx context.Context, inv Invocation, userID string) Reply
 		return Reply{Text: fmt.Sprintf("Couldn't find “%s” online.", q), Ephemeral: true}
 	case RequestDenied:
 		return Reply{Text: "Your Reverb account can't request songs. Ask an admin.", Ephemeral: true}
+	case RequestSearchFailed:
+		return Reply{Text: "Online search isn't answering right now. Try again in a bit.", Ephemeral: true}
+	case RequestUnchecked:
+		return Reply{Text: fmt.Sprintf("Couldn't check whether the library already has %s. Try again in a bit, or request it from Reverb.", song), Ephemeral: true}
 	case RequestQuota:
 		return Reply{Text: "You've reached your limit of pending requests. Wait for some to be reviewed.", Ephemeral: true}
 	}

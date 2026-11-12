@@ -219,12 +219,19 @@ func (s *Service) ResolveSession(ctx context.Context, tok string) (CurrentUser, 
 	}, nil
 }
 
+// ErrNoUser means the account doesn't exist or is disabled.
+var ErrNoUser = errors.New("no such user")
+
 // UserByID loads an enabled user with resolved capabilities, for actions
 // taken on someone's behalf outside a web session (the Discord bot).
+// ErrNoUser is returned for a missing or disabled account.
 func (s *Service) UserByID(ctx context.Context, id string) (CurrentUser, error) {
 	u, err := s.q.GetUserByID(ctx, id)
-	if err != nil || u.Disabled == 1 {
-		return CurrentUser{}, errors.New("invalid user")
+	if errors.Is(err, sql.ErrNoRows) || (err == nil && u.Disabled == 1) {
+		return CurrentUser{}, ErrNoUser
+	}
+	if err != nil {
+		return CurrentUser{}, err
 	}
 	caps, roleName, err := s.resolveCaps(ctx, u.RoleID)
 	if err != nil {

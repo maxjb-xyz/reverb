@@ -391,12 +391,14 @@ func TestRequestReplies(t *testing.T) {
 		want      string
 		ephemeral bool
 	}{
-		RequestDownloading: {"Getting **N** by B", false},
-		RequestPending:     {"admin", false},
-		RequestOwned:       {"/play", true},
-		RequestDenied:      {"can't request", true},
-		RequestQuota:       {"limit", true},
-		RequestNotFound:    {"Couldn't find", true},
+		RequestDownloading:  {"Getting **N** by B", false},
+		RequestPending:      {"admin", false},
+		RequestOwned:        {"/play", true},
+		RequestDenied:       {"can't request", true},
+		RequestQuota:        {"limit", true},
+		RequestNotFound:     {"Couldn't find", true},
+		RequestSearchFailed: {"isn't answering", true},
+		RequestUnchecked:    {"Couldn't check", true},
 	}
 	for status, c := range cases {
 		r.core.Requests = fakeRequester{RequestOutcome{Status: status, Title: "N", Artist: "B"}}

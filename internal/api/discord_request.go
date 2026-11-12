@@ -3,11 +3,13 @@ package api
 import (
 	"context"
 	"errors"
+	"sort"
 	"time"
 
 	"github.com/maxjb-xyz/reverb/internal/auth"
 	"github.com/maxjb-xyz/reverb/internal/core"
 	"github.com/maxjb-xyz/reverb/internal/discord"
+	"github.com/maxjb-xyz/reverb/internal/matching"
 	"github.com/maxjb-xyz/reverb/internal/search"
 )
 
@@ -26,8 +28,11 @@ func (d *DiscordRequester) Request(ctx context.Context, userID, query string) (d
 		return discord.RequestOutcome{Status: discord.RequestUnavailable}, nil
 	}
 	cu, err := s.deps.Auth.UserByID(ctx, userID)
-	if err != nil {
+	if errors.Is(err, auth.ErrNoUser) {
 		return discord.RequestOutcome{Status: discord.RequestDenied}, nil
+	}
+	if err != nil {
+		return discord.RequestOutcome{}, err
 	}
 	if !cu.Has(auth.CapRequest) {
 		return discord.RequestOutcome{Status: discord.RequestDenied}, nil
@@ -36,13 +41,22 @@ func (d *DiscordRequester) Request(ctx context.Context, userID, query string) (d
 	if agg == nil {
 		return discord.RequestOutcome{Status: discord.RequestUnavailable}, nil
 	}
-	best, ok := bestOnlineTrack(ctx, agg, query)
-	if !ok {
+	best, found, owned, searched := bestOnlineTrack(ctx, agg, query)
+	if !searched {
+		return discord.RequestOutcome{Status: discord.RequestSearchFailed}, nil
+	}
+	if !found {
 		return discord.RequestOutcome{Status: discord.RequestNotFound}, nil
 	}
 	out := discord.RequestOutcome{Title: best.Title, Artist: best.Artist}
-	if best.Match != nil && best.Match.Status == core.MatchInLibrary {
+	if owned {
 		out.Status = discord.RequestOwned
+		return out, nil
+	}
+	// Only request what the library is known not to have: when the check
+	// failed (library down) the web lets the person judge, the bot can't.
+	if best.Match == nil || best.Match.Status != core.MatchNotInLibrary {
+		out.Status = discord.RequestUnchecked
 		return out, nil
 	}
 	_, created, err := s.createOneRequest(ctx, cu, core.RequestItem{
@@ -67,26 +81,47 @@ func (d *DiscordRequester) Request(ctx context.Context, userID, query string) (d
 	return out, nil
 }
 
-// bestOnlineTrack searches every source and takes the top track, preferring
-// one already in the library (so nobody downloads a song twice).
-func bestOnlineTrack(ctx context.Context, agg Streamer, q string) (core.ExternalResult, bool) {
+// bestOnlineTrack waits for every source and takes the top track (not
+// playlist or album) of the first source in name order, so the same query
+// requests the same item every time. owned is true when that song (same
+// ISRC, or same title and artist) is in the library per any source.
+// searched is false when no source answered.
+func bestOnlineTrack(ctx context.Context, agg Streamer, q string) (best core.ExternalResult, found, owned, searched bool) {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	var first *core.ExternalResult
+	var envs []search.Envelope
 	for env := range agg.Stream(ctx, q, core.EntityTrack) {
-		if env.Status != search.StatusOK || len(env.Results) == 0 {
+		if env.Status != search.StatusOK {
 			continue
 		}
-		top := env.Results[0]
-		if top.Match != nil && top.Match.Status == core.MatchInLibrary {
-			return top, true
-		}
-		if first == nil {
-			first = &top
+		searched = true
+		envs = append(envs, env)
+	}
+	sort.SliceStable(envs, func(i, j int) bool { return envs[i].Source < envs[j].Source })
+	var tracks []core.ExternalResult
+	for _, env := range envs {
+		for _, r := range env.Results {
+			if r.Type == core.EntityTrack || r.Type == "" {
+				tracks = append(tracks, r)
+			}
 		}
 	}
-	if first == nil {
-		return core.ExternalResult{}, false
+	if len(tracks) == 0 {
+		return best, false, false, searched
 	}
-	return *first, true
+	best, found = tracks[0], true
+	for _, t := range tracks {
+		if t.Match != nil && t.Match.Status == core.MatchInLibrary && sameSong(t, best) {
+			return best, true, true, true
+		}
+	}
+	return best, true, false, true
+}
+
+func sameSong(a, b core.ExternalResult) bool {
+	if a.ISRC != "" && a.ISRC == b.ISRC {
+		return true
+	}
+	return matching.Normalize(a.Title) == matching.Normalize(b.Title) &&
+		matching.Normalize(a.Artist) == matching.Normalize(b.Artist)
 }

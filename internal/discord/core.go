@@ -57,14 +57,16 @@ type Button struct {
 
 // Request outcomes.
 const (
-	RequestOwned       = "owned"       // already in the library
-	RequestDownloading = "downloading" // approved and queued for download
-	RequestPending     = "pending"     // waiting for an admin
-	RequestExists      = "exists"      // asked for before
-	RequestNotFound    = "notfound"    // no online match
-	RequestDenied      = "denied"      // the account can't request
-	RequestQuota       = "quota"       // too many pending requests
-	RequestUnavailable = "unavailable" // no online search or downloader
+	RequestOwned        = "owned"        // already in the library
+	RequestDownloading  = "downloading"  // approved and queued for download
+	RequestPending      = "pending"      // waiting for an admin
+	RequestExists       = "exists"       // asked for before
+	RequestNotFound     = "notfound"     // no online match
+	RequestDenied       = "denied"       // the account can't request
+	RequestQuota        = "quota"        // too many pending requests
+	RequestUnavailable  = "unavailable"  // no online search or downloader
+	RequestSearchFailed = "searchfailed" // every search source failed
+	RequestUnchecked    = "unchecked"    // couldn't check the library
 )
 
 // RequestOutcome is what happened to a /request.
