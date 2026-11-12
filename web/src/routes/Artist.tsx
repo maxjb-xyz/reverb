@@ -215,6 +215,13 @@ export default function Artist() {
     (a) => !coverage[a.externalId] || coverage[a.externalId].state === 'pending',
   )
 
+  // Unresolved = the online discography lookup found nothing (or failed). The
+  // API then echoes the library albums as `albums`, so rendering the discography
+  // grid would repeat "In your library" as blank cards.
+  const hasLibraryAlbums = (detail.libraryAlbums?.length ?? 0) > 0
+  const libraryOnly = !detail.resolved && hasLibraryAlbums
+  const libraryOnlyCount = detail.libraryAlbums?.length ?? albums.length
+
   // Filter albums by kind
   const visibleAlbums: DiscographyAlbum[] = albums.filter((a) => {
     if (filter === 'all') return true
@@ -230,27 +237,31 @@ export default function Artist() {
         style={palette ? { background: `linear-gradient(to bottom, ${rgbToCss(palette.rgb, 0.55)} 0%, transparent 100%)` } : undefined}
       >
         {/* Artist header */}
-        <header className="relative z-10 flex items-end gap-6 pt-2">
-          <Cover
-            src={coverSrc}
-            alt={detail.name}
-            size={188}
-            rounded="full"
-            className="shadow-cover flex-none"
-          />
+        <header className="relative z-10 flex items-end gap-4 pt-2 sm:gap-6">
+          <div className="h-24 w-24 flex-none sm:h-[188px] sm:w-[188px]">
+            <Cover src={coverSrc} alt={detail.name} size="full" rounded="full" className="shadow-cover" />
+          </div>
           <div className="min-w-0 pb-1">
             <div className="text-xs font-semibold uppercase tracking-widest text-text-muted mb-1">
               Artist
             </div>
-            <h1 className="text-5xl font-black leading-tight tracking-tight text-text-primary truncate">
+            <h1 className="text-3xl font-black leading-tight tracking-tight text-text-primary line-clamp-3 sm:text-5xl sm:line-clamp-1">
               {detail.name}
             </h1>
 
             {/* Stat line */}
             <p className="mt-2 text-sm text-text-secondary flex flex-wrap items-center gap-x-1">
-              <span>
-                {fullCount} of {albums.length} {albums.length === 1 ? 'album' : 'albums'} in your library
-              </span>
+              {detail.resolved ? (
+                <span>
+                  {fullCount} of {albums.length} {albums.length === 1 ? 'album' : 'albums'} in your library
+                </span>
+              ) : (
+                // No online discography to compare against: every album listed
+                // is one you own, so "0 of N" would be wrong.
+                <span>
+                  {libraryOnlyCount} {libraryOnlyCount === 1 ? 'album' : 'albums'} in your library
+                </span>
+              )}
               {detail.resolved && partialCount > 0 && (
                 <>
                   <span className="text-text-muted">·</span>
@@ -368,7 +379,15 @@ export default function Artist() {
       )}
 
       {/* Discography grid */}
-      <section>
+      {libraryOnly ? (
+        <p className="text-sm text-text-muted" data-testid="discography-unavailable">
+          Reverb couldn't find this artist's full discography online, so only the albums in your library are shown.
+        </p>
+      ) : (
+      <section data-testid="discography-section">
+        {hasLibraryAlbums && (
+          <h2 className="text-base font-bold text-text-primary mb-4">Discography</h2>
+        )}
         {visibleAlbums.length > 0 ? (
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
             {visibleAlbums.map((al) => (
@@ -392,6 +411,7 @@ export default function Artist() {
           <EmptyState icon="browse" title="No albums" />
         )}
       </section>
+      )}
 
       {/* Request all disclosure modal */}
       {requestAllOpen &&

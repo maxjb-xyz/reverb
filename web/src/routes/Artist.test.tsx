@@ -532,6 +532,35 @@ describe('Artist page', () => {
     expect(mockNavigate).toHaveBeenCalledWith('/album/library/ext-ok-computer')
   })
 
+  it('unresolved artist with library albums: shows them once, with an honest count and no duplicate discography grid', () => {
+    const libAlbum = {
+      source: 'library',
+      externalId: 'lib-ok-computer',
+      name: 'OK Computer',
+      year: 1997,
+      kind: 'album' as const,
+      totalTracks: 12,
+    }
+    vi.mocked(useArtistDetail).mockReturnValue({
+      data: {
+        ...STUB_DETAIL,
+        resolved: false,
+        // The API echoes library albums as `albums` when nothing resolved online.
+        albums: [libAlbum],
+        libraryAlbums: [{ ...libAlbum, libraryAlbumId: 'lib-ok-computer' }],
+      },
+      isLoading: false,
+      isError: false,
+    } as ReturnType<typeof useArtistDetail>)
+    vi.mocked(useCoverageStream).mockReturnValue({})
+    wrapper(<Artist />)
+    expect(screen.getByText('1 album in your library')).toBeInTheDocument()
+    expect(screen.queryByText(/0 of 1/)).not.toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: 'OK Computer' })).toHaveLength(1)
+    expect(screen.queryByTestId('discography-section')).not.toBeInTheDocument()
+    expect(screen.getByTestId('discography-unavailable')).toBeInTheDocument()
+  })
+
   it('"In your library" section is absent when libraryAlbums is empty', () => {
     vi.mocked(useArtistDetail).mockReturnValue({
       data: { ...STUB_DETAIL, libraryAlbums: [] as import('../lib/types').DiscographyAlbum[] },
