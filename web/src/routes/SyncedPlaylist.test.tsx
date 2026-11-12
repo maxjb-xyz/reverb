@@ -132,11 +132,11 @@ const mockDetail: SyncedPlaylistDetail = {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-function wrapper(ui: React.ReactElement) {
+function wrapper(ui: React.ReactElement, state?: unknown) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
     <QueryClientProvider client={qc}>
-      <MemoryRouter initialEntries={['/synced-playlist/sp1']}>
+      <MemoryRouter initialEntries={[{ pathname: '/synced-playlist/sp1', state }]}>
         <Routes>
           <Route path="/synced-playlist/:id" element={ui} />
           <Route path="/library" element={<div>Library</div>} />
@@ -492,6 +492,20 @@ describe('SyncedPlaylist page', () => {
       intervalSec: 86400,
       autoDownload: true, // toggled from false
     })
+  })
+
+  it('a just-created playlist opens with its name in edit mode', async () => {
+    mockUseSyncedPlaylist.mockReturnValue({ data: mockDetail, isLoading: false, isError: false })
+    wrapper(<SyncedPlaylist />, { rename: true })
+    const input = await screen.findByRole('textbox', { name: 'Playlist name' })
+    expect(input).toHaveValue(mockDetail.name)
+    // The flag is cleared so a reload does not reopen the editor.
+    expect(mockNavigate).toHaveBeenCalledWith('/synced-playlist/sp1', { replace: true, state: null })
+  })
+
+  it('an existing playlist opens with a plain title', async () => {
+    await renderLoaded()
+    expect(screen.queryByRole('textbox', { name: 'Playlist name' })).not.toBeInTheDocument()
   })
 
   // ── Remove ─────────────────────────────────────────────────────────────────
