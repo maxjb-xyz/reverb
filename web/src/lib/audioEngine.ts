@@ -361,7 +361,7 @@ export class AudioEngine {
     if (resumeAt > 0) this.active.currentTime = resumeAt / 1000
     if (autoplay) {
       this.route()
-      void this.active.play()
+      this.startActive()
       this.playing = true
     }
     this.preloadNext()
@@ -377,13 +377,31 @@ export class AudioEngine {
     this.preload.load()
   }
 
+  /**
+   * Start the active element. A browser that blocks autoplay (no tap on this
+   * page yet, e.g. playback moved here from another device) rejects play();
+   * then the player shows paused instead of pretending to play.
+   */
+  private startActive() {
+    const el = this.active
+    const p = el.play() as Promise<void> | undefined
+    if (p && typeof p.catch === 'function') {
+      p.catch((err: unknown) => {
+        if ((err as { name?: string } | null)?.name === 'NotAllowedError' && el === this.active && this.playing) {
+          this.playing = false
+          this.emit()
+        }
+      })
+    }
+  }
+
   play() {
     if (this.index < 0 && this.queue.length) this.index = 0
     if (this.getState().current) {
       if (!this.active.src || this.pendingRestore) this.loadCurrent(true, true)
       else {
         this.route()
-        void this.active.play()
+        this.startActive()
         this.playing = true
       }
     }

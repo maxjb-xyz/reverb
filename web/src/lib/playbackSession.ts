@@ -30,6 +30,8 @@ export interface RemoteState {
   repeat: RepeatMode
   volume: number
   updatedAt: number
+  /** Where `queue` starts in the active device's longer queue. */
+  queueOffset?: number
 }
 
 interface SessionFrame {
@@ -63,6 +65,8 @@ export interface Command {
   positionMs?: number
   volume?: number
   track?: Track
+  /** The queueOffset of the state the indices refer to. */
+  base?: number
 }
 
 export interface SessionStore {
@@ -184,6 +188,8 @@ type Send = (frame: { type: string; payload: unknown }) => void
 
 /** Queues past this are sent as a window around the current track. */
 const MAX_REPORTED_QUEUE = 500
+/** The most tracks a playTracks command may carry (the server's queue cap). */
+const MAX_COMMAND_TRACKS = 1000
 /** How often the active device re-reports its position while playing. */
 const POSITION_REPORT_MS = 15_000
 
@@ -194,6 +200,9 @@ let firstSession = true
 let lastKey = ''
 let lastReportAt = 0
 let wasPlaying = false
+// A claim sent and not yet confirmed by a session naming this device. Frames
+// broadcast before the server saw it still say nobody is active.
+let pendingClaim = false
 // Where the reported window starts in the local queue; remote commands carry
 // indices into the window.
 let windowStart = 0
@@ -220,6 +229,7 @@ function report(st: PlayerState) {
   return {
     queue,
     index,
+    queueOffset: windowStart,
     positionMs: Math.max(0, Math.round(st.currentTimeMs)),
     playing: st.playing,
     shuffle: st.shuffle,
@@ -241,6 +251,7 @@ function onEngineState(st: PlayerState) {
     // The listener started music on this device itself: take the session.
     if (startedPlaying && s.connected) {
       frame('playback.claim', report(st))
+      pendingClaim = true
       useSession.setState({ activeDeviceId: s.deviceId })
       lastKey = structuralKey(st)
       lastReportAt = Date.now()
@@ -278,7 +289,13 @@ function snapshotOf(r: RemoteState, volume: number): PlayerSnapshot {
 function applyCommand(cmd: Command) {
   const e = engineRef
   if (!e) return
-  const at = (i: number | undefined) => (i ?? 0) + windowStart
+  // Indices count from the window the sender saw. Map them through that
+  // window's offset; drop index commands for a window we no longer report
+  // (the sender saw a queue that has moved on).
+  const base = cmd.base ?? 0
+  const at = (i: number | undefined) => (i ?? 0) + base
+  const indexed = cmd.action === 'jumpTo' || cmd.action === 'removeAt' || cmd.action === 'moveItem'
+  if (indexed && base !== windowStart) return
   switch (cmd.action) {
     case 'play':
       return e.play()
@@ -323,34 +340,57 @@ export function handlePlaybackFrame(type: string, payload: unknown): boolean {
       const f = payload as SessionFrame
       const s = useSession.getState()
       const prevActive = s.activeDeviceId
+      let active = f.activeDeviceId || ''
+      if (pendingClaim) {
+        if (active === '') active = s.deviceId // the server has not seen our claim yet
+        else pendingClaim = false
+      }
       useSession.setState({
         devices: Array.isArray(f.devices) ? f.devices : [],
-        activeDeviceId: f.activeDeviceId || '',
+        activeDeviceId: active,
         remote: f.state ?? null,
         clockOffsetMs: typeof f.serverTime === 'number' ? f.serverTime - Date.now() : 0,
       })
       if (!e) return true
       const local = e.getState()
-      if (firstSession) {
-        firstSession = false
-        if (local.playing && f.activeDeviceId !== s.deviceId) {
-          // Back after a dropped connection, still playing: keep the session.
-          frame('playback.claim', report(local))
-          useSession.setState({ activeDeviceId: s.deviceId })
-        } else if (!f.activeDeviceId && f.state && f.state.queue.length > 0 && !local.playing) {
-          // Pick up where the account left off, paused.
+      const adoptAccount = () => {
+        if (f.state && f.state.queue.length > 0) {
           e.adopt(snapshotOf(f.state, local.volume), false)
           wasPlaying = false
         }
-      } else if (prevActive === s.deviceId && f.activeDeviceId !== s.deviceId && local.playing) {
+      }
+      if (firstSession) {
+        firstSession = false
+        if (local.playing) {
+          if (active === '') {
+            // Back after a dropped connection, still playing: keep the session.
+            frame('playback.claim', report(local))
+            pendingClaim = true
+            useSession.setState({ activeDeviceId: s.deviceId })
+          } else if (active !== s.deviceId) {
+            // Another device took over while we were cut off.
+            wasPlaying = false
+            e.pause()
+          }
+        } else if (active === '') {
+          // Pick up where the account left off, paused.
+          adoptAccount()
+        }
+      } else if (active !== '' && active !== s.deviceId && prevActive === s.deviceId && local.playing) {
         // Someone else took over without a deactivate reaching us first.
+        wasPlaying = false
         e.pause()
+      } else if (active === '' && prevActive !== '' && prevActive !== s.deviceId && !local.playing) {
+        // The device we were controlling went away: show (and be ready to
+        // resume) the account's queue, not this tab's old one.
+        adoptAccount()
       }
       return true
     }
     case 'playback.activate': {
       const a = payload as { state: RemoteState | null; play: boolean }
       const s = useSession.getState()
+      pendingClaim = false
       useSession.setState({ activeDeviceId: s.deviceId })
       if (e) {
         if (a.state) {
@@ -364,6 +404,7 @@ export function handlePlaybackFrame(type: string, payload: unknown): boolean {
       return true
     }
     case 'playback.deactivate': {
+      pendingClaim = false
       if (e && e.getState().playing) {
         wasPlaying = false
         e.pause()
@@ -401,6 +442,7 @@ export function attachEngine(engine: AudioEngine): () => void {
 export function setPlaybackTransport(fn: Send | null) {
   send = fn
   firstSession = true
+  pendingClaim = false
   if (!fn) {
     useSession.setState({ connected: false, devices: [], activeDeviceId: '' })
     return
@@ -420,7 +462,17 @@ export function reportNow() {
 
 /** Send a remote control action to the active device. */
 export function sendCommand(cmd: Command) {
-  frame('playback.command', cmd)
+  let c = cmd
+  if (c.action === 'playTracks' && c.tracks && c.tracks.length > MAX_COMMAND_TRACKS) {
+    // The server takes at most 1000 tracks: send a window around the start.
+    const idx = c.index ?? 0
+    const start = Math.max(0, Math.min(idx - 100, c.tracks.length - MAX_COMMAND_TRACKS))
+    c = { ...c, tracks: c.tracks.slice(start, start + MAX_COMMAND_TRACKS), index: idx - start }
+  }
+  if (c.action === 'jumpTo' || c.action === 'removeAt' || c.action === 'moveItem') {
+    c = { ...c, base: useSession.getState().remote?.queueOffset ?? 0 }
+  }
+  frame('playback.command', c)
 }
 
 /** Move playback to `deviceId` (this tab's own id to play here). */
@@ -435,6 +487,7 @@ export function resetPlaybackSession() {
   lastKey = ''
   lastReportAt = 0
   wasPlaying = false
+  pendingClaim = false
   windowStart = 0
   useSession.setState({ connected: false, devices: [], activeDeviceId: '', remote: null, clockOffsetMs: 0 })
 }

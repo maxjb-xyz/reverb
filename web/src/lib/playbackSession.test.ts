@@ -162,7 +162,7 @@ describe('playback session', () => {
   it('keeps its own music if it was playing when the connection came back', () => {
     engine.playTrackList([track('9')], 0)
     connect()
-    session({ activeDeviceId: 'phone', state: remote() })
+    session({ activeDeviceId: '', state: remote({ playing: false }) })
     expect(lastOf('playback.claim')).toBeDefined()
     expect(engine.getState().current?.id).toBe('9')
   })
@@ -209,12 +209,56 @@ describe('playback session', () => {
     connect()
     session()
     const q = Array.from({ length: 800 }, (_, i) => track('t' + i))
-    engine.playTrackList(q, 600)
-    const claim = lastOf('playback.claim')?.payload as { queue: Track[]; index: number }
+    engine.playTrackList(q, 200)
+    const claim = lastOf('playback.claim')?.payload as { queue: Track[]; index: number; queueOffset: number }
     expect(claim.queue.length).toBe(500)
-    expect(claim.queue[claim.index].id).toBe('t600')
-    handlePlaybackFrame('playback.command', { action: 'jumpTo', index: claim.index + 1 })
-    expect(engine.getState().current?.id).toBe('t601')
+    expect(claim.queue[claim.index].id).toBe('t200')
+    handlePlaybackFrame('playback.command', { action: 'jumpTo', index: claim.index + 1, base: claim.queueOffset })
+    expect(engine.getState().current?.id).toBe('t201')
+    // The window moved on since (t201 is now current): an index into the old
+    // window is dropped rather than landing on the wrong track.
+    handlePlaybackFrame('playback.command', { action: 'removeAt', index: 0, base: claim.queueOffset })
+    expect(engine.getState().queue.length).toBe(800)
+  })
+
+  it('a frame from before the server saw our claim does not stop our music', () => {
+    connect()
+    session()
+    engine.playTrackList([track('1')], 0)
+    session() // broadcast in flight: nobody active yet
+    expect(engine.getState().playing).toBe(true)
+    expect(isRemote()).toBe(false)
+    expect(useSession.getState().activeDeviceId).toBe(useSession.getState().deviceId)
+  })
+
+  it('stops instead of grabbing the session back when another device took over during an outage', () => {
+    engine.playTrackList([track('9')], 0)
+    connect()
+    session({ activeDeviceId: 'phone', state: remote() })
+    expect(lastOf('playback.claim')).toBeUndefined()
+    expect(engine.getState().playing).toBe(false)
+    expect(isRemote()).toBe(true)
+  })
+
+  it('shows the account queue when the device it was controlling leaves', () => {
+    engine.setQueue([track('old')], 0)
+    connect()
+    session({ activeDeviceId: 'phone', state: remote() })
+    session({ activeDeviceId: '', state: remote({ playing: false, positionMs: 40_000 }) })
+    expect(engine.getState().current?.id).toBe('b')
+    expect(engine.getState().currentTimeMs).toBe(40_000)
+  })
+
+  it('caps a huge playTracks around the start and stamps index commands with the window', () => {
+    connect()
+    session({ activeDeviceId: 'phone', state: remote({ queueOffset: 200 }) })
+    const many = Array.from({ length: 1500 }, (_, i) => track('m' + i))
+    sendCommand({ action: 'playTracks', tracks: many, index: 1200 })
+    const c = lastOf('playback.command')?.payload as { tracks: Track[]; index: number }
+    expect(c.tracks.length).toBe(1000)
+    expect(c.tracks[c.index].id).toBe('m1200')
+    sendCommand({ action: 'jumpTo', index: 3 })
+    expect(lastOf('playback.command')?.payload).toEqual({ action: 'jumpTo', index: 3, base: 200 })
   })
 
   it('sends commands and transfers', () => {

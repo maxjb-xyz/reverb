@@ -406,8 +406,7 @@ func main() {
 	httpSrv := newHTTPServer(srv.Handler())
 	if err := serveWithShutdown(httpSrv, ln, stop, func(ctx context.Context) error {
 		// Keep where everyone was in their queue.
-		playbackHub.Flush()
-		playbackHub.Wait()
+		playbackHub.Shutdown()
 		if bundle.Supervisor != nil {
 			return bundle.Supervisor.Shutdown(ctx)
 		}

@@ -76,6 +76,9 @@ type State struct {
 	Shuffle    bool    `json:"shuffle"`
 	Repeat     string  `json:"repeat"`
 	Volume     float64 `json:"volume"`
+	// QueueOffset is where Queue starts in the device's own, longer queue
+	// when it reports only a window of it. Commands echo it back as Base.
+	QueueOffset int `json:"queueOffset,omitempty"`
 	// UpdatedAt is the server time (unix ms) the report arrived. A viewer adds
 	// the time since then to PositionMs while Playing.
 	UpdatedAt int64 `json:"updatedAt"`
@@ -108,6 +111,9 @@ type Command struct {
 	Volume float64 `json:"volume,omitempty"`
 	// enqueue
 	Track *Track `json:"track,omitempty"`
+	// Base is the QueueOffset of the state the sender was looking at; Index,
+	// From and To count from it.
+	Base int `json:"base,omitempty"`
 }
 
 // Commands the hub relays. Anything else is dropped.
@@ -132,7 +138,9 @@ type Activate struct {
 
 // Limits on what a device may send.
 const (
-	MaxQueue      = 1000
+	MaxQueue = 1000
+	// MaxDevices caps one account's connected devices.
+	MaxDevices    = 20
 	maxNameLen    = 64
 	maxIDLen      = 128
 	maxContextLen = 4096
@@ -165,6 +173,9 @@ func sanitizeState(s *State) bool {
 	if s.PositionMs < 0 {
 		s.PositionMs = 0
 	}
+	if s.QueueOffset < 0 {
+		s.QueueOffset = 0
+	}
 	if s.Volume < 0 || s.Volume > 1 || s.Volume != s.Volume {
 		s.Volume = 1
 	}
@@ -175,7 +186,7 @@ func sanitizeCommand(c *Command) bool {
 	if c == nil || !commandActions[c.Action] {
 		return false
 	}
-	if len(c.Tracks) > MaxQueue || len(c.Context) > maxContextLen {
+	if len(c.Tracks) > MaxQueue || len(c.Context) > maxContextLen || c.Base < 0 {
 		return false
 	}
 	for _, t := range c.Tracks {

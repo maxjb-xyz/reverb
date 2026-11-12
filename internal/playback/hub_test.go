@@ -340,3 +340,38 @@ func TestConnectRejectsBadDevice(t *testing.T) {
 		t.Fatalf("device = %+v", c.Device)
 	}
 }
+
+func TestDeviceCapPerAccount(t *testing.T) {
+	h, _, _ := newTestHub()
+	for i := 0; i < MaxDevices; i++ {
+		connect(t, h, "u", string(rune('a'+i)))
+	}
+	if _, ok := h.Connect(context.Background(), "u", DeviceInfo{ID: "one-too-many"}); ok {
+		t.Fatal("device cap not enforced")
+	}
+	if _, ok := h.Connect(context.Background(), "u2", DeviceInfo{ID: "x"}); !ok {
+		t.Fatal("cap leaked across accounts")
+	}
+}
+
+func TestShutdownSavesOnceThenStops(t *testing.T) {
+	h, _, st := newTestHub()
+	a := connect(t, h, "u", "A")
+	a.Handle(MsgClaim, raw(playingState()))
+	h.Shutdown()
+	h.Shutdown()
+	st.mu.Lock()
+	saved := st.saved["u"]
+	st.saved = map[string]*State{}
+	st.mu.Unlock()
+	if saved == nil {
+		t.Fatal("final state not saved")
+	}
+	a.Close() // after shutdown: no save may start
+	h.Wait()
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	if len(st.saved) != 0 {
+		t.Fatal("saved after shutdown")
+	}
+}

@@ -362,6 +362,16 @@ describe('AudioEngine session restore', () => {
     expect(els[0].src).toContain('2')
   })
 
+  it('shows paused when the browser blocks autoplay', async () => {
+    const { engine, audios: els } = newEngine()
+    els[0].play = () => Promise.reject(Object.assign(new Error('blocked'), { name: 'NotAllowedError' }))
+    engine.adopt(snap(), true)
+    expect(engine.getState().playing).toBe(true)
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(engine.getState().playing).toBe(false)
+  })
+
   it('adopt of an empty session clears the queue', () => {
     const { engine } = newEngine()
     engine.playTrackList([track('9')], 0)

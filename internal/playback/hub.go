@@ -34,6 +34,10 @@ type Hub struct {
 	saveSeq uint64
 	saved   map[string]uint64
 	saves   sync.WaitGroup
+	// stopped (guarded by mu) turns saves off once Shutdown has written the
+	// final states, so no save starts while Shutdown waits.
+	stopped      bool
+	shutdownOnce sync.Once
 }
 
 type session struct {
@@ -93,6 +97,9 @@ func (h *Hub) Connect(ctx context.Context, userID string, dev DeviceInfo) (*Conn
 		if old.Device.ID == dev.ID {
 			h.dropLocked(s, old)
 		}
+	}
+	if len(s.conns) >= MaxDevices {
+		return nil, false
 	}
 	c := &Conn{hub: h, userID: userID, Device: dev, out: make(chan Message, outBuffer), done: make(chan struct{})}
 	s.conns[c] = struct{}{}
@@ -363,6 +370,9 @@ func (h *Hub) Snapshot(userID string) Session {
 // saveLocked writes s's state if it changed. The write runs in the
 // background so a slow disk never holds the hub lock.
 func (h *Hub) saveLocked(s *session) {
+	if h.stopped {
+		return
+	}
 	if h.store == nil || !s.dirty || s.state == nil {
 		s.dirty = false
 		return
@@ -403,6 +413,20 @@ func (h *Hub) Flush() {
 // Wait blocks until saves already started have finished.
 func (h *Hub) Wait() { h.saves.Wait() }
 
+// Shutdown writes every changed state, waits for the writes, and turns saving
+// off. Safe to call more than once and from several goroutines.
+func (h *Hub) Shutdown() {
+	h.shutdownOnce.Do(func() {
+		h.mu.Lock()
+		for _, s := range h.sessions {
+			h.saveLocked(s)
+		}
+		h.stopped = true
+		h.mu.Unlock()
+		h.saves.Wait()
+	})
+}
+
 // Run saves changed states every interval until ctx ends, then once more.
 func (h *Hub) Run(ctx context.Context, interval time.Duration) {
 	t := time.NewTicker(interval)
@@ -410,8 +434,7 @@ func (h *Hub) Run(ctx context.Context, interval time.Duration) {
 	for {
 		select {
 		case <-ctx.Done():
-			h.Flush()
-			h.Wait()
+			h.Shutdown()
 			return
 		case <-t.C:
 			h.Flush()
