@@ -152,6 +152,9 @@ func TestEngineNext_ArtistRadioAndErrors(t *testing.T) {
 	if rec := do(t, srv, cookie, http.MethodPost, "/api/v1/engine/next", `{"seed":{"kind":"track","id":"missing"}}`); rec.Code != http.StatusNotFound {
 		t.Errorf("missing seed = %d", rec.Code)
 	}
+	if rec := do(t, srv, cookie, http.MethodGet, "/api/v1/engine/genres", ""); rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"genres"`) {
+		t.Errorf("genres = %d %s", rec.Code, rec.Body.String())
+	}
 	rec = do(t, srv, cookie, http.MethodGet, "/api/v1/engine/stations", "")
 	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"stations"`) {
 		t.Errorf("stations = %d %s", rec.Code, rec.Body.String())
