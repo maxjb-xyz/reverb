@@ -29,7 +29,10 @@ curl -o .env https://raw.githubusercontent.com/maxjb-xyz/reverb/main/.env.exampl
 ```
 
 - `REVERB_MUSIC_DIR=/srv/music` uses an existing music folder instead of `./music`.
-- `REVERB_VERSION=0.1.0` pins the image instead of following `latest`.
+- `REVERB_VERSION=0.1.0` pins the image instead of following `latest`. `latest` is
+  rebuilt weekly from the current release to pick up a fresh yt-dlp (YouTube
+  downloads break when it goes stale); exact version tags are not, so prefer
+  `latest` unless you need to pin.
 - `REVERB_ADMIN_PASSWORD` skips the first-run password screen; remove it after
   the first boot.
 - `REVERB_DOWNLOAD_WORKERS=3` runs up to three downloads at once (default: two;
