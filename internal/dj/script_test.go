@@ -66,6 +66,28 @@ func TestTemplatesCoverEveryLane(t *testing.T) {
 	}
 }
 
+func TestThrowbackAndFreshFindsSayWhatTheyAre(t *testing.T) {
+	w := writer(nil)
+	for i := 0; i < 20; i++ {
+		s := seg()
+		s.Lane, s.Previous, s.Hour = LaneThrowback, nil, -1
+		s.Next = []Track{{Title: "Paper Maps", Artist: "Willow Lane", Year: 2012}}
+		line := w.Line(context.Background(), s).Text
+		// A throwback block is from an earlier period; it may never have been played.
+		if strings.Contains(line, "haven't played") || !strings.Contains(line, "Paper Maps") {
+			t.Fatalf("throwback line %q", line)
+		}
+		s.Next[0].Year = 0
+		if line := w.Line(context.Background(), s).Text; line != "Here's a throwback. Paper Maps by Willow Lane." {
+			t.Fatalf("throwback without a year %q", line)
+		}
+		s.Lane = LaneFreshFinds
+		if line := w.Line(context.Background(), s).Text; !strings.Contains(line, "library") {
+			t.Fatalf("fresh finds line %q", line)
+		}
+	}
+}
+
 func TestTemplateWithoutFactsStillReads(t *testing.T) {
 	w := writer(nil)
 	line := w.Line(context.Background(), Segment{Next: []Track{{Title: "Cirrus", Artist: "Bonobo"}}})

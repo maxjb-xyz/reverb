@@ -162,6 +162,17 @@ describe('the DJ talking', () => {
     expect(useDJ.getState().card).toMatchObject({ label: 'Label on-repeat', text: 'Line for Song a1' })
   })
 
+  it('names the song a pick sounds like when the engine says so', async () => {
+    const { deps, next, line } = setup()
+    next.mockImplementationOnce(async () => ({
+      ...block('on-repeat', ['a1']),
+      items: [{ ...item('a1'), reason: { kind: 'sounds_like', seedArtist: 'Bonobo', seedTitle: 'Kerala' } as unknown as EngineItem['reason'] }],
+    }))
+    await startDJ(deps)
+    await flush()
+    expect(line.mock.calls[0][0].reason.seed).toBe('Kerala')
+  })
+
   it('shows the line without speaking when there is no voice', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
     const { deps, say, eng } = setup({ voice: false })
