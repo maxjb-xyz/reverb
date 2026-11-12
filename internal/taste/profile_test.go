@@ -170,3 +170,24 @@ func TestNormalizeOutcome(t *testing.T) {
 		}
 	}
 }
+
+func TestTrackFor_FindsByLibraryIDThenByTitleAndArtist(t *testing.T) {
+	at := time.Unix(1_800_000_000, 0)
+	p := Build("u", at, Inputs{
+		Listens: []Listen{{CatalogID: "c1", LibraryTrackID: "lib-1", Title: "Song", Artist: "Band", StartedAt: at.Unix() - 60, Outcome: OutcomeCompleted, DurationMs: 200_000, MsPlayed: 200_000}},
+		Signals: []Signal{{Kind: SignalPlaylistAdd, CatalogID: "c2", Title: "Other Song", Artist: "Band feat. X", CreatedAt: at.Unix() - 60}},
+	})
+	if got := p.TrackFor("lib-1", "", ""); got == nil || got.CatalogID != "c1" {
+		t.Fatalf("by library id = %+v", got)
+	}
+	if got := p.TrackFor("lib-9", "other song", "Band"); got == nil || got.CatalogID != "c2" {
+		t.Fatalf("by metadata = %+v", got)
+	}
+	if got := p.TrackFor("lib-9", "Unknown", "Band"); got != nil {
+		t.Fatalf("unknown = %+v", got)
+	}
+	var nilProfile *Profile
+	if nilProfile.TrackFor("lib-1", "Song", "Band") != nil {
+		t.Fatal("nil profile")
+	}
+}
