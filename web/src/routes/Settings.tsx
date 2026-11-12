@@ -6,6 +6,7 @@ import { ApiError } from '../lib/api'
 import { IntegrationsSection } from '../components/account/IntegrationsSection'
 import { AppearanceSection } from '../components/account/AppearanceSection'
 import { useDocumentTitle } from '../lib/useDocumentTitle'
+import { PageHeader } from '../components/ui/PageHeader'
 
 type Tab = 'profile' | 'security' | 'sessions' | 'integrations' | 'appearance'
 
@@ -92,9 +93,9 @@ export default function Settings() {
   const initial = me.username.charAt(0).toUpperCase()
 
   return (
-    <div className="max-w-4xl space-y-6 pb-8">
+    <div className="mx-auto max-w-4xl space-y-6 pb-8">
       {/* Header */}
-      <h1 className="text-3xl font-black tracking-tight text-text-primary">Settings</h1>
+      <PageHeader title="Settings" />
 
       {/* Tab bar */}
       <div role="tablist" aria-label="Settings sections" className="flex gap-2 border-b border-border-subtle pb-0 flex-wrap">

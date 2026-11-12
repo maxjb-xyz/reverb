@@ -9,6 +9,7 @@ import { postDownload } from '../lib/downloadApi'
 import { useDownloads } from '../lib/downloadStore'
 import { coverUrl } from '../lib/libraryApi'
 import { useAuthStore } from '../lib/authStore'
+import { PageHeader } from '../components/ui/PageHeader'
 
 export default function Collection() {
   useDocumentTitle('Collection')
@@ -47,14 +48,10 @@ export default function Collection() {
   return (
     <div className="space-y-8">
       {/* Page header */}
-      <header>
-        <h1 className="text-xl font-extrabold text-text-primary">
-          Collection
-        </h1>
-        <p className="text-sm text-text-secondary">
-          {summary.resolvedCount} of {summary.artistCount} artists mapped
-        </p>
-      </header>
+      <PageHeader
+        title="Collection"
+        subtitle={`${summary.resolvedCount} of ${summary.artistCount} artists mapped`}
+      />
 
       {/* Artist sections */}
       {summary.artists.map((artist) => (

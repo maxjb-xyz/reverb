@@ -18,6 +18,7 @@ import { Chip, Skeleton, Select, Button } from '../components/ui'
 import { useSettings, useUpdateSettings } from '../lib/settingsApi'
 import { useLibraryStatus } from '../lib/libraryApi'
 import { useDocumentTitle } from '../lib/useDocumentTitle'
+import { PageHeader } from '../components/ui/PageHeader'
 
 const modeLabel = (m: string) => (m === 'external' ? 'External Subsonic' : 'Built-in (bundled)')
 
@@ -170,9 +171,9 @@ export default function Admin() {
   }
 
   return (
-    <div className="max-w-4xl space-y-6 pb-8">
+    <div className="mx-auto max-w-4xl space-y-6 pb-8">
       {/* Header */}
-      <h1 className="text-3xl font-black tracking-tight text-text-primary">Admin</h1>
+      <PageHeader title="Admin" />
 
       {/* Tabs */}
       <div className="flex gap-2 border-b border-border-subtle pb-0" role="tablist" aria-label="Admin sections">

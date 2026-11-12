@@ -9,7 +9,7 @@ import {
   cancelRequest,
 } from '../lib/requestApi'
 import type { Request as MusicRequest, RequestStatus } from '../lib/requestApi'
-import { Cover, EmptyState, Button } from '../components/ui'
+import { Chip, Cover, EmptyState, Button, PageHeader } from '../components/ui'
 import { coverUrl } from '../lib/libraryApi'
 import { useToastStore } from '../lib/toastStore'
 
@@ -259,44 +259,17 @@ export default function Requests() {
   return (
     <div className="space-y-4">
       {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-text-primary" role="heading">
-          My Requests
-        </h1>
-        <p className="mt-0.5 text-xs text-text-secondary">
-          Track the status of your song requests
-        </p>
-      </div>
+      <PageHeader title="Requests" subtitle="Music you've asked for, and what happened to it." />
 
       {/* Tabs — only render tab row when there's more than one tab */}
       {isManager && (
-        <div role="tablist" className="flex gap-1 border-b border-border-subtle">
-          <button
-            role="tab"
-            aria-selected={tab === 'mine'}
-            onClick={() => setTab('mine')}
-            className={[
-              'px-4 py-2 text-sm font-semibold transition-colors',
-              tab === 'mine'
-                ? 'border-b-2 border-accent text-accent'
-                : 'text-text-secondary hover:text-text-primary',
-            ].join(' ')}
-          >
-            My Requests
-          </button>
-          <button
-            role="tab"
-            aria-selected={tab === 'approval'}
-            onClick={() => setTab('approval')}
-            className={[
-              'px-4 py-2 text-sm font-semibold transition-colors',
-              tab === 'approval'
-                ? 'border-b-2 border-accent text-accent'
-                : 'text-text-secondary hover:text-text-primary',
-            ].join(' ')}
-          >
+        <div role="tablist" aria-label="Requests views" className="flex flex-wrap gap-2">
+          <Chip asTab selected={tab === 'mine'} onClick={() => setTab('mine')}>
+            My requests
+          </Chip>
+          <Chip asTab selected={tab === 'approval'} onClick={() => setTab('approval')}>
             Approval
-          </button>
+          </Chip>
         </div>
       )}
 

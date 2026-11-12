@@ -11,6 +11,7 @@ import { TimelineChart } from '../components/stats/TimelineChart'
 import { ClockHeatmap } from '../components/stats/ClockHeatmap'
 import { Skeleton } from '../components/ui/Skeleton'
 import { Button } from '../components/ui/Button'
+import { PageHeader } from '../components/ui/PageHeader'
 
 function rangeKey(r: Range): [number, number] {
   return [r.from, r.to]
@@ -79,7 +80,7 @@ export default function Stats() {
     <div className="space-y-8">
       {/* Page header + range selector */}
       <div className="space-y-4">
-        <h1 className="text-2xl font-black tracking-tight text-text-primary">Stats</h1>
+        <PageHeader title="Stats" />
         <RangeSelector value={range} onChange={setRange} />
       </div>
 

@@ -24,6 +24,7 @@ import type { ExternalResult, EnvelopeStatus, Track } from '../lib/types'
 import { useDocumentTitle } from '../lib/useDocumentTitle'
 import { useDebouncedValue } from '../lib/useDebouncedValue'
 import { usePendingPlay } from '../lib/pendingPlayStore'
+import { PageHeader } from '../components/ui/PageHeader'
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -204,7 +205,7 @@ export default function Search() {
         {/* Mobile-only input — the TopBar has no search bar on mobile. */}
         <MobileSearchInput q={q} onChange={setQ} />
 
-        <h1 className="text-xl font-extrabold text-text-primary">Search</h1>
+        <PageHeader title="Search" />
 
         <div className="py-12">
           <EmptyState
@@ -222,11 +223,7 @@ export default function Search() {
       {/* Mobile-only input — the TopBar has no search bar on mobile. */}
       <MobileSearchInput q={q} onChange={setQ} />
 
-      <div>
-        <h1 className="truncate text-xl font-extrabold text-text-primary">
-          Results for &ldquo;{q}&rdquo;
-        </h1>
-      </div>
+      <PageHeader title={<>Results for &ldquo;{q}&rdquo;</>} />
 
       {!lib.isFetching && libTracks.length === 0 && libAlbums.length === 0 && libArtists.length === 0 && lib.isFetched && everywhere.status === 'done' && externalTracks.length === 0 && albums.length === 0 && artists.length === 0 && playlists.length === 0 && (
         <EmptyState

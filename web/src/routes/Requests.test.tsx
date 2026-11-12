@@ -84,10 +84,10 @@ describe('Requests page — My Requests tab', () => {
     mockNavigate.mockReset()
   })
 
-  it('shows "My Requests" heading', () => {
+  it('titles the page "Requests" (not a duplicate of the "My requests" tab)', () => {
     setMe('u1', ['request'])
     renderRequests()
-    expect(screen.getByRole('heading', { name: /my requests/i })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 1, name: 'Requests' })).toBeInTheDocument()
   })
 
   it('renders a status chip for a pending request', async () => {
