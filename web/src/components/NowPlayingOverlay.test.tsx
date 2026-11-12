@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { render, screen, fireEvent, act } from '@testing-library/react'
 import { NowPlayingOverlay } from './NowPlayingOverlay'
+import { useAlbumPalette } from '../lib/useAlbumPalette'
 import { usePlayer, engine } from '../lib/playerStore'
 import { useUI } from '../lib/uiStore'
 import type { Track } from '../lib/types'
@@ -47,5 +48,13 @@ describe('NowPlayingOverlay', () => {
     fireEvent.click(screen.getByRole('button', { name: /^next$/i }))
     expect(nextSpy).toHaveBeenCalledTimes(1)
     nextSpy.mockRestore()
+  })
+
+  it('paints the album wash over an opaque base so the page never shows through', () => {
+    vi.mocked(useAlbumPalette).mockReturnValueOnce({ rgb: [200, 80, 20], text: '#fff', scrim: false })
+    act(() => { useUI.getState().openNowPlaying() })
+    render(<NowPlayingOverlay />)
+    const style = screen.getByTestId('now-playing-overlay').getAttribute('style') ?? ''
+    expect(style).toMatch(/var\(--bg-base\) 70%\), var\(--bg-base\)/)
   })
 })
