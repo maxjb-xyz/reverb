@@ -124,7 +124,7 @@ export default function Mix() {
               <TrackRow
                 key={t.id}
                 track={t}
-                index={i + 1}
+                index={i}
                 active={active}
                 playing={active ? playing : undefined}
                 onPlay={() => play(idx)}

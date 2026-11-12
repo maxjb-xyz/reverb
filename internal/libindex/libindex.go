@@ -34,6 +34,10 @@ type SimilarSource interface {
 // every run so the index follows adapter hot-reloads.
 type Live func() (library.LibraryAdapter, []search.SearchSource)
 
+// SettingDeezer switches Deezer as a recommendation input when it isn't an
+// enabled search source: "off" turns it off, anything else leaves it on.
+const SettingDeezer = "engine_deezer"
+
 // ErrNoWalker is returned when the library adapter can't list its tracks.
 var ErrNoWalker = errors.New("libindex: library adapter cannot list tracks")
 
@@ -42,12 +46,15 @@ var ErrBusy = errors.New("libindex: already running")
 
 // Status describes the index for the settings screen and the engine.
 type Status struct {
-	Running            bool   `json:"running"`
-	Tracks             int64  `json:"tracks"`
-	Artists            int64  `json:"artists"`
-	ArtistsWithSimilar int64  `json:"artistsWithSimilar"`
-	LastIndexedAt      int64  `json:"lastIndexedAt"`
-	LastError          string `json:"lastError,omitempty"`
+	Running            bool  `json:"running"`
+	Tracks             int64 `json:"tracks"`
+	Artists            int64 `json:"artists"`
+	ArtistsWithSimilar int64 `json:"artistsWithSimilar"`
+	// SimilarSources names the sources the similarity map is built from
+	// (empty: nothing can look up similar artists).
+	SimilarSources []string `json:"similarSources"`
+	LastIndexedAt  int64    `json:"lastIndexedAt"`
+	LastError      string   `json:"lastError,omitempty"`
 }
 
 // Options tunes the service. Zero values take the defaults.
@@ -133,7 +140,11 @@ func (s *Service) Run(ctx context.Context) error {
 
 	err := s.rebuild(ctx)
 	if err == nil {
-		_, err = s.refreshSimilar(ctx)
+		var n int
+		n, err = s.refreshSimilar(ctx)
+		if n > 0 {
+			log.Printf("libindex: looked up similar artists for %d artists", n)
+		}
 	}
 
 	s.mu.Lock()
@@ -152,6 +163,14 @@ func (s *Service) Status(ctx context.Context) (Status, error) {
 	s.mu.Lock()
 	st := Status{Running: s.running, LastIndexedAt: s.lastAt, LastError: s.lastErr}
 	s.mu.Unlock()
+	st.SimilarSources = []string{}
+	if _, sources := s.live(); sources != nil {
+		for _, src := range sources {
+			if ss, ok := src.(SimilarSource); ok {
+				st.SimilarSources = append(st.SimilarSources, ss.Name())
+			}
+		}
+	}
 	c, err := s.q.CountLibraryIndex(ctx)
 	if err != nil {
 		return st, err
@@ -286,6 +305,7 @@ func (s *Service) refreshSource(ctx context.Context, src SimilarSource) (int, er
 		if err := s.refreshArtist(ctx, src, row.ArtistKey, row.Name); err != nil {
 			// One artist failing (rate limit, odd name) must not stop the map.
 			log.Printf("libindex: %s similar artists for %q: %v", src.Name(), row.Name, err)
+			continue
 		}
 		done++
 	}

@@ -7,6 +7,8 @@ export interface IndexStatus {
   tracks: number
   artists: number
   artistsWithSimilar: number
+  /** Where similar artists come from; empty when nothing can look them up. */
+  similarSources?: string[]
   lastIndexedAt: number
   lastError?: string
 }
@@ -33,6 +35,14 @@ export interface SimilarArtist {
   libraryArtistId?: string
 }
 
+/** Server-wide recommendation switches (managers). */
+export interface EngineSettings {
+  /** Use Deezer for similar artists and new songs even when it isn't a search source. */
+  deezer: boolean
+}
+
+export const getEngineSettings = () => api.get<EngineSettings>('/engine/settings')
+export const putEngineSettings = (s: EngineSettings) => api.put<EngineSettings>('/engine/settings', s)
 export const getIndexStatus = () => api.get<IndexStatus>('/engine/index')
 export const rebuildIndex = () => api.post<null>('/engine/index/rebuild')
 export const getAnalysisStatus = () => api.get<AnalysisStatus>('/engine/analysis')
@@ -56,6 +66,22 @@ export function useAnalysisStatus(enabled: boolean) {
     queryFn: getAnalysisStatus,
     enabled,
     refetchInterval: (q) => (q.state.data?.running ? 5000 : false),
+  })
+}
+
+export function useEngineSettings(enabled: boolean) {
+  return useQuery({ queryKey: ['engine', 'settings'], queryFn: getEngineSettings, enabled })
+}
+
+export function useSaveEngineSettings() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: putEngineSettings,
+    onSuccess: (s) => {
+      qc.setQueryData(['engine', 'settings'], s)
+      // The index re-runs with the new sources.
+      setTimeout(() => void qc.invalidateQueries({ queryKey: ['engine', 'index'] }), 1000)
+    },
   })
 }
 

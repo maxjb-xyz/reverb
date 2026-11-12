@@ -212,7 +212,13 @@ func main() {
 	// Recommendation index: the library's tracks with genres/years, plus the
 	// artist-similarity map from search sources. Follows hot-reloads through
 	// the reloader's live services; re-runs when the library changes.
-	indexSvc := libindex.New(st.DB(), reloader.servicesProvider(), time.Now, libindex.Options{})
+	// Deezer needs no account, so the engine can use it for similar artists
+	// and new songs even when it isn't a search source (admins can switch
+	// that off).
+	engineDeezer := deezer.New()
+	_ = engineDeezer.Init(nil)
+	engineLive := engineSources(reloader.servicesProvider(), engineDeezer, engineDeezerOn(st.Q().GetSetting))
+	indexSvc := libindex.New(st.DB(), engineLive, time.Now, libindex.Options{})
 	reloader.onReload = indexSvc.Kick
 	libChanged := make(chan struct{}, 1)
 	{
@@ -248,7 +254,7 @@ func main() {
 	}
 	// Index as soon as the bundled library is actually serving.
 	if bundle.Supervisor != nil {
-		go waitReadyThenBackfill(ctx, bundle.Supervisor.Ready, indexSvc.Kick)
+		go whenReady(ctx, bundle.Supervisor.Ready, indexSvc.Kick)
 	}
 
 	// Start the playlist-sync scheduler when a sync service is configured. It ticks
@@ -257,20 +263,25 @@ func main() {
 		go playlistsync.NewScheduler(bundle.Sync, 15*time.Minute).Run(ctx)
 		// One-time migration: copy existing Navidrome playlists into managed playlists.
 		// Runs in the background so startup is not blocked; guarded by a settings flag.
-		go func() {
+		// With the built-in library, wait until it answers.
+		migrate := func() {
 			if err := bundle.Sync.MigrateLibraryPlaylists(ctx); err != nil {
 				log.Printf("WARNING: library playlist migration: %v", err)
 			}
-		}()
+		}
+		if bundle.Supervisor != nil {
+			go whenReady(ctx, bundle.Supervisor.Ready, migrate)
+		} else {
+			go migrate()
+		}
 	}
 
 	// catalogSvc is already constructed above (before Build) and injected into the Manager.
 	playSvc := play.NewService(st.Q(), catalogSvc, time.Now, uuid.NewString)
 	statsSvc := play.NewStats(st.Q())
 	tasteSvc := taste.NewService(st.Q(), catalogSvc, time.Now, uuid.NewString)
-	liveSvc := reloader.servicesProvider()
 	engineSvc := engine.New(st.Q(), tasteSvc, indexSvc, func() []search.ArtistTopTracksProvider {
-		_, sources := liveSvc()
+		_, sources := engineLive()
 		var out []search.ArtistTopTracksProvider
 		for _, src := range sources {
 			if p, ok := src.(search.ArtistTopTracksProvider); ok {

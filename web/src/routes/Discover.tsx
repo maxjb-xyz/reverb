@@ -90,7 +90,11 @@ export default function Discover() {
           <div className="min-w-0 pb-1">
             <span className="text-xs font-semibold uppercase tracking-widest text-text-muted">Made for you</span>
             <h1 className="text-4xl font-black leading-tight tracking-tight text-text-primary">Discover Weekly</h1>
-            <p className="mt-2 text-sm text-text-secondary">New music picked from artists you love. Most of it isn&apos;t in your library yet.</p>
+            <p className="mt-2 text-sm text-text-secondary" data-testid="discover-blurb">
+              {items.length > 0 && !items.some((i) => i.reason.kind === 'discovery' || (!i.owned && i.external))
+                ? 'Picked from your library for now. New music shows up here once Reverb can look up artists like the ones you love.'
+                : 'New music picked from artists you love. Most of it isn’t in your library yet.'}
+            </p>
             <p className="mt-1 text-xs text-text-muted" data-testid="discover-status">
               {status}
             </p>
@@ -121,7 +125,7 @@ export default function Discover() {
             <DiscoverRow
               key={it.id}
               item={it}
-              index={i + 1}
+              index={i}
               currentId={current?.id}
               playing={playing}
               onPlayOwned={(t) => play(tracks.indexOf(t))}

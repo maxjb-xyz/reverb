@@ -32,7 +32,7 @@ func engineTestServer(t *testing.T, withIndex bool) (*Server, *http.Cookie, *sto
 		t.Fatal(err)
 	}
 	authSvc, tok := seededAuthToken(t, st)
-	deps := Deps{Auth: authSvc, Search: registry.NewRegistry("search"), Downloader: registry.NewRegistry("downloader")}
+	deps := Deps{Auth: authSvc, Adapters: st.Q(), Search: registry.NewRegistry("search"), Downloader: registry.NewRegistry("downloader")}
 	if withIndex {
 		deps.LibIndex = libindex.New(st.DB(), func() (library.LibraryAdapter, []search.SearchSource) { return nil, nil }, time.Now, libindex.Options{})
 	}
@@ -171,5 +171,37 @@ func TestEngineNext_UnavailableAndUnauthenticated(t *testing.T) {
 	}
 	if rec := do(t, srv, &http.Cookie{Name: sessionCookie, Value: "bogus"}, http.MethodPost, "/api/v1/engine/next", `{}`); rec.Code != http.StatusUnauthorized {
 		t.Errorf("unauthenticated = %d", rec.Code)
+	}
+}
+
+func TestEngineSettings_DeezerSwitch(t *testing.T) {
+	srv, cookie, st := engineTestServer(t, true)
+	get := func() engineSettings {
+		t.Helper()
+		rec := do(t, srv, cookie, http.MethodGet, "/api/v1/engine/settings", "")
+		if rec.Code != http.StatusOK {
+			t.Fatalf("GET = %d: %s", rec.Code, rec.Body.String())
+		}
+		var out engineSettings
+		if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+			t.Fatal(err)
+		}
+		return out
+	}
+	if !get().Deezer {
+		t.Fatal("Deezer for recommendations should default to on")
+	}
+	rec := do(t, srv, cookie, http.MethodPut, "/api/v1/engine/settings", `{"deezer":false}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("PUT = %d: %s", rec.Code, rec.Body.String())
+	}
+	if get().Deezer {
+		t.Fatal("switch did not stick")
+	}
+	if v, _ := st.Q().GetSetting(context.Background(), libindex.SettingDeezer); v != "off" {
+		t.Fatalf("stored %q, want off", v)
+	}
+	if rec := do(t, srv, cookie, http.MethodPut, "/api/v1/engine/settings", `{}`); rec.Code != http.StatusBadRequest {
+		t.Fatalf("empty PUT = %d, want 400", rec.Code)
 	}
 }

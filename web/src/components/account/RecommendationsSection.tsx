@@ -1,6 +1,8 @@
-import { Button, EmptyState } from '../ui'
+import { Button, EmptyState, Segmented } from '../ui'
 import { useTasteFeedback, useUnhide } from '../../lib/tasteApi'
-import { useAnalysisStatus, useIndexStatus, useRebuildIndex, useRunAnalysis } from '../../lib/engineApi'
+import { useAnalysisStatus, useEngineSettings, useIndexStatus, useRebuildIndex, useRunAnalysis, useSaveEngineSettings } from '../../lib/engineApi'
+import { useToastStore } from '../../lib/toastStore'
+import { adapterDisplayName } from '../../lib/displayNames'
 import { useAuthStore, isManagerCaps } from '../../lib/authStore'
 import { DiscoverSettings } from './DiscoverSettings'
 
@@ -13,8 +15,14 @@ function IndexStatusRow() {
   if (isError) text = "Couldn't load the index status."
   else if (data?.running) text = `Indexing… ${nf.format(data.tracks)} songs so far.`
   else if (data && data.tracks === 0) text = 'Not indexed yet. It runs shortly after Reverb starts and whenever the library changes.'
-  else if (data)
-    text = `${nf.format(data.tracks)} songs by ${nf.format(data.artists)} artists. Similar artists found for ${nf.format(data.artistsWithSimilar)} of them.`
+  else if (data) {
+    text = `${nf.format(data.tracks)} songs by ${nf.format(data.artists)} artists. Similar artists found for ${nf.format(data.artistsWithSimilar)} of them`
+    const sources = data.similarSources ?? []
+    if (sources.length) text += `, from ${sources.map(adapterDisplayName).join(' and ')}.`
+    else if (data.similarSources)
+      text += '. Nothing can look up similar artists, so radio sticks to genres and Discover Weekly only has songs you already own. Turn on Deezer below.'
+    else text += '.'
+  }
   return (
     <div className="flex items-start gap-5 border-b border-border-subtle pb-5">
       <div className="min-w-0 flex-1">
@@ -25,6 +33,36 @@ function IndexStatusRow() {
       <Button variant="secondary" size="sm" disabled={rebuild.isPending || data?.running} onClick={() => rebuild.mutate()}>
         Rebuild now
       </Button>
+    </div>
+  )
+}
+
+/** The server-wide switch for Deezer as a recommendation input (managers). */
+function EngineDeezerRow() {
+  const { data } = useEngineSettings(true)
+  const save = useSaveEngineSettings()
+  const push = useToastStore((s) => s.push)
+  if (!data) return null
+  const current = save.isPending && save.variables ? save.variables : data
+  return (
+    <div className="flex flex-col gap-3 border-b border-border-subtle pb-5 sm:flex-row sm:items-center sm:gap-5" data-testid="engine-deezer">
+      <div className="min-w-0 flex-1">
+        <div className="text-sm font-bold text-text-primary">Use Deezer for recommendations</div>
+        <div className="mt-0.5 text-xs text-text-secondary">
+          Finds similar artists and new songs with Deezer&apos;s free public API, even when Deezer isn&apos;t a search source. Sends artist names to
+          Deezer.
+        </div>
+      </div>
+      <div className="flex-none">
+        <Segmented
+          options={[
+            { value: 'on', label: 'On' },
+            { value: 'off', label: 'Off' },
+          ]}
+          value={current.deezer ? 'on' : 'off'}
+          onChange={(v) => save.mutate({ deezer: v === 'on' }, { onError: () => push("Couldn't save the Deezer setting", 'error') })}
+        />
+      </div>
     </div>
   )
 }
@@ -68,6 +106,7 @@ export function RecommendationsSection() {
   return (
     <div className="space-y-6">
       {isManager && <IndexStatusRow />}
+      {isManager && <EngineDeezerRow />}
       {isManager && <AnalysisStatusRow />}
       <DiscoverSettings isManager={isManager} />
       <div>
