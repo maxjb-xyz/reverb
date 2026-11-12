@@ -51,9 +51,8 @@ func (o *oggReader) Next() ([]byte, error) {
 func (o *oggReader) readPage() error {
 	var hdr [27]byte
 	if _, err := io.ReadFull(o.r, hdr[:]); err != nil {
-		if errors.Is(err, io.ErrUnexpectedEOF) {
-			return io.EOF
-		}
+		// io.EOF between pages is the end; a cut-off page stays
+		// io.ErrUnexpectedEOF so the player can resume the track.
 		return err
 	}
 	if string(hdr[0:4]) != "OggS" {
@@ -62,7 +61,7 @@ func (o *oggReader) readPage() error {
 	nseg := int(hdr[26])
 	lacing := make([]byte, nseg)
 	if _, err := io.ReadFull(o.r, lacing); err != nil {
-		return io.EOF
+		return truncated(err)
 	}
 	total := 0
 	for _, l := range lacing {
@@ -70,7 +69,7 @@ func (o *oggReader) readPage() error {
 	}
 	body := make([]byte, total)
 	if _, err := io.ReadFull(o.r, body); err != nil {
-		return io.EOF
+		return truncated(err)
 	}
 	// A continued-packet flag with nothing to continue (we joined mid
 	// stream) just drops the fragment.
@@ -92,4 +91,12 @@ func (o *oggReader) readPage() error {
 		}
 	}
 	return nil
+}
+
+// truncated reports a stream that ended inside a page.
+func truncated(err error) error {
+	if errors.Is(err, io.EOF) {
+		return io.ErrUnexpectedEOF
+	}
+	return err
 }

@@ -43,7 +43,9 @@ type Service struct {
 	// event never waits on an Apply that is closing the client.
 	botName atomic.Value
 
-	mu     sync.Mutex
+	mu sync.Mutex
+	// gen counts Apply calls; only the latest one may install its bot.
+	gen    int
 	bot    *gatewayBot
 	token  string
 	status Status
@@ -64,6 +66,8 @@ func (s *Service) Apply(ctx context.Context, token string) error {
 		s.mu.Unlock()
 		return nil
 	}
+	s.gen++
+	gen := s.gen
 	s.stopLocked()
 	s.token = token
 	s.status = Status{State: StateOff, FromEnv: fromEnv}
@@ -92,10 +96,10 @@ func (s *Service) Apply(ctx context.Context, token string) error {
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.token != token {
-		// Another Apply won meanwhile.
+	if s.gen != gen {
+		// A later Apply (or Stop) took over meanwhile.
 		if err == nil {
-			go b.close(context.Background())
+			go b.client.Close(context.Background())
 		}
 		return nil
 	}
@@ -105,6 +109,7 @@ func (s *Service) Apply(ctx context.Context, token string) error {
 		return err
 	}
 	s.bot = b
+	s.Core.SetVoice(b)
 	s.status.State = StateOnline
 	s.status.InviteURL = InviteURL(b.appID())
 	runCtx, cancel := context.WithCancel(context.Background())
@@ -139,6 +144,14 @@ func (s *Service) sweep(ctx context.Context) {
 	}
 }
 
+// UserUnlinked stops the bot playing for a Reverb account that unlinked
+// Discord (from the web page).
+func (s *Service) UserUnlinked(ctx context.Context, userID string) {
+	if s.Core != nil {
+		s.Core.LeaveUser(ctx, userID)
+	}
+}
+
 func (s *Service) stopLocked() {
 	if s.cancel != nil {
 		s.cancel()
@@ -150,6 +163,7 @@ func (s *Service) stopLocked() {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		b.close(ctx)
 		cancel()
+		s.Core.SetVoice(nil)
 	}
 }
 
@@ -157,6 +171,7 @@ func (s *Service) stopLocked() {
 func (s *Service) Stop() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.gen++
 	s.stopLocked()
 	s.token = ""
 	s.status = Status{State: StateOff, FromEnv: s.EnvToken != ""}

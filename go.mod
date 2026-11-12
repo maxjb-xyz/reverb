@@ -5,9 +5,12 @@ go 1.26.0
 require (
 	github.com/anthropics/anthropic-sdk-go/v2 v2.9.0
 	github.com/coder/websocket v1.8.15
+	github.com/disgoorg/disgo v0.20.0
+	github.com/disgoorg/snowflake/v2 v2.0.3
 	github.com/go-chi/chi/v5 v5.2.4
 	github.com/google/uuid v1.6.0
 	github.com/pressly/goose/v3 v3.22.1
+	github.com/thomas-vilte/dave-go v0.5.1
 	golang.org/x/crypto v0.54.0
 	golang.org/x/sync v0.16.0
 	modernc.org/sqlite v1.34.1
@@ -16,11 +19,9 @@ require (
 require (
 	github.com/bahlo/generic-list-go v0.2.0 // indirect
 	github.com/buger/jsonparser v1.1.2 // indirect
-	github.com/disgoorg/disgo v0.20.0 // indirect
 	github.com/disgoorg/godave v0.3.0 // indirect
 	github.com/disgoorg/json/v2 v2.0.0 // indirect
 	github.com/disgoorg/omit v1.0.0 // indirect
-	github.com/disgoorg/snowflake/v2 v2.0.3 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/go-logr/logr v1.4.2 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
@@ -36,7 +37,6 @@ require (
 	github.com/sasha-s/go-csync v0.0.0-20240107134140-fcbab37b09ad // indirect
 	github.com/sethvargo/go-retry v0.3.0 // indirect
 	github.com/standard-webhooks/standard-webhooks/libraries v0.0.1 // indirect
-	github.com/thomas-vilte/dave-go v0.5.1 // indirect
 	github.com/thomas-vilte/mls-go v1.6.0 // indirect
 	github.com/tidwall/gjson v1.18.0 // indirect
 	github.com/tidwall/match v1.1.1 // indirect

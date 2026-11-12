@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"net"
@@ -18,6 +19,7 @@ import (
 	"github.com/maxjb-xyz/reverb/internal/auth"
 	"github.com/maxjb-xyz/reverb/internal/catalog"
 	"github.com/maxjb-xyz/reverb/internal/config"
+	"github.com/maxjb-xyz/reverb/internal/core"
 	"github.com/maxjb-xyz/reverb/internal/discord"
 	"github.com/maxjb-xyz/reverb/internal/dj"
 	"github.com/maxjb-xyz/reverb/internal/download"
@@ -26,6 +28,7 @@ import (
 	"github.com/maxjb-xyz/reverb/internal/engine"
 	"github.com/maxjb-xyz/reverb/internal/events"
 	"github.com/maxjb-xyz/reverb/internal/libindex"
+	"github.com/maxjb-xyz/reverb/internal/library"
 	"github.com/maxjb-xyz/reverb/internal/library/embedded"
 	"github.com/maxjb-xyz/reverb/internal/library/lyrics"
 	"github.com/maxjb-xyz/reverb/internal/library/subsonic"
@@ -324,11 +327,13 @@ func main() {
 	// It starts once an admin saves a bot token (or REVERB_DISCORD_TOKEN).
 	discordSettings := settingsKV{q: st.Q()}
 	discordLinks := discord.NewLinks(discordSettings, time.Now)
+	// The bot reads the live library so admin changes apply without a restart.
+	discordLib := liveLibrary{get: reloader.servicesProvider()}
 	discordCore := &discord.Core{
 		Hub:     playbackHub,
 		Links:   discordLinks,
-		Library: bundle.Library,
-		Opener:  &discord.FFmpegOpener{Library: bundle.Library, Path: os.Getenv("REVERB_FFMPEG_PATH")},
+		Library: discordLib,
+		Opener:  &discord.FFmpegOpener{Library: discordLib, Path: os.Getenv("REVERB_FFMPEG_PATH")},
 		Users: func(ctx context.Context, userID string) (string, bool) {
 			u, err := st.Q().GetUserByID(ctx, userID)
 			if err != nil || u.Disabled != 0 {
@@ -338,14 +343,12 @@ func main() {
 		},
 	}
 	discordSvc := &discord.Service{Core: discordCore, EnvToken: os.Getenv("REVERB_DISCORD_TOKEN")}
-	if bundle.Library != nil {
-		go func() {
-			tok, _ := st.Q().GetSetting(ctx, api.KeyDiscordToken)
-			if err := discordSvc.Apply(ctx, tok); err != nil {
-				log.Printf("discord bot: %v", err)
-			}
-		}()
-	}
+	go func() {
+		tok, _ := st.Q().GetSetting(ctx, api.KeyDiscordToken)
+		if err := discordSvc.Apply(ctx, tok); err != nil {
+			log.Printf("discord bot: %v", err)
+		}
+	}()
 
 	deps := api.Deps{
 		Auth:          authSvc,
@@ -489,4 +492,28 @@ func (k settingsKV) Get(ctx context.Context, key string) (string, error) {
 
 func (k settingsKV) Put(ctx context.Context, key, value string) error {
 	return k.q.UpsertSetting(ctx, db.UpsertSettingParams{Key: key, Value: value})
+}
+
+// liveLibrary is the current library adapter (it changes when an admin edits
+// the library settings), for the Discord bot.
+type liveLibrary struct {
+	get func() (library.LibraryAdapter, []search.SearchSource)
+}
+
+var errNoLibrary = errors.New("no library configured")
+
+func (l liveLibrary) Search(ctx context.Context, q string, types []core.EntityType) (core.SearchResults, error) {
+	lib, _ := l.get()
+	if lib == nil {
+		return core.SearchResults{}, errNoLibrary
+	}
+	return lib.Search(ctx, q, types)
+}
+
+func (l liveLibrary) Stream(ctx context.Context, trackID string, opts core.StreamOpts, rangeHeader string) (core.StreamHandle, error) {
+	lib, _ := l.get()
+	if lib == nil {
+		return core.StreamHandle{}, errNoLibrary
+	}
+	return lib.Stream(ctx, trackID, opts, rangeHeader)
 }

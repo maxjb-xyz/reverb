@@ -16,9 +16,16 @@ import (
 )
 
 type fakeDiscordBot struct {
-	mu      sync.Mutex
-	applied []string
-	online  bool
+	mu       sync.Mutex
+	applied  []string
+	online   bool
+	unlinked []string
+}
+
+func (f *fakeDiscordBot) UserUnlinked(_ context.Context, userID string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.unlinked = append(f.unlinked, userID)
 }
 
 func (f *fakeDiscordBot) Apply(_ context.Context, tok string) error {
@@ -144,5 +151,10 @@ func TestDiscordLinkFlow(t *testing.T) {
 	}
 	if l, _ := links.ByDiscord(context.Background(), "d1"); l.ReverbUserID != "" {
 		t.Fatalf("still linked: %+v", l)
+	}
+	bot.mu.Lock()
+	defer bot.mu.Unlock()
+	if len(bot.unlinked) != 1 || bot.unlinked[0] == "" {
+		t.Fatalf("bot not told about the unlink: %v", bot.unlinked)
 	}
 }

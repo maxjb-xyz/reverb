@@ -81,3 +81,26 @@ func TestFFmpegOpenerClosesEarly(t *testing.T) {
 		t.Fatal("frames after close")
 	}
 }
+
+// When ffmpeg fails (here: the input isn't audio) the source reports an
+// error, not a clean end, so the player resumes instead of skipping.
+func TestFFmpegFailureIsNotACleanEnd(t *testing.T) {
+	if _, err := exec.LookPath("ffmpeg"); err != nil {
+		t.Skip("ffmpeg not installed")
+	}
+	op := &FFmpegOpener{Library: bytesStreamer{bytes.Repeat([]byte("not audio "), 1000)}}
+	src, err := op.Open(context.Background(), "t1", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer src.Close()
+	for i := 0; i < 1000; i++ {
+		_, err = src.Next()
+		if err != nil {
+			break
+		}
+	}
+	if err == nil || errors.Is(err, io.EOF) {
+		t.Fatalf("err = %v, want an ffmpeg failure", err)
+	}
+}

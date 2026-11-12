@@ -72,7 +72,7 @@ func (o *fakeOpener) log() ([]string, []int64) {
 }
 
 func ptrack(id string) playback.Track {
-	return playback.Track{Track: core.Track{ID: id, Title: "T" + id, Artist: "A", DurationMs: 60_000}}
+	return playback.Track{Track: core.Track{ID: id, Title: "T" + id, Artist: "A"}}
 }
 
 // pull asks for frames like Discord's sender until it gets want of them or
@@ -232,9 +232,59 @@ func TestPlayerQueueEdits(t *testing.T) {
 	if st := p.State(); st.Index != 0 {
 		t.Fatalf("after jump: %+v", st)
 	}
-	p.Close()
+	p.Shutdown()
 	if f, _ := p.ProvideOpusFrame(); f != nil {
-		t.Fatal("frames after close")
+		t.Fatal("frames after shutdown")
+	}
+}
+
+// Discord's audio sender closes its provider when the voice connection
+// drops. A new sender on the same player must pick up where it was.
+func TestPlayerResumesAfterTheSenderCloses(t *testing.T) {
+	op := &fakeOpener{frames: 1000}
+	p := NewPlayer(op, nil, nil)
+	p.PlayTracks([]playback.Track{ptrack("a")}, 0)
+	pull(t, p, 10)
+	p.Close()
+	if !p.State().Playing {
+		t.Fatal("close stopped playback")
+	}
+	pull(t, p, 1)
+	_, starts := op.log()
+	if len(starts) != 2 || starts[1] != 200 {
+		t.Fatalf("reopened at %v", starts)
+	}
+}
+
+func TestPlayerResumesATrackThatEndsEarly(t *testing.T) {
+	op := &fakeOpener{frames: 3}
+	p := NewPlayer(op, nil, nil)
+	long := ptrack("a")
+	long.DurationMs = 60_000
+	p.PlayTracks([]playback.Track{long, ptrack("b")}, 0)
+	// a ends after 60 ms of a 60 s track: reopened twice, then skipped.
+	got := pull(t, p, 12)
+	if string(got) != "aaaaaaaaabbb" {
+		t.Fatalf("frames = %q", got)
+	}
+	_, starts := op.log()
+	if starts[1] != 60 || starts[2] != 120 {
+		t.Fatalf("reopened at %v", starts)
+	}
+}
+
+func TestPlayerRepeatOneSkipsABrokenTrack(t *testing.T) {
+	op := &fakeOpener{frames: 1, fail: map[string]bool{"a": true}}
+	p := NewPlayer(op, nil, nil)
+	p.CycleRepeat()
+	p.CycleRepeat() // one
+	p.PlayTracks([]playback.Track{ptrack("a"), ptrack("b")}, 0)
+	if got := pull(t, p, 1); string(got) != "b" {
+		t.Fatalf("frames = %q", got)
+	}
+	ids, _ := op.log()
+	if ids[1] != "b" {
+		t.Fatalf("opened %v", ids)
 	}
 }
 

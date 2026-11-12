@@ -109,7 +109,16 @@ func (p *Player) Upcoming(n int) []playback.Track {
 // silence.
 func (p *Player) ProvideOpusFrame() ([]byte, error) {
 	p.mu.Lock()
-	if !p.playing || p.frames == nil {
+	if !p.playing {
+		p.mu.Unlock()
+		return nil, nil
+	}
+	if p.frames == nil {
+		// Decoding stopped while playing (the audio sender was replaced
+		// after a voice reconnect): pick the track up where it was.
+		if !p.closed && p.index >= 0 && p.index < len(p.queue) {
+			p.loadLocked(p.posMs)
+		}
 		p.mu.Unlock()
 		return nil, nil
 	}
@@ -122,17 +131,26 @@ func (p *Player) ProvideOpusFrame() ([]byte, error) {
 		}
 		// The track's frames ran out.
 		err := p.srcErr
+		if err == nil {
+			err = io.EOF
+		}
+		// A track that ends well short of its length was cut off (the
+		// upstream request dropped after a long pause, a network blip).
+		if errors.Is(err, io.EOF) && p.endedEarlyLocked() {
+			err = io.ErrUnexpectedEOF
+		}
 		changed := false
-		if err == nil || errors.Is(err, io.EOF) {
+		switch {
+		case errors.Is(err, io.EOF):
 			changed = p.advanceLocked(1, true)
-		} else if p.retries < 2 {
-			// The stream broke mid-track (a long pause, a network blip):
-			// pick it up where it stopped.
+		case p.retries < 2:
+			// Pick the track up where it stopped.
 			p.retries++
-			p.log.Warn("discord: stream broke; resuming", "err", err)
+			p.log.Warn("discord: stream broke; resuming", "err", err, "atMs", p.posMs)
 			p.loadLocked(p.posMs)
-		} else {
-			changed = p.advanceLocked(1, true)
+		default:
+			// It keeps breaking: move on (even on repeat one).
+			changed = p.skipLocked()
 		}
 		p.mu.Unlock()
 		if changed {
@@ -145,8 +163,28 @@ func (p *Player) ProvideOpusFrame() ([]byte, error) {
 	}
 }
 
-// Close implements voice.OpusFrameProvider and stops decoding.
+// endedEarlyLocked reports whether the current track stopped more than 5 s
+// before its known length.
+func (p *Player) endedEarlyLocked() bool {
+	if p.index < 0 || p.index >= len(p.queue) {
+		return false
+	}
+	d := int64(p.queue[p.index].DurationMs)
+	return d > 0 && p.posMs+5000 < d
+}
+
+// Close implements voice.OpusFrameProvider. Discord's audio sender calls it
+// when it stops (a voice reconnect, leaving), so it only stops decoding: the
+// queue and position stay, and playback resumes when a new sender pulls
+// frames. Shutdown ends the player for good.
 func (p *Player) Close() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.stopSourceLocked()
+}
+
+// Shutdown stops the player for good (the bot left the channel).
+func (p *Player) Shutdown() {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.closed = true
@@ -190,12 +228,12 @@ func (p *Player) loadLocked(startMs int64) {
 			p.log.Warn("discord: open track", "track", id, "err", err)
 			p.failures++
 			p.frames = nil
-			changed := false
+			changed := true
 			if p.failures < len(p.queue) {
-				changed = p.advanceLocked(1, true)
+				// Skip it, even on repeat one (replaying it would fail again).
+				p.skipLocked()
 			} else {
 				p.playing = false
-				changed = true
 			}
 			p.mu.Unlock()
 			if changed {
@@ -277,6 +315,20 @@ func (p *Player) stepLocked(dir int) bool {
 		ni = 0
 	}
 	p.index = ni
+	return true
+}
+
+// skipLocked moves past a track that can't be played, ignoring repeat one,
+// and stops at the end of the queue.
+func (p *Player) skipLocked() bool {
+	p.retries = 0
+	if !p.stepLocked(1) {
+		p.stopSourceLocked()
+		p.playing = false
+		p.posMs = 0
+		return true
+	}
+	p.loadLocked(0)
 	return true
 }
 

@@ -304,3 +304,71 @@ func TestInviteURL(t *testing.T) {
 		t.Fatalf("url = %s", u)
 	}
 }
+
+func TestReplacedDeviceLeavesTheChannel(t *testing.T) {
+	r := newRig()
+	ctx := context.Background()
+	r.link(t, "u1", "d1")
+	r.core.Handle(ctx, inv("play", "d1", "vc1", map[string]string{"song": "hello"}))
+	waitFor(t, "play", func() bool { return r.voice.player.State().Playing })
+	p := r.voice.player
+	// Something else connects with the bot's device id: the hub drops ours.
+	other, ok := r.hub.Connect(ctx, "u1", playback.DeviceInfo{ID: deviceID("g1"), Name: "x", Kind: "discord"})
+	if !ok {
+		t.Fatal("connect")
+	}
+	defer other.Close()
+	waitFor(t, "leave", func() bool { return r.core.Sessions() == 0 })
+	if p.State().Playing {
+		t.Fatal("still playing after the hub dropped the device")
+	}
+}
+
+func TestVoiceEventsForOtherChannelsAreIgnored(t *testing.T) {
+	r := newRig()
+	ctx := context.Background()
+	r.link(t, "u1", "d1")
+	r.core.Handle(ctx, inv("join", "d1", "vc1", nil))
+	r.core.VoiceLost(ctx, "g1", "vc0") // late event from an earlier channel
+	if r.core.Sessions() != 1 {
+		t.Fatal("a stale leave ended the session")
+	}
+	r.core.VoiceMoved("g1", "vc2", "Den")
+	if rep := r.core.Handle(ctx, inv("join", "d1", "vc2", nil)); !strings.Contains(rep.Text, "Den") {
+		t.Fatalf("after move: %q", rep.Text)
+	}
+	r.core.VoiceLost(ctx, "g1", "vc2")
+	if r.core.Sessions() != 0 {
+		t.Fatal("kicked but still in a session")
+	}
+}
+
+func TestOwnerInAnotherChannelIsAskedToLeaveFirst(t *testing.T) {
+	r := newRig()
+	ctx := context.Background()
+	r.link(t, "u1", "d1")
+	r.core.Handle(ctx, inv("join", "d1", "vc1", nil))
+	if rep := r.core.Handle(ctx, inv("join", "d1", "vc2", nil)); !rep.Ephemeral || !strings.Contains(rep.Text, "/leave") {
+		t.Fatalf("reply = %+v", rep)
+	}
+	if r.voice.joined["g1"] != "vc1" {
+		t.Fatal("moved channels")
+	}
+}
+
+func TestUnlinkLeavesTheUsersChannels(t *testing.T) {
+	r := newRig()
+	ctx := context.Background()
+	r.link(t, "u1", "d1")
+	r.core.Handle(ctx, inv("join", "d1", "vc1", nil))
+	other := inv("join", "d1", "vc9", nil)
+	other.GuildID = "g2"
+	r.core.Handle(ctx, other)
+	if r.core.Sessions() != 2 {
+		t.Fatalf("sessions = %d", r.core.Sessions())
+	}
+	r.core.LeaveUser(ctx, "u1")
+	if r.core.Sessions() != 0 {
+		t.Fatal("still playing for an unlinked account")
+	}
+}

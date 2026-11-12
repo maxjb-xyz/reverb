@@ -57,9 +57,11 @@ type Core struct {
 	Links   *Links
 	Library Searcher
 	Opener  SourceOpener
-	Voice   Voice
-	Users   UserCheck
-	Log     *slog.Logger
+	// Voice is the Discord connection. Set it with SetVoice once the core
+	// is in use: the bot service swaps it on a reconnect.
+	Voice Voice
+	Users UserCheck
+	Log   *slog.Logger
 	// IdleLeave is how long the bot stays in a channel with nobody listening.
 	IdleLeave time.Duration
 
@@ -80,6 +82,19 @@ type guildSession struct {
 	changed     chan struct{}
 	stop        chan struct{}
 	emptySince  time.Time
+}
+
+// SetVoice swaps the Discord connection.
+func (c *Core) SetVoice(v Voice) {
+	c.mu.Lock()
+	c.Voice = v
+	c.mu.Unlock()
+}
+
+func (c *Core) voice() Voice {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.Voice
 }
 
 func (c *Core) log() *slog.Logger {
@@ -139,7 +154,7 @@ func (c *Core) Handle(ctx context.Context, inv Invocation) Reply {
 		if err := c.Links.Unlink(ctx, userID); err != nil {
 			return Reply{Text: "Couldn't unlink: " + err.Error(), Ephemeral: true}
 		}
-		c.leaveIfOwner(ctx, inv.GuildID, userID)
+		c.LeaveUser(ctx, userID)
 		return Reply{Text: "Unlinked. Link again any time with a code from Reverb.", Ephemeral: true}
 	case "join":
 		return c.join(ctx, inv, userID)
@@ -202,6 +217,13 @@ func (c *Core) linkedUser(ctx context.Context, inv Invocation) (string, *Reply) 
 	return link.ReverbUserID, nil
 }
 
+// channelOf reads where gs is (it changes when the bot is moved).
+func (c *Core) channelOf(gs *guildSession) (id, name string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return gs.channelID, gs.channelName
+}
+
 func (c *Core) session(guildID string) *guildSession {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -215,15 +237,16 @@ func (c *Core) join(ctx context.Context, inv Invocation, userID string) Reply {
 	if reply != nil {
 		return *reply
 	}
+	_, chName := c.channelOf(gs)
 	snap := c.Hub.Snapshot(userID)
 	if snap.ActiveDeviceID == deviceID(inv.GuildID) {
-		return Reply{Text: fmt.Sprintf("Already playing in **%s**.", gs.channelName)}
+		return Reply{Text: fmt.Sprintf("Already playing in **%s**.", chName)}
 	}
 	if snap.State == nil || len(snap.State.Queue) == 0 {
-		return Reply{Text: fmt.Sprintf("Joined **%s**. Nothing queued yet: use /play.", gs.channelName)}
+		return Reply{Text: fmt.Sprintf("Joined **%s**. Nothing queued yet: use /play.", chName)}
 	}
 	gs.dev.Transfer(playback.Transfer{DeviceID: deviceID(inv.GuildID), Play: true})
-	return Reply{Text: fmt.Sprintf("Playing your Reverb session in **%s**.", gs.channelName)}
+	return Reply{Text: fmt.Sprintf("Playing your Reverb session in **%s**.", chName)}
 }
 
 // ensureJoined returns the guild's session for userID, joining the caller's
@@ -232,14 +255,16 @@ func (c *Core) ensureJoined(ctx context.Context, inv Invocation, userID string) 
 	c.joinMu.Lock()
 	defer c.joinMu.Unlock()
 	if gs := c.session(inv.GuildID); gs != nil {
+		chID, chName := c.channelOf(gs)
 		if gs.owner != userID {
-			return nil, &Reply{Text: fmt.Sprintf("I'm playing for %s in **%s** right now.", gs.ownerName, gs.channelName), Ephemeral: true}
+			return nil, &Reply{Text: fmt.Sprintf("I'm playing for %s in **%s** right now.", gs.ownerName, chName), Ephemeral: true}
 		}
-		if inv.VoiceChannelID == "" || inv.VoiceChannelID == gs.channelID {
+		if inv.VoiceChannelID == "" || inv.VoiceChannelID == chID {
 			return gs, nil
 		}
-		// The owner moved: follow them.
-		c.Leave(ctx, inv.GuildID)
+		// Leaving and rejoining in one go races Discord's voice events, so
+		// the owner moves the bot with /leave (or by dragging it).
+		return nil, &Reply{Text: fmt.Sprintf("I'm in **%s**. Use /leave first to bring me to your channel, or drag me over.", chName), Ephemeral: true}
 	}
 	if inv.VoiceChannelID == "" {
 		return nil, &Reply{Text: "Join a voice channel first, then try again.", Ephemeral: true}
@@ -271,7 +296,12 @@ func (c *Core) ensureJoined(ctx context.Context, inv Invocation, userID string) 
 		return nil, &Reply{Text: "Couldn't add Discord as a device on your account (too many devices?).", Ephemeral: true}
 	}
 	gs.dev = dev
-	if err := c.Voice.Join(ctx, inv.GuildID, inv.VoiceChannelID, gs.player); err != nil {
+	v := c.voice()
+	if v == nil {
+		dev.Close()
+		return nil, &Reply{Text: "The bot isn't connected to Discord right now.", Ephemeral: true}
+	}
+	if err := v.Join(ctx, inv.GuildID, inv.VoiceChannelID, gs.player); err != nil {
 		dev.Close()
 		c.log().Warn("discord: join voice", "err", err)
 		return nil, &Reply{Text: "Couldn't join the voice channel: " + err.Error(), Ephemeral: true}
@@ -302,9 +332,12 @@ func (c *Core) runDevice(gs *guildSession) {
 		case <-gs.stop:
 			return
 		case <-gs.dev.Done():
-			// The hub dropped us (replaced or too slow). Stop playing; the
-			// session lives on with the other devices.
-			gs.player.Pause()
+			// The hub dropped us (replaced or too slow). Playing on would
+			// be audio the session doesn't know about: leave the channel.
+			// The session lives on with the other devices.
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			c.leaveSession(ctx, gs)
+			cancel()
 			return
 		case m := <-gs.dev.Out():
 			switch m.Type {
@@ -472,28 +505,47 @@ func (c *Core) queue(userID string) Reply {
 	return Reply{Text: b.String(), Ephemeral: true}
 }
 
-func (c *Core) leaveIfOwner(ctx context.Context, guildID, userID string) {
-	if gs := c.session(guildID); gs != nil && gs.owner == userID {
-		c.Leave(ctx, guildID)
+// LeaveUser leaves every channel playing userID's session (they unlinked).
+func (c *Core) LeaveUser(ctx context.Context, userID string) {
+	c.mu.Lock()
+	var mine []*guildSession
+	for _, gs := range c.guilds {
+		if gs.owner == userID {
+			mine = append(mine, gs)
+		}
+	}
+	c.mu.Unlock()
+	for _, gs := range mine {
+		c.leaveSession(ctx, gs)
 	}
 }
 
 // Leave stops playing in a guild and leaves its voice channel. The account's
 // session keeps its place (the hub pauses it).
 func (c *Core) Leave(ctx context.Context, guildID string) {
+	if gs := c.session(guildID); gs != nil {
+		c.leaveSession(ctx, gs)
+	}
+}
+
+// leaveSession ends gs if it is still the guild's session.
+func (c *Core) leaveSession(ctx context.Context, gs *guildSession) {
 	c.mu.Lock()
-	gs := c.guilds[guildID]
-	delete(c.guilds, guildID)
-	c.mu.Unlock()
-	if gs == nil {
+	if c.guilds[gs.guildID] != gs {
+		c.mu.Unlock()
 		return
 	}
+	delete(c.guilds, gs.guildID)
+	v := c.Voice
+	c.mu.Unlock()
 	close(gs.stop)
 	// Report the final position first so the session resumes from here.
 	gs.dev.State(gs.player.State())
-	gs.player.Close()
+	gs.player.Shutdown()
 	gs.dev.Close()
-	c.Voice.Leave(ctx, guildID)
+	if v != nil {
+		v.Leave(ctx, gs.guildID)
+	}
 }
 
 // LeaveAll leaves every guild (bot shutdown).
@@ -519,7 +571,7 @@ func (c *Core) SweepIdle(ctx context.Context, now time.Time) {
 	c.mu.Lock()
 	var leave []string
 	for id, gs := range c.guilds {
-		if c.Voice.Listeners(id, gs.channelID) > 0 {
+		if c.Voice == nil || c.Voice.Listeners(id, gs.channelID) > 0 {
 			gs.emptySince = time.Time{}
 			continue
 		}
@@ -536,10 +588,30 @@ func (c *Core) SweepIdle(ctx context.Context, now time.Time) {
 	}
 }
 
-// VoiceLost is called when Discord disconnects the bot from a guild's voice
-// (kicked, channel deleted).
-func (c *Core) VoiceLost(ctx context.Context, guildID string) {
-	c.Leave(ctx, guildID)
+// VoiceLost is called when Discord disconnects the bot from channelID
+// (kicked, channel deleted). A late event for a channel the bot already left
+// is ignored.
+func (c *Core) VoiceLost(ctx context.Context, guildID, channelID string) {
+	if gs := c.session(guildID); gs != nil {
+		if id, _ := c.channelOf(gs); id == channelID {
+			c.leaveSession(ctx, gs)
+		}
+	}
+}
+
+// VoiceMoved is called when the bot was moved to another channel.
+func (c *Core) VoiceMoved(guildID, channelID, channelName string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	gs := c.guilds[guildID]
+	if gs == nil {
+		return
+	}
+	gs.channelID = channelID
+	if channelName != "" {
+		gs.channelName = channelName
+	}
+	gs.emptySince = time.Time{}
 }
 
 // Sessions lists where the bot is playing (for the admin status).

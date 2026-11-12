@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/maxjb-xyz/reverb/internal/core"
 )
@@ -80,6 +81,9 @@ func (f *FFmpegOpener) Open(ctx context.Context, trackID string, startMs int64) 
 		"-f", "ogg", "pipe:1",
 	)
 	cmd := exec.CommandContext(ctx, path, args...)
+	// Once ffmpeg exits, don't wait long on the copy of the upstream body
+	// into its stdin.
+	cmd.WaitDelay = 2 * time.Second
 	// -nostdin only stops ffmpeg reading keys; pipe:0 still reads Stdin.
 	cmd.Stdin = h.Body
 	out, err := cmd.StdoutPipe()
@@ -97,12 +101,13 @@ func (f *FFmpegOpener) Open(ctx context.Context, trackID string, startMs int64) 
 }
 
 type ffmpegSource struct {
-	cmd    *exec.Cmd
-	body   io.ReadCloser
-	cancel context.CancelFunc
-	ogg    *oggReader
-	once   sync.Once
-	closed atomic.Bool
+	cmd     *exec.Cmd
+	body    io.ReadCloser
+	cancel  context.CancelFunc
+	ogg     *oggReader
+	once    sync.Once
+	waitErr error
+	closed  atomic.Bool
 }
 
 var errSourceClosed = errors.New("source closed")
@@ -111,14 +116,25 @@ func (s *ffmpegSource) Next() ([]byte, error) {
 	if s.closed.Load() {
 		return nil, errSourceClosed
 	}
-	return s.ogg.Next()
+	pkt, err := s.ogg.Next()
+	if errors.Is(err, io.EOF) {
+		// A clean end of the Ogg stream still means a cut-off track if
+		// ffmpeg failed (the upstream request broke).
+		if werr := s.wait(); werr != nil && !s.closed.Load() {
+			return nil, fmt.Errorf("ffmpeg: %w", werr)
+		}
+	}
+	return pkt, err
+}
+
+func (s *ffmpegSource) wait() error {
+	s.once.Do(func() { s.waitErr = s.cmd.Wait() })
+	return s.waitErr
 }
 
 func (s *ffmpegSource) Close() {
 	s.closed.Store(true)
-	s.once.Do(func() {
-		s.cancel() // kills ffmpeg and aborts the upstream request
-		s.body.Close()
-		_ = s.cmd.Wait()
-	})
+	s.cancel() // kills ffmpeg and aborts the upstream request
+	s.body.Close()
+	_ = s.wait()
 }

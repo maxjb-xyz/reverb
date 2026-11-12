@@ -18,6 +18,8 @@ type DiscordBot interface {
 	Apply(ctx context.Context, token string) error
 	Status() discord.Status
 	Online() bool
+	// UserUnlinked stops the bot playing for an account that unlinked.
+	UserUnlinked(ctx context.Context, userID string)
 }
 
 // handleGetDiscordIntegration serves GET /admin/integrations/discord. The
@@ -121,6 +123,9 @@ func (s *Server) handleDeleteDiscordLink(w http.ResponseWriter, r *http.Request)
 	if err := s.deps.DiscordLinks.Unlink(r.Context(), cu.ID); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not unlink"})
 		return
+	}
+	if s.deps.Discord != nil {
+		s.deps.Discord.UserUnlinked(r.Context(), cu.ID)
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
