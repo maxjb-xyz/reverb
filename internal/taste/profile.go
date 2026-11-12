@@ -167,16 +167,8 @@ type Profile struct {
 	HiddenArtists map[string]bool
 }
 
-// ArtistKey is the identity artists are scored under: the normalized primary
-// artist, so "Egzod; Maestro Chives" and "egzod" land on the same key and a
-// library artist matches the same name from Deezer.
-func ArtistKey(artist string) string {
-	a := strings.TrimSpace(artist)
-	if a == "" {
-		return ""
-	}
-	return matching.Normalize(matching.PrimaryArtist(a))
-}
+// ArtistKey is the identity artists are scored under (see matching.ArtistKey).
+func ArtistKey(artist string) string { return matching.ArtistKey(artist) }
 
 // NormalizeOutcome validates a client-reported outcome, deriving one from the
 // timing when it is empty, and upgrading a "skip" that happened on the outro to

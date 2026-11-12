@@ -37,3 +37,19 @@ type LibraryAdapter interface {
 	StartScan(ctx context.Context) error
 	ScanStatus(ctx context.Context) (core.ScanStatus, error)
 }
+
+// IndexedTrack is a library track plus the facets the recommendation engine
+// indexes: release year, genres and when it was added to the library.
+type IndexedTrack struct {
+	core.Track
+	Year    int
+	Genres  []string
+	AddedAt int64 // unix seconds; 0 when the server doesn't say
+}
+
+// TrackWalker is an OPTIONAL capability: visit every track in the library in
+// batches. The recommendation engine's library index is built from it.
+// Returning an error from batch stops the walk and is returned as-is.
+type TrackWalker interface {
+	WalkTracks(ctx context.Context, batch func([]IndexedTrack) error) error
+}

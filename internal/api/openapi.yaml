@@ -499,6 +499,24 @@ paths:
         - { name: kind, in: path, required: true, schema: { type: string, enum: [track, artist] } }
         - { name: key, in: path, required: true, schema: { type: string } }
       responses: { "204": { description: removed (or was not present) } }
+  /artists/similar:
+    get:
+      summary: >
+        Artists similar to the named one ("fans also like"), best first, from
+        the recommendation index's artist-similarity map. Each entry says how
+        many tracks the library owns (0 = not in the library) and, when owned,
+        the library artist id.
+      parameters:
+        - { name: name, in: query, required: true, schema: { type: string } }
+      responses: { "200": { description: "{ artist, similar: [{ key, name, source, externalId, imageUrl, rank, ownedTracks, libraryArtistId }] }" }, "400": { description: name missing } }
+  /engine/index:
+    get:
+      summary: Recommendation index status (managers). Tracks and artists indexed, artists with a similarity list, last run.
+      responses: { "200": { description: "{ running, tracks, artists, artistsWithSimilar, lastIndexedAt, lastError }" }, "403": { description: not a manager } }
+  /engine/index/rebuild:
+    post:
+      summary: Queue a re-index of the library and similarity map now (managers).
+      responses: { "202": { description: queued }, "403": { description: not a manager } }
   /ws:
     get:
       summary: >

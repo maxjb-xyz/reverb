@@ -36,12 +36,31 @@ type AlbumExternalMap struct {
 	CreatedAt       int64   `json:"created_at"`
 }
 
+type ArtistExternal struct {
+	ArtistKey  string `json:"artist_key"`
+	Source     string `json:"source"`
+	ExternalID string `json:"external_id"`
+	Name       string `json:"name"`
+	FetchedAt  int64  `json:"fetched_at"`
+}
+
 type ArtistExternalMap struct {
 	LibraryArtistID  string  `json:"library_artist_id"`
 	Source           string  `json:"source"`
 	ExternalArtistID string  `json:"external_artist_id"`
 	Confidence       float64 `json:"confidence"`
 	CreatedAt        int64   `json:"created_at"`
+}
+
+type ArtistSimilar struct {
+	ArtistKey         string `json:"artist_key"`
+	Source            string `json:"source"`
+	SimilarKey        string `json:"similar_key"`
+	SimilarName       string `json:"similar_name"`
+	SimilarExternalID string `json:"similar_external_id"`
+	SimilarImage      string `json:"similar_image"`
+	Rank              int64  `json:"rank"`
+	FetchedAt         int64  `json:"fetched_at"`
 }
 
 type BackendBinding struct {
@@ -113,6 +132,33 @@ type Invite struct {
 	UsedBy    sql.NullString `json:"used_by"`
 	UsedAt    sql.NullInt64  `json:"used_at"`
 	CreatedAt int64          `json:"created_at"`
+}
+
+type LibraryTrack struct {
+	LibraryTrackID string `json:"library_track_id"`
+	Title          string `json:"title"`
+	Artist         string `json:"artist"`
+	ArtistKey      string `json:"artist_key"`
+	ArtistID       string `json:"artist_id"`
+	Album          string `json:"album"`
+	AlbumID        string `json:"album_id"`
+	CoverArtID     string `json:"cover_art_id"`
+	TrackNumber    int64  `json:"track_number"`
+	DiscNumber     int64  `json:"disc_number"`
+	DurationMs     int64  `json:"duration_ms"`
+	BitRate        int64  `json:"bit_rate"`
+	Suffix         string `json:"suffix"`
+	ContentType    string `json:"content_type"`
+	Isrc           string `json:"isrc"`
+	Year           int64  `json:"year"`
+	Genres         string `json:"genres"`
+	AddedAt        int64  `json:"added_at"`
+	Epoch          int64  `json:"epoch"`
+}
+
+type LibraryTrackGenre struct {
+	LibraryTrackID string `json:"library_track_id"`
+	GenreKey       string `json:"genre_key"`
 }
 
 type ListenEvent struct {
