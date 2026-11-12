@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { Icon } from '../ui/Icon'
 import { stopDJ, useDJ } from '../../lib/dj'
 import { useStartDJ } from './useStartDJ'
+import { VoiceNudge } from './VoiceNudge'
 
 /**
  * While the DJ is on: what lane is playing, the DJ's latest line, a box to
@@ -73,6 +74,7 @@ export function DJBar() {
               </div>
             )}
           </div>
+          <VoiceNudge />
           <form onSubmit={(e) => void submit(e)} className="flex items-center gap-2 px-3 pb-3">
             <input
               type="text"
