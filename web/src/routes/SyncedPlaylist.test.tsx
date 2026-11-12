@@ -535,7 +535,7 @@ describe('SyncedPlaylist page', () => {
     vi.mocked(useAlbumPalette).mockReturnValue({ rgb: [120, 80, 200], text: '#FFFFFF', scrim: false })
     await renderLoaded()
     const heading = screen.getByRole('heading', { name: 'Test Synced Playlist' })
-    const gradientWrapper = heading.closest('[class*="from-raised"]')
+    const gradientWrapper = heading.closest('[data-testid="page-hero"]')
     expect(gradientWrapper).toBeTruthy()
     const bg = (gradientWrapper as HTMLElement).style.background
     expect(bg).toContain('linear-gradient')
@@ -545,13 +545,13 @@ describe('SyncedPlaylist page', () => {
     expect(bg).toMatch(/200/)
   })
 
-  it('header wrapper has no inline style when palette is null', async () => {
+  it('header wrapper takes no cover colour when palette is null', async () => {
     vi.mocked(useAlbumPalette).mockReturnValue(null)
     await renderLoaded()
     const heading = screen.getByRole('heading', { name: 'Test Synced Playlist' })
-    const gradientWrapper = heading.closest('[class*="from-raised"]')
+    const gradientWrapper = heading.closest('[data-testid="page-hero"]')
     expect(gradientWrapper).toBeTruthy()
-    expect((gradientWrapper as HTMLElement).style.background).toBe('')
+    expect((gradientWrapper as HTMLElement).style.background).not.toMatch(/rgba?\(\d/)
   })
 
   describe('now-playing indicator (Bug 8)', () => {

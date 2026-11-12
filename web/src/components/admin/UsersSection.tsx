@@ -126,7 +126,7 @@ function CreateUserModal({ roles, onClose, onCreated }: CreateUserModalProps) {
     <>
       {/* Backdrop */}
       <div
-        className="fixed inset-0 z-40 bg-canvas/80 backdrop-blur-sm"
+        className="fixed inset-0 z-40 bg-canvas/80 backdrop-blur-sm animate-fade-in"
         aria-hidden="true"
         onClick={onClose}
       />
@@ -236,7 +236,7 @@ interface DeleteUserModalProps {
 function DeleteUserModal({ user, onClose, onConfirm }: DeleteUserModalProps) {
   return (
     <>
-      <div className="fixed inset-0 z-40 bg-canvas/80 backdrop-blur-sm" aria-hidden="true" onClick={onClose} />
+      <div className="fixed inset-0 z-40 bg-canvas/80 backdrop-blur-sm animate-fade-in" aria-hidden="true" onClick={onClose} />
       <div
         role="dialog"
         aria-modal="true"
@@ -298,7 +298,7 @@ function ResetPasswordModal({ user, onClose, onReset }: ResetPasswordModalProps)
 
   return (
     <>
-      <div className="fixed inset-0 z-40 bg-canvas/80 backdrop-blur-sm" aria-hidden="true" onClick={onClose} />
+      <div className="fixed inset-0 z-40 bg-canvas/80 backdrop-blur-sm animate-fade-in" aria-hidden="true" onClick={onClose} />
       <div
         role="dialog"
         aria-modal="true"

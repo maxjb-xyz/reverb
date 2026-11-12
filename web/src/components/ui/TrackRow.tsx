@@ -76,9 +76,9 @@ export function TrackRow({ track, index, active = false, playing, onPlay, right,
           ? 'grid-cols-[20px_minmax(0,1fr)_auto_28px] md:grid-cols-[26px_minmax(0,1fr)_var(--row-right)_36px_44px]'
           : 'grid-cols-[20px_40px_minmax(0,1fr)_auto_28px] md:grid-cols-[26px_40px_minmax(0,1fr)_minmax(0,1fr)_var(--row-right)_36px_44px]',
         'md:gap-3.5 md:px-2.5',
-        'transition-colors hover:bg-raised-hover cursor-default',
+        'transition-colors duration-200 hover:bg-white/[.07] cursor-default',
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
-        active ? 'text-accent' : 'text-text-primary',
+        active ? 'text-accent bg-accent/[.07]' : 'text-text-primary',
       ].join(' ')}
       style={{ '--row-right': rightWidth } as React.CSSProperties}
     >

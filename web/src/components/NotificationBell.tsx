@@ -109,7 +109,7 @@ export function NotificationBell() {
               role="menu"
               aria-label="Notifications"
               style={{ top: pos.top, right: pos.right }}
-              className="fixed z-50 w-80 rounded-xl border border-border-subtle bg-raised shadow-pop"
+              className="origin-top-right animate-menu-in fixed z-50 w-80 rounded-xl border border-white/[.06] bg-raised/95 backdrop-blur-xl shadow-pop"
             >
               {/* Header */}
               <div className="flex items-center justify-between px-4 py-3 border-b border-border-subtle">

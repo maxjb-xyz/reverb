@@ -22,7 +22,7 @@ import { usePlayer } from '../lib/playerStore'
 import { useAuthStore } from '../lib/authStore'
 import { useToastStore } from '../lib/toastStore'
 import { useAlbumPalette } from '../lib/useAlbumPalette'
-import { rgbToCss } from '../lib/palette'
+import { PageHero, StickyHeroBar } from '../components/ui/PageHero'
 
 // ── Local helpers ─────────────────────────────────────────────────────────────
 
@@ -153,6 +153,7 @@ export default function SyncedPlaylist() {
   }, [detail?.id])
 
   const palette = useAlbumPalette(detail?.coverUrl)
+  const [heroGone, setHeroGone] = useState(false)
 
   // ── Loading / error states ──────────────────────────────────────────────────
 
@@ -357,10 +358,7 @@ export default function SyncedPlaylist() {
   return (
     <div className="space-y-6">
       {/* Gradient wash header */}
-      <div
-        className="relative -mx-4 -mt-4 px-4 pt-4 pb-6 rounded-b-2xl overflow-hidden bg-gradient-to-b from-raised to-transparent"
-        style={palette ? { background: `linear-gradient(to bottom, ${rgbToCss(palette.rgb, 0.55)} 0%, transparent 100%)` } : undefined}
-      >
+      <PageHero rgb={palette?.rgb} onVisibleChange={(v) => setHeroGone(!v)}>
         <header className="relative z-10 flex items-end gap-6 pt-2">
           {/* Cover — interactive (change-cover) for mode='once' */}
           <div className="relative flex-none group/cover">
@@ -559,10 +557,11 @@ export default function SyncedPlaylist() {
             </div>
           </div>
         </header>
-      </div>
+      </PageHero>
+      <StickyHeroBar visible={heroGone} title={detail.name} rgb={palette?.rgb} onPlay={() => ownedTracks.length && playTrackList(ownedTracks, 0)} playDisabled={ownedTracks.length === 0} playLabel={`Play ${detail.name}`} />
 
       {/* Track list */}
-      <div className="space-y-0.5">
+      <div className="rvb-stagger space-y-0.5">
         {(trackOrder ?? tracks.map((_, i) => i)).map((origIdx, displayIdx) => {
           const t = tracks[origIdx]
           const isDraggable = detail.mode === 'once'

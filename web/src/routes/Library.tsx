@@ -35,7 +35,7 @@ const SKELETON_COUNT = 10
 
 function SkeletonGrid({ rounded = 'md' }: { rounded?: 'md' | 'full' }) {
   return (
-    <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+    <div className="rvb-stagger grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
       {Array.from({ length: SKELETON_COUNT }).map((_, i) => (
         <div key={i} className="space-y-2 p-3 rounded-lg bg-raised">
           <Skeleton
@@ -188,7 +188,7 @@ export default function Library() {
           ) : albumList.length === 0 ? (
             <NoMatches query={query.trim()} />
           ) : (
-            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+            <div className="rvb-stagger grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
               {albumList.map((al) => (
                 <MediaCard
                   key={al.id}
@@ -220,7 +220,7 @@ export default function Library() {
           ) : artistList.length === 0 ? (
             <NoMatches query={query.trim()} />
           ) : (
-            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+            <div className="rvb-stagger grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
               {artistList.map((ar) => (
                 <MediaCard
                   key={ar.id}
@@ -251,7 +251,7 @@ export default function Library() {
           ) : playlistList.length === 0 ? (
             <NoMatches query={query.trim()} />
           ) : (
-            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+            <div className="rvb-stagger grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
               {playlistList.map((pl) => (
                 <MediaCard
                   key={pl.id}

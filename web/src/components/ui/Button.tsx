@@ -12,8 +12,8 @@ interface ButtonProps {
 }
 
 const variantClasses: Record<NonNullable<ButtonProps['variant']>, string> = {
-  primary: 'bg-accent text-on-accent hover:opacity-90',
-  secondary: 'border border-border-subtle text-text-primary bg-transparent hover:bg-raised-hover',
+  primary: 'bg-accent text-on-accent hover:brightness-110 hover:scale-[1.03] hover:shadow-glow',
+  secondary: 'border border-border-subtle text-text-primary bg-transparent hover:bg-raised-hover hover:border-text-muted/40',
   ghost: 'text-text-secondary bg-transparent hover:text-text-primary',
 }
 
@@ -39,7 +39,7 @@ export function Button({
       aria-label={ariaLabel}
       onClick={disabled ? undefined : onClick}
       className={[
-        'inline-flex items-center justify-center whitespace-nowrap rounded-full transition-opacity',
+        'rvb-press inline-flex items-center justify-center whitespace-nowrap rounded-full',
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
         'disabled:opacity-40 disabled:cursor-not-allowed',
         variantClasses[variant],

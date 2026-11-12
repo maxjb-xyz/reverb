@@ -295,7 +295,7 @@ describe('Library page', () => {
     } as unknown as UseQueryResult<Album[], Error>)
 
     render(wrap(<Library />))
-    const skeletons = document.querySelectorAll('.animate-pulse')
+    const skeletons = document.querySelectorAll('.rvb-shimmer')
     expect(skeletons.length).toBeGreaterThan(0)
   })
 
@@ -310,7 +310,7 @@ describe('Library page', () => {
     render(wrap(<Library />))
     fireEvent.click(screen.getByRole('button', { name: /^artists$/i }))
 
-    const skeletons = document.querySelectorAll('.animate-pulse')
+    const skeletons = document.querySelectorAll('.rvb-shimmer')
     expect(skeletons.length).toBeGreaterThan(0)
   })
 
@@ -324,7 +324,7 @@ describe('Library page', () => {
     render(wrap(<Library />))
     fireEvent.click(screen.getByRole('button', { name: /^playlists$/i }))
 
-    const skeletons = document.querySelectorAll('.animate-pulse')
+    const skeletons = document.querySelectorAll('.rvb-shimmer')
     expect(skeletons.length).toBeGreaterThan(0)
   })
 

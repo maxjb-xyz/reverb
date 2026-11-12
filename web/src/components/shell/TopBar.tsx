@@ -72,7 +72,7 @@ export function TopBar() {
   }
 
   return (
-    <header className="flex items-center justify-between px-4 h-16 bg-surface">
+    <header className="rvb-panel flex items-center justify-between px-4 h-16 bg-surface">
       {/* Mobile wordmark — desktop shows the history nav + search instead */}
       <div className="md:hidden">
         <Logo textClassName="text-lg" />
@@ -226,7 +226,7 @@ export function TopBar() {
             <div
               role="menu"
               className={[
-                'absolute right-0 top-10 w-40 rounded-lg bg-raised shadow-pop border border-border-subtle',
+                'origin-top-right animate-menu-in absolute right-0 top-10 w-40 rounded-lg bg-raised/95 backdrop-blur-xl shadow-pop border border-white/[.06]',
                 'py-1 z-50',
               ].join(' ')}
             >

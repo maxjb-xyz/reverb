@@ -136,7 +136,7 @@ export function AddToPlaylistMenu({ track, onClose }: AddToPlaylistMenuProps) {
         role="dialog"
         aria-modal="true"
         aria-label="Add to playlist"
-        className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-80 max-w-[calc(100vw-2rem)] rounded-xl border border-border-subtle bg-raised shadow-pop"
+        className="animate-fade-in fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-80 max-w-[calc(100vw-2rem)] rounded-xl border border-border-subtle bg-raised shadow-pop"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="px-3 pb-1 pt-3">

@@ -287,7 +287,7 @@ export default function Search() {
           ) : libTracks.length === 0 && externalTracks.length === 0 && everywhere.status !== 'streaming' ? (
             <p className="text-sm text-text-muted">No tracks found.</p>
           ) : (
-            <div className="space-y-0.5">
+            <div className="rvb-stagger space-y-0.5">
               {libTracks.map((t, i) => (
                 <TrackRow
                   key={t.id}
@@ -400,7 +400,7 @@ export default function Search() {
         <section aria-label="Albums">
           <SectionHeading>Albums</SectionHeading>
           {/* TODO(phase-6): partial N-of-M needs external album tracks + matching */}
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+          <div className="rvb-stagger grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
             {libAlbums.map((al) => (
               <MediaCard
                 key={al.id}
@@ -452,7 +452,7 @@ export default function Search() {
       {(resultFilter === 'all' || resultFilter === 'artist') && (libArtists.length > 0 || artists.length > 0) && (
         <section aria-label="Artists">
           <SectionHeading>Artists</SectionHeading>
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
+          <div className="rvb-stagger grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
             {libArtists.map((ar) => (
               <MediaCard
                 key={ar.id}
@@ -477,7 +477,7 @@ export default function Search() {
       {(resultFilter === 'all' || resultFilter === 'playlist') && playlists.length > 0 && (
         <section aria-label="Playlists">
           <SectionHeading>Playlists</SectionHeading>
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+          <div className="rvb-stagger grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
             {playlists.map((playlist) => (
               <MediaCard
                 key={`${playlist.source}:${playlist.externalId}`}

@@ -18,6 +18,8 @@ import {
 } from '../components/ui'
 import type { Album, DownloadJob, Track } from '../lib/types'
 import { useDocumentTitle } from '../lib/useDocumentTitle'
+import { useAlbumPalette } from '../lib/useAlbumPalette'
+import { rgbToCss } from '../lib/palette'
 
 // Synthesize a minimal library Track from a completed download job so it can be
 // played. Only valid once the job has a libraryTrackId (i.e. the scan matched the
@@ -84,8 +86,9 @@ function ShortcutTile({ title, coverId, coverSrc, isPlaying, onClick }: Shortcut
       aria-label={title}
       onClick={onClick}
       className={[
-        'group relative flex items-center gap-3 h-14 rounded overflow-hidden',
-        'bg-raised hover:bg-raised-hover transition-colors text-left',
+        'group relative flex items-center gap-3 h-14 rounded-md overflow-hidden',
+        'bg-white/[.06] hover:bg-white/[.12] text-left',
+        'transition-[background-color,transform] duration-200 ease-smooth active:scale-[.98]',
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
         isPlaying ? 'text-accent' : 'text-text-primary',
       ].join(' ')}
@@ -111,7 +114,7 @@ function ShortcutTile({ title, coverId, coverSrc, isPlaying, onClick }: Shortcut
             'mr-3 flex-none w-10 h-10 rounded-full bg-accent',
             'hidden md:inline-grid place-items-center shadow-cover text-surface',
             'opacity-0 translate-y-1.5 group-hover:opacity-100 group-hover:translate-y-0',
-            'transition-all duration-150',
+            'transition-all duration-300 ease-smooth',
           ].join(' ')}
         >
           <Icon name="play" className="w-4 h-4" />
@@ -206,6 +209,9 @@ export default function Home() {
   // Hero: first item from newest albums
   const newestAlbums: Album[] = newestQuery.data ?? []
   const heroAlbum = newestAlbums[0] ?? null
+  // The top of Home takes a soft wash of the newest album's colour, the same
+  // way album pages do, so the landing page is not a flat grey slab.
+  const heroPalette = useAlbumPalette(heroAlbum?.coverArtId ? coverUrl(heroAlbum.coverArtId, 200) : undefined)
 
   // "Jump back in" carousel: use real play history when loaded and non-empty;
   // fall back to library-recent-albums as an approximation.
@@ -281,6 +287,17 @@ export default function Home() {
 
   return (
     <div className="relative">
+      <div
+        aria-hidden
+        data-testid="home-wash"
+        className="pointer-events-none absolute -left-4 -right-4 -top-5 h-80 transition-[background] duration-700 sm:-left-6 sm:-right-6 sm:-top-6 lg:-left-8 lg:-right-8"
+        style={{
+          background: heroPalette
+            ? `linear-gradient(to bottom, ${rgbToCss(heroPalette.rgb, 0.38)} 0%, transparent 100%)`
+            : 'linear-gradient(to bottom, rgb(var(--color-accent) / .10) 0%, transparent 100%)',
+        }}
+      />
+      <div className="relative">
       {/* Shortcut grid — 2-column, 8 items */}
       {isLoading ? (
         <div className="grid grid-cols-2 gap-2 mb-8" data-testid="shortcut-grid-skeleton">
@@ -289,7 +306,7 @@ export default function Home() {
           ))}
         </div>
       ) : shortcutItems.length > 0 ? (
-        <div className="grid grid-cols-2 gap-2 mb-8" data-testid="shortcut-grid">
+        <div className="rvb-stagger grid grid-cols-2 gap-2 mb-8" data-testid="shortcut-grid">
           {shortcutItems.map((item) => {
             const isPlaying = current?.albumId === item.id
             return (
@@ -466,6 +483,7 @@ export default function Home() {
           </Carousel>
         </div>
       )}
+      </div>
     </div>
   )
 }

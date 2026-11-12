@@ -77,7 +77,7 @@ export function SearchSuggest({ query, onNavigateAll, onClose, onEmptyChange }: 
       className={[
         'absolute left-0 right-0 top-full z-50 mt-2 w-full',
         'max-h-[70vh] overflow-y-auto',
-        'rounded-xl border border-border-subtle bg-raised shadow-pop',
+        'origin-top animate-menu-in rounded-xl border border-white/[.06] bg-raised/95 backdrop-blur-xl shadow-pop',
         'p-1.5',
       ].join(' ')}
     >
