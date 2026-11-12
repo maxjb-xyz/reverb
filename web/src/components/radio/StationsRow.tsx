@@ -7,17 +7,17 @@ import { DJTile } from '../dj/DJTile'
 
 /**
  * "Radio for you" on Home: the DJ, then stations built from the user's
- * favourite artists and the genres they play. Hidden until the engine has something to suggest.
+ * favourite artists and the genres they play. The DJ is always offered, even
+ * before the engine has stations to suggest (a new library, or no plays yet).
  */
 export function StationsRow() {
   const { data: stations } = useStations(10)
   const { start } = useStartRadio()
-  if (!stations || stations.length === 0) return null
   return (
     <div className="mb-8" data-testid="stations-row">
       <Carousel title="Radio for you">
         <DJTile />
-        {stations.map((s) => (
+        {(stations ?? []).map((s) => (
           <MediaCard
             key={`${s.seed.kind}:${s.seed.id}`}
             title={s.label}

@@ -80,15 +80,23 @@ describe('StationsRow', () => {
     wrap(<StationsRow />)
     expect(await screen.findByText('Radio for you')).toBeInTheDocument()
     expect(get).toHaveBeenCalledWith('/engine/stations?n=10')
-    fireEvent.click(screen.getByText('Electronic radio'))
+    fireEvent.click(await screen.findByText('Electronic radio'))
     await waitFor(() => expect(post).toHaveBeenCalledWith('/engine/next', { seed: { kind: 'genre', id: 'electronic' }, n: 20 }))
   })
 
-  it('renders nothing without suggestions', async () => {
+  it('still offers the DJ when the engine has no stations to suggest', async () => {
     get.mockResolvedValue({ stations: [] })
-    const { container } = wrap(<StationsRow />)
+    wrap(<StationsRow />)
     await waitFor(() => expect(get).toHaveBeenCalled())
-    expect(container).toBeEmptyDOMElement()
+    expect(await screen.findByTestId('dj-tile')).toBeInTheDocument()
+    expect(screen.getByText('Radio for you')).toBeInTheDocument()
+  })
+
+  it('still offers the DJ when stations fail to load', async () => {
+    get.mockRejectedValue(new Error('engine down'))
+    wrap(<StationsRow />)
+    await waitFor(() => expect(get).toHaveBeenCalled())
+    expect(await screen.findByTestId('dj-tile')).toBeInTheDocument()
   })
 })
 
