@@ -543,8 +543,8 @@ paths:
                   type: string
                   description: Empty for radio, or a DJ lane.
                   enum: ["", on-repeat, throwback, deep-cuts, sounds-like, new-to-you, fresh-finds]
-                fromYear: { type: integer, description: "throwback lane: first year" }
-                toYear: { type: integer, description: "throwback lane: last year" }
+                fromYear: { type: integer, description: "first year: the throwback period, or on other lanes a period every pick must fall in" }
+                toYear: { type: integer, description: "last year of that period" }
                 exclude: { type: array, items: { type: string }, description: Library track ids (or catalog ids) not to pick. }
                 includeExternal: { type: boolean, description: "Also suggest songs that aren't in the library (owned: false, external set)." }
                 n: { type: integer, description: "batch size, default 20, max 100" }
@@ -720,6 +720,48 @@ paths:
         "200": { description: '{"text":string,"source":"llm"|"template"}' }
         "400": { description: next is empty or the body is not JSON }
         "429": { description: too many lines this minute }
+  /dj/request:
+    post:
+      summary: >
+        Read what the listener asked the DJ for ("90s hip hop", "more like
+        Bonobo", "something I haven't heard") as an engine seed, lane and
+        period, to pass on to /engine/next. Rules match the library's own artist
+        and genre names; the writer model, when configured, reads what they
+        can't. Only library artists and genres are returned; an artist the
+        library lacks comes back as `missing`. Shares /dj/line's rate limit.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                text: { type: string, maxLength: 200 }
+              required: [text]
+      responses:
+        "200":
+          description: The request in engine terms.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  understood: { type: boolean, description: false when nothing in the request can be played }
+                  seed:
+                    type: object
+                    properties:
+                      kind: { type: string, enum: [artist, genre] }
+                      id: { type: string, description: artist or genre key }
+                      artist: { type: string }
+                      label: { type: string }
+                  lane: { type: string, enum: [on-repeat, throwback, deep-cuts, sounds-like, new-to-you, fresh-finds], description: omitted for radio around the seed }
+                  fromYear: { type: integer }
+                  toYear: { type: integer }
+                  missing: { type: string, description: an artist asked for that the library lacks }
+                  source: { type: string, enum: [rules, llm] }
+                required: [understood, source]
+        "400": { description: text is empty or the body is not JSON }
+        "429": { description: too many DJ requests this minute }
   /dj/say:
     post:
       summary: >

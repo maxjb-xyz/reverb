@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { act, render, screen, fireEvent, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
+import { MemoryRouter } from 'react-router-dom'
 
 const get = vi.fn()
 const post = vi.fn()
@@ -11,6 +12,8 @@ const playTrackList = vi.fn()
 vi.mock('../../lib/playerStore', () => ({
   usePlayer: (sel: (s: { playTrackList: typeof playTrackList }) => unknown) => sel({ playTrackList }),
 }))
+const navigate = vi.fn()
+vi.mock('react-router-dom', async (orig) => ({ ...(await orig<typeof import('react-router-dom')>()), useNavigate: () => navigate }))
 const push = vi.fn()
 vi.mock('../../lib/toastStore', () => ({
   useToastStore: (sel: (s: { push: typeof push }) => unknown) => sel({ push }),
@@ -27,7 +30,7 @@ const lane = (name: string, ids: string[]) => ({
 })
 
 function wrap(ui: ReactNode) {
-  return render(<>{ui}</>)
+  return render(<MemoryRouter>{ui}</MemoryRouter>)
 }
 
 beforeEach(() => {
@@ -38,6 +41,7 @@ beforeEach(() => {
   post.mockImplementation(async (p: string, b: { lane?: string }) => {
     if (p === '/engine/next') return b.lane === 'on-repeat' ? lane('on-repeat', ['a1', 'a2', 'a3', 'a4']) : lane(b.lane ?? '', ['b1', 'b2', 'b3', 'b4'])
     if (p === '/dj/line') return { text: 'You have had this on repeat.', source: 'template' }
+    if (p === '/dj/request') return { understood: true, seed: { kind: 'artist', id: 'bonobo', artist: 'Bonobo' }, lane: 'sounds-like', source: 'rules' }
     throw new Error(`unexpected ${p}`)
   })
 })
@@ -88,5 +92,51 @@ describe('DJBar', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Change it up' }))
     await waitFor(() => expect(screen.getByTestId('dj-lane')).toHaveTextContent('Sounds like Bonobo'))
     expect(playTrackList).toHaveBeenLastCalledWith([track('b1'), track('b2'), track('b3'), track('b4')], 0, { kind: 'dj', id: 'dj' })
+  })
+
+  it('takes a request and plays it', async () => {
+    wrap(<><DJTile /><DJBar /></>)
+    fireEvent.click(screen.getByRole('button', { name: 'Start the DJ' }))
+    await screen.findByTestId('dj-bar')
+    fireEvent.change(screen.getByRole('textbox', { name: 'Ask the DJ' }), { target: { value: 'more like Bonobo' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Send to the DJ' }))
+    await waitFor(() => expect(screen.getByTestId('dj-lane')).toHaveTextContent('“more like Bonobo”'))
+    expect(post).toHaveBeenCalledWith('/dj/request', { text: 'more like Bonobo' })
+    expect(post).toHaveBeenCalledWith('/engine/next', expect.objectContaining({ seed: { kind: 'artist', id: 'bonobo', artist: 'Bonobo' }, lane: 'sounds-like' }))
+    expect(screen.getByRole('textbox', { name: 'Ask the DJ' })).toHaveValue('')
+  })
+
+  it('offers to find an artist the library lacks', async () => {
+    post.mockImplementation(async (p: string, b: { lane?: string }) => {
+      if (p === '/engine/next') return lane(b.lane ?? 'on-repeat', ['a1'])
+      if (p === '/dj/line') return { text: 'Hi.', source: 'template' }
+      if (p === '/dj/request') return { understood: false, missing: 'Radiohead', source: 'llm' }
+      throw new Error(p)
+    })
+    wrap(<><DJTile /><DJBar /></>)
+    fireEvent.click(screen.getByRole('button', { name: 'Start the DJ' }))
+    await screen.findByTestId('dj-bar')
+    fireEvent.change(screen.getByRole('textbox', { name: 'Ask the DJ' }), { target: { value: 'radiohed' } })
+    fireEvent.submit(screen.getByRole('textbox', { name: 'Ask the DJ' }))
+    await screen.findByTestId('dj-missing')
+    expect(screen.getByTestId('dj-missing')).toHaveTextContent("Radiohead isn't in your library yet.")
+    expect(push).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: 'Find it' }))
+    expect(navigate).toHaveBeenCalledWith('/search?q=Radiohead')
+  })
+
+  it("says so when it doesn't understand", async () => {
+    post.mockImplementation(async (p: string, b: { lane?: string }) => {
+      if (p === '/engine/next') return lane(b.lane ?? 'on-repeat', ['a1'])
+      if (p === '/dj/line') return { text: 'Hi.', source: 'template' }
+      if (p === '/dj/request') return { understood: false, source: 'rules' }
+      throw new Error(p)
+    })
+    wrap(<><DJTile /><DJBar /></>)
+    fireEvent.click(screen.getByRole('button', { name: 'Start the DJ' }))
+    await screen.findByTestId('dj-bar')
+    fireEvent.change(screen.getByRole('textbox', { name: 'Ask the DJ' }), { target: { value: 'blorp' } })
+    fireEvent.submit(screen.getByRole('textbox', { name: 'Ask the DJ' }))
+    await waitFor(() => expect(push).toHaveBeenCalledWith(expect.stringMatching(/didn't catch that/), 'info'))
   })
 })

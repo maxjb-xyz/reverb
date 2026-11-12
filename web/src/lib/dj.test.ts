@@ -1,11 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { PlayerState } from './audioEngine'
 import type { EngineItem, EngineNextRequest, EngineResult, Lane } from './engineApi'
-import type { DJClip, DJLine, DJSegment, DJStatus } from './djApi'
+import type { DJClip, DJIntent, DJLine, DJSegment, DJStatus } from './djApi'
 import { getPlayContext, setPlayContext, type PlayContext } from './playContext'
 import type { Track } from './types'
 import {
-  _resetDJ, BLOCK_SIZE, CARD_MS, changeVibe, DJEmptyError, startDJ, startDJWatcher, stopDJ, TALK_WINDOW_MS,
+  _resetDJ, askDJ, BLOCK_SIZE, CARD_MS, changeVibe, DJEmptyError, startDJ, startDJWatcher, stopDJ, TALK_WINDOW_MS,
   throwbackYears, useDJ, type DJDeps,
 } from './dj'
 
@@ -63,10 +63,21 @@ class FakeEngine {
 // Lets every pending promise chain run.
 const flush = () => new Promise((r) => setTimeout(r, 0))
 
-function setup(opts: { voice?: boolean; lanes?: Partial<Record<Lane, string[]>> } = {}) {
+function setup(opts: { voice?: boolean; lanes?: Partial<Record<Lane, string[]>>; seeded?: string[][] } = {}) {
   const eng = new FakeEngine()
   const lanes = opts.lanes ?? { 'on-repeat': ['a1', 'a2', 'a3', 'a4'], 'sounds-like': ['b1', 'b2', 'b3', 'b4'] }
-  const next = vi.fn(async (r: EngineNextRequest) => block(r.lane as Lane, lanes[r.lane as Lane] ?? []))
+  // Answers to seeded (request) calls, in order.
+  const seeded = opts.seeded ?? [['r1', 'r2', 'r3', 'r4'], ['r5', 'r6', 'r7', 'r8']]
+  const next = vi.fn(async (r: EngineNextRequest) => {
+    if (r.seed) {
+      const ids = seeded.shift() ?? []
+      return { station: { id: `genre:${r.seed.id}`, kind: 'genre' as const, label: 'Hip hop radio' }, items: ids.map(item) }
+    }
+    return block(r.lane as Lane, lanes[r.lane as Lane] ?? [])
+  })
+  const intent = vi.fn(async (_text: string): Promise<DJIntent> => ({
+    understood: true, seed: { kind: 'genre', id: 'hip hop', label: 'Hip hop' }, fromYear: 1990, toYear: 1999, source: 'rules',
+  }))
   const line = vi.fn(async (s: DJSegment): Promise<DJLine> => ({ text: `Line for ${s.next[0].title}`, source: 'template' }))
   const say = vi.fn(async (text: string): Promise<DJClip> => ({ id: 'c', url: `/clip/${encodeURIComponent(text)}` }))
   const status = vi.fn(async (): Promise<DJStatus> => ({
@@ -78,13 +89,13 @@ function setup(opts: { voice?: boolean; lanes?: Partial<Record<Lane, string[]>> 
     eng.load(tracks, i)
   })
   const deps: Partial<DJDeps> & Pick<DJDeps, 'play'> = {
-    next, line, say, status, play,
+    next, line, say, status, play, intent,
     listener: () => 'Max',
     now: () => new Date(2026, 10, 12, 21, 0),
     random: () => 0,
   }
   const stop = startDJWatcher(eng)
-  return { eng, next, line, say, status, play, deps, stop }
+  return { eng, next, line, say, status, play, intent, deps, stop }
 }
 
 beforeEach(() => {
@@ -243,5 +254,77 @@ describe('the DJ keeping the music going', () => {
     expect(next).not.toHaveBeenCalled()
     expect(eng.queue).toHaveLength(4)
     expect(useDJ.getState().active).toBe(false)
+  })
+})
+
+describe('asking the DJ', () => {
+  it('plays what was asked for now, introduces it with the request, and labels it', async () => {
+    const { deps, next, line, eng, intent } = setup()
+    await startDJ(deps)
+    await flush()
+    expect(await askDJ('90s hip hop')).toEqual({ status: 'playing' })
+    expect(intent).toHaveBeenCalledWith('90s hip hop')
+    expect(next).toHaveBeenLastCalledWith({
+      seed: { kind: 'genre', id: 'hip hop' }, fromYear: 1990, toYear: 1999, n: BLOCK_SIZE, exclude: ['a1', 'a2', 'a3', 'a4'],
+    })
+    expect(eng.queue.map((t) => t.id)).toEqual(['r1', 'r2', 'r3', 'r4'])
+    expect(getPlayContext('r1')).toEqual({ kind: 'dj', id: 'genre:hip hop' })
+    const seg = line.mock.calls[1][0]
+    expect(seg).toMatchObject({ lane: 'request', request: '90s hip hop', previous: { title: 'Song a1' } })
+    await flush()
+    expect(eng.speak).toHaveBeenLastCalledWith('/clip/Line%20for%20Song%20r1')
+    expect(useDJ.getState().label).toBe('“90s hip hop”')
+  })
+
+  it('keeps to the request for one more block, then goes back to its lanes', async () => {
+    const { deps, next, eng } = setup()
+    await startDJ(deps)
+    await askDJ('90s hip hop')
+    eng.advance()
+    eng.advance() // r3: one left
+    await flush()
+    expect(next.mock.calls.at(-1)![0].seed).toEqual({ kind: 'genre', id: 'hip hop' })
+    expect(eng.queue.map((t) => t.id).slice(4)).toEqual(['r5', 'r6', 'r7', 'r8'])
+    eng.advance()
+    eng.advance()
+    eng.advance()
+    eng.advance() // r7: one left
+    await flush()
+    expect(next.mock.calls.at(-1)![0]).toMatchObject({ lane: 'sounds-like' })
+  })
+
+  it('says when it did not understand, and offers to find a missing artist', async () => {
+    const { deps, intent, play } = setup()
+    await startDJ(deps)
+    intent.mockResolvedValueOnce({ understood: false, missing: 'Radiohead', source: 'llm' })
+    expect(await askDJ('radiohed')).toEqual({ status: 'not-understood', missing: 'Radiohead' })
+    expect(play).toHaveBeenCalledTimes(1)
+    expect(useDJ.getState().missing).toBe('Radiohead')
+    // Changing it up clears the offer.
+    await changeVibe()
+    expect(useDJ.getState().missing).toBeNull()
+  })
+
+  it('leaves the music alone when nothing in the library fits', async () => {
+    const { deps, play } = setup({ seeded: [[]] })
+    await startDJ(deps)
+    expect(await askDJ('90s hip hop')).toEqual({ status: 'empty' })
+    expect(play).toHaveBeenCalledTimes(1)
+  })
+
+  it('plays the artist itself when nothing sounds like them yet', async () => {
+    const { deps, next, intent, eng } = setup({ seeded: [[], ['r1', 'r2']] })
+    await startDJ(deps)
+    intent.mockResolvedValueOnce({ understood: true, seed: { kind: 'artist', id: 'nova tide', artist: 'Nova Tide' }, lane: 'sounds-like', source: 'rules' })
+    expect(await askDJ('more like Nova Tide')).toEqual({ status: 'playing' })
+    const calls = next.mock.calls.slice(-2).map((c) => c[0])
+    expect(calls[0]).toMatchObject({ lane: 'sounds-like', seed: { kind: 'artist', id: 'nova tide' } })
+    expect(calls[1].lane).toBeUndefined()
+    expect(eng.queue.map((t) => t.id)).toEqual(['r1', 'r2'])
+  })
+
+  it('does nothing while the DJ is off', async () => {
+    setup()
+    expect(await askDJ('anything')).toEqual({ status: 'busy' })
   })
 })

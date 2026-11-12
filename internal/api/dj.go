@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -65,6 +66,41 @@ func (s *Server) handleDJLine(w http.ResponseWriter, r *http.Request) {
 		m = s.deps.LLM
 	}
 	writeJSON(w, http.StatusOK, dj.NewWriter(m).Line(r.Context(), seg))
+}
+
+type djRequestBody struct {
+	Text string `json:"text"`
+}
+
+// handleDJRequest serves POST /api/v1/dj/request: read what the listener asked
+// the DJ for ("90s hip hop", "more like Bonobo") as an engine seed, lane and
+// period. Shares the line writer's rate limit, since both can call the model.
+func (s *Server) handleDJRequest(w http.ResponseWriter, r *http.Request) {
+	var body djRequestBody
+	if err := decode(r, &body); err != nil || strings.TrimSpace(body.Text) == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "text is required"})
+		return
+	}
+	key := "anon"
+	if cu, ok := currentUser(r); ok {
+		key = cu.ID
+	}
+	if !s.djLineLimiter.allow(key) {
+		w.Header().Set("Retry-After", "60")
+		writeJSON(w, http.StatusTooManyRequests, map[string]string{"error": "too many DJ requests, try again in a minute"})
+		return
+	}
+	var m dj.Completer
+	if s.deps.LLM != nil && s.deps.LLM.Active() != "" {
+		m = s.deps.LLM
+	}
+	it, err := dj.NewInterpreter(s.deps.DJCatalog, m, time.Now).Interpret(r.Context(), body.Text)
+	if err != nil {
+		log.Printf("dj: reading a request failed: %v", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "couldn't read the library"})
+		return
+	}
+	writeJSON(w, http.StatusOK, it)
 }
 
 // VoiceService is the DJ's voice: it renders a line to a cached clip.

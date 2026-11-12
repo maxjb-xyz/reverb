@@ -16,6 +16,7 @@ import (
 	"github.com/maxjb-xyz/reverb/internal/auth"
 	"github.com/maxjb-xyz/reverb/internal/catalog"
 	"github.com/maxjb-xyz/reverb/internal/config"
+	"github.com/maxjb-xyz/reverb/internal/dj"
 	"github.com/maxjb-xyz/reverb/internal/download"
 	"github.com/maxjb-xyz/reverb/internal/download/lidarr"
 	"github.com/maxjb-xyz/reverb/internal/download/spotdl"
@@ -295,6 +296,7 @@ func main() {
 		Voice:         voiceSvc,
 		LLMReg:        llmReg,
 		LLM:           llmSvc,
+		DJCatalog:     dj.NewCachedCatalog(dj.NewLibraryCatalog(st.Q()), 5*time.Minute, time.Now),
 		Adapters:      st.Q(),
 		PlaylistOwner: st.Q(),
 		Events:        bus,

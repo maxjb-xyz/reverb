@@ -305,6 +305,21 @@ func TestGenreRadio_StaysInTheGenre(t *testing.T) {
 	}
 }
 
+func TestGenreRadio_WithAPeriodStaysInIt(t *testing.T) {
+	e := newEnv(t)
+	e.artistTracks(t, "Old Band", 6, 1994, "Rock")
+	e.artistTracks(t, "New Band", 6, 2021, "Rock")
+	res := e.next(t, Request{Seed: Seed{Kind: SeedGenre, ID: "Rock"}, FromYear: 1990, ToYear: 1999, N: 10})
+	if len(res.Items) == 0 {
+		t.Fatal("no items")
+	}
+	for _, c := range res.Items {
+		if c.artistKey != "old band" {
+			t.Fatalf("left the period: %v", ids(res.Items))
+		}
+	}
+}
+
 func TestLanes(t *testing.T) {
 	e := newEnv(t)
 	seedBonobo(t, e)
