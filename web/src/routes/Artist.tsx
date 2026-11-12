@@ -10,6 +10,8 @@ import { postBatchRequest } from '../lib/requestApi'
 import { useAuthStore } from '../lib/authStore'
 import { useToastStore } from '../lib/toastStore'
 import { Cover, Skeleton, EmptyState, MediaCard, ConfirmDialog } from '../components/ui'
+import { RadioButton } from '../components/radio/RadioButton'
+import { FansAlsoLike } from '../components/radio/FansAlsoLike'
 import { Chip } from '../components/ui/Chip'
 import { Button } from '../components/ui/Button'
 import type { AlbumCoverage, DiscographyAlbum } from '../lib/types'
@@ -311,9 +313,11 @@ export default function Artist() {
                 only Download (the auto_approve branch wins). The download path is
                 guarded by a confirm so a stray click can't enqueue a large batch
                 (spec §10). */}
-            {(canAutoApprove && detail.resolved && allMissingTracks.length > 0) ||
+            {hasLibraryAlbums ||
+            (canAutoApprove && detail.resolved && allMissingTracks.length > 0) ||
             (!canAutoApprove && canRequest && notOwnedRequestItems.length > 0) ? (
-              <div className="mt-4 flex items-center gap-3">
+              <div className="mt-4 flex flex-wrap items-center gap-3">
+                {hasLibraryAlbums && <RadioButton seed={{ kind: 'artist', artist: detail.name }} label="Artist radio" />}
                 {canAutoApprove && detail.resolved && allMissingTracks.length > 0 && (
                   <Button
                     variant="secondary"
@@ -410,6 +414,8 @@ export default function Artist() {
         )}
       </section>
       )}
+
+      <FansAlsoLike artist={detail.name} />
 
       {/* Request all disclosure modal */}
       <ConfirmDialog

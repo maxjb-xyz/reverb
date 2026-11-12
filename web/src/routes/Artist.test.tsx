@@ -9,6 +9,16 @@ import Artist from './Artist'
 
 vi.mock('../lib/useAlbumPalette', () => ({ useAlbumPalette: vi.fn(() => null) }))
 
+// "Fans also like" and the radio button have their own tests.
+vi.mock('../components/radio/FansAlsoLike', () => ({
+  FansAlsoLike: ({ artist }: { artist: string }) => <div data-testid="fans-also-like-stub">{artist}</div>,
+}))
+vi.mock('../components/radio/RadioButton', () => ({
+  RadioButton: ({ label, seed }: { label: string; seed: { kind: string; artist?: string } }) => (
+    <button type="button" data-testid="radio-button" data-seed={`${seed.kind}:${seed.artist}`}>{label}</button>
+  ),
+}))
+
 vi.mock('../lib/coverageApi', () => ({
   useArtistDetail: vi.fn(),
 }))
@@ -461,6 +471,9 @@ describe('Artist page', () => {
     expect(screen.getByTestId('library-albums-section')).toBeInTheDocument()
     expect(screen.getByText('In your library')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'OK Computer' })).toBeInTheDocument()
+    // An artist with music in the library gets a radio station and "Fans also like".
+    expect(screen.getByTestId('radio-button')).toHaveAttribute('data-seed', `artist:${STUB_DETAIL.name}`)
+    expect(screen.getByTestId('fans-also-like-stub')).toHaveTextContent(STUB_DETAIL.name)
   })
 
   it('"In your library" card without an external coverUrl falls back to the library cover proxy', () => {
@@ -577,6 +590,8 @@ describe('Artist page', () => {
     wrapper(<Artist />)
     expect(screen.queryByTestId('library-albums-section')).not.toBeInTheDocument()
     expect(screen.queryByText('In your library')).not.toBeInTheDocument()
+    // Nothing in the library: nothing for a station to play.
+    expect(screen.queryByTestId('radio-button')).not.toBeInTheDocument()
   })
 
   it('"In your library" section is absent when libraryAlbums is undefined', () => {

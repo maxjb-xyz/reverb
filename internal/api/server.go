@@ -13,6 +13,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/maxjb-xyz/reverb/internal/auth"
 	"github.com/maxjb-xyz/reverb/internal/core"
+	"github.com/maxjb-xyz/reverb/internal/engine"
 	"github.com/maxjb-xyz/reverb/internal/events"
 	"github.com/maxjb-xyz/reverb/internal/libindex"
 	"github.com/maxjb-xyz/reverb/internal/library"
@@ -159,6 +160,9 @@ type Deps struct {
 	// LibIndex is the recommendation engine's library index and artist-
 	// similarity map. Nil in tests/legacy wiring — its endpoints answer 503.
 	LibIndex *libindex.Service
+	// Engine picks songs for radio, the DJ's lanes and mixes. Nil in
+	// tests/legacy wiring — its endpoints answer 503.
+	Engine *engine.Engine
 }
 
 type Server struct {
@@ -342,6 +346,8 @@ func (s *Server) routes() {
 			pr.Put("/taste/feedback", s.handleSetTasteFeedback)
 			pr.Delete("/taste/feedback/{kind}/{key}", s.handleClearTasteFeedback)
 			pr.Get("/artists/similar", s.handleSimilarArtists)
+			pr.Post("/engine/next", s.handleEngineNext)
+			pr.Get("/engine/stations", s.handleEngineStations)
 
 			// manage library & integrations: adapter CRUD + server settings.
 			pr.Group(func(mr chi.Router) {

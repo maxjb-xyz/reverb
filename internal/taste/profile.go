@@ -165,6 +165,16 @@ type Profile struct {
 	Artists       map[string]*ArtistTaste
 	HiddenTracks  map[string]bool
 	HiddenArtists map[string]bool
+
+	// Lookups from a library track to its taste, filled at the end of Build.
+	byLib  map[string]*TrackTaste
+	byMeta map[string]*TrackTaste
+}
+
+// metaKey identifies a track by normalized title + artist, the way library
+// tracks are matched to listens recorded before they had a library id.
+func metaKey(title, artist string) string {
+	return matching.Normalize(title) + "\x1f" + ArtistKey(artist)
 }
 
 // ArtistKey is the identity artists are scored under (see matching.ArtistKey).
@@ -360,7 +370,42 @@ func BuildWith(userID string, at time.Time, in Inputs, w Weights) *Profile {
 			p.HiddenArtists[f.TargetKey] = true
 		}
 	}
+	p.index()
 	return p
+}
+
+func (p *Profile) index() {
+	p.byLib = make(map[string]*TrackTaste, len(p.Tracks))
+	p.byMeta = make(map[string]*TrackTaste, len(p.Tracks))
+	better := func(cur, t *TrackTaste) bool {
+		return cur == nil || t.Score > cur.Score || (t.Score == cur.Score && t.CatalogID < cur.CatalogID)
+	}
+	for _, t := range p.Tracks {
+		if t.LibraryTrackID != "" && better(p.byLib[t.LibraryTrackID], t) {
+			p.byLib[t.LibraryTrackID] = t
+		}
+		if k := metaKey(t.Title, t.Artist); better(p.byMeta[k], t) {
+			p.byMeta[k] = t
+		}
+	}
+}
+
+// TrackFor finds the taste of a library track: by its library id when a listen
+// recorded one, else by title and artist. Nil when the user has no history
+// with it.
+func (p *Profile) TrackFor(libraryTrackID, title, artist string) *TrackTaste {
+	if p == nil {
+		return nil
+	}
+	if libraryTrackID != "" {
+		if t := p.byLib[libraryTrackID]; t != nil {
+			return t
+		}
+	}
+	if title == "" {
+		return nil
+	}
+	return p.byMeta[metaKey(title, artist)]
 }
 
 // TrackScore is the track's score (0 when unknown).
