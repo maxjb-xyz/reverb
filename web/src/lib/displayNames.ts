@@ -10,6 +10,8 @@ const ADAPTER_NAMES: Record<string, string> = {
   navidrome: 'Navidrome',
   embedded: 'Built-in library',
   library: 'Library',
+  elevenlabs: 'ElevenLabs',
+  'openai-speech': 'OpenAI-compatible speech',
 }
 
 /** Proper product name for an adapter/source key; unknown keys are capitalised. */

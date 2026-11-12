@@ -132,9 +132,11 @@ export function AdminProviders() {
 
   const searchInstances = list.filter((a) => a.type === 'search')
   const downloaderInstances = list.filter((a) => a.type === 'downloader')
+  const voiceInstances = list.filter((a) => a.type === 'voice')
 
   const searchAvail = avail.filter((a) => a.type === 'search')
   const downloaderAvail = avail.filter((a) => a.type === 'downloader')
+  const voiceAvail = avail.filter((a) => a.type === 'voice')
 
   // Library is single-active: a "switch", not a list — Built-in (bundled, no
   // config) or External (one Subsonic server).
@@ -322,6 +324,19 @@ export function AdminProviders() {
             onRemove={(id) => void onRemove(id)}
             onReorder={(inst, delta) => void onReorder(inst, delta)}
             onMoveInColumn={(col, idx, dir, g) => void moveInColumn(col, idx, dir, g)}
+          />
+
+          <AdapterSection
+            title="DJ voice"
+            subtitle="The first enabled voice speaks for the DJ"
+            type="voice"
+            instances={voiceInstances}
+            available={voiceAvail}
+            onCreate={(name, config) => onCreate('voice', name, config)}
+            onUpdate={onUpdate}
+            onToggle={(inst) => void onToggle(inst)}
+            onRemove={(id) => void onRemove(id)}
+            onReorder={(inst, delta) => void onReorder(inst, delta)}
           />
 
           <ScrobblingSection />

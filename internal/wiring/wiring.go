@@ -25,6 +25,7 @@ import (
 	"github.com/maxjb-xyz/reverb/internal/resolver"
 	"github.com/maxjb-xyz/reverb/internal/search"
 	"github.com/maxjb-xyz/reverb/internal/store/db"
+	"github.com/maxjb-xyz/reverb/internal/voice"
 )
 
 const (
@@ -296,6 +297,8 @@ type ServiceBundle struct {
 	// so the long-lived resolver singleton can re-match against the CURRENT adapter
 	// after a hot-reload rebuilds the bundle. Nil when no library is configured.
 	Matcher resolver.Rematcher
+	// Voice is the DJ's voice; nil when no voice provider is enabled.
+	Voice voice.Voice
 }
 
 // VersionStore is the library_version reader/writer the Manager + matcher need.
@@ -487,6 +490,15 @@ type Builder struct {
 	// canonicalMinter is set by SetCanonicalMinter (Task 5) so BuildSyncService can
 	// forward it to playlistsync.Service via WithCanonicalMinter. Nil-safe.
 	canonicalMinter playlistsync.CanonicalMinter
+	// voiceReg holds the DJ voice adapters. Optional: nil means Build never
+	// produces a voice.
+	voiceReg *registry.Registry
+}
+
+// SetVoiceRegistry gives the Builder the voice adapters so Build can pick the
+// DJ's voice. Call before Build.
+func (b *Builder) SetVoiceRegistry(reg *registry.Registry) {
+	b.voiceReg = reg
 }
 
 // SetResolverProvider injects the resolver provider into the Builder. Call this
@@ -704,6 +716,7 @@ func (b *Builder) Build(ctx context.Context) (ServiceBundle, error) {
 	// Requires a library and a download Manager; Spotify is optional — when no
 	// PlaylistProvider-capable search source is configured, Import/ImportOnce/Sync
 	// return ErrSpotifyNotConfigured but all managed-playlist operations work.
+	bundle.Voice = BuildVoice(b.voiceReg, instances, b.getenv)
 	bundle.Sync = b.BuildSyncService(sources, libAdapter, bundle.Manager)
 	if bundle.Sync != nil {
 		log.Printf("playlist sync service active")

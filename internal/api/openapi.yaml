@@ -411,3 +411,33 @@ paths:
       responses:
         "101": { description: Switching Protocols (WebSocket upgrade) }
         "401": { description: unauthorized }
+  /dj/voice:
+    get:
+      summary: Whether the DJ has a voice configured, and which provider
+      responses:
+        "200": { description: '{"available":bool,"name":string}; name is "" when no voice is enabled' }
+  /dj/say:
+    post:
+      summary: >
+        Render a DJ line with the active voice provider (cached by voice and
+        text) and return a clip URL. Rate-limited per user.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                text: { type: string, maxLength: 600 }
+              required: [text]
+      responses:
+        "200": { description: '{"id":string,"url":"/api/v1/dj/clips/{id}"}' }
+        "400": { description: text empty or longer than 600 characters }
+        "429": { description: too many lines this minute }
+        "502": { description: the voice provider failed }
+        "503": { description: no voice is configured }
+  /dj/clips/{id}:
+    get:
+      summary: A rendered DJ voice clip (immutable; audio/*)
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses: { "200": { description: audio bytes }, "404": { description: clip not found } }

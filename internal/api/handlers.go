@@ -137,7 +137,7 @@ type adapterInfo struct {
 
 func (s *Server) handleAdaptersAvailable(w http.ResponseWriter, r *http.Request) {
 	out := make([]adapterInfo, 0)
-	for _, reg := range []*registry.Registry{s.deps.Lib, s.deps.Search, s.deps.Downloader} {
+	for _, reg := range s.registries() {
 		if reg == nil {
 			continue
 		}
