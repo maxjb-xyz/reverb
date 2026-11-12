@@ -1,30 +1,44 @@
 name: CI
+
+# CI runs once per change: on the pull request. It does not run again on the
+# push that merges the PR into staging or main, because that push holds the
+# code the PR already tested. Workflows that publish a merge commit (Staging
+# Image, Release) check that with .github/scripts/ci-verified.sh, and call
+# this workflow themselves (workflow_call) only when the merged code differs
+# from what was tested.
 on:
-  push:
-    branches: [main, staging]
   pull_request:
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      ref:
+        description: Commit SHA to test
+        type: string
+        required: true
 env:
   GOVULNCHECK_VERSION: v1.6.0
 jobs:
   backend:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v5
+        with: { ref: '${{ inputs.ref }}' }
+      - uses: actions/setup-go@v6
         with: { go-version: '1.26.11', cache: true }
       - run: go vet ./cmd/... ./internal/...
       - run: go test -race ./cmd/... ./internal/... -count=1
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v5
+        with: { ref: '${{ inputs.ref }}' }
+      - uses: actions/setup-go@v6
         with: { go-version: '1.26.11', cache: true }
       - name: Check Go formatting
         run: test -z "$(gofmt -l $(git ls-files '*.go'))"
       - name: Cache golangci-lint
         id: golangci-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/go/bin/golangci-lint
           key: ${{ runner.os }}-golangci-lint-v2.12.2
@@ -37,12 +51,13 @@ jobs:
   govulncheck:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v5
+        with: { ref: '${{ inputs.ref }}' }
+      - uses: actions/setup-go@v6
         with: { go-version: '1.26.11', cache: true }
       - name: Cache govulncheck
         id: govulncheck-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/go/bin/govulncheck
           key: ${{ runner.os }}-govulncheck-${{ env.GOVULNCHECK_VERSION }}
@@ -54,8 +69,9 @@ jobs:
     runs-on: ubuntu-latest
     defaults: { run: { working-directory: web } }
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+        with: { ref: '${{ inputs.ref }}' }
+      - uses: actions/setup-node@v5
         with:
           node-version: '22'
           cache: npm
@@ -68,10 +84,11 @@ jobs:
   docker:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: docker/setup-buildx-action@v3
+      - uses: actions/checkout@v5
+        with: { ref: '${{ inputs.ref }}' }
+      - uses: docker/setup-buildx-action@v4
       - name: Build image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           push: false
@@ -82,8 +99,10 @@ jobs:
           cache-from: type=gha,scope=reverb-amd64
           cache-to: type=gha,mode=max,scope=reverb-amd64
           build-args: |
-            VERSION=${{ github.sha }}
+            VERSION=${{ inputs.ref || github.sha }}
       - name: Smoke-test the image
+        env:
+          EXPECTED_VERSION: ${{ inputs.ref || github.sha }}
         run: |
           docker run -d --name reverb-ci -p 18090:8090 reverb:ci --db /tmp/ci.db
           for i in $(seq 1 20); do
@@ -92,21 +111,22 @@ jobs:
           done
           docker logs reverb-ci
           test "${ok:-0}" = "1"
-          curl -fsS http://localhost:18090/api/v1/version | grep "${GITHUB_SHA}"
+          curl -fsS http://localhost:18090/api/v1/version | grep "${EXPECTED_VERSION}"
           docker rm -f reverb-ci
   e2e:
     runs-on: ubuntu-latest
     defaults: { run: { working-directory: web } }
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+        with: { ref: '${{ inputs.ref }}' }
+      - uses: actions/setup-node@v5
         with:
           node-version: '22'
           cache: npm
           cache-dependency-path: web/package-lock.json
       - run: npm ci
       - name: Cache Playwright browsers
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.cache/ms-playwright
           key: ${{ runner.os }}-playwright-${{ hashFiles('web/package-lock.json') }}
