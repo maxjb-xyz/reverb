@@ -13,13 +13,22 @@ beforeEach(() => useSearch.setState({ query: '' }))
 const postDownloadMock = vi.fn((_req: unknown) => Promise.resolve({ id: 'j-album', status: 'queued' } as never))
 vi.mock('../lib/downloadApi', () => ({
   postDownload: (req: unknown) => postDownloadMock(req),
+  reqFromResult: (r: { source: string; externalId: string }) => ({ source: r.source, externalId: r.externalId }),
 }))
-vi.mock('../lib/downloadStore', () => ({
-  useDownloads: Object.assign(
-    vi.fn(() => ({ byExternal: () => undefined })),
-    { getState: () => ({ upsert: vi.fn() }) },
-  ),
-}))
+// Download jobs the store holds; tests seed this to simulate finished downloads.
+const mockDownloadJobs: Record<string, unknown> = {}
+vi.mock('../lib/downloadStore', () => {
+  const state = () => ({ jobs: mockDownloadJobs, byExternal: () => undefined })
+  return {
+    useDownloads: Object.assign(
+      vi.fn((sel?: (s: ReturnType<typeof state>) => unknown) => (sel ? sel(state()) : state())),
+      { getState: () => ({ upsert: vi.fn() }) },
+    ),
+  }
+})
+afterEach(() => {
+  for (const k of Object.keys(mockDownloadJobs)) delete mockDownloadJobs[k]
+})
 vi.mock('../lib/adaptersApi', () => ({
   useAdapters: vi.fn(() => ({ data: [] })),
 }))
@@ -309,3 +318,94 @@ describe('Search (blended results)', () => {
 
 })
 
+
+describe('Search (song downloaded from this page)', () => {
+  let inst: { onmessage: ((ev: { data: string }) => void) | null } | null = null
+
+  beforeEach(() => {
+    inst = null
+    postDownloadMock.mockClear()
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        new Response(JSON.stringify({ tracks: [], albums: [], artists: [] }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      ),
+    )
+    class StubES {
+      onmessage: ((ev: { data: string }) => void) | null = null
+      onerror: (() => void) | null = null
+      constructor() { inst = this }
+      close() {}
+    }
+    vi.stubGlobal('EventSource', StubES as unknown as typeof EventSource)
+  })
+  afterEach(() => vi.unstubAllGlobals())
+
+  // The search stream still says "not in library": it was captured before the
+  // download finished.
+  async function renderWithExternalResult() {
+    render(wrap(<Search />))
+    fireEvent.change(screen.getByPlaceholderText(/search your library/i), { target: { value: 'fresh' } })
+    await waitFor(() => expect(inst).not.toBeNull())
+    act(() => {
+      inst!.onmessage?.({
+        data: JSON.stringify({
+          source: 'spotify',
+          status: 'ok',
+          results: [
+            {
+              source: 'spotify',
+              externalId: 'sp-fresh',
+              title: 'Fresh Download',
+              artist: 'B',
+              album: 'B',
+              durationMs: 200000,
+              type: 'track',
+              match: { status: 'not_in_library', libraryTrackId: '', method: 'none', confidence: 0 },
+            },
+          ],
+        }),
+      })
+    })
+    await waitFor(() => expect(screen.getByText('Fresh Download')).toBeInTheDocument())
+  }
+
+  it('plays the library copy instead of downloading again once the download is linked', async () => {
+    mockDownloadJobs['j1'] = {
+      id: 'j1', status: 'completed', source: 'spotify', externalId: 'sp-fresh',
+      libraryTrackId: 'lib-fresh', coverArtId: 'cov-fresh',
+    }
+    const spy = vi.spyOn(engine, 'playTrackList').mockImplementation(() => {})
+    await renderWithExternalResult()
+
+    fireEvent.doubleClick(screen.getByText('Fresh Download'))
+
+    expect(postDownloadMock).not.toHaveBeenCalled()
+    expect(spy).toHaveBeenCalledOnce()
+    const [list, index] = spy.mock.calls[0]
+    expect(index).toBe(0)
+    expect(list[0]).toMatchObject({ id: 'lib-fresh', title: 'Fresh Download', coverArtId: 'cov-fresh' })
+    spy.mockRestore()
+  })
+
+  it('does not start a second download while the library is still indexing the file', async () => {
+    mockDownloadJobs['j1'] = { id: 'j1', status: 'completed', source: 'spotify', externalId: 'sp-fresh' }
+    const spy = vi.spyOn(engine, 'playTrackList').mockImplementation(() => {})
+    await renderWithExternalResult()
+
+    fireEvent.doubleClick(screen.getByText('Fresh Download'))
+
+    expect(postDownloadMock).not.toHaveBeenCalled()
+    expect(spy).not.toHaveBeenCalled()
+    spy.mockRestore()
+  })
+
+  it('still downloads a song that has never been downloaded', async () => {
+    await renderWithExternalResult()
+    fireEvent.doubleClick(screen.getByText('Fresh Download'))
+    expect(postDownloadMock).toHaveBeenCalledOnce()
+  })
+})
