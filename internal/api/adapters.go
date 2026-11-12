@@ -53,7 +53,7 @@ type updateAdapterBody struct {
 
 // registries returns the adapter registries in a stable order for lookup.
 func (s *Server) registries() []*registry.Registry {
-	return []*registry.Registry{s.deps.Lib, s.deps.Search, s.deps.Downloader, s.deps.VoiceReg, s.deps.LLMReg}
+	return []*registry.Registry{s.deps.Lib, s.deps.Search, s.deps.Downloader, s.deps.VoiceReg, s.deps.LLMReg, s.deps.AnalyzerReg}
 }
 
 // schemaFor finds the ConfigSchema for an adapter name across all registries.

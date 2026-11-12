@@ -517,6 +517,22 @@ paths:
     post:
       summary: Queue a re-index of the library and similarity map now (managers).
       responses: { "202": { description: queued }, "403": { description: not a manager } }
+  /engine/analysis:
+    get:
+      summary: >
+        Optional audio analysis status (managers). With an "analyzer" provider
+        configured (for example audio-sidecar pointed at Reverb's reference
+        service), Reverb sends each library song to it in the background and
+        stores an embedding; radio and the sounds-like lane then add songs that
+        sound alike (reason kind sounds_like, with seedTitle and seedArtist).
+      responses:
+        "200": { description: "{ enabled, running, model?, analyzed, failed, total, lastError? }" }
+        "403": { description: not a manager }
+        "503": { description: audio analysis unavailable }
+  /engine/analysis/run:
+    post:
+      summary: Carry on analyzing now instead of at the next tick (managers).
+      responses: { "202": { description: queued }, "403": { description: not a manager } }
   /engine/next:
     post:
       summary: >
@@ -549,7 +565,7 @@ paths:
                 includeExternal: { type: boolean, description: "Also suggest songs that aren't in the library (owned: false, external set)." }
                 n: { type: integer, description: "batch size, default 20, max 100" }
       responses:
-        "200": { description: "{ station: { id, kind, lane, label }, items: [{ owned, track?, external?, year, genres, score, reason: { kind, artist, artistKey, seedArtist, genre, year, playCount } }] }" }
+        "200": { description: "{ station: { id, kind, lane, label }, items: [{ owned, track?, external?, year, genres, score, reason: { kind, artist, artistKey, seedArtist, seedTitle, genre, year, playCount } }] }" }
         "400": { description: invalid station or lane }
         "404": { description: seed track not in the library index }
   /engine/stations:

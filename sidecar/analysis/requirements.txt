@@ -1,0 +1,8 @@
+# Torch comes from the base image (CUDA or CPU build).
+laion-clap==1.1.7
+# laion-clap's checkpoints don't load on newer transformers (an extra
+# position_ids key), so stay on the last release they were trained against.
+transformers==4.30.2
+librosa==0.10.2.post1
+numpy>=1.23.5,<2
+huggingface_hub>=0.23,<1

@@ -17,6 +17,7 @@ package engine
 import (
 	"context"
 	"errors"
+	"github.com/maxjb-xyz/reverb/internal/analysis"
 	"math"
 	"math/rand"
 	"sort"
@@ -73,6 +74,7 @@ const (
 	ReasonThrowback     = "throwback"      // from the requested period
 	ReasonDiscovery     = "discovery"      // not in the library: a song to get
 	ReasonLibrary       = "library"        // filler from the wider library
+	ReasonSound         = "sounds_like"    // sounds like the seed (optional audio analysis)
 )
 
 // ErrInvalid is returned for a request the engine can't serve (bad lane, no seed).
@@ -114,7 +116,8 @@ type Reason struct {
 	Kind       string `json:"kind"`
 	Artist     string `json:"artist,omitempty"`
 	ArtistKey  string `json:"artistKey,omitempty"`
-	SeedArtist string `json:"seedArtist,omitempty"` // for similar_artist: whose fans
+	SeedArtist string `json:"seedArtist,omitempty"` // for similar_artist: whose fans; for sounds_like: the seed artist
+	SeedTitle  string `json:"seedTitle,omitempty"`  // for sounds_like from a song: that song
 	Genre      string `json:"genre,omitempty"`
 	Year       int    `json:"year,omitempty"`
 	PlayCount  int    `json:"playCount,omitempty"`
@@ -207,8 +210,33 @@ type Engine struct {
 	now     func() time.Time
 	opt     Options
 
-	mu  sync.Mutex
-	rng *rand.Rand
+	mu    sync.Mutex
+	rng   *rand.Rand
+	sonic SonicSource
+}
+
+// SonicSource answers "which library songs sound like these" from the
+// optional audio analysis. Ready is false until enough is analyzed.
+type SonicSource interface {
+	Ready(ctx context.Context) bool
+	SimilarTo(ctx context.Context, ids []string, n int) ([]analysis.Neighbor, error)
+}
+
+// SetSonic plugs in audio analysis (call before serving; nil turns it off).
+func (e *Engine) SetSonic(s SonicSource) {
+	e.mu.Lock()
+	e.sonic = s
+	e.mu.Unlock()
+}
+
+func (e *Engine) sonicSource(ctx context.Context) SonicSource {
+	e.mu.Lock()
+	s := e.sonic
+	e.mu.Unlock()
+	if s == nil || !s.Ready(ctx) {
+		return nil
+	}
+	return s
 }
 
 // New builds an engine. rng may be nil (seeded from the clock).
@@ -442,6 +470,7 @@ func titleCase(s string) string {
 
 // Source caps: how many candidates each source may contribute.
 const (
+	capSound      = 40
 	capSeedArtist = 25
 	capSimilar    = 80
 	capGenre      = 60
@@ -456,6 +485,9 @@ func (e *Engine) gather(ctx context.Context, p *pool, prof *taste.Profile, req R
 	case LaneRadio:
 		switch req.Seed.Kind {
 		case SeedTrack, SeedArtist:
+			if err := e.fromSound(ctx, p, seed, 0.8); err != nil {
+				return err
+			}
 			if err := e.fromArtists(ctx, p, []string{seed.artistKey}, capSeedArtist, 0.55, func(t db.LibraryTrack) Reason {
 				return Reason{Kind: ReasonSeedArtist, Artist: matching.PrimaryArtist(t.Artist), ArtistKey: t.ArtistKey}
 			}); err != nil {
@@ -521,6 +553,9 @@ func (e *Engine) gather(ctx context.Context, p *pool, prof *taste.Profile, req R
 		}
 		return e.fromRandom(ctx, p, 60, 0.1)
 	case LaneSoundsLike:
+		if err := e.fromSound(ctx, p, seed, 1.0); err != nil {
+			return err
+		}
 		if err := e.fromSimilar(ctx, p, seed.artistKey, seed.artistName, 0.9); err != nil {
 			return err
 		}
@@ -606,6 +641,53 @@ func (e *Engine) fromSimilar(ctx context.Context, p *pool, artistKey, artistName
 		b := base * (1 - 0.4*float64(rank[t.ArtistKey])/float64(similarFanout))
 		p.add(owned(t, b, Reason{
 			Kind: ReasonSimilarArtist, Artist: matching.PrimaryArtist(t.Artist), ArtistKey: t.ArtistKey, SeedArtist: artistName,
+		}))
+	}
+	return nil
+}
+
+// fromSound adds songs that sound like the seed song (or, for an artist,
+// like a handful of their songs), when audio analysis is set up.
+func (e *Engine) fromSound(ctx context.Context, p *pool, seed seedInfo, base float64) error {
+	sonic := e.sonicSource(ctx)
+	if sonic == nil {
+		return nil
+	}
+	var ids []string
+	title := ""
+	if seed.track != nil {
+		ids, title = []string{seed.track.LibraryTrackID}, seed.track.Title
+	} else if seed.artistKey != "" {
+		rows, err := e.q.ListLibraryTracksByArtistKeys(ctx, []string{seed.artistKey})
+		if err != nil {
+			return err
+		}
+		e.shuffle(len(rows), func(i, j int) { rows[i], rows[j] = rows[j], rows[i] })
+		for _, t := range rows[:min(len(rows), 12)] {
+			ids = append(ids, t.LibraryTrackID)
+		}
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	near, err := sonic.SimilarTo(ctx, ids, capSound)
+	if err != nil || len(near) == 0 {
+		return err
+	}
+	nids := make([]string, len(near))
+	rank := map[string]int{}
+	for i, nb := range near {
+		nids[i] = nb.ID
+		rank[nb.ID] = i
+	}
+	rows, err := e.q.ListLibraryTracksByIDs(ctx, nids)
+	if err != nil {
+		return err
+	}
+	for _, t := range rows {
+		b := base * (1 - 0.5*float64(rank[t.LibraryTrackID])/float64(len(near)))
+		p.add(owned(t, b, Reason{
+			Kind: ReasonSound, Artist: matching.PrimaryArtist(t.Artist), ArtistKey: t.ArtistKey, SeedArtist: seed.artistName, SeedTitle: title,
 		}))
 	}
 	return nil

@@ -374,6 +374,16 @@ type TasteSignal struct {
 	CreatedAt  int64  `json:"created_at"`
 }
 
+type TrackFeature struct {
+	LibraryTrackID string  `json:"library_track_id"`
+	Model          string  `json:"model"`
+	Embedding      []byte  `json:"embedding"`
+	Tempo          float64 `json:"tempo"`
+	Energy         float64 `json:"energy"`
+	Error          string  `json:"error"`
+	AnalyzedAt     int64   `json:"analyzed_at"`
+}
+
 type User struct {
 	ID           string        `json:"id"`
 	Username     string        `json:"username"`

@@ -119,6 +119,8 @@ describe('reasonText', () => {
     expect(reasonText({ kind: 'similar_artist', artist: 'Tycho', seedArtist: 'Bonobo' })).toBe('Fans of Bonobo play Tycho')
     expect(reasonText({ kind: 'on_repeat', playCount: 6 })).toBe("You've played this 6×")
     expect(reasonText({ kind: 'genre', genre: 'Jazz' })).toBe('More Jazz')
+    expect(reasonText({ kind: 'sounds_like', seedTitle: 'Kerala', seedArtist: 'Bonobo' })).toBe('Sounds like Kerala')
+    expect(reasonText({ kind: 'sounds_like', seedArtist: 'Bonobo' })).toBe('Sounds like Bonobo')
     expect(reasonText({ kind: 'library' })).toBe('From your library')
   })
 })

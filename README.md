@@ -58,6 +58,10 @@ _The web player — queue, shuffle, repeat, seek, and keyboard shortcuts._
 - One-click spotDL downloads with live progress and auto play-when-ready, plus
   optional authenticated YouTube cookies and automatic cooldown/retry pacing for
   rate limits and bot challenges.
+- Its own recommendation engine: radio from any song, artist or genre, daily and
+  custom mixes, and Discover Weekly, which downloads new music ahead of time and
+  keeps what you add to a playlist (configurable). Optional audio analysis on a
+  GPU adds "sounds like" picks; see [sidecar/analysis](sidecar/analysis/README.md).
 - Pluggable adapters (library / search / downloader) configured in-app, with a
   first-run setup wizard.
 - Single static binary, SPA embedded; ships as one Docker image (Python3 +

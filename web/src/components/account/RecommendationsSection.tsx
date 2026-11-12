@@ -1,6 +1,6 @@
 import { Button, EmptyState } from '../ui'
 import { useTasteFeedback, useUnhide } from '../../lib/tasteApi'
-import { useIndexStatus, useRebuildIndex } from '../../lib/engineApi'
+import { useAnalysisStatus, useIndexStatus, useRebuildIndex, useRunAnalysis } from '../../lib/engineApi'
 import { useAuthStore, isManagerCaps } from '../../lib/authStore'
 import { DiscoverSettings } from './DiscoverSettings'
 
@@ -29,6 +29,30 @@ function IndexStatusRow() {
   )
 }
 
+/** Managers see how far the optional audio analysis has got. Hidden until an analyzer is set up. */
+function AnalysisStatusRow() {
+  const { data } = useAnalysisStatus(true)
+  const run = useRunAnalysis()
+  if (!data?.enabled) return null
+  const nf = new Intl.NumberFormat()
+  let text = `${nf.format(data.analyzed)} of ${nf.format(data.total)} songs analyzed.`
+  if (data.running) text = `Analyzing… ${text}`
+  if (data.failed) text += ` ${nf.format(data.failed)} couldn't be read and will be tried again later.`
+  if (data.analyzed < 50) text += ' Radio starts adding songs that sound alike once 50 are done.'
+  return (
+    <div className="flex items-start gap-5 border-b border-border-subtle pb-5" data-testid="analysis-status">
+      <div className="min-w-0 flex-1">
+        <div className="text-sm font-bold text-text-primary">Audio analysis</div>
+        <div className="mt-0.5 text-xs text-text-secondary">{text}</div>
+        {data.lastError && <div className="mt-1 text-xs text-error">Last problem: {data.lastError}</div>}
+      </div>
+      <Button variant="secondary" size="sm" disabled={run.isPending || data.running || data.analyzed + data.failed >= data.total} onClick={() => run.mutate()}>
+        Continue now
+      </Button>
+    </div>
+  )
+}
+
 /**
  * Settings → Recommendations: Discover Weekly, then the songs and artists the
  * user said "not for me" to, with a way to bring each back.
@@ -44,6 +68,7 @@ export function RecommendationsSection() {
   return (
     <div className="space-y-6">
       {isManager && <IndexStatusRow />}
+      {isManager && <AnalysisStatusRow />}
       <DiscoverSettings isManager={isManager} />
       <div>
         <div className="text-sm font-bold text-text-primary">Hidden from recommendations</div>
