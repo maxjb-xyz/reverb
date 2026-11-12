@@ -135,6 +135,7 @@ describe('Mix page', () => {
     wrap(<MixPage />, '/mix/m1')
     expect(await screen.findByRole('heading', { name: 'Daily Mix 1' })).toBeInTheDocument()
     expect(screen.getByText('Fans of Bonobo play Tycho')).toBeInTheDocument()
+    expect(screen.getByTestId('mix-tracks').textContent).toMatch(/^1\D/)
     expect(screen.queryByRole('button', { name: 'Edit' })).not.toBeInTheDocument() // daily mixes are Reverb's
     fireEvent.click(screen.getAllByRole('button', { name: 'Play Daily Mix 1' })[0])
     expect(player.playTrackList).toHaveBeenCalledWith([track('a'), track('b')], 0, { kind: 'mix', id: 'm1' })

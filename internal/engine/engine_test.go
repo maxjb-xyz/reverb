@@ -589,3 +589,15 @@ func TestSound_TrackRadioAndSoundsLikeUseAudioAnalysisWhenReady(t *testing.T) {
 		t.Fatalf("asked = %v", sonic.asked)
 	}
 }
+
+func TestGenreRadio_FewAlbumsStillFillTheStation(t *testing.T) {
+	e := newEnv(t)
+	// One band, two albums of eight: the album cap would stop at four.
+	for i := 0; i < 16; i++ {
+		e.add(t, trk{id: fmt.Sprintf("m-%d", i), title: fmt.Sprintf("Metal song %d", i), artist: "Metallica", album: fmt.Sprintf("Album %d", i/8), year: 1991, genres: []string{"Metal"}})
+	}
+	res := e.next(t, Request{Seed: Seed{Kind: SeedGenre, ID: "Metal"}, N: 10})
+	if len(res.Items) != 10 {
+		t.Fatalf("genre radio over two albums gave %d songs, want 10: %v", len(res.Items), ids(res.Items))
+	}
+}

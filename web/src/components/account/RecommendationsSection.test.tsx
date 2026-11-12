@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 
 const getTasteFeedback = vi.fn()
@@ -7,6 +7,8 @@ const getIndex = vi.fn()
 const getAnalysis = vi.fn()
 const del = vi.fn()
 const post = vi.fn()
+const put = vi.fn()
+const getEngineSettings = vi.fn()
 vi.mock('../../lib/api', () => ({
   api: {
     get: (p: string) =>
@@ -16,9 +18,12 @@ vi.mock('../../lib/api', () => ({
           ? getIndex()
           : p === '/engine/analysis'
             ? getAnalysis()
-            : Promise.reject(new Error(p)),
+            : p === '/engine/settings'
+              ? getEngineSettings()
+              : Promise.reject(new Error(p)),
     del: (p: string) => del(p),
     post: (p: string) => post(p),
+    put: (p: string, b?: unknown) => put(p, b),
   },
 }))
 let caps: string[] = []
@@ -43,6 +48,8 @@ beforeEach(() => {
   caps = []
   del.mockResolvedValue(null)
   getAnalysis.mockResolvedValue({ enabled: false, running: false, analyzed: 0, failed: 0, total: 0 })
+  getEngineSettings.mockResolvedValue({ deezer: true })
+  put.mockImplementation((_p: string, b: unknown) => Promise.resolve(b))
 })
 
 describe('RecommendationsSection', () => {
@@ -74,6 +81,27 @@ describe('RecommendationsSection', () => {
     expect(await screen.findByText(/1,234 songs by 56 artists\. Similar artists found for 40/)).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Rebuild now' }))
     await waitFor(() => expect(post).toHaveBeenCalledWith('/engine/index/rebuild'))
+  })
+
+  it('names where similar artists come from', async () => {
+    caps = ['manage_server']
+    getTasteFeedback.mockResolvedValue([])
+    getIndex.mockResolvedValue({ running: false, tracks: 95, artists: 12, artistsWithSimilar: 10, lastIndexedAt: 1, similarSources: ['deezer'] })
+    renderIt()
+    expect(await screen.findByText(/Similar artists found for 10 of them, from Deezer\./)).toBeInTheDocument()
+  })
+
+  it('explains when nothing can find similar artists and lets managers switch Deezer back on', async () => {
+    caps = ['manage_server']
+    getTasteFeedback.mockResolvedValue([])
+    getIndex.mockResolvedValue({ running: false, tracks: 95, artists: 12, artistsWithSimilar: 0, lastIndexedAt: 1, similarSources: [] })
+    getEngineSettings.mockResolvedValue({ deezer: false })
+    renderIt()
+    expect(await screen.findByText(/Nothing can look up similar artists/)).toBeInTheDocument()
+    const row = await screen.findByTestId('engine-deezer')
+    expect(row).toHaveTextContent('Use Deezer for recommendations')
+    fireEvent.click(within(row).getByRole('tab', { name: 'On' }))
+    await waitFor(() => expect(put).toHaveBeenCalledWith('/engine/settings', { deezer: true }))
   })
 
   it('shows managers audio analysis progress once an analyzer is set up', async () => {

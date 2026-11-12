@@ -98,6 +98,21 @@ describe('Discover page', () => {
     expect(player.playTrackList).toHaveBeenCalledWith([track('a'), track('b')], 0, { kind: 'discover', id: '2027-W02' })
   })
 
+  it('numbers the songs from 1', async () => {
+    get.mockImplementation((p: string) => (p === '/discover' ? Promise.resolve(week()) : Promise.reject(new Error(p))))
+    wrap(<Discover />)
+    const list = await screen.findByTestId('discover-tracks')
+    expect(list.textContent).toMatch(/^1\D/)
+  })
+
+  it('says so when every pick is already in the library', async () => {
+    get.mockImplementation((p: string) =>
+      p === '/discover' ? Promise.resolve(week({ items: [week().items[2]] })) : Promise.reject(new Error(p)),
+    )
+    wrap(<Discover />)
+    expect(await screen.findByTestId('discover-blurb')).toHaveTextContent('from your library for now')
+  })
+
   it('says when Discover Weekly is off', async () => {
     get.mockImplementation((p: string) => (p === '/discover' ? Promise.resolve(week({ prefs: { ...prefs, enabled: false }, items: [] })) : Promise.reject(new Error(p))))
     wrap(<Discover />)

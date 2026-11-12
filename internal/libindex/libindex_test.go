@@ -227,3 +227,19 @@ func TestRun_NoLibraryIsANoop(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestStatus_NamesTheSimilarArtistSources(t *testing.T) {
+	e := newEnv(t)
+	st, err := e.svc.Status(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(st.SimilarSources) != 1 || st.SimilarSources[0] != "deezer" {
+		t.Fatalf("similarSources = %v, want [deezer]", st.SimilarSources)
+	}
+	e.svc.live = func() (library.LibraryAdapter, []search.SearchSource) { return e.lib, nil }
+	st, _ = e.svc.Status(context.Background())
+	if st.SimilarSources == nil || len(st.SimilarSources) != 0 {
+		t.Fatalf("similarSources with no source = %#v, want an empty list", st.SimilarSources)
+	}
+}
