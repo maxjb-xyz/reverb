@@ -248,3 +248,68 @@ describe('AudioEngine stream-error recovery', () => {
     expect(engine.getState().playing).toBe(true) // still playing (skipped to next)
   })
 })
+
+describe('AudioEngine session restore', () => {
+  const snap = (over: Partial<Parameters<AudioEngine['restore']>[0]> = {}) => ({
+    queue: [track('1'), track('2'), track('3')],
+    index: 1,
+    positionMs: 400,
+    volume: 0.5,
+    shuffle: false,
+    repeat: 'all' as const,
+    ...over,
+  })
+
+  it('restores queue, track, position and settings without playing or fetching', () => {
+    const { engine, audios: els } = newEngine()
+    engine.restore(snap())
+    const s = engine.getState()
+    expect(s.current?.id).toBe('2')
+    expect(s.queue.map((t) => t.id)).toEqual(['1', '2', '3'])
+    expect(s.playing).toBe(false)
+    expect(s.currentTimeMs).toBe(400)
+    expect(s.volume).toBe(0.5)
+    expect(s.repeat).toBe('all')
+    expect(els[0].src).toBe('') // nothing loaded until play
+  })
+
+  it('play after a restore loads the track and resumes from the saved position', () => {
+    const { engine, audios: els } = newEngine()
+    engine.restore(snap())
+    engine.play()
+    expect(els[0].src).toContain('2')
+    expect(els[0].currentTime).toBeCloseTo(0.4)
+    expect(engine.getState().playing).toBe(true)
+  })
+
+  it('skipping after a restore starts the next track from the beginning', () => {
+    const { engine, audios: els } = newEngine()
+    engine.restore(snap())
+    engine.next()
+    expect(engine.getState().current?.id).toBe('3')
+    expect(engine.getState().currentTimeMs).toBe(0)
+    expect(els[0].currentTime).toBe(0)
+  })
+
+  it('scrubbing before pressing play moves the resume point', () => {
+    const { engine, audios: els } = newEngine()
+    engine.restore(snap())
+    engine.seekMs(800)
+    engine.play()
+    expect(els[0].currentTime).toBeCloseTo(0.8)
+  })
+
+  it('does not overwrite a queue that is already there', () => {
+    const { engine } = newEngine()
+    engine.playTrackList([track('9')], 0)
+    engine.restore(snap())
+    expect(engine.getState().current?.id).toBe('9')
+  })
+
+  it('snapshot round-trips through restore', () => {
+    const { engine } = newEngine()
+    engine.restore(snap())
+    expect(engine.snapshot()).toEqual(snap())
+  })
+})
+

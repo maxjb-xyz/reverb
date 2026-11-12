@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { useParams, useNavigate, Link } from 'react-router-dom'
+import { useParams, useNavigate, useLocation, Link } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import {
   useSyncedPlaylist,
@@ -106,6 +106,22 @@ export default function SyncedPlaylist() {
   const [editingName, setEditingName] = useState(false)
   const [nameInput, setNameInput] = useState('')
   const nameInputRef = useRef<HTMLInputElement>(null)
+  // A playlist that was just created opens with its title ready to type over,
+  // so nobody ends up with a row of playlists all called "New playlist".
+  const location = useLocation()
+  const openRenaming = (location.state as { rename?: boolean } | null)?.rename === true
+  const detailName = detail?.name
+  // Adjusted during render (not in an effect) so the editor is open on first paint.
+  const [renameArmed, setRenameArmed] = useState(openRenaming)
+  if (renameArmed && detailName !== undefined) {
+    setRenameArmed(false)
+    setNameInput(detailName)
+    setEditingName(true)
+  }
+  useEffect(() => {
+    // Drop the flag so a reload or Back does not reopen the editor.
+    if (openRenaming) navigate(location.pathname, { replace: true, state: null })
+  }, [openRenaming, navigate, location.pathname])
   // Set synchronously by Escape so the blur-triggered handleRename can tell a
   // cancel from a save (React state wouldn't flush before the blur fires).
   const renameCancelledRef = useRef(false)
@@ -241,6 +257,7 @@ export default function SyncedPlaylist() {
     try {
       await renameSyncedPlaylist(id, trimmed)
       void qc.invalidateQueries({ queryKey: ['synced-playlist', id] })
+      void qc.invalidateQueries({ queryKey: ['synced-playlists'] })
     } catch {
       // silent — title will revert on next render
     }
@@ -408,6 +425,7 @@ export default function SyncedPlaylist() {
                   if (e.key === 'Enter') { e.currentTarget.blur() }
                   if (e.key === 'Escape') { renameCancelledRef.current = true; e.currentTarget.blur() }
                 }}
+                onFocus={(e) => e.currentTarget.select()}
                 autoFocus
               />
             ) : (

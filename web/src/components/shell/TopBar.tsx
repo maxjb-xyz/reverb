@@ -5,7 +5,7 @@ import { SearchSuggest } from '../search/SearchSuggest'
 import { useUI } from '../../lib/uiStore'
 import { useDownloads } from '../../lib/downloadStore'
 import { useSearch } from '../../lib/searchStore'
-import { useAuthStore, isManagerCaps } from '../../lib/authStore'
+import { useAuthStore } from '../../lib/authStore'
 import { useRequestStore } from '../../lib/requestApi'
 import { NotificationBell } from '../NotificationBell'
 
@@ -16,10 +16,6 @@ export function TopBar() {
   const query = useSearch((s) => s.query)
   const setQuery = useSearch((s) => s.setQuery)
 
-  // Defense-in-depth: hide the Admin entry for users without a management
-  // capability (the backend enforces this regardless). Account/Settings stay
-  // available to every authenticated user.
-  const isManager = useAuthStore((s) => isManagerCaps(s.me?.capabilities))
   const username = useAuthStore((s) => s.me?.username)
   const canRequest = useAuthStore((s) => s.can('request'))
   const canManageRequests = useAuthStore((s) => s.can('manage_requests'))
@@ -246,9 +242,21 @@ export function TopBar() {
               >
                 Settings
               </button>
-              {/* Phones only (md:hidden): desktop reaches Requests from the top bar
-                  and Collection from the library page; the bottom tab bar has no
-                  room for either, so without these they are unreachable. */}
+              {/* Phones only (md:hidden): the bottom tab bar holds Home, Search,
+                  Library and Downloads. Everything else a phone needs is here;
+                  desktop reaches these from the top bar and the library page. */}
+              <button
+                role="menuitem"
+                type="button"
+                onClick={() => { setMenuOpen(false); navigate('/stats') }}
+                className={[
+                  'w-full text-left px-4 py-2 text-sm text-text-primary md:hidden',
+                  'hover:bg-raised-hover transition-colors',
+                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-inset',
+                ].join(' ')}
+              >
+                Stats
+              </button>
               {canRequest && (
                 <button
                   role="menuitem"
@@ -266,29 +274,15 @@ export function TopBar() {
               <button
                 role="menuitem"
                 type="button"
-                onClick={() => { setMenuOpen(false); navigate('/collection') }}
+                onClick={() => { setMenuOpen(false); navigate('/discographies') }}
                 className={[
                   'w-full text-left px-4 py-2 text-sm text-text-primary md:hidden',
                   'hover:bg-raised-hover transition-colors',
                   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-inset',
                 ].join(' ')}
               >
-                Collection
+                Discographies
               </button>
-              {isManager && (
-                <button
-                  role="menuitem"
-                  type="button"
-                  onClick={() => { setMenuOpen(false); navigate('/admin') }}
-                  className={[
-                    'w-full text-left px-4 py-2 text-sm text-text-primary',
-                    'hover:bg-raised-hover transition-colors',
-                    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-inset',
-                  ].join(' ')}
-                >
-                  Admin
-                </button>
-              )}
               <button
                 role="menuitem"
                 type="button"

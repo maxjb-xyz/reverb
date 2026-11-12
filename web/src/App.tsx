@@ -10,6 +10,8 @@ import { useAuthStore, isManagerCaps } from './lib/authStore'
 import Login from './routes/Login'
 import Setup from './routes/Setup'
 import Signup from './routes/Signup'
+import { engine } from './lib/playerStore'
+import { startPlayerPersistence } from './lib/playerPersistence'
 import { Button } from './components/ui/Button'
 import { Logo } from './components/ui/Logo'
 
@@ -97,6 +99,14 @@ function Routed() {
     if (s.authenticated && !me) void refresh()
   }, [s.authenticated, me, refresh])
 
+  // Bring back the last queue and position for this user (paused), and keep
+  // saving it while they listen.
+  const userId = me?.id
+  useEffect(() => {
+    if (!userId) return
+    return startPlayerPersistence(engine, userId)
+  }, [userId])
+
   if (s.loading) return <BootScreen />
   if (s.error)
     return (
@@ -127,7 +137,8 @@ function Routed() {
         <Route path="/" element={<Home />} />
         <Route path="/search" element={<Search />} />
         <Route path="/library" element={<Library />} />
-        <Route path="/collection" element={<Collection />} />
+        <Route path="/discographies" element={<Collection />} />
+        <Route path="/collection" element={<Navigate to="/discographies" replace />} />
         <Route path="/album/:source/:id" element={<Album />} />
         <Route path="/album/:id" element={<RedirectToLibrary kind="album" />} />
         <Route path="/artist/:source/:id" element={<Artist />} />
@@ -138,6 +149,7 @@ function Routed() {
         <Route path="/stats" element={<Stats />} />
         <Route path="/account" element={<Account />} />
         <Route path="/settings" element={<Settings />} />
+        <Route path="/settings/:section" element={<Settings />} />
         <Route
           path="/admin"
           element={

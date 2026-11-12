@@ -30,15 +30,15 @@ export function LibraryRail() {
 
   const isLoading = activeQuery.isLoading
 
-  // Create a managed playlist, then navigate to it.
+  // Create a managed playlist, then open it with the title in edit mode.
   async function handleCreatePlaylist() {
     if (creating) return
     setCreating(true)
     try {
-      const pl = await createPlaylist('New Playlist')
+      const pl = await createPlaylist('New playlist')
       await qc.invalidateQueries({ queryKey: ['synced-playlists'] })
       setFilter('playlists')
-      navigate(`/playlist/${pl.id}`)
+      navigate(`/playlist/${pl.id}`, { state: { rename: true } })
     } catch {
       // Needs a connected library provider; nothing to do otherwise.
     } finally {
