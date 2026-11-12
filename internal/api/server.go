@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"database/sql"
+	"github.com/maxjb-xyz/reverb/internal/analysis"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -158,6 +159,10 @@ type Deps struct {
 	Voice VoiceService
 	// LLMReg holds the DJ writer models, shown with the other providers.
 	LLMReg *registry.Registry
+	// AnalyzerReg holds the optional audio analyzers, shown with the other providers.
+	AnalyzerReg *registry.Registry
+	// Analysis runs the optional audio analysis (nil in tests that don't need it).
+	Analysis *analysis.Service
 	// LLM writes DJ lines. Nil means templates only.
 	LLM LLMService
 	// DJCatalog lists the library's artists and genres for reading DJ
@@ -393,6 +398,8 @@ func (s *Server) routes() {
 				mr.Get("/settings", s.handleGetSettings)
 				mr.Get("/engine/index", s.handleIndexStatus)
 				mr.Post("/engine/index/rebuild", s.handleIndexRebuild)
+				mr.Get("/engine/analysis", s.handleAnalysisStatus)
+				mr.Post("/engine/analysis/run", s.handleAnalysisRun)
 				mr.Get("/discover/settings", s.handleGetDiscoverSettings)
 				mr.Put("/discover/settings", s.handlePutDiscoverSettings)
 				mr.Put("/settings", s.handlePutSettings)

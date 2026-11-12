@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/maxjb-xyz/reverb/internal/analysis"
 	"log"
 	"strconv"
 	"sync"
@@ -302,6 +303,8 @@ type ServiceBundle struct {
 	Voice voice.Voice
 	// LLM writes the DJ's lines; nil when no model provider is enabled.
 	LLM llm.LLM
+	// Analyzer is the optional audio analyzer; nil when none is enabled.
+	Analyzer analysis.Analyzer
 	// Sources are the enabled search sources, exposed so long-lived services
 	// (the recommendation index) can reach the live set after a hot-reload.
 	Sources []search.SearchSource
@@ -501,6 +504,13 @@ type Builder struct {
 	voiceReg *registry.Registry
 	// llmReg holds the DJ writer models. Optional, like voiceReg.
 	llmReg *registry.Registry
+	// analyzerReg holds the audio analyzers. Optional, like voiceReg.
+	analyzerReg *registry.Registry
+}
+
+// SetAnalyzerRegistry gives the Builder the audio analyzers. Call before Build.
+func (b *Builder) SetAnalyzerRegistry(reg *registry.Registry) {
+	b.analyzerReg = reg
 }
 
 // SetLLMRegistry gives the Builder the language-model adapters so Build can
@@ -733,6 +743,7 @@ func (b *Builder) Build(ctx context.Context) (ServiceBundle, error) {
 	// return ErrSpotifyNotConfigured but all managed-playlist operations work.
 	bundle.Voice = BuildVoice(b.voiceReg, instances, b.getenv)
 	bundle.LLM = BuildLLM(b.llmReg, instances, b.getenv)
+	bundle.Analyzer = BuildAnalyzer(b.analyzerReg, instances)
 	bundle.Sync = b.BuildSyncService(sources, libAdapter, bundle.Manager)
 	if bundle.Sync != nil {
 		log.Printf("playlist sync service active")

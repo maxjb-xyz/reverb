@@ -8,7 +8,7 @@ import type { AdapterInstance, AvailableAdapter } from '../../lib/adaptersApi'
 interface AdapterSectionProps {
   title: string
   subtitle?: string
-  type: 'library' | 'search' | 'downloader' | 'voice' | 'llm'
+  type: 'library' | 'search' | 'downloader' | 'voice' | 'llm' | 'analyzer'
   instances: AdapterInstance[]
   available: AvailableAdapter[]
   onCreate: (name: string, config: Record<string, unknown>) => Promise<void>
@@ -26,6 +26,7 @@ const EMPTY_MESSAGES: Record<string, string> = {
   downloader: 'No downloaders configured',
   voice: 'No voice configured. The DJ shows its lines as text.',
   llm: 'No model configured. The DJ writes its lines from templates.',
+  analyzer: 'No audio analysis. Recommendations use tags, listening and similar artists.',
 }
 
 const TYPE_LABEL: Record<string, string> = {
@@ -34,10 +35,11 @@ const TYPE_LABEL: Record<string, string> = {
   downloader: 'downloader',
   voice: 'voice',
   llm: 'model',
+  analyzer: 'analyzer',
 }
 
 /** Ordered sections (search, downloader, voice) sort by priority; library shows insertion order. */
-const ORDERED_TYPES = new Set(['search', 'downloader', 'voice', 'llm'])
+const ORDERED_TYPES = new Set(['search', 'downloader', 'voice', 'llm', 'analyzer'])
 
 function sortInstances(type: string, instances: AdapterInstance[]): AdapterInstance[] {
   if (ORDERED_TYPES.has(type)) {

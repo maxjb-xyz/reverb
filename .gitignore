@@ -14,3 +14,7 @@ dev/music/*
 reverb-plan.md
 docs/HANDOFF-*.md
 docs/superpowers/
+
+# Python
+__pycache__/
+*.pyc

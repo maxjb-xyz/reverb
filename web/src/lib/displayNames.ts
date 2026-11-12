@@ -14,6 +14,7 @@ const ADAPTER_NAMES: Record<string, string> = {
   kokoro: 'Built-in voice (Kokoro)',
   anthropic: 'Claude (Anthropic)',
   'openai-chat': 'OpenAI-compatible chat',
+  'audio-sidecar': 'Analysis service',
   'openai-speech': 'OpenAI-compatible speech',
 }
 

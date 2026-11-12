@@ -4,6 +4,7 @@ import (
 	"context"
 	"sync/atomic"
 
+	"github.com/maxjb-xyz/reverb/internal/analysis"
 	"github.com/maxjb-xyz/reverb/internal/api"
 	"github.com/maxjb-xyz/reverb/internal/download"
 	"github.com/maxjb-xyz/reverb/internal/library"
@@ -51,8 +52,10 @@ type serviceReloader struct {
 	// voice, when set, receives the rebuilt DJ voice on every reload.
 	voice *voice.Service
 	// llm, when set, receives the rebuilt DJ writer model on every reload.
-	llm  *llm.Service
-	live atomic.Pointer[liveServices]
+	llm *llm.Service
+	// analysis, when set, receives the rebuilt audio analyzer on every reload.
+	analysis *analysis.Service
+	live     atomic.Pointer[liveServices]
 	// onReload runs after each successful rebuild (e.g. to re-index the library
 	// against the new adapters). May be nil.
 	onReload func()
@@ -140,6 +143,9 @@ func (r *serviceReloader) Reload(ctx context.Context) (library.LibraryAdapter, a
 
 	if r.voice != nil {
 		r.voice.Set(bundle.Voice)
+	}
+	if r.analysis != nil {
+		r.analysis.Set(bundle.Analyzer)
 	}
 	if r.llm != nil {
 		r.llm.Set(bundle.LLM)

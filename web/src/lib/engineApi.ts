@@ -11,6 +11,17 @@ export interface IndexStatus {
   lastError?: string
 }
 
+/** Optional audio analysis progress (managers). */
+export interface AnalysisStatus {
+  enabled: boolean
+  running: boolean
+  model?: string
+  analyzed: number
+  failed: number
+  total: number
+  lastError?: string
+}
+
 export interface SimilarArtist {
   key: string
   name: string
@@ -24,6 +35,8 @@ export interface SimilarArtist {
 
 export const getIndexStatus = () => api.get<IndexStatus>('/engine/index')
 export const rebuildIndex = () => api.post<null>('/engine/index/rebuild')
+export const getAnalysisStatus = () => api.get<AnalysisStatus>('/engine/analysis')
+export const runAnalysis = () => api.post<null>('/engine/analysis/run')
 export const getSimilarArtists = (name: string) =>
   api.get<{ artist: string; similar: SimilarArtist[] }>(`/artists/similar?name=${encodeURIComponent(name)}`)
 
@@ -34,6 +47,23 @@ export function useIndexStatus(enabled: boolean) {
     enabled,
     // While a run is going, poll so the numbers move.
     refetchInterval: (q) => (q.state.data?.running ? 3000 : false),
+  })
+}
+
+export function useAnalysisStatus(enabled: boolean) {
+  return useQuery({
+    queryKey: ['engine', 'analysis'],
+    queryFn: getAnalysisStatus,
+    enabled,
+    refetchInterval: (q) => (q.state.data?.running ? 5000 : false),
+  })
+}
+
+export function useRunAnalysis() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: runAnalysis,
+    onSuccess: () => setTimeout(() => void qc.invalidateQueries({ queryKey: ['engine', 'analysis'] }), 1000),
   })
 }
 
@@ -71,10 +101,12 @@ export type Lane = '' | 'on-repeat' | 'throwback' | 'deep-cuts' | 'sounds-like' 
 export interface EngineReason {
   kind:
     | 'seed' | 'seed_artist' | 'similar_artist' | 'genre' | 'era' | 'favorite' | 'on_repeat'
-    | 'deep_cut' | 'new_to_you' | 'fresh' | 'throwback' | 'discovery' | 'library'
+    | 'deep_cut' | 'new_to_you' | 'fresh' | 'throwback' | 'discovery' | 'library' | 'sounds_like'
   artist?: string
   artistKey?: string
   seedArtist?: string
+  /** For sounds_like from a song: that song's title. */
+  seedTitle?: string
   genre?: string
   year?: number
   playCount?: number
@@ -153,6 +185,9 @@ export function reasonText(r: EngineReason): string {
       return 'Just added'
     case 'throwback':
       return r.year ? `A throwback to ${r.year}` : 'A throwback'
+    case 'sounds_like':
+      if (r.seedTitle) return `Sounds like ${r.seedTitle}`
+      return r.seedArtist ? `Sounds like ${r.seedArtist}` : 'Sounds like what you’re playing'
     case 'discovery':
       return r.seedArtist ? `Not in your library yet, for fans of ${r.seedArtist}` : 'Not in your library yet'
     default:

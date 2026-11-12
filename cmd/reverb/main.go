@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/maxjb-xyz/reverb/internal/analysis"
+	"github.com/maxjb-xyz/reverb/internal/analysis/sidecar"
 	"github.com/maxjb-xyz/reverb/internal/api"
 	"github.com/maxjb-xyz/reverb/internal/auth"
 	"github.com/maxjb-xyz/reverb/internal/catalog"
@@ -117,6 +119,8 @@ func main() {
 	llmReg := registry.NewRegistry(llm.Type)
 	llmReg.Register("anthropic", func() registry.Plugin { return anthropicllm.New() })
 	llmReg.Register("openai-chat", func() registry.Plugin { return openaichat.New() })
+	analyzerReg := registry.NewRegistry(analysis.Type)
+	analyzerReg.Register(sidecar.Name, func() registry.Plugin { return sidecar.New() })
 	// Surface the async capability to the admin UI (/adapters/available).
 	registry.RegisterCapability("async", func(p registry.Plugin) bool {
 		_, ok := p.(download.AsyncDownloader)
@@ -180,6 +184,7 @@ func main() {
 	builder.SetCanonicalMinter(catalogSvc)
 	builder.SetVoiceRegistry(voiceReg)
 	builder.SetLLMRegistry(llmReg)
+	builder.SetAnalyzerRegistry(analyzerReg)
 
 	// The DJ's voice. Rendered clips are cached under the data dir and survive
 	// voice changes (they are keyed on the voice), so the cache is boot-bound.
@@ -187,6 +192,8 @@ func main() {
 	reloader.voice = voiceSvc
 	llmSvc := llm.NewService()
 	reloader.llm = llmSvc
+	analysisSvc := analysis.NewService(st.Q(), libraryAudio(reloader.servicesProvider()), time.Now)
+	reloader.analysis = analysisSvc
 
 	bundle, err := builder.Build(context.Background())
 	if err != nil {
@@ -199,6 +206,7 @@ func main() {
 	reloader.publishMatcher(bundle.Matcher)
 	voiceSvc.Set(bundle.Voice)
 	llmSvc.Set(bundle.LLM)
+	analysisSvc.Set(bundle.Analyzer)
 	reloader.publishServices(bundle)
 
 	// Recommendation index: the library's tracks with genres/years, plus the
@@ -274,6 +282,9 @@ func main() {
 	mixSvc := mixes.New(st.Q(), engineSvc, tasteSvc, indexSvc, time.Now, uuid.NewString)
 	discoverSvc := newDiscoverService(st.Q(), engineSvc, reloader)
 	discoverSvc.Start(ctx, 2*time.Minute, time.Hour)
+	// Optional audio analysis: idle unless an analyzer is configured.
+	engineSvc.SetSonic(analysisSvc)
+	analysisSvc.Start(ctx, 3*time.Minute, 30*time.Minute)
 
 	// Scrobbling: cfg() reads app key/secret from settings on every call so that
 	// admin changes (Task 5 UI) take effect without a restart.
@@ -295,6 +306,8 @@ func main() {
 		VoiceReg:      voiceReg,
 		Voice:         voiceSvc,
 		LLMReg:        llmReg,
+		AnalyzerReg:   analyzerReg,
+		Analysis:      analysisSvc,
 		LLM:           llmSvc,
 		DJCatalog:     dj.NewCachedCatalog(dj.NewLibraryCatalog(st.Q()), 5*time.Minute, time.Now),
 		Adapters:      st.Q(),
