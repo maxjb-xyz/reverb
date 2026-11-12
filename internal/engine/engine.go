@@ -1089,7 +1089,10 @@ func (e *Engine) discoverFrom(ctx context.Context, prof *taste.Profile, anchors 
 		sim    libindex.SimilarArtist
 		anchor string
 	}
-	var picks []pick
+	// First a spread over the favourites, so no one of them takes the whole
+	// list; then whatever else is left, so a listener with one clear
+	// favourite still gets a full list.
+	var picks, rest []pick
 	seen := map[string]bool{}
 	for _, a := range anchors {
 		seen[a] = true
@@ -1105,51 +1108,78 @@ func (e *Engine) discoverFrom(ctx context.Context, prof *taste.Profile, anchors 
 				continue
 			}
 			seen[s.Key] = true
-			picks = append(picks, pick{s, a})
-			// Spread over anchors: no one favourite takes the whole list.
-			if taken++; taken >= max(2, n/2) {
-				break
+			if taken < max(2, n/2) {
+				picks = append(picks, pick{s, a})
+				taken++
+			} else {
+				rest = append(rest, pick{s, a})
 			}
 		}
 	}
 	e.shuffle(len(picks), func(i, j int) { picks[i], picks[j] = picks[j], picks[i] })
+	e.shuffle(len(rest), func(i, j int) { rest[i], rest[j] = rest[j], rest[i] })
+	picks = append(picks, rest...)
+
 	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
+	type songs struct {
+		fresh []core.ExternalResult
+		done  bool
+	}
+	cache := make([]songs, len(picks))
+	used := map[string]bool{}
 	var out []Candidate
-	for _, pk := range picks {
-		if len(out) >= n || ctx.Err() != nil {
-			break
-		}
-		for _, src := range srcs {
-			if ss, ok := src.(search.SearchSource); ok && ss.Name() != pk.sim.Source {
-				continue
+	// One song per artist first; with too few artists, a second and a third.
+	for round := 0; round < maxDiscoverPerArtist && len(out) < n; round++ {
+		for i, pk := range picks {
+			if len(out) >= n || ctx.Err() != nil {
+				break
 			}
-			tracks, err := src.ArtistTopTracks(ctx, pk.sim.ExternalID, 5)
-			if err != nil {
-				continue
-			}
-			var fresh []core.ExternalResult
-			for _, t := range tracks {
-				if !exclude[t.Source+":"+t.ExternalID] {
-					fresh = append(fresh, t)
+			if !cache[i].done {
+				cache[i].done = true
+				for _, src := range srcs {
+					if ss, ok := src.(search.SearchSource); ok && ss.Name() != pk.sim.Source {
+						continue
+					}
+					tracks, err := src.ArtistTopTracks(ctx, pk.sim.ExternalID, 5)
+					if err != nil {
+						continue
+					}
+					for _, t := range tracks {
+						if !exclude[t.Source+":"+t.ExternalID] {
+							cache[i].fresh = append(cache[i].fresh, t)
+						}
+					}
+					if len(cache[i].fresh) > 0 {
+						break
+					}
 				}
 			}
-			if len(fresh) == 0 {
+			var left []core.ExternalResult
+			for _, t := range cache[i].fresh {
+				if !used[t.Source+":"+t.ExternalID] {
+					left = append(left, t)
+				}
+			}
+			if len(left) == 0 {
 				continue
 			}
 			e.mu.Lock()
-			t := fresh[e.rng.Intn(len(fresh))]
+			t := left[e.rng.Intn(len(left))]
 			e.mu.Unlock()
+			used[t.Source+":"+t.ExternalID] = true
 			out = append(out, Candidate{
 				External: &t, Score: 0.5,
 				Reason:    Reason{Kind: ReasonDiscovery, Artist: pk.sim.Name, ArtistKey: pk.sim.Key, SeedArtist: names[pk.anchor]},
 				artistKey: pk.sim.Key,
 			})
-			break
 		}
 	}
 	return out
 }
+
+// maxDiscoverPerArtist caps how many new songs one new artist brings.
+const maxDiscoverPerArtist = 3
 
 // interleave spreads external picks through the owned list.
 func interleave(own, ext []Candidate, n int) []Candidate {
