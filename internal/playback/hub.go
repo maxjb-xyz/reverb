@@ -356,6 +356,23 @@ func (h *Hub) broadcastLocked(s *session) {
 	}
 }
 
+// Command relays a remote control action to userID's active device on behalf
+// of something that is not a device (a Discord slash command). False when the
+// command is invalid or nothing is active.
+func (h *Hub) Command(userID string, cmd Command) bool {
+	if !sanitizeCommand(&cmd) {
+		return false
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	s, ok := h.sessions[userID]
+	if !ok || s.active == nil {
+		return false
+	}
+	h.sendLocked(s, s.active, Message{Type: MsgCommand, Payload: &cmd})
+	return true
+}
+
 // Snapshot returns the session of userID as devices see it.
 func (h *Hub) Snapshot(userID string) Session {
 	h.mu.Lock()

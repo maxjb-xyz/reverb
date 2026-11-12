@@ -375,3 +375,25 @@ func TestShutdownSavesOnceThenStops(t *testing.T) {
 		t.Fatal("saved after shutdown")
 	}
 }
+
+func TestHubCommandReachesActiveDevice(t *testing.T) {
+	h, _, _ := newTestHub()
+	if h.Command("u", Command{Action: "next"}) {
+		t.Fatal("command with no session reported delivered")
+	}
+	a := connect(t, h, "u", "A")
+	if h.Command("u", Command{Action: "next"}) {
+		t.Fatal("command with nobody active reported delivered")
+	}
+	a.Handle(MsgClaim, raw(playingState()))
+	drain(a)
+	if !h.Command("u", Command{Action: "pause"}) {
+		t.Fatal("not delivered")
+	}
+	if cmd := last(t, drain(a), MsgCommand).(*Command); cmd.Action != "pause" {
+		t.Fatalf("cmd = %+v", cmd)
+	}
+	if h.Command("u", Command{Action: "bogus"}) {
+		t.Fatal("invalid command delivered")
+	}
+}
