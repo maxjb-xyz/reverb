@@ -131,6 +131,7 @@ func newGatewayBot(token string, core *Core, log *slog.Logger, onReady func(name
 		}),
 		bot.WithEventListenerFunc(g.onCommand),
 		bot.WithEventListenerFunc(g.onAutocomplete),
+		bot.WithEventListenerFunc(g.onComponent),
 		bot.WithEventListenerFunc(g.onVoiceLeave),
 		bot.WithEventListenerFunc(g.onVoiceMove),
 	)
@@ -217,7 +218,7 @@ func (g *gatewayBot) onCommand(e *events.ApplicationCommandInteractionCreate) {
 	}()
 	select {
 	case r := <-done:
-		if err := e.CreateMessage(discord.NewMessageCreate().WithContent(r.Text).WithEphemeral(r.Ephemeral)); err != nil {
+		if err := e.CreateMessage(messageCreate(r)); err != nil {
 			g.log.Warn("discord: reply", "err", err)
 		}
 	case <-time.After(replyWithin):
@@ -229,14 +230,78 @@ func (g *gatewayBot) onCommand(e *events.ApplicationCommandInteractionCreate) {
 		if r.Ephemeral {
 			// The deferred reply is public; swap it for a private one.
 			_ = g.client.Rest.DeleteInteractionResponse(e.ApplicationID(), e.Token())
-			if _, err := g.client.Rest.CreateFollowupMessage(e.ApplicationID(), e.Token(), discord.NewMessageCreate().WithContent(r.Text).WithEphemeral(true)); err != nil {
+			if _, err := g.client.Rest.CreateFollowupMessage(e.ApplicationID(), e.Token(), messageCreate(r)); err != nil {
 				g.log.Warn("discord: reply", "err", err)
 			}
 			return
 		}
-		if _, err := g.client.Rest.UpdateInteractionResponse(e.ApplicationID(), e.Token(), discord.NewMessageUpdate().WithContent(r.Text)); err != nil {
+		if _, err := g.client.Rest.UpdateInteractionResponse(e.ApplicationID(), e.Token(), messageUpdate(r)); err != nil {
 			g.log.Warn("discord: reply", "err", err)
 		}
+	}
+}
+
+func buttonRow(bs []Button) []discord.LayoutComponent {
+	if len(bs) == 0 {
+		return nil
+	}
+	var row []discord.InteractiveComponent
+	for _, b := range bs {
+		row = append(row, discord.NewSecondaryButton(b.Label, b.ID))
+	}
+	return []discord.LayoutComponent{discord.NewActionRow(row...)}
+}
+
+func messageCreate(r Reply) discord.MessageCreate {
+	m := discord.NewMessageCreate().WithContent(r.Text).WithEphemeral(r.Ephemeral)
+	if rows := buttonRow(r.Buttons); rows != nil {
+		m = m.WithComponents(rows...)
+	}
+	return m
+}
+
+func messageUpdate(r Reply) discord.MessageUpdate {
+	// An empty list clears old buttons.
+	rows := buttonRow(r.Buttons)
+	if rows == nil {
+		rows = []discord.LayoutComponent{}
+	}
+	return discord.NewMessageUpdate().WithContent(r.Text).WithComponents(rows...)
+}
+
+// onComponent handles the now-playing card's buttons.
+func (g *gatewayBot) onComponent(e *events.ComponentInteractionCreate) {
+	if e.Data.Type() != discord.ComponentTypeButton {
+		return
+	}
+	done := make(chan Reply, 1)
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		done <- g.core.Press(ctx, e.User().ID.String(), e.ButtonInteractionData().CustomID())
+	}()
+	var err error
+	select {
+	case r := <-done:
+		if r.Ephemeral {
+			err = e.CreateMessage(messageCreate(r))
+		} else {
+			err = e.UpdateMessage(messageUpdate(r))
+		}
+	case <-time.After(replyWithin):
+		// Slow: acknowledge now, then edit the card (or reply privately).
+		if err := e.DeferUpdateMessage(); err != nil {
+			g.log.Warn("discord: defer button", "err", err)
+		}
+		r := <-done
+		if r.Ephemeral {
+			_, err = g.client.Rest.CreateFollowupMessage(e.ApplicationID(), e.Token(), messageCreate(r))
+		} else {
+			_, err = g.client.Rest.UpdateInteractionResponse(e.ApplicationID(), e.Token(), messageUpdate(r))
+		}
+	}
+	if err != nil {
+		g.log.Warn("discord: button", "err", err)
 	}
 }
 

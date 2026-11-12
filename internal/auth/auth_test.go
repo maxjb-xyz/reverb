@@ -146,3 +146,21 @@ func TestLogoutInvalidatesSession(t *testing.T) {
 }
 
 var _ = db.Session{}
+
+func TestUserByIDCarriesCapsAndRefusesDisabled(t *testing.T) {
+	s, _ := newTestService(t)
+	ctx := context.Background()
+	uid, _ := s.SetupOwner(ctx, "owner", "pw123456")
+	cu, err := s.UserByID(ctx, uid)
+	if err != nil || cu.Username != "owner" || !cu.Has(CapAdmin) {
+		t.Fatalf("UserByID = %+v, %v", cu, err)
+	}
+	if _, err := s.UserByID(ctx, "nope"); err == nil {
+		t.Fatal("unknown user loaded")
+	}
+	if err := s.SetUserDisabled(ctx, uid, true); err == nil {
+		if _, err := s.UserByID(ctx, uid); err == nil {
+			t.Fatal("disabled user loaded")
+		}
+	}
+}

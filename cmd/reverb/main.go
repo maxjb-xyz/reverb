@@ -343,12 +343,6 @@ func main() {
 		},
 	}
 	discordSvc := &discord.Service{Core: discordCore, EnvToken: os.Getenv("REVERB_DISCORD_TOKEN")}
-	go func() {
-		tok, _ := st.Q().GetSetting(ctx, api.KeyDiscordToken)
-		if err := discordSvc.Apply(ctx, tok); err != nil {
-			log.Printf("discord bot: %v", err)
-		}
-	}()
 
 	deps := api.Deps{
 		Auth:          authSvc,
@@ -423,6 +417,15 @@ func main() {
 	}
 	deps.Discord = discordSvc
 	srv := api.NewServer(deps)
+	// /request goes through the API's request path (roles, quota,
+	// auto-approve); set before the bot connects.
+	discordCore.Requests = srv.DiscordRequester()
+	go func() {
+		tok, _ := st.Q().GetSetting(ctx, api.KeyDiscordToken)
+		if err := discordSvc.Apply(ctx, tok); err != nil {
+			log.Printf("discord bot: %v", err)
+		}
+	}()
 
 	addr := fmt.Sprintf(":%d", cfg.Port)
 	ln, err := net.Listen("tcp", addr)
