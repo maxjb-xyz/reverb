@@ -45,6 +45,39 @@ type Invocation struct {
 type Reply struct {
 	Text      string
 	Ephemeral bool
+	// Buttons go in one row under the text.
+	Buttons []Button
+}
+
+// Button is a message button. Its ID comes back in Core.Press.
+type Button struct {
+	ID    string
+	Label string
+}
+
+// Request outcomes.
+const (
+	RequestOwned       = "owned"       // already in the library
+	RequestDownloading = "downloading" // approved and queued for download
+	RequestPending     = "pending"     // waiting for an admin
+	RequestExists      = "exists"      // asked for before
+	RequestNotFound    = "notfound"    // no online match
+	RequestDenied      = "denied"      // the account can't request
+	RequestQuota       = "quota"       // too many pending requests
+	RequestUnavailable = "unavailable" // no online search or downloader
+)
+
+// RequestOutcome is what happened to a /request.
+type RequestOutcome struct {
+	Status string
+	Title  string
+	Artist string
+}
+
+// Requester asks for a song that isn't in the library, as a Reverb user and
+// with their role's rights (the same path as a request from the web).
+type Requester interface {
+	Request(ctx context.Context, userID, query string) (RequestOutcome, error)
 }
 
 // UserCheck reports whether a Reverb account may use the bot (exists, not
@@ -61,7 +94,9 @@ type Core struct {
 	// is in use: the bot service swaps it on a reconnect.
 	Voice Voice
 	Users UserCheck
-	Log   *slog.Logger
+	// Requests backs /request; nil hides the feature.
+	Requests Requester
+	Log      *slog.Logger
 	// IdleLeave is how long the bot stays in a channel with nobody listening.
 	IdleLeave time.Duration
 
@@ -120,6 +155,7 @@ var Commands = []CommandSpec{
 	{Name: "nowplaying", Description: "What's playing"},
 	{Name: "queue", Description: "What's coming up"},
 	{Name: "leave", Description: "Stop and leave the voice channel"},
+	{Name: "request", Description: "Ask for a song that isn't in the library yet", Options: []OptionSpec{{Name: "song", Description: "Song and artist", Required: true}}},
 }
 
 // CommandSpec describes one slash command.
@@ -168,7 +204,9 @@ func (c *Core) Handle(ctx context.Context, inv Invocation) Reply {
 		verb := map[string]string{"pause": "Paused.", "resume": "Playing.", "skip": "Skipped.", "back": "Back."}[inv.Command]
 		return Reply{Text: verb}
 	case "nowplaying":
-		return c.nowPlaying(userID)
+		return c.nowPlayingCard(inv.UserID, userID)
+	case "request":
+		return c.request(ctx, inv, userID)
 	case "queue":
 		return c.queue(userID)
 	case "leave":

@@ -219,6 +219,28 @@ func (s *Service) ResolveSession(ctx context.Context, tok string) (CurrentUser, 
 	}, nil
 }
 
+// UserByID loads an enabled user with resolved capabilities, for actions
+// taken on someone's behalf outside a web session (the Discord bot).
+func (s *Service) UserByID(ctx context.Context, id string) (CurrentUser, error) {
+	u, err := s.q.GetUserByID(ctx, id)
+	if err != nil || u.Disabled == 1 {
+		return CurrentUser{}, errors.New("invalid user")
+	}
+	caps, roleName, err := s.resolveCaps(ctx, u.RoleID)
+	if err != nil {
+		return CurrentUser{}, err
+	}
+	return CurrentUser{
+		ID:        u.ID,
+		Username:  u.Username,
+		RoleID:    u.RoleID,
+		RoleName:  roleName,
+		IsOwner:   u.IsOwner == 1,
+		CreatedAt: u.CreatedAt,
+		Caps:      caps,
+	}, nil
+}
+
 // resolveCaps loads a role's capability set and display name.
 func (s *Service) resolveCaps(ctx context.Context, roleID string) (map[string]bool, string, error) {
 	r, err := s.q.GetRole(ctx, roleID)

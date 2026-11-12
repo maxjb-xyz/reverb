@@ -372,3 +372,71 @@ func TestUnlinkLeavesTheUsersChannels(t *testing.T) {
 		t.Fatal("still playing for an unlinked account")
 	}
 }
+
+type fakeRequester struct{ out RequestOutcome }
+
+func (f fakeRequester) Request(context.Context, string, string) (RequestOutcome, error) {
+	return f.out, nil
+}
+
+func TestRequestReplies(t *testing.T) {
+	r := newRig()
+	ctx := context.Background()
+	r.link(t, "u1", "d1")
+	req := inv("request", "d1", "", map[string]string{"song": "new one"})
+	if rep := r.core.Handle(ctx, req); !strings.Contains(rep.Text, "aren't set up") {
+		t.Fatalf("no requester: %q", rep.Text)
+	}
+	cases := map[string]struct {
+		want      string
+		ephemeral bool
+	}{
+		RequestDownloading: {"Getting **N** by B", false},
+		RequestPending:     {"admin", false},
+		RequestOwned:       {"/play", true},
+		RequestDenied:      {"can't request", true},
+		RequestQuota:       {"limit", true},
+		RequestNotFound:    {"Couldn't find", true},
+	}
+	for status, c := range cases {
+		r.core.Requests = fakeRequester{RequestOutcome{Status: status, Title: "N", Artist: "B"}}
+		rep := r.core.Handle(ctx, req)
+		if !strings.Contains(rep.Text, c.want) || rep.Ephemeral != c.ephemeral {
+			t.Errorf("%s: %+v", status, rep)
+		}
+	}
+}
+
+func TestNowPlayingButtons(t *testing.T) {
+	r := newRig()
+	ctx := context.Background()
+	r.link(t, "u1", "d1")
+	r.link(t, "u2", "d2")
+	r.core.Handle(ctx, inv("play", "d1", "vc1", map[string]string{"song": "hello"}))
+	waitFor(t, "playing", func() bool {
+		st := r.hub.Snapshot("u1").State
+		return st != nil && st.Playing
+	})
+	card := r.core.Handle(ctx, inv("nowplaying", "d1", "vc1", nil))
+	if card.Ephemeral || len(card.Buttons) != 4 || !strings.Contains(card.Buttons[1].Label, "Pause") {
+		t.Fatalf("card = %+v", card)
+	}
+	toggle := card.Buttons[1].ID
+	// Someone else's press doesn't touch the session.
+	if rep := r.core.Press(ctx, "d2", toggle); !rep.Ephemeral {
+		t.Fatalf("stranger press = %+v", rep)
+	}
+	if !r.hub.Snapshot("u1").State.Playing {
+		t.Fatal("a stranger paused the session")
+	}
+	rep := r.core.Press(ctx, "d1", toggle)
+	if rep.Ephemeral || !strings.Contains(rep.Text, "⏸️") || !strings.Contains(rep.Buttons[1].Label, "Play") {
+		t.Fatalf("after pause = %+v", rep)
+	}
+	if r.hub.Snapshot("u1").State.Playing {
+		t.Fatal("still playing")
+	}
+	if rep := r.core.Press(ctx, "d1", "garbage"); !rep.Ephemeral {
+		t.Fatalf("bad id = %+v", rep)
+	}
+}
