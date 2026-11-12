@@ -1,7 +1,7 @@
 name: CI
 on:
   push:
-    branches: [main]
+    branches: [main, staging]
   pull_request:
 env:
   GOVULNCHECK_VERSION: v1.6.0
@@ -11,7 +11,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
-        with: { go-version: '1.26.5', cache: true }
+        with: { go-version: '1.26.11', cache: true }
       - run: go vet ./cmd/... ./internal/...
       - run: go test -race ./cmd/... ./internal/... -count=1
   lint:
@@ -19,7 +19,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
-        with: { go-version: '1.26.5', cache: true }
+        with: { go-version: '1.26.11', cache: true }
       - name: Check Go formatting
         run: test -z "$(gofmt -l $(git ls-files '*.go'))"
       - name: Cache golangci-lint
@@ -39,7 +39,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
-        with: { go-version: '1.26.5', cache: true }
+        with: { go-version: '1.26.11', cache: true }
       - name: Cache govulncheck
         id: govulncheck-cache
         uses: actions/cache@v4
