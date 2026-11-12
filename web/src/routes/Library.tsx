@@ -77,8 +77,8 @@ export default function Library() {
       )}
 
       {/* Page header */}
-      <div className="flex items-center justify-between gap-3">
-        <h1 className="text-2xl font-bold text-text-primary">Your Library</h1>
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+        <h1 className="whitespace-nowrap text-2xl font-bold text-text-primary">Your Library</h1>
         <div className="flex items-center gap-2">
           {/* Collection is a lens on the library (what you're missing), so it
               lives here rather than as a standalone rail entry. */}

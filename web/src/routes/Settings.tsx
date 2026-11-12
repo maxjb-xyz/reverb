@@ -171,14 +171,14 @@ export default function Settings() {
 
           {/* Capabilities */}
           {me.capabilities.length > 0 && (
-            <div className="flex items-start gap-5 py-5">
+            <div className="flex flex-col gap-3 py-5 sm:flex-row sm:items-start sm:gap-5">
               <div className="flex-1 min-w-0">
                 <div className="text-sm font-bold text-text-primary">Capabilities</div>
                 <div className="text-xs text-text-secondary mt-0.5">
                   Permissions granted to your role.
                 </div>
               </div>
-              <div className="flex-none flex flex-wrap gap-1.5 max-w-xs justify-end">
+              <div className="flex flex-wrap gap-1.5 sm:max-w-xs sm:flex-none sm:justify-end">
                 {me.capabilities.map((cap) => (
                   <span
                     key={cap}

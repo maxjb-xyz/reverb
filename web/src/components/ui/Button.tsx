@@ -39,7 +39,7 @@ export function Button({
       aria-label={ariaLabel}
       onClick={disabled ? undefined : onClick}
       className={[
-        'inline-flex items-center justify-center rounded-full transition-opacity',
+        'inline-flex items-center justify-center whitespace-nowrap rounded-full transition-opacity',
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
         'disabled:opacity-40 disabled:cursor-not-allowed',
         variantClasses[variant],

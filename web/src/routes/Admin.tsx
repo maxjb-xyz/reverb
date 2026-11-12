@@ -189,7 +189,7 @@ export default function Admin() {
         <div className="space-y-8">
           {/* Library backend — single-active switch (Built-in | External Subsonic) */}
           <section className="rounded-lg border border-border-subtle bg-raised p-6 space-y-4">
-            <div className="flex items-center justify-between gap-5">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between sm:gap-5">
               <div className="flex-1 min-w-0">
                 <h2 className="text-lg font-extrabold tracking-tight text-text-primary">Library backend</h2>
                 <p className="text-xs text-text-secondary mt-0.5">
