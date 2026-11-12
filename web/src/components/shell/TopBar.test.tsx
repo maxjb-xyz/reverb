@@ -129,6 +129,24 @@ describe('TopBar', () => {
     expect(screen.queryByRole('menuitem', { name: /^account$/i })).not.toBeInTheDocument()
   })
 
+  it('account menu carries phone-only Requests and Collection entries (unreachable from the tab bar)', () => {
+    setMe(['request'])
+    renderBar()
+    fireEvent.click(screen.getByRole('button', { name: /account menu/i }))
+    const requests = screen.getByRole('menuitem', { name: /^requests$/i })
+    const collection = screen.getByRole('menuitem', { name: /^collection$/i })
+    expect(requests.className).toContain('md:hidden')
+    expect(collection.className).toContain('md:hidden')
+  })
+
+  it('account menu omits Requests for a user who cannot request', () => {
+    setMe([])
+    renderBar()
+    fireEvent.click(screen.getByRole('button', { name: /account menu/i }))
+    expect(screen.queryByRole('menuitem', { name: /^requests$/i })).not.toBeInTheDocument()
+    expect(screen.getByRole('menuitem', { name: /^collection$/i })).toBeInTheDocument()
+  })
+
   it('Admin menu item is hidden when the user lacks all manager capabilities', () => {
     setMe(['auto_approve', 'request', 'can_create_playlists'])
     renderBar()
