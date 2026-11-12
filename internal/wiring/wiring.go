@@ -299,6 +299,9 @@ type ServiceBundle struct {
 	Matcher resolver.Rematcher
 	// Voice is the DJ's voice; nil when no voice provider is enabled.
 	Voice voice.Voice
+	// Sources are the enabled search sources, exposed so long-lived services
+	// (the recommendation index) can reach the live set after a hot-reload.
+	Sources []search.SearchSource
 }
 
 // VersionStore is the library_version reader/writer the Manager + matcher need.
@@ -653,6 +656,7 @@ func (b *Builder) Build(ctx context.Context) (ServiceBundle, error) {
 
 	// Search sources + matcher + aggregator.
 	sources := BuildSearchSources(b.searchReg, instances, b.getenv)
+	bundle.Sources = sources
 	if len(sources) > 0 {
 		var aggMatcher search.Matcher
 		if matcher != nil {

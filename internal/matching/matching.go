@@ -383,3 +383,21 @@ func (s *Service) resolve(ext core.ExternalResult, cands []core.Track) core.Matc
 		Confidence: 0,
 	}
 }
+
+// ArtistKey is the identity Reverb's taste and recommendation layers key an
+// artist by: the normalized primary artist, so "Egzod; Maestro Chives" and
+// "egzod" land on one key and a library artist meets the same name from
+// Deezer or Last.fm.
+func ArtistKey(artist string) string {
+	a := strings.TrimSpace(artist)
+	if a == "" {
+		return ""
+	}
+	return Normalize(PrimaryArtist(a))
+}
+
+// GenreKey is the identity genres are indexed by ("Hip-Hop" and "hip hop"
+// are one genre).
+func GenreKey(genre string) string {
+	return Normalize(strings.TrimSpace(genre))
+}

@@ -35,6 +35,20 @@ type ArtistProvider interface {
 	GetArtist(ctx context.Context, externalID string) (core.ExternalArtist, error)
 }
 
+// SimilarArtistsProvider is an optional capability: artists the source's
+// listeners also play, most similar first. It feeds the recommendation
+// engine's artist-similarity map; Reverb's own engine does the rest.
+type SimilarArtistsProvider interface {
+	SimilarArtists(ctx context.Context, externalID string, limit int) ([]core.ExternalArtist, error)
+}
+
+// ArtistTopTracksProvider is an optional capability: an artist's most popular
+// tracks on the source. Used to find songs worth discovering from artists the
+// library doesn't have yet.
+type ArtistTopTracksProvider interface {
+	ArtistTopTracks(ctx context.Context, externalID string, limit int) ([]core.ExternalResult, error)
+}
+
 // PlaylistProvider is an OPTIONAL capability (P2 playlist sync). Detected via a
 // type assertion; conformance does not require it.
 type PlaylistProvider interface {

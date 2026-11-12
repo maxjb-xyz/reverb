@@ -37,6 +37,18 @@ func fixtureServer(t *testing.T) *httptest.Server {
 		w.Write([]byte(trackJSON))
 	})
 	mux.HandleFunc("/artist/", func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/related") {
+			if r.URL.Query().Get("limit") != "2" {
+				t.Errorf("related limit = %q, want 2", r.URL.Query().Get("limit"))
+			}
+			w.Write([]byte(`{"data": [{"id": 1, "name": "Justice", "picture_medium": "https://cdn.example/j.jpg", "nb_fan": 900},
+				{"id": 2, "name": "Air", "picture_medium": "https://cdn.example/air.jpg", "nb_fan": 800}]}`))
+			return
+		}
+		if strings.HasSuffix(r.URL.Path, "/top") {
+			w.Write([]byte(`{"data": [` + trackJSON + `]}`))
+			return
+		}
 		if strings.HasSuffix(r.URL.Path, "/albums") {
 			w.Write([]byte(`{"data": [{"id": 302127, "title": "Discovery", "cover_medium": "https://cdn.example/m.jpg", "release_date": "2001-03-07", "artist": {"id": 27, "name": "Daft Punk"}}]}`))
 			return
@@ -171,5 +183,29 @@ func TestTestConnection(t *testing.T) {
 	uninit := deezer.New()
 	if err := uninit.TestConnection(context.Background()); err == nil {
 		t.Fatal("expected error on uninitialized adapter")
+	}
+}
+
+func TestSimilarArtists(t *testing.T) {
+	a := newAdapter(t)
+	var p search.SimilarArtistsProvider = a
+	got, err := p.SimilarArtists(context.Background(), "27", 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 || got[0].Name != "Justice" || got[0].ExternalID != "1" || got[0].Source != "deezer" || got[1].CoverURL == "" {
+		t.Fatalf("similar = %+v", got)
+	}
+}
+
+func TestArtistTopTracks(t *testing.T) {
+	a := newAdapter(t)
+	var p search.ArtistTopTracksProvider = a
+	got, err := p.ArtistTopTracks(context.Background(), "27", 5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].Title != "Harder, Better, Faster, Stronger" || got[0].ArtistExternalID != "27" {
+		t.Fatalf("top = %+v", got)
 	}
 }
