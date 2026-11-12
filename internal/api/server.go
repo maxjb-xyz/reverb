@@ -23,6 +23,7 @@ import (
 	"github.com/maxjb-xyz/reverb/internal/scrobble"
 	"github.com/maxjb-xyz/reverb/internal/search"
 	"github.com/maxjb-xyz/reverb/internal/store/db"
+	"github.com/maxjb-xyz/reverb/internal/taste"
 )
 
 // Streamer is the subset of *search.Aggregator the SSE handler needs.
@@ -150,6 +151,10 @@ type Deps struct {
 	VoiceReg *registry.Registry
 	// Voice is the DJ's voice. Nil disables the /dj/say endpoint.
 	Voice VoiceService
+	// Taste records listen outcomes, playlist/download signals and thumbs-down,
+	// and serves per-user taste profiles. Nil in tests/legacy wiring — listen
+	// and feedback endpoints answer 503 and signal hooks are skipped.
+	Taste *taste.Service
 }
 
 type Server struct {
@@ -327,6 +332,11 @@ func (s *Server) routes() {
 			pr.Get("/dj/voice", s.handleDJVoice)
 			pr.Post("/dj/say", s.handleDJSay)
 			pr.Get("/dj/clips/{id}", s.handleDJClip)
+			pr.Post("/listens", s.handleListen)
+			pr.Get("/taste/profile", s.handleTasteProfile)
+			pr.Get("/taste/feedback", s.handleListTasteFeedback)
+			pr.Put("/taste/feedback", s.handleSetTasteFeedback)
+			pr.Delete("/taste/feedback/{kind}/{key}", s.handleClearTasteFeedback)
 
 			// manage library & integrations: adapter CRUD + server settings.
 			pr.Group(func(mr chi.Router) {

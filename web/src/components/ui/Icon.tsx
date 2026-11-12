@@ -35,6 +35,7 @@ export type IconName =
   | 'camera'
   | 'grip'
   | 'chart'
+  | 'thumbs-down'
 
 /**
  * Per-icon descriptor.
@@ -232,6 +233,14 @@ const icons: Record<IconName, IconDef> = {
     content: <path d="M20 6 9 17l-5-5" />,
   },
   // x: close / dismiss
+  'thumbs-down': {
+    content: (
+      <>
+        <path d="M17 14V3" />
+        <path d="M9 18.1 10 14H4.2a2 2 0 0 1-1.9-2.6l2.3-7A2 2 0 0 1 6.5 3H20a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1h-2.8a2 2 0 0 0-1.8 1.1L12 22a3.1 3.1 0 0 1-3-3.9Z" />
+      </>
+    ),
+  },
   x: {
     content: (
       <>

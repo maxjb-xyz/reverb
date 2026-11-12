@@ -11,6 +11,7 @@ import (
 	"github.com/maxjb-xyz/reverb/internal/auth"
 	"github.com/maxjb-xyz/reverb/internal/core"
 	"github.com/maxjb-xyz/reverb/internal/request"
+	"github.com/maxjb-xyz/reverb/internal/taste"
 )
 
 // errNoDownloader is returned by createOneRequest when auto_approve is set but
@@ -52,6 +53,12 @@ func (s *Server) createOneRequest(ctx context.Context, cu auth.CurrentUser, item
 	if existed {
 		return req, false, nil
 	}
+
+	title := item.Title
+	if item.Kind != "" && item.Kind != "track" {
+		title = "" // an album/artist request is an artist-level signal
+	}
+	s.recordTasteSignal(ctx, cu.ID, taste.SignalRequest, tasteRefFor(item.Source, item.ExternalID, title, item.Artist, item.Album, item.ISRC, item.DurationMs))
 
 	if cu.Has("auto_approve") {
 		dl := s.downloads()

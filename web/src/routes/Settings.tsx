@@ -7,6 +7,7 @@ import { ApiError } from '../lib/api'
 import { IntegrationsSection } from '../components/account/IntegrationsSection'
 import { AppearanceSection } from '../components/account/AppearanceSection'
 import { PlaybackSection } from '../components/account/PlaybackSection'
+import { RecommendationsSection } from '../components/account/RecommendationsSection'
 import { useDocumentTitle } from '../lib/useDocumentTitle'
 import { capabilityLabel } from '../lib/displayNames'
 import { PageHeader } from '../components/ui/PageHeader'
@@ -22,6 +23,7 @@ type Section =
   | 'integrations'
   | 'appearance'
   | 'playback'
+  | 'recommendations'
   | 'providers'
   | 'users'
   | 'registration'
@@ -36,6 +38,7 @@ const ACCOUNT_SECTIONS: { key: Section; label: string }[] = [
   { key: 'integrations', label: 'Integrations' },
   { key: 'appearance', label: 'Appearance' },
   { key: 'playback', label: 'Playback' },
+  { key: 'recommendations', label: 'Recommendations' },
 ]
 const ADMIN_SECTIONS: { key: Section; label: string }[] = [
   { key: 'providers', label: 'Providers' },
@@ -373,6 +376,8 @@ export default function Settings() {
       {tab === 'appearance' && <AppearanceSection />}
 
       {tab === 'playback' && <PlaybackSection />}
+      {/* ── Recommendations tab ──────────────────────────────────────────────── */}
+      {tab === 'recommendations' && <RecommendationsSection />}
 
       {/* ── Admin sections ───────────────────────────────────────────────────── */}
       {tab === 'providers' && <AdminProviders />}

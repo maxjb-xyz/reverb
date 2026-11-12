@@ -44,6 +44,12 @@ type Querier interface {
 	// RepointDownloadJobs repoints download_jobs.canonical_id from loser → winner
 	// so that job covers continue to resolve after a catalog merge (Task 3).
 	RepointDownloadJobs(ctx context.Context, arg db.RepointDownloadJobsParams) error
+	// Taste references (listen log, signals, thumbs-down) follow the winner so a
+	// merge never splits or drops a user's taste history.
+	RepointListenEvents(ctx context.Context, arg db.RepointListenEventsParams) error
+	RepointTasteSignals(ctx context.Context, arg db.RepointTasteSignalsParams) error
+	RepointTrackFeedback(ctx context.Context, arg db.RepointTrackFeedbackParams) error
+	DeleteTrackFeedbackFor(ctx context.Context, targetKey string) error
 }
 
 // Service mints and resolves catalog IDs.
