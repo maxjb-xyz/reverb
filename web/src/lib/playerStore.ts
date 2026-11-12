@@ -3,12 +3,23 @@ import { AudioEngine, type PlayerState } from './audioEngine'
 import { loadPlaybackPrefs, savePlaybackPrefs } from './playbackPrefs'
 import type { Track } from './types'
 import { contextFromPath, setPlayContext, type PlayContext } from './playContext'
+import {
+  attachEngine,
+  isRemote,
+  remotePlayerState,
+  reportNow,
+  sendCommand,
+  useSession,
+  type Command,
+} from './playbackSession'
 
 // Single imperative engine instance, living OUTSIDE React.
 export const engine = new AudioEngine()
 // Device-level playback preferences. Nothing is routed through Web Audio here:
 // that waits for the first play, which is a user gesture.
 engine.setCrossfade(loadPlaybackPrefs().crossfadeMs)
+// This tab is a device in the account's listening session.
+attachEngine(engine)
 
 interface PlayerActions {
   /**
@@ -36,28 +47,67 @@ interface PlayerActions {
 
 export type PlayerStore = PlayerState & PlayerActions
 
+// While another device is active, the player shows its state and every action
+// becomes a command for it. Otherwise the local engine plays as always.
+function viewState(): PlayerState {
+  const local = engine.getState()
+  return isRemote() ? remotePlayerState(local) : local
+}
+
+// local runs `fn` on this device, or sends `cmd` to the active device.
+function route(cmd: Command, fn: () => void) {
+  if (isRemote()) sendCommand(cmd)
+  else fn()
+}
+
 export const usePlayer = create<PlayerStore>((set) => {
-  // Mirror engine state into the store on every change.
-  engine.subscribe((s) => set(s))
+  // Mirror the engine into the store, unless a remote device is shown.
+  engine.subscribe((s) => {
+    if (!isRemote()) set(s)
+  })
+  // Follow the session: switch views and keep the remote position ticking.
+  let ticker: ReturnType<typeof setInterval> | null = null
+  const syncTicker = () => {
+    const want = isRemote() && !!useSession.getState().remote?.playing
+    if (want && !ticker) {
+      ticker = setInterval(() => set(viewState()), 500)
+    } else if (!want && ticker) {
+      clearInterval(ticker)
+      ticker = null
+    }
+  }
+  useSession.subscribe(() => {
+    set(viewState())
+    syncTicker()
+  })
   return {
     ...engine.getState(),
     playTrackList: (tracks, startIndex, context) => {
-      setPlayContext(context ?? contextFromPath(typeof window === 'undefined' ? '/' : window.location.pathname))
+      const ctx = context ?? contextFromPath(typeof window === 'undefined' ? '/' : window.location.pathname)
+      if (isRemote()) {
+        sendCommand({ action: 'playTracks', tracks, index: startIndex, context: ctx })
+        return
+      }
+      setPlayContext(ctx)
       engine.playTrackList(tracks, startIndex)
     },
-    enqueue: (t) => engine.enqueue(t),
-    removeAt: (i) => engine.removeAt(i),
-    moveItem: (from, to) => engine.moveItem(from, to),
-    jumpTo: (index) => engine.playAt(index),
-    play: () => engine.play(),
-    pause: () => engine.pause(),
-    toggle: () => engine.toggle(),
-    next: () => engine.next(),
-    prev: () => engine.prev(),
-    seekMs: (ms) => engine.seekMs(ms),
-    setVolume: (v) => engine.setVolume(v),
-    toggleShuffle: () => engine.toggleShuffle(),
-    cycleRepeat: () => engine.cycleRepeat(),
+    enqueue: (t) => route({ action: 'enqueue', track: t }, () => engine.enqueue(t)),
+    removeAt: (i) => route({ action: 'removeAt', index: i }, () => engine.removeAt(i)),
+    moveItem: (from, to) => route({ action: 'moveItem', from, to }, () => engine.moveItem(from, to)),
+    jumpTo: (index) => route({ action: 'jumpTo', index }, () => engine.playAt(index)),
+    play: () => route({ action: 'play' }, () => engine.play()),
+    pause: () => route({ action: 'pause' }, () => engine.pause()),
+    toggle: () => route({ action: 'toggle' }, () => engine.toggle()),
+    next: () => route({ action: 'next' }, () => engine.next()),
+    prev: () => route({ action: 'prev' }, () => engine.prev()),
+    seekMs: (ms) =>
+      route({ action: 'seek', positionMs: Math.max(0, Math.round(ms)) }, () => {
+        engine.seekMs(ms)
+        reportNow()
+      }),
+    setVolume: (v) => route({ action: 'setVolume', volume: Math.min(1, Math.max(0, v)) }, () => engine.setVolume(v)),
+    toggleShuffle: () => route({ action: 'toggleShuffle' }, () => engine.toggleShuffle()),
+    cycleRepeat: () => route({ action: 'cycleRepeat' }, () => engine.cycleRepeat()),
     setCrossfade: (ms) => {
       engine.setCrossfade(ms)
       savePlaybackPrefs({ ...loadPlaybackPrefs(), crossfadeMs: engine.getState().crossfadeMs })

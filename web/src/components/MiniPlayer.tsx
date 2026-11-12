@@ -6,6 +6,8 @@ import { playerTint } from '../lib/palette'
 import { Cover } from './ui/Cover'
 import { Icon } from './ui/Icon'
 import { DJControl } from './dj/DJControl'
+import { DevicePicker } from './DevicePicker'
+import { useRemoteDeviceName } from '../lib/playbackSession'
 
 // MiniPlayer is the mobile-only compact player (shown < md), sitting above the
 // tab nav. Tapping the bar expands to the fullscreen now-playing overlay; the
@@ -16,6 +18,7 @@ export function MiniPlayer() {
   const toggle = usePlayer((s) => s.toggle)
   const openNowPlaying = useUI((s) => s.openNowPlaying)
   const palette = useAlbumPalette(current ? trackCoverUrl(current, 80) : undefined)
+  const remoteName = useRemoteDeviceName()
 
   if (!current) return null
 
@@ -42,10 +45,16 @@ export function MiniPlayer() {
         <div className="min-w-0">
           <div className="truncate text-sm font-semibold text-text-primary">{current.title}</div>
           <div className="truncate text-xs text-text-secondary">{current.artist}</div>
+          {remoteName && (
+            <div data-testid="mini-remote-device" className="truncate text-[11px] font-semibold text-accent">
+              On {remoteName}
+            </div>
+          )}
         </div>
       </button>
 
       <DJControl look="mini" />
+      <DevicePicker look="mini" />
 
       <button
         type="button"

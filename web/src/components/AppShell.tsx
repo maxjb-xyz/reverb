@@ -87,7 +87,20 @@ export function AppShell() {
   useEffect(() => startRadioRefill(engine), [])
   useEffect(() => startDJWatcher(engine), [])
   useEffect(() => startNowPlaying(engine), [])
-  useEffect(() => startMediaSession(engine), [])
+  // Media keys go through the player store, so on a remote they control the
+  // device that is playing rather than this tab's idle engine.
+  useEffect(
+    () =>
+      startMediaSession({
+        subscribe: (cb) => engine.subscribe(cb),
+        play: () => usePlayer.getState().play(),
+        pause: () => usePlayer.getState().pause(),
+        next: () => usePlayer.getState().next(),
+        prev: () => usePlayer.getState().prev(),
+        seekMs: (ms) => usePlayer.getState().seekMs(ms),
+      }),
+    [],
+  )
 
   // A new page starts at the top. Back/forward (POP) leaves the scroll alone.
   const location = useLocation()

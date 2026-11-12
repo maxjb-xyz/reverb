@@ -277,6 +277,34 @@ export class AudioEngine {
     this.emit()
   }
 
+  /**
+   * Take over a session from another device: replace whatever is queued with
+   * `snap`, positioned where it was, and start playing if `autoplay`. Unlike
+   * restore() this always replaces the queue.
+   */
+  adopt(snap: PlayerSnapshot, autoplay: boolean) {
+    this.line?.finish()
+    this.stopFade()
+    this.active.pause()
+    this.playing = false
+    this.bufferedMs = 0
+    this.queue = []
+    this.index = -1
+    this.pendingRestore = false
+    this.resumeAtMs = 0
+    if (snap.queue.length === 0) {
+      this.currentTimeMs = 0
+      this.durationMs = 0
+      this.shuffle = snap.shuffle
+      this.repeat = snap.repeat
+      this.rebuildShuffle()
+      this.emit()
+      return
+    }
+    this.restore(snap)
+    if (autoplay) this.play()
+  }
+
   playTrackList(tracks: Track[], startIndex: number) {
     this.setQueue(tracks, startIndex)
     this.loadCurrent(true)
@@ -333,7 +361,7 @@ export class AudioEngine {
     if (resumeAt > 0) this.active.currentTime = resumeAt / 1000
     if (autoplay) {
       this.route()
-      void this.active.play()
+      this.startActive()
       this.playing = true
     }
     this.preloadNext()
@@ -349,13 +377,31 @@ export class AudioEngine {
     this.preload.load()
   }
 
+  /**
+   * Start the active element. A browser that blocks autoplay (no tap on this
+   * page yet, e.g. playback moved here from another device) rejects play();
+   * then the player shows paused instead of pretending to play.
+   */
+  private startActive() {
+    const el = this.active
+    const p = el.play() as Promise<void> | undefined
+    if (p && typeof p.catch === 'function') {
+      p.catch((err: unknown) => {
+        if ((err as { name?: string } | null)?.name === 'NotAllowedError' && el === this.active && this.playing) {
+          this.playing = false
+          this.emit()
+        }
+      })
+    }
+  }
+
   play() {
     if (this.index < 0 && this.queue.length) this.index = 0
     if (this.getState().current) {
       if (!this.active.src || this.pendingRestore) this.loadCurrent(true, true)
       else {
         this.route()
-        void this.active.play()
+        this.startActive()
         this.playing = true
       }
     }

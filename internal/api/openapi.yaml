@@ -718,6 +718,19 @@ paths:
         is the EventBus topic (download.queued, download.progress,
         download.complete, download.failed, library.updated). Used by the client
         to flip a result to in-library, drive progress rings, and resync.
+
+        The same socket carries the account's listening session (one per
+        account, Spotify Connect style). A client joins as a device by sending
+        playback.hello {id,name,kind}. It may then send playback.claim (State:
+        "I started playing here", makes it the active device), playback.state
+        (State, only from the active device), playback.command ({action,...},
+        relayed to the active device) and playback.transfer {deviceId,play}.
+        The server sends playback.session {devices,activeDeviceId,state,serverTime}
+        to every device on any change, playback.activate {state,play} to the
+        device taking over, playback.deactivate to the one losing it, and
+        playback.command to the active device. State is {queue,index,positionMs,
+        playing,shuffle,repeat,volume,updatedAt}; queues are capped at 1000 tracks
+        and frames at 1 MiB. See internal/playback.
       responses:
         "101": { description: Switching Protocols (WebSocket upgrade) }
         "401": { description: unauthorized }
