@@ -3,10 +3,12 @@ import type { ReactNode } from 'react'
 interface CarouselProps {
   title: string
   onShowAll?: () => void
+  /** Extra control at the right of the header (for example a refresh). */
+  action?: ReactNode
   children: ReactNode
 }
 
-export function Carousel({ title, onShowAll, children }: CarouselProps) {
+export function Carousel({ title, onShowAll, action, children }: CarouselProps) {
   return (
     <section>
       {/* Section header */}
@@ -14,6 +16,7 @@ export function Carousel({ title, onShowAll, children }: CarouselProps) {
         <h2 className="text-2xl font-extrabold tracking-tight text-text-primary cursor-default">
           {title}
         </h2>
+        {action && <div className="ml-auto">{action}</div>}
         {onShowAll && (
           <button
             type="button"

@@ -121,6 +121,10 @@ describe('Discover page', () => {
     )
     wrap(<Discover />)
     fireEvent.click(await screen.findByRole('button', { name: 'New songs' }))
+    // Songs were downloaded for this list: the keep rule is spelled out first.
+    expect(await screen.findByText(/deleted when the week ends\. That happens now for the 2 songs/)).toBeInTheDocument()
+    expect(post).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: 'Start over' }))
     await waitFor(() => expect(post).toHaveBeenCalledWith('/discover/regenerate', undefined))
     expect(await screen.findByText('Song z')).toBeInTheDocument()
   })

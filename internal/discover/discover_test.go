@@ -481,24 +481,33 @@ func TestSafeRemover(t *testing.T) {
 	}
 }
 
-func TestRegenerate_ReplacesPicksNotDownloadedAndKeepsDownloads(t *testing.T) {
+func TestRegenerate_AppliesTheKeepRuleThenStartsOver(t *testing.T) {
 	e := newEnv(t)
 	ctx := context.Background()
 	e.setPrefs(t, "u1", Prefs{Enabled: true, Size: 10, NewShare: 70, KeepRule: KeepPlaylist})
 	before := e.current(t, "u1")
-	downloading := map[string]bool{}
-	oldOwned := map[string]bool{}
+	old := map[string]bool{}
+	var ext []Item
 	for _, it := range before.Items {
-		if it.State == StateDownloading {
-			downloading[it.ID] = true
+		if it.External != nil {
+			ext = append(ext, it)
+			old[it.External.ExternalID] = true
 		} else if it.Track != nil {
-			oldOwned[it.Track.ID] = true
+			old[it.Track.ID] = true
 		}
 	}
-	if len(downloading) != 7 || len(oldOwned) != 3 {
-		t.Fatalf("setup: %d downloading, %d owned", len(downloading), len(oldOwned))
+	if len(ext) != 7 {
+		t.Fatalf("setup: %d new songs", len(ext))
 	}
-	// Prefs changed mid-week apply to the regenerated list.
+	// Two downloads landed: one is in a playlist, one isn't. The rest are in flight.
+	e.dl.land(ext[0].JobID, "lib-0", "/music/0.mp3")
+	e.dl.land(ext[1].JobID, "lib-1", "/music/1.mp3")
+	if _, err := e.q.UpsertSyncedPlaylist(ctx, db.UpsertSyncedPlaylistParams{
+		ID: "pl", Source: "local", ExternalID: "pl", Name: "Mine", TracksJson: `[{"source":"library","externalId":"lib-0","title":"x"}]`, Mode: "once", CreatedAt: 1,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	// Prefs changed mid-week apply to the new list.
 	e.setPrefs(t, "u1", Prefs{Enabled: true, Size: 12, NewShare: 70, KeepRule: KeepPlaylist})
 	w, err := e.svc.Regenerate(ctx, "u1")
 	if err != nil {
@@ -507,23 +516,28 @@ func TestRegenerate_ReplacesPicksNotDownloadedAndKeepsDownloads(t *testing.T) {
 	if len(w.Items) != 12 {
 		t.Fatalf("regenerated %d items, want 12", len(w.Items))
 	}
-	kept := 0
 	for _, it := range w.Items {
-		if downloading[it.ID] {
-			kept++
-			continue
+		id := ""
+		if it.External != nil {
+			id = it.External.ExternalID
+		} else if it.Track != nil {
+			id = it.Track.ID
 		}
-		if it.Track != nil && oldOwned[it.Track.ID] {
-			t.Errorf("old pick %s offered again", it.Track.ID)
-		}
-		if it.External != nil && it.State == StateDownloading && it.JobID == "" {
-			t.Errorf("new download without a job: %+v", it)
+		if old[id] {
+			t.Errorf("%s was in the old list", id)
 		}
 	}
-	if kept != 7 {
-		t.Fatalf("downloaded songs kept = %d, want 7", kept)
+	// The keep rule ran now: the playlisted song stays, the other goes.
+	if len(e.removed) != 1 || e.removed[0] != "/music/1.mp3" {
+		t.Fatalf("removed = %v, want [/music/1.mp3]", e.removed)
 	}
-	// The weekly cap still holds across regenerations (30 by default).
+	// An old download still in flight is decided once it lands.
+	e.dl.land(ext[2].JobID, "lib-2", "/music/2.mp3")
+	e.current(t, "u1")
+	if len(e.removed) != 2 || e.removed[1] != "/music/2.mp3" {
+		t.Fatalf("in-flight download not cleaned up after landing: %v", e.removed)
+	}
+	// Regenerating doesn't get round the weekly cap (30 by default).
 	if len(e.dl.enqueued) > DefaultWeeklyCap {
 		t.Fatalf("enqueued %d, over the weekly cap", len(e.dl.enqueued))
 	}

@@ -633,6 +633,22 @@ paths:
       summary: Rebuild a mix now with new songs.
       parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
       responses: { "200": { description: Mix }, "404": { description: not found } }
+  /mixes/daily/rebuild:
+    post:
+      summary: Rebuild the session user's daily mixes now from their latest listening (normally once a day). Custom mixes are untouched.
+      responses: { "200": { description: "{ mixes: [Mix] }" } }
+  /discover/regenerate:
+    post:
+      summary: >
+        Swap this week's Discover Weekly picks for new ones, using the user's
+        current length and mix. Songs Reverb already started downloading stay
+        (the keep rule still applies to them); only picks nothing was
+        downloaded for are replaced, and they aren't offered again. New
+        downloads count against the weekly cap.
+      responses:
+        "200": { description: The week, as GET /discover }
+        "409": { description: Discover Weekly is off for this user }
+        "503": { description: discover unavailable }
   /discover:
     get:
       summary: >

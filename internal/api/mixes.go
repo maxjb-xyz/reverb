@@ -60,6 +60,21 @@ func (s *Server) handleListMixes(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"mixes": list})
 }
 
+// handleRebuildDailyMixes serves POST /api/v1/mixes/daily/rebuild: rebuild
+// the daily mixes now from the latest listening, instead of tomorrow.
+func (s *Server) handleRebuildDailyMixes(w http.ResponseWriter, r *http.Request) {
+	uid, ok := s.mixUser(w, r)
+	if !ok {
+		return
+	}
+	list, err := s.deps.Mixes.RebuildDaily(r.Context(), uid)
+	if err != nil {
+		writeMixErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"mixes": list})
+}
+
 // handleGetMix serves GET /api/v1/mixes/{id}.
 func (s *Server) handleGetMix(w http.ResponseWriter, r *http.Request) {
 	uid, ok := s.mixUser(w, r)

@@ -39,6 +39,25 @@ func (s *Server) handleDiscover(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, wk)
 }
 
+// handleRegenerateDiscover serves POST /api/v1/discover/regenerate: swap
+// this week's picks that nothing was downloaded for. 409 when Discover is off.
+func (s *Server) handleRegenerateDiscover(w http.ResponseWriter, r *http.Request) {
+	uid, ok := s.discoverUser(w, r)
+	if !ok {
+		return
+	}
+	wk, err := s.deps.Discover.Regenerate(r.Context(), uid)
+	if errors.Is(err, discover.ErrDisabled) {
+		writeJSON(w, http.StatusConflict, map[string]string{"error": "Discover Weekly is off"})
+		return
+	}
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, wk)
+}
+
 // handleGetDiscoverPrefs serves GET /api/v1/discover/prefs.
 func (s *Server) handleGetDiscoverPrefs(w http.ResponseWriter, r *http.Request) {
 	uid, ok := s.discoverUser(w, r)

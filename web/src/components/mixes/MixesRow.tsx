@@ -4,7 +4,8 @@ import { Carousel } from '../ui/Carousel'
 import { MediaCard } from '../ui/MediaCard'
 import { MixEditor } from './MixEditor'
 import { DiscoverArt } from './DiscoverArt'
-import { mixTracks, useMixes } from '../../lib/mixesApi'
+import { mixTracks, useMixes, useRebuildDailyMixes } from '../../lib/mixesApi'
+import { useToastStore } from '../../lib/toastStore'
 import { usePlayer } from '../../lib/playerStore'
 
 /**
@@ -16,10 +17,23 @@ export function MixesRow() {
   const { data: mixes, isLoading } = useMixes()
   const playTrackList = usePlayer((s) => s.playTrackList)
   const [creating, setCreating] = useState(false)
+  const rebuild = useRebuildDailyMixes()
+  const push = useToastStore((s) => s.push)
   if (isLoading) return null
+  const refresh = (
+    <button
+      type="button"
+      aria-label="Refresh daily mixes"
+      disabled={rebuild.isPending}
+      onClick={() => rebuild.mutate(undefined, { onError: () => push("Couldn't refresh your daily mixes", 'error') })}
+      className="text-sm font-bold text-text-muted hover:underline disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+    >
+      {rebuild.isPending ? 'Refreshing…' : 'Refresh'}
+    </button>
+  )
   return (
     <div className="mb-8" data-testid="mixes-row">
-      <Carousel title="Your mixes">
+      <Carousel title="Your mixes" action={refresh}>
         <MediaCard title="Discover Weekly" subtitle="New music for you, every Monday" art={<DiscoverArt />} onClick={() => navigate('/discover')} />
         {(mixes ?? []).map((m) => {
           const tracks = mixTracks(m)

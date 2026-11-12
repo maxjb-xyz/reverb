@@ -9,6 +9,24 @@ import (
 	"context"
 )
 
+const archiveDiscoverWeek = `-- name: ArchiveDiscoverWeek :exec
+UPDATE discover_items SET week = ?1 WHERE user_id = ?2 AND week = ?3
+`
+
+type ArchiveDiscoverWeekParams struct {
+	Archived string `json:"archived"`
+	UserID   string `json:"user_id"`
+	Week     string `json:"week"`
+}
+
+// Regenerating moves this week's list aside under another key, so the
+// week-end cleanup (which closes every week but the current one) applies the
+// keep rule to it.
+func (q *Queries) ArchiveDiscoverWeek(ctx context.Context, arg ArchiveDiscoverWeekParams) error {
+	_, err := q.db.ExecContext(ctx, archiveDiscoverWeek, arg.Archived, arg.UserID, arg.Week)
+	return err
+}
+
 const countCompletedListens = `-- name: CountCompletedListens :one
 SELECT COUNT(*) FROM listen_events
 WHERE outcome = 'completed'
@@ -306,7 +324,7 @@ func (q *Queries) ListDiscoveredExternalIDs(ctx context.Context, userID string) 
 
 const listUndecidedDiscoverItems = `-- name: ListUndecidedDiscoverItems :many
 SELECT id, user_id, week, position, owned, library_track_id, source, external_id, title, artist, album, cover_url, isrc, duration_ms, item_json, job_id, preexisting, state, decided_at, created_at FROM discover_items
-WHERE user_id = ? AND week < ? AND job_id != '' AND preexisting = 0 AND state IN ('downloading', 'suggested')
+WHERE user_id = ? AND week != ? AND job_id != '' AND preexisting = 0 AND state IN ('downloading', 'suggested')
 `
 
 type ListUndecidedDiscoverItemsParams struct {
@@ -314,7 +332,7 @@ type ListUndecidedDiscoverItemsParams struct {
 	Week   string `json:"week"`
 }
 
-// Earlier weeks' downloaded songs that the keep rule hasn't ruled on yet.
+// Earlier (or regenerated) weeks' downloaded songs that the keep rule hasn't ruled on yet.
 func (q *Queries) ListUndecidedDiscoverItems(ctx context.Context, arg ListUndecidedDiscoverItemsParams) ([]DiscoverItem, error) {
 	rows, err := q.db.QueryContext(ctx, listUndecidedDiscoverItems, arg.UserID, arg.Week)
 	if err != nil {

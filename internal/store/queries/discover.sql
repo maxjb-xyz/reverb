@@ -28,9 +28,9 @@ UPDATE discover_items SET job_id = ?, preexisting = ?, state = ? WHERE id = ?;
 UPDATE discover_items SET state = ?, decided_at = ? WHERE id = ?;
 
 -- name: ListUndecidedDiscoverItems :many
--- Earlier weeks' downloaded songs that the keep rule hasn't ruled on yet.
+-- Earlier (or regenerated) weeks' downloaded songs that the keep rule hasn't ruled on yet.
 SELECT * FROM discover_items
-WHERE user_id = ? AND week < ? AND job_id != '' AND preexisting = 0 AND state IN ('downloading', 'suggested');
+WHERE user_id = ? AND week != ? AND job_id != '' AND preexisting = 0 AND state IN ('downloading', 'suggested');
 
 -- name: ListDiscoveredExternalIDs :many
 -- Every external song a user has ever been offered, so Discover doesn't repeat itself.
@@ -66,3 +66,9 @@ SELECT COUNT(*) FROM taste_signals WHERE kind = 'playlist_add' AND catalog_id = 
 -- Other users whose Discover still holds (or kept) the same download.
 SELECT COUNT(*) FROM discover_items
 WHERE job_id = sqlc.arg(job_id) AND job_id != '' AND user_id != sqlc.arg(user_id) AND state IN ('suggested', 'downloading', 'kept');
+
+-- name: ArchiveDiscoverWeek :exec
+-- Regenerating moves this week's list aside under another key, so the
+-- week-end cleanup (which closes every week but the current one) applies the
+-- keep rule to it.
+UPDATE discover_items SET week = sqlc.arg(archived) WHERE user_id = sqlc.arg(user_id) AND week = sqlc.arg(week);
