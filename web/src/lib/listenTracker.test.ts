@@ -12,11 +12,13 @@ function mkTrack(id: string, durationMs = 200_000): Track {
   }
 }
 
+// Only the fields the tracker reads; the cast keeps the test independent of
+// player-state fields other features add.
 function st(current: Track | null, currentTimeMs: number, playing = true, crossfadeMs = 0): PlayerState {
   return {
     queue: current ? [current] : [], index: 0, current, playing, currentTimeMs,
     durationMs: current?.durationMs ?? 0, bufferedMs: 0, volume: 1, shuffle: false, repeat: 'off', crossfadeMs,
-  }
+  } as PlayerState
 }
 
 function setup(ctx: PlayContext = { kind: 'album', id: 'alb-1' }) {
