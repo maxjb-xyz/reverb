@@ -22,6 +22,7 @@ interface Current {
   lastWallMs: number
   msPlayed: number
   heard: boolean // playback actually ran (a restored-but-never-played track is not a listen)
+  crossfadeMs: number // the player hands over this early when crossfading
 }
 
 export const EARLY_SKIP_MS = 30_000
@@ -36,8 +37,14 @@ const WALL_SLACK_MS = 1_500
 const MAX_RATE = 2
 const RELOOP_NEAR_ZERO_MS = 3_000
 
+// With crossfade on, the next track takes over crossfadeMs before the end, so
+// a track that reached the fade point was finished, not skipped.
+function reachedEnd(c: Current): boolean {
+  return c.durationMs > 0 && c.lastTimeMs >= c.durationMs - Math.max(END_WITHIN_MS, c.crossfadeMs + 1_000)
+}
+
 function outcomeFor(c: Current): ListenOutcome {
-  if (c.durationMs > 0 && c.lastTimeMs >= c.durationMs - END_WITHIN_MS) return 'completed'
+  if (reachedEnd(c)) return 'completed'
   return c.msPlayed < EARLY_SKIP_MS ? 'skip_early' : 'skip_late'
 }
 
@@ -96,6 +103,7 @@ export function startListenTracker(
       lastWallMs: now(),
       msPlayed: 0,
       heard: false,
+      crossfadeMs: s.crossfadeMs ?? 0,
     }
   }
 
@@ -111,6 +119,7 @@ export function startListenTracker(
       return
     }
     if (s.durationMs > 0) cur.durationMs = s.durationMs
+    cur.crossfadeMs = s.crossfadeMs ?? 0
     const delta = s.currentTimeMs - cur.lastTimeMs
     const wall = now()
     const wallDelta = wall - cur.lastWallMs
@@ -135,7 +144,7 @@ export function startListenTracker(
 
   // Closing the tab mid-song: neither a finish nor a skip.
   function onPageHide() {
-    if (cur) emit(cur, cur.durationMs > 0 && cur.lastTimeMs >= cur.durationMs - END_WITHIN_MS ? 'completed' : 'stopped', true)
+    if (cur) emit(cur, reachedEnd(cur) ? 'completed' : 'stopped', true)
     cur = null
   }
 

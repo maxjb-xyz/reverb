@@ -12,10 +12,10 @@ function mkTrack(id: string, durationMs = 200_000): Track {
   }
 }
 
-function st(current: Track | null, currentTimeMs: number, playing = true): PlayerState {
+function st(current: Track | null, currentTimeMs: number, playing = true, crossfadeMs = 0): PlayerState {
   return {
     queue: current ? [current] : [], index: 0, current, playing, currentTimeMs,
-    durationMs: current?.durationMs ?? 0, bufferedMs: 0, volume: 1, shuffle: false, repeat: 'off',
+    durationMs: current?.durationMs ?? 0, bufferedMs: 0, volume: 1, shuffle: false, repeat: 'off', crossfadeMs,
   }
 }
 
@@ -57,6 +57,17 @@ describe('listenTracker', () => {
     expect(c.contextKind).toBe('album')
     expect(c.contextId).toBe('alb-1')
     expect(c.msPlayed).toBeGreaterThan(58_000)
+  })
+
+  it('counts a crossfaded hand-over as completed, not a late skip', () => {
+    const h = setup()
+    const a = mkTrack('a', 180_000)
+    for (let ms = 0; ms <= 172_000; ms += 250) {
+      h.tick(250)
+      h.emit(st(a, ms, true, 8_000))
+    }
+    h.emit(st(mkTrack('b'), 0, true, 8_000)) // the mixer handed over 8 s early
+    expect(h.calls[0].input.outcome).toBe('completed')
   })
 
   it('reports an early skip when the user moves on within 30 s', () => {
