@@ -345,33 +345,36 @@ describe('PlayerBar (shell)', () => {
       vi.mocked(useAlbumPalette).mockReset()
     })
 
-    it('applies the dominant-color fill + contrast text when a palette is present', () => {
+    it('stays dark and only washes the album colour in as a gradient', () => {
       vi.mocked(useAlbumPalette).mockReturnValue({ rgb: [200, 30, 40], text: '#FFFFFF', scrim: false })
       render(<PlayerBar />)
       const bar = screen.getByTestId('player-bar')
-      expect(bar.style.backgroundColor).toBe('rgb(200, 30, 40)')
-      expect(bar.style.color).toBe('rgb(255, 255, 255)')
+      expect(bar.className).toContain('bg-surface')
+      expect(bar.style.backgroundColor).toBe('')
+      expect(bar.style.backgroundImage).toContain('rgba(200, 30, 40, 0.3)')
     })
 
-    it('falls back to the static look when there is no palette', () => {
+    it('has no tint when there is no palette', () => {
       vi.mocked(useAlbumPalette).mockReturnValue(null)
       render(<PlayerBar />)
-      const bar = screen.getByTestId('player-bar')
-      expect(bar.style.backgroundColor).toBe('')
+      expect(screen.getByTestId('player-bar').style.backgroundImage).toBe('')
     })
 
-    it('title does NOT have text-text-primary when a light palette is active (inherits palette.text)', () => {
+    it('title keeps the standard text colour whatever the artwork', () => {
       vi.mocked(useAlbumPalette).mockReturnValue({ rgb: [240, 240, 240], text: '#1a1a1a', scrim: false })
       render(<PlayerBar />)
-      const title = screen.getByText('Song 1')
-      expect(title.className).not.toContain('text-text-primary')
+      expect(screen.getByText('Song 1').className).toContain('text-text-primary')
     })
+  })
 
-    it('title DOES have text-text-primary when there is no palette', () => {
+  describe('nothing playing', () => {
+    it('dims and disables the transport so it does not look ready to play', () => {
+      act(() => usePlayer.setState({ current: null, queue: [], playing: false }))
       vi.mocked(useAlbumPalette).mockReturnValue(null)
       render(<PlayerBar />)
-      const title = screen.getByText('Song 1')
-      expect(title.className).toContain('text-text-primary')
+      for (const name of ['Play', 'Previous', 'Next', 'Shuffle']) {
+        expect(screen.getByRole('button', { name })).toBeDisabled()
+      }
     })
   })
 })

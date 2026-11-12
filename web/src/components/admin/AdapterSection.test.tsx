@@ -183,8 +183,8 @@ describe('AdapterSection downloader — two-column ordering (moved from Settings
       />,
     )
     const songCol = screen.getByTestId('downloaders-song-col')
-    expect(within(songCol).getByText('spotdl')).toBeInTheDocument()
-    expect(within(songCol).queryByText('lidarr')).toBeNull()
+    expect(within(songCol).getByText('spotDL')).toBeInTheDocument()
+    expect(within(songCol).queryByText('Lidarr')).toBeNull()
   })
 
   it('renders an Album column with spotdl first then lidarr (sorted by album granularity order)', () => {
@@ -200,7 +200,7 @@ describe('AdapterSection downloader — two-column ordering (moved from Settings
     )
     const albumCol = screen.getByTestId('downloaders-album-col')
     const names = within(albumCol).getAllByTestId('downloader-name').map((el) => el.textContent)
-    expect(names).toEqual(['spotdl', 'lidarr'])
+    expect(names).toEqual(['spotDL', 'Lidarr'])
   })
 
   it('first-row up button is disabled in Song column', () => {
@@ -278,7 +278,7 @@ describe('AdapterSection downloader — two-column ordering (moved from Settings
     await waitFor(() => expect(onMoveInColumn).toHaveBeenCalledTimes(1))
     // The Song column must still render with spotdl only
     const songCol = screen.getByTestId('downloaders-song-col')
-    expect(within(songCol).getByText('spotdl')).toBeInTheDocument()
-    expect(within(songCol).queryByText('lidarr')).toBeNull()
+    expect(within(songCol).getByText('spotDL')).toBeInTheDocument()
+    expect(within(songCol).queryByText('Lidarr')).toBeNull()
   })
 })

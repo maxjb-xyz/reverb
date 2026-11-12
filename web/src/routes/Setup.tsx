@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { adapterDisplayName } from '../lib/displayNames'
 import { useQueryClient } from '@tanstack/react-query'
 import { api } from '../lib/api'
 import { setupOwner } from '../lib/session'
@@ -54,7 +55,7 @@ function Shell({ children }: { children: React.ReactNode }) {
       <div className="relative w-full max-w-md mx-4">
         {/* Wordmark */}
         <div className="mb-8 flex items-center justify-center">
-          <Logo iconClassName="h-9 w-auto" textClassName="text-2xl" />
+          <Logo textClassName="text-2xl" />
         </div>
         <div className="rounded-2xl bg-surface shadow-pop border border-border-subtle p-8 space-y-6">
           {children}
@@ -262,7 +263,7 @@ export default function Setup() {
                     {c.name.charAt(0).toUpperCase()}
                   </span>
                   <span className="min-w-0 flex-1">
-                    <span className="block font-semibold capitalize text-text-primary">{c.name}</span>
+                    <span className="block font-semibold text-text-primary">{adapterDisplayName(c.name)}</span>
                     <span className="mt-1 block text-sm text-text-secondary">{adapterDescription(c.type, c.name)}</span>
                   </span>
                   <Icon name="fwd" className="mt-1 text-text-muted group-hover:text-accent" aria-hidden="true" />
@@ -286,7 +287,7 @@ export default function Setup() {
       {chosen && (
         <div className="rounded-xl border border-border-subtle bg-raised p-4 space-y-3">
           <div className="flex items-center justify-between">
-            <h3 className="font-semibold text-text-primary">{chosen.name}</h3>
+            <h3 className="font-semibold text-text-primary">{adapterDisplayName(chosen.name)}</h3>
             <button
               type="button"
               onClick={() => setChosen(null)}

@@ -60,7 +60,28 @@ describe('Downloads page', () => {
     expect(screen.queryByText('Beta')).not.toBeInTheDocument()
   })
 
+  it('an empty page shows no counters or queue actions', () => {
+    renderPage()
+    expect(screen.queryByText(/0 downloading/)).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /pause queue/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /clear finished/i })).not.toBeInTheDocument()
+  })
+
+  it('a paused queue keeps its Resume button even with no jobs', () => {
+    useDownloads.setState({ jobs: {}, paused: true })
+    renderPage()
+    expect(screen.getByRole('button', { name: /resume queue/i })).toBeInTheDocument()
+  })
+
+  it('Clear finished is hidden while nothing has finished', () => {
+    useDownloads.getState().setAll([job('q', 'queued')])
+    renderPage()
+    expect(screen.getByRole('button', { name: /pause queue/i })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /clear finished/i })).not.toBeInTheDocument()
+  })
+
   it('pause button calls pauseQueue and optimistically flips', async () => {
+    useDownloads.getState().setAll([job('q', 'queued')])
     renderPage()
     fireEvent.click(screen.getByRole('button', { name: /pause queue/i }))
     expect(pauseQueue).toHaveBeenCalled()

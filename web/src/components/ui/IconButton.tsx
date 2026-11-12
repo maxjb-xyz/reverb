@@ -27,6 +27,7 @@ export function IconButton({
     <button
       type="button"
       aria-label={label}
+      title={label}
       disabled={disabled}
       onClick={disabled ? undefined : onClick}
       className={[

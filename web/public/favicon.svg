@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <rect width="64" height="64" rx="14" fill="#0D0D0F"/>
+  <text x="29" y="46" text-anchor="middle" font-family="Figtree, system-ui, -apple-system, 'Segoe UI', sans-serif" font-weight="800" font-size="40" fill="#fff">R</text>
+  <circle cx="48" cy="42.5" r="4.2" fill="#F0354B"/>
+</svg>

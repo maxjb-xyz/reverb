@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, waitFor, fireEvent, act } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent, act, within } from '@testing-library/react'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import SyncedPlaylist from './SyncedPlaylist'
@@ -497,23 +497,22 @@ describe('SyncedPlaylist page', () => {
   // ── Remove ─────────────────────────────────────────────────────────────────
 
   it('Remove (confirm=true) calls deleteSyncedPlaylist and navigates to /library', async () => {
-    vi.spyOn(window, 'confirm').mockReturnValue(true)
     await renderLoaded()
     fireEvent.click(screen.getByRole('button', { name: /more options/i }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Remove' }))
+    expect(mockDeleteSyncedPlaylist).not.toHaveBeenCalled()
     await act(async () => {
-      fireEvent.click(screen.getByRole('menuitem', { name: 'Remove' }))
+      fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Remove' }))
     })
     expect(mockDeleteSyncedPlaylist).toHaveBeenCalledWith('sp1')
     await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/library'))
   })
 
   it('Remove (confirm=false) does NOT call deleteSyncedPlaylist', async () => {
-    vi.spyOn(window, 'confirm').mockReturnValue(false)
     await renderLoaded()
     fireEvent.click(screen.getByRole('button', { name: /more options/i }))
-    await act(async () => {
-      fireEvent.click(screen.getByRole('menuitem', { name: 'Remove' }))
-    })
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Remove' }))
+    fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Cancel' }))
     expect(mockDeleteSyncedPlaylist).not.toHaveBeenCalled()
     expect(mockNavigate).not.toHaveBeenCalled()
   })

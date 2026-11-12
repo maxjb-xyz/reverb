@@ -120,7 +120,7 @@ test('request flow: request-only user sees Request button, submits it, sees Pend
 
   // ── Step 3: Navigate to /requests → "My Requests" shows the item Pending ────
   await page.goto('/requests')
-  await expect(page.getByRole('heading', { name: 'My Requests' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Requests', exact: true })).toBeVisible()
 
   // The track title appears in the request list.
   await expect(page.getByText(externalTrack.title, { exact: true })).toBeVisible()
@@ -158,7 +158,7 @@ test('approval flow: manager sees Approval tab, pending item listed, clicking Ap
 
   // ── Step 1: Navigate to /requests; Approval tab is visible for managers ─────
   await page.goto('/requests')
-  await expect(page.getByRole('heading', { name: 'My Requests' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Requests', exact: true })).toBeVisible()
 
   // The Approval tab only renders for manage_requests users.
   const approvalTab = page.getByRole('tab', { name: 'Approval' })
@@ -181,7 +181,7 @@ test('approval flow: manager sees Approval tab, pending item listed, clicking Ap
 
   // Back to /requests.
   await page.goto('/requests')
-  await expect(page.getByRole('heading', { name: 'My Requests' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Requests', exact: true })).toBeVisible()
 
   // Switch to the Approval tab.
   await page.getByRole('tab', { name: 'Approval' }).click()
@@ -254,7 +254,7 @@ test('album request: requester sees "Request album" on album page, confirms dial
 
   // ── Step 5: Navigate to /requests → item appears in My Requests with Album cue
   await page.goto('/requests')
-  await expect(page.getByRole('heading', { name: 'My Requests' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Requests', exact: true })).toBeVisible()
 
   // The album title appears in the request list.
   await expect(page.getByText(mockAlbumName, { exact: true })).toBeVisible()
@@ -317,7 +317,7 @@ test('album request approval: manager sees album request in Approval queue with 
 
   // ── Step 2: Navigate to /requests → Approval tab is visible for managers ───
   await page.goto('/requests')
-  await expect(page.getByRole('heading', { name: 'My Requests' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Requests', exact: true })).toBeVisible()
 
   const approvalTab = page.getByRole('tab', { name: 'Approval' })
   await expect(approvalTab).toBeVisible()

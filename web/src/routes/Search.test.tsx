@@ -209,6 +209,36 @@ describe('Search (blended results)', () => {
     vi.unstubAllGlobals()
   })
 
+  it('a failed source reads as unavailable and Retry repeats the search', async () => {
+    let opened = 0
+    let inst: { onmessage: ((ev: { data: string }) => void) | null } | null = null
+    class StubES {
+      onmessage: ((ev: { data: string }) => void) | null = null
+      onerror: (() => void) | null = null
+      constructor() { opened++; inst = this }
+      close() {}
+    }
+    vi.stubGlobal('EventSource', StubES as unknown as typeof EventSource)
+
+    render(wrap(<Search />))
+    fireEvent.change(screen.getByPlaceholderText(/search your library/i), { target: { value: 'found' } })
+    await waitFor(() => expect(inst).not.toBeNull())
+    act(() => {
+      inst!.onmessage?.({ data: JSON.stringify({ source: 'deezer', status: 'error', results: [] }) })
+    })
+
+    expect(await screen.findByText('Deezer unavailable')).toBeInTheDocument()
+    // A failed source has nothing to show or hide, so it is not a toggle.
+    expect(screen.queryByRole('button', { name: /deezer results/i })).not.toBeInTheDocument()
+
+    const before = opened
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+    await waitFor(() => expect(opened).toBe(before + 1))
+    expect(screen.queryByText('Deezer unavailable')).not.toBeInTheDocument()
+
+    vi.unstubAllGlobals()
+  })
+
   it('does not show "No tracks found." when the library has songs and external has none', async () => {
     let inst: { onmessage: ((ev: { data: string }) => void) | null; onerror: (() => void) | null; close(): void } | null = null
     class StubES {

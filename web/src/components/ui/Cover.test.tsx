@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { Cover } from './Cover'
+import { initialsOf, looksLikeBlankPlaceholder } from '../../lib/avatar'
 
 describe('Cover', () => {
   it('renders an img with loading=lazy when src is given', () => {
@@ -87,5 +88,44 @@ describe('Cover', () => {
     const root = container.firstChild as HTMLElement
     expect(root.className).toMatch(/w-full/)
     expect(root.className).toMatch(/h-full/)
+  })
+
+  it('round (artist) covers fall back to initials instead of the music icon', () => {
+    render(<Cover alt="Halcyon Drift" rounded="full" />)
+    expect(screen.getByTestId('cover-placeholder').textContent).toBe('HD')
+  })
+
+  it('square covers keep the music icon placeholder', () => {
+    render(<Cover alt="Halcyon Drift" />)
+    expect(screen.getByTestId('cover-placeholder').textContent).toBe('')
+  })
+})
+
+describe('initialsOf', () => {
+  it('takes the first letters of the first and last word', () => {
+    expect(initialsOf('Halcyon Drift')).toBe('HD')
+    expect(initialsOf('ironwood')).toBe('I')
+    expect(initialsOf('The Very Long Band Name')).toBe('TN')
+    expect(initialsOf('  ')).toBe('')
+  })
+})
+
+describe('looksLikeBlankPlaceholder', () => {
+  const fill = (rgb: [number, number, number], n = 256) => {
+    const d = new Uint8ClampedArray(n * 4)
+    for (let i = 0; i < n; i++) d.set([...rgb, 255], i * 4)
+    return d
+  }
+
+  it('flags an almost entirely white, colourless image', () => {
+    const d = fill([250, 250, 250])
+    d.set([120, 120, 120, 255], 0) // a little grey silhouette
+    expect(looksLikeBlankPlaceholder(d)).toBe(true)
+  })
+
+  it('does not flag colourful or dark artwork', () => {
+    expect(looksLikeBlankPlaceholder(fill([200, 40, 60]))).toBe(false)
+    expect(looksLikeBlankPlaceholder(fill([20, 20, 20]))).toBe(false)
+    expect(looksLikeBlankPlaceholder(fill([255, 240, 200]))).toBe(false)
   })
 })

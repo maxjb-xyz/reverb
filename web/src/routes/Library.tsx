@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { PageHeader } from '../components/ui/PageHeader'
 import { useNavigate } from 'react-router-dom'
 import { useAlbums, useArtists, useLibraryStatus } from '../lib/libraryApi'
 import { useSyncedPlaylists } from '../lib/syncedPlaylistApi'
@@ -77,9 +78,10 @@ export default function Library() {
       )}
 
       {/* Page header */}
-      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
-        <h1 className="whitespace-nowrap text-2xl font-bold text-text-primary">Your Library</h1>
-        <div className="flex items-center gap-2">
+      <PageHeader
+        title="Your Library"
+        actions={
+          <>
           {/* Collection is a lens on the library (what you're missing), so it
               lives here rather than as a standalone rail entry. */}
           <Button
@@ -98,8 +100,9 @@ export default function Library() {
           >
             + Import from Spotify
           </Button>
-        </div>
-      </div>
+          </>
+        }
+      />
 
       {/* Filter chips */}
       <div className="flex gap-2 flex-wrap" role="group" aria-label="Library filter">

@@ -1,4 +1,4 @@
-import { useEffect, lazy } from 'react'
+import { useEffect, lazy, type ReactNode } from 'react'
 import { Navigate, Route, Routes, useParams } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { AppShell } from './components/AppShell'
@@ -10,6 +10,24 @@ import { useAuthStore, isManagerCaps } from './lib/authStore'
 import Login from './routes/Login'
 import Setup from './routes/Setup'
 import Signup from './routes/Signup'
+import { Button } from './components/ui/Button'
+import { Logo } from './components/ui/Logo'
+
+/** Full-page state shown before the app shell exists: the wordmark, centred,
+ *  with either a quiet loading line or a message and action. */
+function BootScreen({ children }: { children?: ReactNode }) {
+  return (
+    <div className="flex min-h-dvh flex-col items-center justify-center gap-4 bg-canvas p-6 text-center">
+      <Logo textClassName="text-3xl" />
+      {children ?? (
+        <p className="text-sm text-text-muted" role="status">
+          Loading…
+        </p>
+      )}
+    </div>
+  )
+}
+
 // Lazy: the heavy authenticated routes. Splitting these out of the main bundle
 // keeps the initial (login) payload small and clears the build size warning.
 const Home = lazy(() => import('./routes/Home'))
@@ -79,15 +97,18 @@ function Routed() {
     if (s.authenticated && !me) void refresh()
   }, [s.authenticated, me, refresh])
 
-  if (s.loading) return <div className="p-6 text-text-muted">Loading…</div>
+  if (s.loading) return <BootScreen />
   if (s.error)
     return (
-      <div className="p-6 text-text-secondary">
-        Can't reach the Reverb server.{' '}
-        <button onClick={() => window.location.reload()} className="underline">
+      <BootScreen>
+        <p className="text-base font-semibold text-text-primary">Can't reach the Reverb server</p>
+        <p className="max-w-xs text-sm text-text-secondary">
+          It may still be starting up. Check that it is running, then try again.
+        </p>
+        <Button variant="secondary" onClick={() => window.location.reload()}>
           Retry
-        </button>
-      </div>
+        </Button>
+      </BootScreen>
     )
   if (s.setupRequired) return <Setup />
   if (!s.authenticated)
@@ -99,7 +120,7 @@ function Routed() {
     )
   // Authenticated, but capabilities not yet loaded — render a brief loading
   // state rather than flashing an ungated shell (the gates depend on `me`).
-  if (!me) return <div className="p-6 text-text-muted">Loading…</div>
+  if (!me) return <BootScreen />
   return (
     <Routes>
       <Route element={<AppShell />}>

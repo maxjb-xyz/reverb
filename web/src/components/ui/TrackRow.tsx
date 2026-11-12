@@ -33,9 +33,14 @@ interface TrackRowProps {
   albumTo?: string
   /** Small muted caption appended to the artist line (e.g. "Played 5×"). Layout-stable. */
   caption?: ReactNode
+  /** 'album' drops the per-row cover and album column — on an album page every
+   *  row would repeat the same artwork and album name. The hover play button
+   *  moves into the index cell. */
+  variant?: 'default' | 'album'
 }
 
-export function TrackRow({ track, index, active = false, playing, onPlay, right, coverSrc, rightWidth = 'auto', artistNode, albumNode, artistTo, albumTo, caption }: TrackRowProps) {
+export function TrackRow({ track, index, active = false, playing, onPlay, right, coverSrc, rightWidth = 'auto', artistNode, albumNode, artistTo, albumTo, caption, variant = 'default' }: TrackRowProps) {
+  const compact = variant === 'album'
   // coverSrc overrides (external Spotify images); otherwise use album cover directly
   // (album art reliably resolves; per-song embedded art is usually absent).
   const src = coverSrc ?? trackCoverUrl(track, 80)
@@ -67,8 +72,10 @@ export function TrackRow({ track, index, active = false, playing, onPlay, right,
         // columns only exist from md up, and the right slot sizes to its content
         // there — a fixed desktop template would squeeze the title to nothing.
         'group w-full grid items-center gap-2.5 px-2 py-2 rounded-md text-left',
-        'grid-cols-[20px_40px_minmax(0,1fr)_auto_28px]',
-        'md:gap-3.5 md:px-2.5 md:grid-cols-[26px_40px_minmax(0,1fr)_minmax(0,1fr)_var(--row-right)_36px_44px]',
+        compact
+          ? 'grid-cols-[20px_minmax(0,1fr)_auto_28px] md:grid-cols-[26px_minmax(0,1fr)_var(--row-right)_36px_44px]'
+          : 'grid-cols-[20px_40px_minmax(0,1fr)_auto_28px] md:grid-cols-[26px_40px_minmax(0,1fr)_minmax(0,1fr)_var(--row-right)_36px_44px]',
+        'md:gap-3.5 md:px-2.5',
         'transition-colors hover:bg-raised-hover cursor-default',
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
         active ? 'text-accent' : 'text-text-primary',
@@ -76,15 +83,31 @@ export function TrackRow({ track, index, active = false, playing, onPlay, right,
       style={{ '--row-right': rightWidth } as React.CSSProperties}
     >
       {/* Lead: index or Equalizer when active */}
-      <span className="grid place-items-center text-sm font-bold text-text-muted">
+      <span className="relative grid h-7 place-items-center text-sm font-bold text-text-muted">
         {active ? (
           <Equalizer playing={playing} />
         ) : (
-          <span>{index !== undefined ? index + 1 : ''}</span>
+          <span className={compact ? 'md:group-hover:invisible' : undefined}>{index !== undefined ? index + 1 : ''}</span>
+        )}
+        {compact && (
+          <button
+            type="button"
+            aria-label={`Play ${track.title}`}
+            onClick={(e) => { e.stopPropagation(); onPlay() }}
+            onDoubleClick={(e) => e.stopPropagation()}
+            className={[
+              'absolute inset-0 hidden place-items-center rounded-md text-text-primary',
+              active ? '' : 'md:group-hover:inline-grid',
+              'focus-visible:inline-grid focus-visible:bg-raised focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
+            ].join(' ')}
+          >
+            <Icon name="play" className="w-3.5 h-3.5" />
+          </button>
         )}
       </span>
 
       {/* Cover — with hover play button overlaid */}
+      {!compact && (
       <div className="relative flex-none">
         <Cover src={src} alt={track.title} size={40} rounded="md" />
         {/* Hover play button: hidden by default, revealed on row hover */}
@@ -106,6 +129,7 @@ export function TrackRow({ track, index, active = false, playing, onPlay, right,
           <Icon name="play" className="w-4 h-4" />
         </button>
       </div>
+      )}
 
       {/* Title + Artist */}
       <span className="min-w-0">
@@ -135,6 +159,7 @@ export function TrackRow({ track, index, active = false, playing, onPlay, right,
       </span>
 
       {/* Album */}
+      {!compact && (
       <span className="truncate text-sm text-text-secondary hidden md:block">
         {albumNode ?? ((albumTo ?? (track.albumId ? `/album/library/${track.albumId}` : null)) ? (
           <Link
@@ -149,6 +174,7 @@ export function TrackRow({ track, index, active = false, playing, onPlay, right,
           track.album
         ))}
       </span>
+      )}
 
       {/* Right slot (Phase 5: download badge) */}
       <span className="flex min-w-0 items-center justify-end gap-2">

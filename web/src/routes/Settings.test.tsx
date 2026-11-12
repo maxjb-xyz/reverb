@@ -22,7 +22,7 @@ const mockMe = {
   roleId: 'r1',
   roleName: 'Admin',
   isOwner: true,
-  capabilities: ['library:read', 'library:write', 'admin:users'],
+  capabilities: ['can_manage_library', 'auto_approve', 'request'],
   createdAt: 1700000000,
 }
 
@@ -190,11 +190,13 @@ describe('Settings — Profile tab', () => {
     expect(screen.getByText('Admin')).toBeInTheDocument()
   })
 
-  it('renders capability chips for each capability', () => {
+  it('renders a readable chip for each capability', () => {
     wrap(<Settings />)
-    expect(screen.getByText('library:read')).toBeInTheDocument()
-    expect(screen.getByText('library:write')).toBeInTheDocument()
-    expect(screen.getByText('admin:users')).toBeInTheDocument()
+    // Readable labels, never the raw capability keys.
+    expect(screen.getByText('Manage library & integrations')).toBeInTheDocument()
+    expect(screen.getByText('Auto-approve music')).toBeInTheDocument()
+    expect(screen.getByText('Request music')).toBeInTheDocument()
+    expect(screen.queryByText('can_manage_library')).not.toBeInTheDocument()
   })
 
   it('renders "Member since" with the formatted join date', () => {
