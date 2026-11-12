@@ -321,4 +321,41 @@ describe('Add-to-playlist button', () => {
     expect(screen.getByRole('dialog')).toBeInTheDocument()
     expect(onPlay).not.toHaveBeenCalled()
   })
+
+  describe('responsive layout', () => {
+    it('does not force a fixed desktop column template inline (phones get their own grid)', () => {
+      renderRow({ onPlay: vi.fn(), rightWidth: '120px' })
+      const row = screen.getByText('Karma Police').closest('[role="button"]') as HTMLElement
+      expect(row.style.gridTemplateColumns).toBe('')
+      expect(row.style.getPropertyValue('--row-right')).toBe('120px')
+      expect(row.className).toContain('grid-cols-[20px_40px_minmax(0,1fr)_auto_28px]')
+      expect(row.className).toContain('md:grid-cols-')
+    })
+
+    it('hides the duration below md so the title keeps its room', () => {
+      renderRow({ onPlay: vi.fn() })
+      expect(screen.getByText('3:58').className).toContain('hidden')
+      expect(screen.getByText('3:58').className).toContain('md:block')
+    })
+
+    it('plays on a single tap when the device cannot hover', () => {
+      const original = window.matchMedia
+      window.matchMedia = vi.fn().mockReturnValue({ matches: true }) as unknown as typeof window.matchMedia
+      const onPlay = vi.fn()
+      renderRow({ onPlay })
+      fireEvent.click(screen.getByText('Karma Police'))
+      expect(onPlay).toHaveBeenCalledTimes(1)
+      window.matchMedia = original
+    })
+
+    it('does not play on a single click with a hover-capable pointer', () => {
+      const original = window.matchMedia
+      window.matchMedia = vi.fn().mockReturnValue({ matches: false }) as unknown as typeof window.matchMedia
+      const onPlay = vi.fn()
+      renderRow({ onPlay })
+      fireEvent.click(screen.getByText('Karma Police'))
+      expect(onPlay).not.toHaveBeenCalled()
+      window.matchMedia = original
+    })
+  })
 })
