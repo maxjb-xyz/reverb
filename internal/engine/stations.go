@@ -103,3 +103,26 @@ func (e *Engine) Suggestions(ctx context.Context, userID string, n int) ([]Sugge
 	}
 	return out, nil
 }
+
+// Genre is a library genre a station or mix can be seeded with.
+type Genre struct {
+	Key    string `json:"key"`
+	Label  string `json:"label"`
+	Tracks int    `json:"tracks"`
+}
+
+// Genres lists the library's genres, biggest first, with display labels.
+func (e *Engine) Genres(ctx context.Context, n int) ([]Genre, error) {
+	if n <= 0 || n > 500 {
+		n = 200
+	}
+	rows, err := e.q.ListLibraryGenres(ctx, int64(n))
+	if err != nil {
+		return nil, err
+	}
+	out := make([]Genre, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, Genre{Key: r.GenreKey, Label: e.genreLabel(ctx, r.GenreKey), Tracks: int(r.Tracks)})
+	}
+	return out, nil
+}

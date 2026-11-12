@@ -32,6 +32,8 @@ export function contextFromPath(pathname: string): PlayContext {
       return { kind: 'artist', id }
     case 'playlist':
       return { kind: 'playlist', id }
+    case 'mix':
+      return { kind: 'mix', id }
     case 'search':
       return { kind: 'search' }
     case 'library':

@@ -558,6 +558,55 @@ paths:
       parameters:
         - { name: n, in: query, schema: { type: integer, default: 8, maximum: 24 } }
       responses: { "200": { description: "{ stations: [{ seed, label, sublabel, coverArtId, libraryArtistId }] }" } }
+  /engine/genres:
+    get:
+      summary: The library's genres, biggest first, for picking a genre station or mix seed.
+      responses: { "200": { description: "{ genres: [{ key, label, tracks }] }" } }
+  /mixes:
+    get:
+      summary: >
+        The session user's mixes with their songs. Daily mixes come first
+        (made by Reverb from clusters of the user's favourite artists, rebuilt
+        each day), then custom mixes. A mix that is due for its refresh is
+        rebuilt on read.
+      responses: { "200": { description: "{ mixes: [Mix] } where Mix is { id, kind (daily|custom), name, description, recipe, items: [engine item], coverArtId, generatedAt, createdAt }" } }
+    post:
+      summary: Save a custom mix and build it.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, recipe]
+              properties:
+                name: { type: string, maxLength: 100 }
+                recipe:
+                  type: object
+                  properties:
+                    seeds: { type: array, maxItems: 10, items: { type: object, description: "an engine seed: { kind: track|artist|genre|taste, id?, title?, artist? }" }, description: "No seeds means the user's own taste." }
+                    lane: { type: string, enum: ["", on-repeat, throwback, deep-cuts, sounds-like, new-to-you, fresh-finds] }
+                    fromYear: { type: integer }
+                    toYear: { type: integer }
+                    size: { type: integer, default: 30, maximum: 100 }
+                    refresh: { type: string, enum: [daily, weekly, manual], default: daily }
+      responses: { "201": { description: Mix }, "400": { description: invalid recipe }, "409": { description: too many mixes } }
+  /mixes/{id}:
+    parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+    get:
+      summary: One mix, rebuilt first if it is due.
+      responses: { "200": { description: Mix }, "404": { description: not found } }
+    put:
+      summary: Rename a custom mix or change its recipe; it is rebuilt.
+      responses: { "200": { description: Mix }, "400": { description: invalid recipe }, "404": { description: not found }, "409": { description: daily mixes can't be edited } }
+    delete:
+      summary: Delete a custom mix.
+      responses: { "204": { description: deleted }, "404": { description: not found }, "409": { description: daily mixes can't be deleted } }
+  /mixes/{id}/refresh:
+    post:
+      summary: Rebuild a mix now with new songs.
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses: { "200": { description: Mix }, "404": { description: not found } }
   /ws:
     get:
       summary: >
