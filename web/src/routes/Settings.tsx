@@ -1,13 +1,44 @@
 import { useState } from 'react'
-import { Button, Chip } from '../components/ui'
-import { useAuthStore } from '../lib/authStore'
+import { useLocation, useNavigate } from 'react-router-dom'
+import { Button } from '../components/ui'
+import { useAuthStore, isManagerCaps } from '../lib/authStore'
 import { changePassword, changeUsername, logoutAll } from '../lib/accountApi'
 import { ApiError } from '../lib/api'
 import { IntegrationsSection } from '../components/account/IntegrationsSection'
 import { AppearanceSection } from '../components/account/AppearanceSection'
 import { useDocumentTitle } from '../lib/useDocumentTitle'
+import { capabilityLabel } from '../lib/displayNames'
+import { PageHeader } from '../components/ui/PageHeader'
+import { AdminProviders } from './Admin'
+import { UsersSection } from '../components/admin/UsersSection'
+import { RolesSection } from '../components/admin/RolesSection'
+import { RegistrationSection } from '../components/admin/RegistrationSection'
 
-type Tab = 'profile' | 'security' | 'sessions' | 'integrations' | 'appearance'
+type Section =
+  | 'profile'
+  | 'security'
+  | 'sessions'
+  | 'integrations'
+  | 'appearance'
+  | 'providers'
+  | 'users'
+  | 'registration'
+
+// One place for every setting. The first group is the signed-in person's own
+// account; the second is the server, shown only to people who can manage it
+// (this used to be a separate /admin page).
+const ACCOUNT_SECTIONS: { key: Section; label: string }[] = [
+  { key: 'profile', label: 'Profile' },
+  { key: 'security', label: 'Security' },
+  { key: 'sessions', label: 'Sessions' },
+  { key: 'integrations', label: 'Integrations' },
+  { key: 'appearance', label: 'Appearance' },
+]
+const ADMIN_SECTIONS: { key: Section; label: string }[] = [
+  { key: 'providers', label: 'Providers' },
+  { key: 'users', label: 'Users and roles' },
+  { key: 'registration', label: 'Registration' },
+]
 
 export default function Settings() {
   useDocumentTitle('Settings')
@@ -15,7 +46,13 @@ export default function Settings() {
   const logout = useAuthStore((s) => s.logout)
   const refresh = useAuthStore((s) => s.refresh)
 
-  const [tab, setTab] = useState<Tab>('profile')
+  const isManager = useAuthStore((s) => isManagerCaps(s.me?.capabilities))
+  const navigate = useNavigate()
+  // The section lives in the URL (/settings/security) so it can be linked to
+  // and survives a reload. Unknown or not-permitted sections fall back to Profile.
+  const requested = useLocation().pathname.split('/')[2] ?? 'profile'
+  const allowed = isManager ? [...ACCOUNT_SECTIONS, ...ADMIN_SECTIONS] : ACCOUNT_SECTIONS
+  const tab: Section = allowed.find((x) => x.key === requested)?.key ?? 'profile'
 
   // ── Profile form ──────────────────────────────────────────────────────────
   const [username, setUsername] = useState(me?.username ?? '')
@@ -89,32 +126,52 @@ export default function Settings() {
 
   if (!me) return null
 
+  function renderGroup(label: string, items: { key: Section; label: string }[]) {
+    return (
+      <>
+        <div className="hidden px-3 pb-1 pt-4 text-xs font-semibold uppercase tracking-widest text-text-muted first:pt-0 md:block">
+          {label}
+        </div>
+        {items.map((item) => {
+          const selected = tab === item.key
+          return (
+            <button
+              key={item.key}
+              type="button"
+              aria-current={selected ? 'page' : undefined}
+              onClick={() => navigate(item.key === 'profile' ? '/settings' : `/settings/${item.key}`)}
+              className={[
+                'whitespace-nowrap rounded-full px-3 py-1.5 text-left text-sm font-semibold transition-colors md:rounded-md md:py-2',
+                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
+                selected
+                  ? 'bg-text-primary text-on-accent md:bg-raised-hover md:text-text-primary'
+                  : 'bg-raised text-text-primary hover:bg-raised-hover md:bg-transparent md:text-text-secondary md:hover:text-text-primary',
+              ].join(' ')}
+            >
+              {item.label}
+            </button>
+          )
+        })}
+      </>
+    )
+  }
+
   const initial = me.username.charAt(0).toUpperCase()
 
   return (
-    <div className="max-w-4xl space-y-6 pb-8">
-      {/* Header */}
-      <h1 className="text-3xl font-black tracking-tight text-text-primary">Settings</h1>
+    <div className="mx-auto max-w-5xl space-y-6 pb-8">
+      <PageHeader title="Settings" />
 
-      {/* Tab bar */}
-      <div role="tablist" aria-label="Settings sections" className="flex gap-2 border-b border-border-subtle pb-0 flex-wrap">
-        <Chip selected={tab === 'profile'} onClick={() => setTab('profile')}>
-          Profile
-        </Chip>
-        <Chip selected={tab === 'security'} onClick={() => setTab('security')}>
-          Security
-        </Chip>
-        <Chip selected={tab === 'sessions'} onClick={() => setTab('sessions')}>
-          Sessions
-        </Chip>
-        <Chip selected={tab === 'integrations'} onClick={() => setTab('integrations')}>
-          Integrations
-        </Chip>
-        <Chip selected={tab === 'appearance'} onClick={() => setTab('appearance')}>
-          Appearance
-        </Chip>
-      </div>
+      <div className="gap-10 md:grid md:grid-cols-[190px_minmax(0,1fr)]">
+        {/* Section list: a column on desktop, a scrolling row of pills on phones */}
+        <nav aria-label="Settings sections" className="mb-6 md:mb-0">
+          <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 md:mx-0 md:flex-col md:gap-0.5 md:overflow-visible md:px-0 md:pb-0">
+            {renderGroup('Account', ACCOUNT_SECTIONS)}
+            {isManager && renderGroup('Admin', ADMIN_SECTIONS)}
+          </div>
+        </nav>
 
+        <div className="min-w-0">
       {/* ── Profile tab ─────────────────────────────────────────────────────── */}
       {tab === 'profile' && (
         <div className="space-y-0 divide-y divide-border-subtle">
@@ -171,20 +228,20 @@ export default function Settings() {
 
           {/* Capabilities */}
           {me.capabilities.length > 0 && (
-            <div className="flex items-start gap-5 py-5">
+            <div className="flex flex-col gap-3 py-5 sm:flex-row sm:items-start sm:gap-5">
               <div className="flex-1 min-w-0">
                 <div className="text-sm font-bold text-text-primary">Capabilities</div>
                 <div className="text-xs text-text-secondary mt-0.5">
                   Permissions granted to your role.
                 </div>
               </div>
-              <div className="flex-none flex flex-wrap gap-1.5 max-w-xs justify-end">
+              <div className="flex flex-wrap gap-1.5 sm:max-w-xs sm:flex-none sm:justify-end">
                 {me.capabilities.map((cap) => (
                   <span
                     key={cap}
                     className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-raised text-text-secondary border border-border-subtle"
                   >
-                    {cap}
+                    {capabilityLabel(cap)}
                   </span>
                 ))}
               </div>
@@ -311,6 +368,18 @@ export default function Settings() {
 
       {/* ── Appearance tab ───────────────────────────────────────────────────── */}
       {tab === 'appearance' && <AppearanceSection />}
+
+      {/* ── Admin sections ───────────────────────────────────────────────────── */}
+      {tab === 'providers' && <AdminProviders />}
+      {tab === 'users' && (
+        <div className="space-y-10">
+          <UsersSection />
+          <RolesSection />
+        </div>
+      )}
+      {tab === 'registration' && <RegistrationSection />}
+        </div>
+      </div>
     </div>
   )
 }

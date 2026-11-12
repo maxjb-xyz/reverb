@@ -2,7 +2,7 @@ import { usePlayer } from '../lib/playerStore'
 import { useUI } from '../lib/uiStore'
 import { trackCoverUrl } from '../lib/libraryApi'
 import { useAlbumPalette } from '../lib/useAlbumPalette'
-import { rgbToCss } from '../lib/palette'
+import { playerTint } from '../lib/palette'
 import { Cover } from './ui/Cover'
 import { Icon } from './ui/Icon'
 
@@ -22,7 +22,7 @@ export function MiniPlayer() {
     <div
       data-testid="mini-player"
       className="flex items-center gap-3 border-t border-border-subtle px-3 py-2 md:hidden bg-surface"
-      style={palette ? { backgroundColor: rgbToCss(palette.rgb), color: palette.text } : undefined}
+      style={palette ? { backgroundImage: playerTint(palette.rgb) } : undefined}
     >
       <button
         type="button"

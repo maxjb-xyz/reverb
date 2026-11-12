@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import Artist from './Artist'
 
@@ -208,24 +208,25 @@ describe('Artist page', () => {
 
   it('"Download all missing" button calls postBatchDownload when confirmed', () => {
     setAuth(['auto_approve'])
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
     wrapper(<Artist />)
     const dlBtn = screen.getByRole('button', { name: /download all missing/i })
     fireEvent.click(dlBtn)
-    expect(confirmSpy).toHaveBeenCalledWith('Download 1 missing tracks?')
+    // In-app dialog, not window.confirm; nothing is queued until it is confirmed.
+    expect(postBatchDownload).not.toHaveBeenCalled()
+    const dialog = screen.getByRole('alertdialog', { name: 'Download 1 missing track?' })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Download' }))
     expect(postBatchDownload).toHaveBeenCalledWith([MISSING_TRACK])
-    confirmSpy.mockRestore()
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
   })
 
   it('"Download all missing" does NOT download when confirm is cancelled', () => {
     setAuth(['auto_approve'])
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
     wrapper(<Artist />)
     const dlBtn = screen.getByRole('button', { name: /download all missing/i })
     fireEvent.click(dlBtn)
-    expect(confirmSpy).toHaveBeenCalled()
+    fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Cancel' }))
     expect(postBatchDownload).not.toHaveBeenCalled()
-    confirmSpy.mockRestore()
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
   })
 
   // ── Acquisition-button gating (capability-driven, mutually exclusive) ────────
@@ -345,6 +346,12 @@ describe('Artist page', () => {
     expect(bg).toMatch(/120/)
     expect(bg).toMatch(/80/)
     expect(bg).toMatch(/200/)
+  })
+
+  it('tints the header from album artwork rather than the artist photo', () => {
+    vi.mocked(useAlbumPalette).mockReturnValue(null)
+    wrapper(<Artist />)
+    expect(vi.mocked(useAlbumPalette)).toHaveBeenLastCalledWith('https://cdn.example.com/kida.jpg')
   })
 
   it('header wrapper has no inline style when palette is null', () => {
@@ -530,6 +537,35 @@ describe('Artist page', () => {
     wrapper(<Artist />)
     fireEvent.click(screen.getByRole('button', { name: 'OK Computer' }))
     expect(mockNavigate).toHaveBeenCalledWith('/album/library/ext-ok-computer')
+  })
+
+  it('unresolved artist with library albums: shows them once, with an honest count and no duplicate discography grid', () => {
+    const libAlbum = {
+      source: 'library',
+      externalId: 'lib-ok-computer',
+      name: 'OK Computer',
+      year: 1997,
+      kind: 'album' as const,
+      totalTracks: 12,
+    }
+    vi.mocked(useArtistDetail).mockReturnValue({
+      data: {
+        ...STUB_DETAIL,
+        resolved: false,
+        // The API echoes library albums as `albums` when nothing resolved online.
+        albums: [libAlbum],
+        libraryAlbums: [{ ...libAlbum, libraryAlbumId: 'lib-ok-computer' }],
+      },
+      isLoading: false,
+      isError: false,
+    } as ReturnType<typeof useArtistDetail>)
+    vi.mocked(useCoverageStream).mockReturnValue({})
+    wrapper(<Artist />)
+    expect(screen.getByText('1 album in your library')).toBeInTheDocument()
+    expect(screen.queryByText(/0 of 1/)).not.toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: 'OK Computer' })).toHaveLength(1)
+    expect(screen.queryByTestId('discography-section')).not.toBeInTheDocument()
+    expect(screen.getByTestId('discography-unavailable')).toBeInTheDocument()
   })
 
   it('"In your library" section is absent when libraryAlbums is empty', () => {

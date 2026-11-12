@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { useParams, useNavigate, Link } from 'react-router-dom'
+import { useParams, useNavigate, useLocation, Link } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import {
   useSyncedPlaylist,
@@ -15,7 +15,7 @@ import {
 import type { TrackOrderEntry } from '../lib/syncedPlaylistApi'
 import { TrackRow } from '../components/ui/TrackRow'
 import { DownloadAction } from '../components/download/DownloadAction'
-import { Button, IconButton, Cover, Skeleton, EmptyState, Badge, Toggle, Select, Icon } from '../components/ui'
+import { Button, IconButton, Cover, Skeleton, EmptyState, Badge, Toggle, Select, Icon, ConfirmDialog } from '../components/ui'
 import { PortalMenu } from '../components/PortalMenu'
 import type { ExternalResult, ExternalTrackRef, AlbumDetailTrack, Track } from '../lib/types'
 import { usePlayer } from '../lib/playerStore'
@@ -99,12 +99,29 @@ export default function SyncedPlaylist() {
 
   // "…" menu state
   const [menuOpen, setMenuOpen] = useState(false)
+  const [confirmRemoveOpen, setConfirmRemoveOpen] = useState(false)
   const menuTriggerRef = useRef<HTMLDivElement>(null)
 
   // Inline title edit state
   const [editingName, setEditingName] = useState(false)
   const [nameInput, setNameInput] = useState('')
   const nameInputRef = useRef<HTMLInputElement>(null)
+  // A playlist that was just created opens with its title ready to type over,
+  // so nobody ends up with a row of playlists all called "New playlist".
+  const location = useLocation()
+  const openRenaming = (location.state as { rename?: boolean } | null)?.rename === true
+  const detailName = detail?.name
+  // Adjusted during render (not in an effect) so the editor is open on first paint.
+  const [renameArmed, setRenameArmed] = useState(openRenaming)
+  if (renameArmed && detailName !== undefined) {
+    setRenameArmed(false)
+    setNameInput(detailName)
+    setEditingName(true)
+  }
+  useEffect(() => {
+    // Drop the flag so a reload or Back does not reopen the editor.
+    if (openRenaming) navigate(location.pathname, { replace: true, state: null })
+  }, [openRenaming, navigate, location.pathname])
   // Set synchronously by Escape so the blur-triggered handleRename can tell a
   // cancel from a save (React state wouldn't flush before the blur fires).
   const renameCancelledRef = useRef(false)
@@ -240,14 +257,19 @@ export default function SyncedPlaylist() {
     try {
       await renameSyncedPlaylist(id, trimmed)
       void qc.invalidateQueries({ queryKey: ['synced-playlist', id] })
+      void qc.invalidateQueries({ queryKey: ['synced-playlists'] })
     } catch {
       // silent — title will revert on next render
     }
   }
 
-  async function handleDelete() {
+  function handleDelete() {
     setMenuOpen(false)
-    if (!window.confirm(`Remove synced playlist "${detail!.name}"?`)) return
+    setConfirmRemoveOpen(true)
+  }
+
+  async function confirmDelete() {
+    setConfirmRemoveOpen(false)
     try {
       await deleteSyncedPlaylist(id)
       qc.invalidateQueries({ queryKey: ['synced-playlists'] })
@@ -403,6 +425,7 @@ export default function SyncedPlaylist() {
                   if (e.key === 'Enter') { e.currentTarget.blur() }
                   if (e.key === 'Escape') { renameCancelledRef.current = true; e.currentTarget.blur() }
                 }}
+                onFocus={(e) => e.currentTarget.select()}
                 autoFocus
               />
             ) : (
@@ -440,6 +463,7 @@ export default function SyncedPlaylist() {
                 onClick={() => ownedTracks.length && playTrackList(ownedTracks, 0)}
                 aria-label={`Play ${detail.name}`}
               >
+                <Icon name="play" className="w-5 h-5 mr-1" />
                 Play
               </Button>
               {canAutoApprove && missingCount > 0 && (
@@ -680,6 +704,14 @@ export default function SyncedPlaylist() {
           <EmptyState icon="browse" title="No tracks in this playlist" />
         )}
       </div>
+      <ConfirmDialog
+        open={confirmRemoveOpen}
+        title={`Remove "${detail.name}"?`}
+        body="The playlist is removed from Reverb. Music already in your library stays."
+        confirmLabel="Remove"
+        onCancel={() => setConfirmRemoveOpen(false)}
+        onConfirm={() => void confirmDelete()}
+      />
     </div>
   )
 }

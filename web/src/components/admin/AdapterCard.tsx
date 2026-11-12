@@ -1,4 +1,5 @@
 import { Badge, Button, Toggle, Icon } from '../ui'
+import { adapterDisplayName } from '../../lib/displayNames'
 import type { AdapterInstance } from '../../lib/adaptersApi'
 import { SECRET_SENTINEL } from '../../lib/adaptersApi'
 
@@ -73,7 +74,7 @@ export function AdapterCard({
       {/* Meta */}
       <div className="min-w-0 flex-1 space-y-1">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-sm font-bold text-text-primary">{instance.name}</span>
+          <span className="text-sm font-bold text-text-primary">{adapterDisplayName(instance.name)}</span>
           <Badge kind="status" tone={statusTone}>
             {statusLabel}
           </Badge>

@@ -5,6 +5,7 @@ import type { Track } from '../lib/types'
 import { useUI } from '../lib/uiStore'
 import { usePeaks } from '../lib/peaksApi'
 import { useLyrics } from '../lib/lyricsApi'
+import { useAlbumPalette } from '../lib/useAlbumPalette'
 import { CinemaView } from './CinemaView'
 
 vi.mock('../lib/useAlbumPalette', () => ({ useAlbumPalette: vi.fn(() => null) }))
@@ -97,5 +98,15 @@ describe('CinemaView', () => {
     useUI.setState({ cinemaOpen: true })
     render(<CinemaView />)
     expect(screen.queryByRole('button', { name: 'Show lyrics' })).not.toBeInTheDocument()
+  })
+
+  it('paints the album wash over an opaque base so the app never shows through', () => {
+    vi.mocked(useAlbumPalette).mockReturnValueOnce({ rgb: [200, 80, 20], text: '#fff' } as unknown as ReturnType<typeof useAlbumPalette>)
+    engine.playTrackList([track], 0)
+    useUI.setState({ cinemaOpen: true })
+    render(<CinemaView />)
+    const style = screen.getByTestId('cinema-view').getAttribute('style') ?? ''
+    // Last background layer must be the solid canvas colour.
+    expect(style).toMatch(/var\(--bg-base\) 100%\), var\(--bg-base\)/)
   })
 })

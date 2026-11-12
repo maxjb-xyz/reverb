@@ -97,3 +97,9 @@ export function rgbToCss(rgb: RGB, alpha?: number): string {
   const base = `${rgb[0]} ${rgb[1]} ${rgb[2]}`
   return alpha === undefined ? `rgb(${base})` : `rgb(${base} / ${alpha})`
 }
+
+/** Soft left-to-right wash of the album colour over the dark bar. */
+export function playerTint(rgb: RGB): string {
+  const [r, g, b] = rgb
+  return `linear-gradient(90deg, rgba(${r}, ${g}, ${b}, 0.3) 0%, rgba(${r}, ${g}, ${b}, 0.1) 45%, rgba(${r}, ${g}, ${b}, 0) 100%)`
+}

@@ -66,7 +66,7 @@ function Section({ title, count, jobs }: { title: string; count: number; jobs: D
   if (jobs.length === 0) return null
   return (
     <div>
-      <div className="mt-3 mb-1 px-2 text-[11px] font-bold uppercase tracking-wider text-text-muted">
+      <div className="mt-3 mb-1 px-2 text-xs font-bold text-text-secondary">
         {title} · {count}
       </div>
       <ul className="space-y-1">

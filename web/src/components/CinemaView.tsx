@@ -8,6 +8,7 @@ import { useUI } from '../lib/uiStore'
 import { useActiveLyricLine } from '../lib/useActiveLyricLine'
 import { useAlbumPalette } from '../lib/useAlbumPalette'
 import { usePeaks } from '../lib/peaksApi'
+import { Waveform } from './ui/Waveform'
 import { Cover } from './ui/Cover'
 import { Icon } from './ui/Icon'
 import { LyricsLines } from './lyrics/LyricsLines'
@@ -53,7 +54,10 @@ export function CinemaView() {
   // (Spotify-cinema style) rather than a thin header tint fading to black.
   const ambient = palette
     ? {
-        background: `linear-gradient(180deg, ${rgbToCss(palette.rgb, 0.75)} 0%, ${rgbToCss(palette.rgb, 0.3)} 55%, var(--bg-base) 100%)`,
+        // The wash is translucent, so it must sit on an opaque base layer —
+        // an inline `background` replaces the bg-canvas class, and without the
+        // base the app underneath shows through the artwork and controls.
+        background: `linear-gradient(180deg, ${rgbToCss(palette.rgb, 0.75)} 0%, ${rgbToCss(palette.rgb, 0.3)} 55%, var(--bg-base) 100%), var(--bg-base)`,
         color: palette.text,
       }
     : undefined
@@ -103,14 +107,14 @@ export function CinemaView() {
         </div>
         <div className="flex h-full max-h-[60vh] w-full max-w-xs flex-col">
           <div className="mb-2 flex items-center justify-between">
-            <h2 className="text-xs font-bold uppercase tracking-widest text-text-muted">
+            <h2 className="text-base font-bold text-text-primary">
               {sideView === 'lyrics' ? 'Lyrics' : 'Up next'}
             </h2>
             {lyrics != null && (
               <button
                 type="button"
                 onClick={() => setSideView(sideView === 'lyrics' ? 'queue' : 'lyrics')}
-                className="text-xs font-bold uppercase tracking-widest text-text-secondary hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                className="text-xs font-semibold text-text-secondary hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
               >
                 {sideView === 'lyrics' ? 'Show queue' : 'Show lyrics'}
               </button>
@@ -143,12 +147,10 @@ export function CinemaView() {
       <div className="mx-auto w-full max-w-5xl">
         <div className="truncate text-3xl font-black text-text-primary">{current?.title ?? 'Nothing playing'}</div>
         <div className="mb-4 truncate text-sm text-text-secondary">{current?.artist ?? ''}</div>
-        <div className="mb-1 flex items-center justify-between text-xs tabular-nums text-text-muted"><span>{formatDuration(currentTimeMs)}</span><span>{formatDuration(durationMs)}</span></div>
-        <div role="slider" aria-label="Seek" aria-valuemin={0} aria-valuemax={durationMs} aria-valuenow={currentTimeMs} tabIndex={0} onClick={seek} onKeyDown={onSeekKeyDown} className="group relative h-1 w-full cursor-pointer rounded-full bg-border-subtle focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent">
+        <div className="mb-4 flex items-center justify-between text-xs tabular-nums text-text-muted"><span>{formatDuration(currentTimeMs)}</span><span>{formatDuration(durationMs)}</span></div>
+        <div role="slider" aria-label="Seek" aria-valuemin={0} aria-valuemax={durationMs} aria-valuenow={currentTimeMs} tabIndex={0} onClick={seek} onKeyDown={onSeekKeyDown} className={['group relative h-1 w-full cursor-pointer rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent', peaks?.length ? '' : 'bg-border-subtle'].join(' ')}>
           {peaks?.length ? (
-            <div data-testid="waveform" className="absolute inset-x-0 top-1/2 flex h-8 -translate-y-1/2 items-center gap-px">
-              {peaks.map((peak, i) => <div key={i} className={i / peaks.length * 100 <= pct ? 'flex-1 rounded-full bg-text-primary group-hover:bg-accent' : 'flex-1 rounded-full bg-border-subtle'} style={{ minHeight: '2px', height: `${Math.max(8, peak * 100)}%` }} />)}
-            </div>
+            <Waveform peaks={peaks} pct={pct} bars={160} className="h-8" />
           ) : (
             <div className="h-full rounded-full bg-text-primary" style={{ width: `${pct}%` }} />
           )}

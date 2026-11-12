@@ -293,7 +293,7 @@ describe('Stats page', () => {
 
     // Click "7d" chip — changes range from 30d default
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: /^7d$/i }))
+      fireEvent.click(screen.getByRole('button', { name: '7 days' }))
     })
 
     await waitFor(() => {
@@ -309,7 +309,7 @@ describe('Stats page', () => {
     await waitFor(() => expect(mockTopTracks).toHaveBeenCalledTimes(1))
 
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: /^7d$/i }))
+      fireEvent.click(screen.getByRole('button', { name: '7 days' }))
     })
 
     await waitFor(() => {

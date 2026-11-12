@@ -1,6 +1,6 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
 import { act, render, screen, fireEvent, waitFor } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, useLocation } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import Search from './Search'
 import { engine } from '../lib/playerStore'
@@ -41,6 +41,59 @@ describe('Search (empty query)', () => {
     render(wrap(<Search />))
     // "Find your music" is the EmptyState title
     expect(screen.getByText(/find your music/i)).toBeInTheDocument()
+  })
+})
+
+describe('Search (URL sync)', () => {
+  beforeEach(() => {
+    // A non-empty query opens the Everywhere stream; jsdom has no EventSource.
+    class StubES {
+      onmessage: ((ev: MessageEvent) => void) | null = null
+      onerror: ((ev: Event) => void) | null = null
+      addEventListener() {}
+      close() {}
+    }
+    vi.stubGlobal('EventSource', StubES as unknown as typeof EventSource)
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ tracks: [], albums: [], artists: [] }), { status: 200, headers: { 'Content-Type': 'application/json' } })))
+  })
+  afterEach(() => vi.unstubAllGlobals())
+
+  function LocationProbe() {
+    const loc = useLocation()
+    return <span data-testid="loc">{loc.pathname + loc.search}</span>
+  }
+  function wrapAt(entry: string) {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    return (
+      <QueryClientProvider client={qc}>
+        <MemoryRouter initialEntries={[entry]}>
+          <Search />
+          <LocationProbe />
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+  }
+
+  it('seeds the query from ?q= so a search link opens its results', async () => {
+    render(wrapAt('/search?q=radiohead'))
+    await waitFor(() => expect(useSearch.getState().query).toBe('radiohead'))
+    expect(screen.queryByText(/find your music/i)).not.toBeInTheDocument()
+    expect(screen.getByTestId('loc')).toHaveTextContent('/search?q=radiohead')
+  })
+
+  it('writes the typed query to the URL and clears it when emptied', async () => {
+    render(wrapAt('/search'))
+    const input = screen.getByPlaceholderText(/search your library/i)
+    fireEvent.change(input, { target: { value: 'kid a' } })
+    await waitFor(() => expect(screen.getByTestId('loc')).toHaveTextContent('/search?q=kid+a'))
+    fireEvent.change(screen.getByPlaceholderText(/search your library/i), { target: { value: '' } })
+    await waitFor(() => expect(screen.getByTestId('loc').textContent).toBe('/search'))
+  })
+
+  it('a query already in the shared store (typed in the top bar) lands in the URL', async () => {
+    useSearch.setState({ query: 'in rainbows' })
+    render(wrapAt('/search'))
+    await waitFor(() => expect(screen.getByTestId('loc')).toHaveTextContent('/search?q=in+rainbows'))
   })
 })
 
@@ -152,6 +205,36 @@ describe('Search (blended results)', () => {
     const libNode = screen.getByText('Found Song')
     const extNode = screen.getByText('External Only Song')
     expect(libNode.compareDocumentPosition(extNode) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+
+    vi.unstubAllGlobals()
+  })
+
+  it('a failed source reads as unavailable and Retry repeats the search', async () => {
+    let opened = 0
+    let inst: { onmessage: ((ev: { data: string }) => void) | null } | null = null
+    class StubES {
+      onmessage: ((ev: { data: string }) => void) | null = null
+      onerror: (() => void) | null = null
+      constructor() { opened++; inst = this }
+      close() {}
+    }
+    vi.stubGlobal('EventSource', StubES as unknown as typeof EventSource)
+
+    render(wrap(<Search />))
+    fireEvent.change(screen.getByPlaceholderText(/search your library/i), { target: { value: 'found' } })
+    await waitFor(() => expect(inst).not.toBeNull())
+    act(() => {
+      inst!.onmessage?.({ data: JSON.stringify({ source: 'deezer', status: 'error', results: [] }) })
+    })
+
+    expect(await screen.findByText('Deezer unavailable')).toBeInTheDocument()
+    // A failed source has nothing to show or hide, so it is not a toggle.
+    expect(screen.queryByRole('button', { name: /deezer results/i })).not.toBeInTheDocument()
+
+    const before = opened
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+    await waitFor(() => expect(opened).toBe(before + 1))
+    expect(screen.queryByText('Deezer unavailable')).not.toBeInTheDocument()
 
     vi.unstubAllGlobals()
   })

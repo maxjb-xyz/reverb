@@ -7,7 +7,8 @@ interface BadgeProps {
 }
 
 const kindClasses: Record<string, string> = {
-  'in-library': 'text-accent',
+  // Neutral, not accent: owning a track is a state, not an action or an alert.
+  'in-library': 'text-text-secondary',
   available: 'border border-border-subtle text-text-primary',
   downloading: 'text-accent',
   downloaded: 'text-accent',

@@ -1,20 +1,19 @@
 import { NavLink } from 'react-router-dom'
-import { useUI } from '../lib/uiStore'
 import { useDownloads } from '../lib/downloadStore'
 import { Icon } from './ui/Icon'
 import type { IconName } from './ui/Icon'
 
-// Bottom tab bar shown only < md. Icon-first (Settings lives in the avatar menu).
+// Bottom tab bar shown only < md. Four real destinations; Stats, Requests and
+// Settings live in the avatar menu. Downloads is a page here, not a slide-over:
+// a tab that opened a panel over the current page behaved unlike its siblings.
 const tabs: { to: string; label: string; icon: IconName; end?: boolean }[] = [
   { to: '/', label: 'Home', icon: 'home', end: true },
   { to: '/search', label: 'Search', icon: 'search' },
   { to: '/library', label: 'Library', icon: 'browse' },
-  { to: '/stats', label: 'Stats', icon: 'chart' },
+  { to: '/downloads', label: 'Downloads', icon: 'dl' },
 ]
 
 export function MobileTabNav() {
-  const togglePanel = useUI((s) => s.togglePanel)
-  const rightPanel = useUI((s) => s.rightPanel)
   const activeCount = useDownloads((s) => s.active().length)
 
   const itemClass = (active: boolean) =>
@@ -35,27 +34,17 @@ export function MobileTabNav() {
           to={t.to}
           end={t.end}
           aria-label={t.label}
-          className={({ isActive }) => itemClass(isActive)}
+          className={({ isActive }) => `relative ${itemClass(isActive)}`}
         >
           <Icon name={t.icon} className="text-xl" />
           <span className="text-[10px] font-semibold leading-none">{t.label}</span>
+          {t.to === '/downloads' && activeCount > 0 && (
+            <span className="pointer-events-none absolute right-2 top-0 grid h-4 min-w-4 place-items-center rounded-full bg-accent px-1 text-xs font-extrabold text-on-accent">
+              {activeCount}
+            </span>
+          )}
         </NavLink>
       ))}
-
-      <button
-        type="button"
-        aria-label="Downloads"
-        onClick={() => togglePanel('downloads')}
-        className={`relative ${itemClass(rightPanel === 'downloads')}`}
-      >
-        <Icon name="dl" className="text-xl" />
-        <span className="text-[10px] font-semibold leading-none">Downloads</span>
-        {activeCount > 0 && (
-          <span className="absolute right-2 top-0 grid h-4 min-w-4 place-items-center rounded-full bg-accent px-1 text-xs font-extrabold text-on-accent pointer-events-none">
-            {activeCount}
-          </span>
-        )}
-      </button>
     </nav>
   )
 }

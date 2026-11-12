@@ -1,18 +1,35 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
+import { PageHeader } from '../components/ui/PageHeader'
 import { useNavigate } from 'react-router-dom'
 import { useAlbums, useArtists, useLibraryStatus } from '../lib/libraryApi'
 import { useSyncedPlaylists } from '../lib/syncedPlaylistApi'
-import { Chip, MediaCard, Skeleton, EmptyState, Button } from '../components/ui'
+import { Chip, MediaCard, Skeleton, EmptyState, Button, Select, Icon } from '../components/ui'
 import { ImportPlaylistDialog } from '../components/ImportPlaylistDialog'
 import { useDocumentTitle } from '../lib/useDocumentTitle'
 
 type Filter = 'albums' | 'artists' | 'playlists'
 
+// Same order as the library rail, so the two never disagree.
 const FILTERS: { key: Filter; label: string }[] = [
+  { key: 'playlists', label: 'Playlists' },
   { key: 'albums', label: 'Albums' },
   { key: 'artists', label: 'Artists' },
-  { key: 'playlists', label: 'Playlists' },
 ]
+
+type AlbumSort = 'newest' | 'title' | 'artist'
+
+const ALBUM_SORTS: { value: AlbumSort; label: string }[] = [
+  { value: 'newest', label: 'Recently added' },
+  { value: 'title', label: 'Title' },
+  { value: 'artist', label: 'Artist' },
+]
+
+const byText = (a: string, b: string) => a.localeCompare(b, undefined, { sensitivity: 'base' })
+
+/** Shown when the filter box excludes everything (distinct from an empty library). */
+function NoMatches({ query }: { query: string }) {
+  return <EmptyState icon="search" title="No matches" hint={`Nothing in this view matches "${query}".`} />
+}
 
 const SKELETON_COUNT = 10
 
@@ -61,6 +78,22 @@ export default function Library() {
   const artists = useArtists()
   const syncedPlaylists = useSyncedPlaylists()
   const libStatus = useLibraryStatus()
+  const [query, setQuery] = useState('')
+  const [albumSort, setAlbumSort] = useState<AlbumSort>('newest')
+
+  const q = query.trim().toLowerCase()
+  const matches = (...fields: (string | undefined)[]) =>
+    q === '' || fields.some((f) => f?.toLowerCase().includes(q))
+
+  const albumList = useMemo(() => {
+    const list = (albums.data ?? []).filter((al) => matches(al.name, al.artist))
+    if (albumSort === 'title') return [...list].sort((a, b) => byText(a.name, b.name))
+    if (albumSort === 'artist') return [...list].sort((a, b) => byText(a.artist, b.artist) || byText(a.name, b.name))
+    return list // API order is newest first
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `matches` only depends on q
+  }, [albums.data, albumSort, q])
+  const artistList = (artists.data ?? []).filter((ar) => matches(ar.name))
+  const playlistList = (syncedPlaylists.data ?? []).filter((pl) => matches(pl.name))
 
   return (
     <div className="space-y-6">
@@ -77,18 +110,19 @@ export default function Library() {
       )}
 
       {/* Page header */}
-      <div className="flex items-center justify-between gap-3">
-        <h1 className="text-2xl font-bold text-text-primary">Your Library</h1>
-        <div className="flex items-center gap-2">
-          {/* Collection is a lens on the library (what you're missing), so it
-              lives here rather than as a standalone rail entry. */}
+      <PageHeader
+        title="Your Library"
+        actions={
+          <>
+          {/* Discographies is a lens on the library (what you're missing), so
+              it lives here rather than as a standalone rail entry. */}
           <Button
             size="sm"
             variant="ghost"
-            aria-label="Open collection"
-            onClick={() => navigate('/collection')}
+            aria-label="Open discographies"
+            onClick={() => navigate('/discographies')}
           >
-            Collection
+            Discographies
           </Button>
           <Button
             size="sm"
@@ -98,20 +132,44 @@ export default function Library() {
           >
             + Import from Spotify
           </Button>
-        </div>
-      </div>
+          </>
+        }
+      />
 
-      {/* Filter chips */}
-      <div className="flex gap-2 flex-wrap" role="group" aria-label="Library filter">
-        {FILTERS.map(({ key, label }) => (
-          <Chip
-            key={key}
-            selected={filter === key}
-            onClick={() => setFilter(key)}
-          >
-            {label}
-          </Chip>
-        ))}
+      {/* View chips, then find-in-view and sort */}
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
+        <div className="flex gap-2 flex-wrap" role="group" aria-label="Library filter">
+          {FILTERS.map(({ key, label }) => (
+            <Chip
+              key={key}
+              selected={filter === key}
+              onClick={() => setFilter(key)}
+            >
+              {label}
+            </Chip>
+          ))}
+        </div>
+        <div className="ml-auto flex items-center gap-3">
+          <label className="flex h-9 w-44 items-center gap-2 rounded-full bg-input px-3 focus-within:ring-2 focus-within:ring-accent sm:w-56">
+            <Icon name="search" className="h-3.5 w-3.5 flex-none text-text-secondary" />
+            <input
+              type="search"
+              aria-label={`Filter ${filter}`}
+              placeholder={`Filter ${filter}`}
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              className="w-full min-w-0 bg-transparent text-sm text-text-primary outline-none placeholder:text-text-secondary"
+            />
+          </label>
+          {filter === 'albums' && (
+            <Select
+              label="Sort albums"
+              value={albumSort}
+              options={ALBUM_SORTS}
+              onChange={(v) => setAlbumSort(v as AlbumSort)}
+            />
+          )}
+        </div>
       </div>
 
       {/* Albums grid */}
@@ -127,9 +185,11 @@ export default function Library() {
               title="Nothing here yet"
               hint="Download some music to start building your library."
             />
+          ) : albumList.length === 0 ? (
+            <NoMatches query={query.trim()} />
           ) : (
             <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-              {(albums.data ?? []).map((al) => (
+              {albumList.map((al) => (
                 <MediaCard
                   key={al.id}
                   title={al.name}
@@ -157,9 +217,11 @@ export default function Library() {
               title="Nothing here yet"
               hint="Download some music to start building your library."
             />
+          ) : artistList.length === 0 ? (
+            <NoMatches query={query.trim()} />
           ) : (
             <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-              {(artists.data ?? []).map((ar) => (
+              {artistList.map((ar) => (
                 <MediaCard
                   key={ar.id}
                   title={ar.name}
@@ -186,9 +248,11 @@ export default function Library() {
               title="Nothing here yet"
               hint="Create a playlist or download some music to get started."
             />
+          ) : playlistList.length === 0 ? (
+            <NoMatches query={query.trim()} />
           ) : (
             <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-              {(syncedPlaylists.data ?? []).map((pl) => (
+              {playlistList.map((pl) => (
                 <MediaCard
                   key={pl.id}
                   title={pl.name}

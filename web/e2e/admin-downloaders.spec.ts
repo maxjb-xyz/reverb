@@ -86,9 +86,9 @@ async function goToAdmin(page: import('@playwright/test').Page) {
   const dl = await installDownloadersMocks(page)
   await stubAdminRoutes(page)
 
-  await page.goto('/admin')
+  await page.goto('/settings/providers')
   await expect(page.getByTestId('app-shell-root')).toBeVisible()
-  await expect(page.getByRole('heading', { name: 'Admin' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Library backend' })).toBeVisible()
   // Admin defaults to the Providers tab — verify it's active.
   await expect(page.getByTestId('downloaders-song-col')).toBeVisible()
 
@@ -105,9 +105,9 @@ async function goToAdminWithSeed(
   const dl = await installDownloadersMocksWithSeed(page, seed)
   await stubAdminRoutes(page)
 
-  await page.goto('/admin')
+  await page.goto('/settings/providers')
   await expect(page.getByTestId('app-shell-root')).toBeVisible()
-  await expect(page.getByRole('heading', { name: 'Admin' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Library backend' })).toBeVisible()
 
   return dl
 }
@@ -123,7 +123,7 @@ test('admin-downloaders: Song column shows spotDL only', async ({ page }) => {
   // The Song column contains exactly one downloader row: spotDL.
   const names = songCol.getByTestId('downloader-name')
   await expect(names).toHaveCount(1)
-  await expect(names.first()).toHaveText('spotdl')
+  await expect(names.first()).toHaveText('spotDL')
 })
 
 test('admin-downloaders: Album column shows spotDL first, then Lidarr', async ({ page }) => {
@@ -135,8 +135,8 @@ test('admin-downloaders: Album column shows spotDL first, then Lidarr', async ({
   // The Album column contains exactly two downloader rows: spotDL (order 0) then Lidarr (order 1).
   const names = albumCol.getByTestId('downloader-name')
   await expect(names).toHaveCount(2)
-  await expect(names.nth(0)).toHaveText('spotdl')
-  await expect(names.nth(1)).toHaveText('lidarr')
+  await expect(names.nth(0)).toHaveText('spotDL')
+  await expect(names.nth(1)).toHaveText('Lidarr')
 })
 
 // ── 2) Disabled controls: first-row up and last-row down are disabled ─────────
@@ -231,7 +231,7 @@ test('admin-downloaders: clicking Move down on spotDL in Album column issues PUT
   const songCol = page.getByTestId('downloaders-song-col')
   const songNames = songCol.getByTestId('downloader-name')
   await expect(songNames).toHaveCount(1)
-  await expect(songNames.first()).toHaveText('spotdl')
+  await expect(songNames.first()).toHaveText('spotDL')
 })
 
 // ── 4) Toggle-off: spotDL with album granularity disabled is absent from Album column ──
@@ -273,14 +273,14 @@ test('admin-downloaders: when spotDL has no album granularity, Album column show
   await expect(albumCol).toBeVisible()
   const albumNames = albumCol.getByTestId('downloader-name')
   await expect(albumNames).toHaveCount(1)
-  await expect(albumNames.first()).toHaveText('lidarr')
+  await expect(albumNames.first()).toHaveText('Lidarr')
 
   // Song column: still spotDL (its track granularity is unaffected).
   const songCol = page.getByTestId('downloaders-song-col')
   await expect(songCol).toBeVisible()
   const songNames = songCol.getByTestId('downloader-name')
   await expect(songNames).toHaveCount(1)
-  await expect(songNames.first()).toHaveText('spotdl')
+  await expect(songNames.first()).toHaveText('spotDL')
 })
 
 // ── 5) "Order in Settings" hint is gone from Admin Downloaders section ──

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { adapterDisplayName } from '../lib/displayNames'
 import { useQueryClient } from '@tanstack/react-query'
 import { api } from '../lib/api'
 import { setupOwner } from '../lib/session'
@@ -11,6 +12,11 @@ import { Logo } from '../components/ui/Logo'
 
 type Step = 'password' | 'library' | 'search' | 'downloader' | 'done'
 
+const PREV: Partial<Record<Step, Step>> = {
+  search: 'library',
+  downloader: 'search',
+}
+
 const NEXT: Record<Step, Step> = {
   password: 'library',
   library: 'search',
@@ -20,9 +26,9 @@ const NEXT: Record<Step, Step> = {
 }
 
 const STEP_COPY: Record<Exclude<Step, 'password' | 'done'>, { type: string; title: string; description: string }> = {
-  library: { type: 'library', title: 'Add a Library', description: 'Connect a source for your music collection.' },
-  search: { type: 'search', title: 'Add a Search source', description: 'Choose how Reverb finds music.' },
-  downloader: { type: 'downloader', title: 'Configure Downloads', description: 'spotDL is bundled and ready to use.' },
+  library: { type: 'library', title: 'Choose a library', description: 'Where Reverb keeps and plays your music.' },
+  search: { type: 'search', title: 'Add a search source', description: 'How Reverb finds music you do not have yet.' },
+  downloader: { type: 'downloader', title: 'Downloads', description: 'How Reverb fetches the music you ask for.' },
 }
 
 // Ordered steps (excludes done) for the progress indicator
@@ -33,8 +39,9 @@ function adapterDescription(type: string, name: string): string {
   switch (name.toLowerCase()) {
     case 'deezer': return 'Search a large catalog with no account or API keys required.'
     case 'spotify': return 'Search Spotify’s catalog using your own app credentials.'
-    case 'spotdl': return 'Download music with the bundled downloader. Spotify credentials are optional.'
-    default: return `Connect ${name} to expand your music search.`
+    case 'spotdl': return 'Change where the bundled downloader saves music. Spotify credentials are optional.'
+    case 'lidarr': return 'Send album requests to a Lidarr server you already run.'
+    default: return `Connect ${adapterDisplayName(name)}.`
   }
 }
 
@@ -45,7 +52,7 @@ function stepIndex(step: Step): number {
 /** Shared branded shell: radial wash + wordmark + card */
 function Shell({ children }: { children: React.ReactNode }) {
   return (
-    <div className="min-h-screen bg-canvas flex items-center justify-center">
+    <div className="flex min-h-screen items-start justify-center bg-canvas pb-10 pt-[10vh]">
       <div
         className="pointer-events-none fixed inset-0"
         aria-hidden="true"
@@ -54,7 +61,7 @@ function Shell({ children }: { children: React.ReactNode }) {
       <div className="relative w-full max-w-md mx-4">
         {/* Wordmark */}
         <div className="mb-8 flex items-center justify-center">
-          <Logo iconClassName="h-9 w-auto" textClassName="text-2xl" />
+          <Logo textClassName="text-2xl" />
         </div>
         <div className="rounded-2xl bg-surface shadow-pop border border-border-subtle p-8 space-y-6">
           {children}
@@ -97,6 +104,8 @@ export default function Setup() {
   const configured = useAdapters()
   const [chosen, setChosen] = useState<AvailableAdapter | null>(null)
   const [spotifyCredentials, setSpotifyCredentials] = useState<Record<string, unknown>>({})
+  const [advancedOpen, setAdvancedOpen] = useState(false)
+  const [busy, setBusy] = useState(false)
 
   async function submitPassword(e: React.FormEvent) {
     e.preventDefault()
@@ -121,7 +130,39 @@ export default function Setup() {
   function advance() {
     setErr('')
     setChosen(null)
+    setAdvancedOpen(false)
     setStep((s) => NEXT[s])
+  }
+
+  function goBack() {
+    setErr('')
+    setChosen(null)
+    setAdvancedOpen(false)
+    setStep((s) => PREV[s] ?? s)
+  }
+
+  /** Choosing an adapter: one that needs no settings (Deezer) is added on the
+   *  spot; anything else opens its form. */
+  async function choose(c: AvailableAdapter) {
+    if ((c.configSchema?.fields ?? []).length > 0) {
+      setChosen(c)
+      return
+    }
+    if (busy) return
+    setErr('')
+    setBusy(true)
+    try {
+      const already = configured.data?.some((a) => a.type === c.type && a.name === c.name)
+      if (!already) {
+        await createAdapter({ type: c.type, name: c.name, enabled: true, priority: 0, config: {} })
+        await qc.invalidateQueries({ queryKey: ['adapters', 'list'] })
+      }
+      advance()
+    } catch {
+      setErr(`Couldn't add ${adapterDisplayName(c.name)}. Please try again.`)
+    } finally {
+      setBusy(false)
+    }
   }
 
   if (step === 'password') {
@@ -149,7 +190,7 @@ export default function Setup() {
           </div>
           <div className="space-y-1">
             <label htmlFor="setup-pw" className="block text-sm font-medium text-text-secondary">
-              Admin password
+              Password
             </label>
             <input
               id="setup-pw"
@@ -185,7 +226,7 @@ export default function Setup() {
           <div className="space-y-1">
             <h1 className="text-xl font-bold text-text-primary">You're all set</h1>
             <p className="text-sm text-text-secondary">
-              Setup complete. Your library, search, and downloader are ready.
+              Setup is complete. Anything you skipped or want to change is in Settings.
             </p>
           </div>
           <Button type="button" variant="primary" size="md" onClick={() => window.location.reload()}>
@@ -202,6 +243,10 @@ export default function Setup() {
   const downloaderInitial = step === 'downloader'
     ? { output_dir: './downloads', ...seededSpotdl?.config, ...spotifyCredentials }
     : undefined
+  // The bundled downloader is seeded on first run. When it is there, the step
+  // only confirms it; the adapter list sits behind "Advanced options".
+  const downloaderReady = step === 'downloader' && !!seededSpotdl
+  const showChoices = !downloaderReady || advancedOpen
 
   return (
     <Shell>
@@ -249,49 +294,113 @@ export default function Setup() {
               </div>
             </button>
           )}
-          <div className="space-y-3">
-            {choices.map((c) => (
+
+          {/* Downloads: the bundled downloader already works, so this step is a
+              confirmation. Its settings and other downloaders are optional. */}
+          {downloaderReady && (
+            <div className="rounded-xl border border-border-subtle bg-raised p-4" data-testid="downloader-ready">
+              <div className="flex items-start gap-3">
+                <span className="flex h-10 w-10 flex-none items-center justify-center rounded-lg bg-success/15 text-success">
+                  <Icon name="check" className="text-lg" aria-hidden="true" />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block font-semibold text-text-primary">spotDL is ready</span>
+                  <span className="mt-1 block text-sm text-text-secondary">
+                    The bundled downloader needs no setup.
+                    {typeof seededSpotdl?.config.output_dir === 'string' && seededSpotdl.config.output_dir
+                      ? ` Music is saved to ${seededSpotdl.config.output_dir}.`
+                      : ''}
+                  </span>
+                </span>
+              </div>
+            </div>
+          )}
+
+          {showChoices && (
+            <div className="space-y-3">
+              {choices.map((c) => {
+                const oneClick = (c.configSchema?.fields ?? []).length === 0
+                return (
+                  <button
+                    key={c.name}
+                    type="button"
+                    disabled={busy}
+                    onClick={() => void choose(c)}
+                    className="group w-full rounded-xl border border-border-subtle bg-raised p-4 text-left transition-colors hover:border-accent hover:bg-raised-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-60"
+                  >
+                    <div className="flex items-start gap-3">
+                      <span className="flex h-10 w-10 flex-none items-center justify-center rounded-lg bg-surface text-lg font-black text-text-secondary group-hover:text-accent">
+                        {adapterDisplayName(c.name).charAt(0).toUpperCase()}
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="flex items-center gap-2">
+                          <span className="font-semibold text-text-primary">{adapterDisplayName(c.name)}</span>
+                          {oneClick && step === 'search' && (
+                            <span className="rounded-full bg-accent px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-on-accent">Recommended</span>
+                          )}
+                        </span>
+                        <span className="mt-1 block text-sm text-text-secondary">{adapterDescription(c.type, c.name)}</span>
+                      </span>
+                      <Icon name={oneClick ? 'plus' : 'fwd'} className="mt-1 text-text-muted group-hover:text-accent" aria-hidden="true" />
+                    </div>
+                  </button>
+                )
+              })}
+              {choices.length === 0 && step !== 'library' && (
+                <p className="text-sm text-text-muted">Nothing to set up here. You can add one later in Settings.</p>
+              )}
+            </div>
+          )}
+
+          <div className="flex items-center justify-between gap-3 pt-1">
+            <div className="flex items-center gap-4">
+              {PREV[step] && (
+                <button
+                  type="button"
+                  onClick={goBack}
+                  className="inline-flex items-center gap-1 rounded text-sm font-semibold text-text-secondary transition-colors hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                >
+                  <Icon name="back" className="text-base" aria-hidden="true" />
+                  Back
+                </button>
+              )}
+              {downloaderReady && (
+                <button
+                  type="button"
+                  aria-expanded={advancedOpen}
+                  onClick={() => setAdvancedOpen((o) => !o)}
+                  className="rounded text-sm text-text-muted transition-colors hover:text-text-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                >
+                  {advancedOpen ? 'Hide advanced options' : 'Advanced options'}
+                </button>
+              )}
+            </div>
+            {downloaderReady ? (
+              <Button type="button" variant="primary" size="md" onClick={advance}>
+                Continue
+              </Button>
+            ) : (
               <button
-                key={c.name}
                 type="button"
-                onClick={() => setChosen(c)}
-                className="group w-full rounded-xl border border-border-subtle bg-raised p-4 text-left transition-colors hover:border-accent hover:bg-raised-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                onClick={advance}
+                className="rounded text-sm text-text-muted transition-colors hover:text-text-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
               >
-                <div className="flex items-start gap-3">
-                  <span className="flex h-10 w-10 flex-none items-center justify-center rounded-lg bg-surface text-lg font-black text-text-secondary group-hover:text-accent">
-                    {c.name.charAt(0).toUpperCase()}
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block font-semibold capitalize text-text-primary">{c.name}</span>
-                    <span className="mt-1 block text-sm text-text-secondary">{adapterDescription(c.type, c.name)}</span>
-                  </span>
-                  <Icon name="fwd" className="mt-1 text-text-muted group-hover:text-accent" aria-hidden="true" />
-                </div>
+                Skip this step
               </button>
-            ))}
-            {choices.length === 0 && step !== 'library' && (
-              <p className="text-sm text-text-muted">No adapters available for this step.</p>
             )}
           </div>
-          <button
-            type="button"
-            onClick={advance}
-            className="text-sm text-text-muted hover:text-text-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded transition-colors"
-          >
-            Skip this step
-          </button>
         </div>
       )}
 
       {chosen && (
         <div className="rounded-xl border border-border-subtle bg-raised p-4 space-y-3">
           <div className="flex items-center justify-between">
-            <h3 className="font-semibold text-text-primary">{chosen.name}</h3>
+            <h3 className="font-semibold text-text-primary">{adapterDisplayName(chosen.name)}</h3>
             <button
               type="button"
               onClick={() => setChosen(null)}
               className="text-text-muted hover:text-text-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded"
-              aria-label="Back to adapter list"
+              aria-label="Back to the list"
             >
               <Icon name="back" className="text-base" aria-hidden="true" />
             </button>

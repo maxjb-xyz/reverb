@@ -107,8 +107,9 @@ function ShortcutTile({ title, coverId, coverSrc, isPlaying, onClick }: Shortcut
         <span
           aria-hidden
           className={[
+            // Hover-only decoration: below md it would just steal the title's width.
             'mr-3 flex-none w-10 h-10 rounded-full bg-accent',
-            'inline-grid place-items-center shadow-cover text-surface',
+            'hidden md:inline-grid place-items-center shadow-cover text-surface',
             'opacity-0 translate-y-1.5 group-hover:opacity-100 group-hover:translate-y-0',
             'transition-all duration-150',
           ].join(' ')}
@@ -212,6 +213,11 @@ export default function Home() {
   const hasRealHistory = recentPlays !== null && recentPlays.length > 0
   const jumpBackAlbums = recentAlbums
 
+  // "Recently added": the rest of the newest albums after the hero. This is what
+  // fills Home for a library with no listening history yet — without it a full
+  // library rendered a single hero and an otherwise blank page.
+  const recentlyAdded = newestAlbums.slice(1, 13)
+
   // First-run / nothing-to-show: no library content and no downloads yet. This is
   // the common state before a library provider is connected or anything is
   // downloaded — guide the user instead of rendering an empty void.
@@ -265,7 +271,7 @@ export default function Home() {
             <Icon name="search" className="mr-1.5 h-4 w-4" />
             Search music
           </Button>
-          <Button variant="secondary" onClick={() => navigate('/admin')} aria-label="Connect a library">
+          <Button variant="secondary" onClick={() => navigate('/settings/providers')} aria-label="Connect a library">
             Connect a library
           </Button>
         </div>
@@ -302,13 +308,13 @@ export default function Home() {
 
       {/* Hero — "Just added to your library" */}
       {!isLoading && heroAlbum && (
-        <section className="flex gap-6 items-center mb-10 min-w-0 overflow-hidden" aria-label="Just added to your library">
+        <section className="flex gap-4 items-center mb-10 min-w-0 overflow-hidden sm:gap-6" aria-label="Just added to your library">
           {/* Cover — clickable to open album detail */}
           <Link
             to={`/album/library/${heroAlbum.id}`}
             aria-label={`Open album ${heroAlbum.name}`}
             className={[
-              'w-48 h-48 flex-none shadow-cover rounded-md overflow-hidden',
+              'h-28 w-28 flex-none shadow-cover rounded-md overflow-hidden sm:h-48 sm:w-48',
               'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
             ].join(' ')}
           >
@@ -323,7 +329,7 @@ export default function Home() {
 
           {/* Info */}
           <div className="min-w-0">
-            <p className="flex items-center gap-1.5 text-xs font-bold text-accent mb-2">
+            <p className="flex items-center gap-1.5 text-xs font-bold text-text-secondary mb-2">
               <Icon name="dl" className="w-3.5 h-3.5" />
               Just added to your library
             </p>
@@ -333,7 +339,7 @@ export default function Home() {
             {/* Title — also clickable to open album detail */}
             <h1
               className={[
-                'text-4xl font-black tracking-tight text-text-primary leading-tight mb-5 truncate',
+                'text-2xl font-black tracking-tight text-text-primary leading-tight mb-4 line-clamp-2 sm:text-4xl sm:mb-5 sm:line-clamp-1',
               ].join(' ')}
             >
               <Link
@@ -417,6 +423,24 @@ export default function Home() {
           </Carousel>
         </div>
       ) : null}
+
+      {/* "Recently added" carousel — newest library albums after the hero */}
+      {!isLoading && recentlyAdded.length > 0 && (
+        <div className="mb-8">
+          <Carousel title="Recently added">
+            {recentlyAdded.map((album) => (
+              <MediaCard
+                key={album.id}
+                title={album.name}
+                subtitle={album.artist}
+                coverId={album.coverArtId}
+                onClick={() => navigate(`/album/library/${album.id}`)}
+                onPlay={() => handleAlbumPlay(album)}
+              />
+            ))}
+          </Carousel>
+        </div>
+      )}
 
       {/* "Recently downloaded" carousel — hidden when no completed downloads */}
       {completedJobs.length > 0 && (

@@ -33,9 +33,14 @@ interface TrackRowProps {
   albumTo?: string
   /** Small muted caption appended to the artist line (e.g. "Played 5×"). Layout-stable. */
   caption?: ReactNode
+  /** 'album' drops the per-row cover and album column — on an album page every
+   *  row would repeat the same artwork and album name. The hover play button
+   *  moves into the index cell. */
+  variant?: 'default' | 'album'
 }
 
-export function TrackRow({ track, index, active = false, playing, onPlay, right, coverSrc, rightWidth = 'auto', artistNode, albumNode, artistTo, albumTo, caption }: TrackRowProps) {
+export function TrackRow({ track, index, active = false, playing, onPlay, right, coverSrc, rightWidth = 'auto', artistNode, albumNode, artistTo, albumTo, caption, variant = 'default' }: TrackRowProps) {
+  const compact = variant === 'album'
   // coverSrc overrides (external Spotify images); otherwise use album cover directly
   // (album art reliably resolves; per-song embedded art is usually absent).
   const src = coverSrc ?? trackCoverUrl(track, 80)
@@ -48,31 +53,61 @@ export function TrackRow({ track, index, active = false, playing, onPlay, right,
     }
   }
 
+  // Touch devices have no double-click or hover-play affordance: a single tap
+  // on the row plays. Pointer devices keep double-click (single click selects).
+  function handleTap() {
+    if (typeof window.matchMedia === 'function' && window.matchMedia('(hover: none)').matches) onPlay()
+  }
+
   return (
     <>
     <div
       role="button"
       tabIndex={0}
       onDoubleClick={onPlay}
+      onClick={handleTap}
       onKeyDown={handleKeyDown}
       className={[
-        'group w-full grid items-center gap-3.5 px-2.5 py-2 rounded-md text-left',
+        // Phones: index · cover · title · right · add. The album and duration
+        // columns only exist from md up, and the right slot sizes to its content
+        // there — a fixed desktop template would squeeze the title to nothing.
+        'group w-full grid items-center gap-2.5 px-2 py-2 rounded-md text-left',
+        compact
+          ? 'grid-cols-[20px_minmax(0,1fr)_auto_28px] md:grid-cols-[26px_minmax(0,1fr)_var(--row-right)_36px_44px]'
+          : 'grid-cols-[20px_40px_minmax(0,1fr)_auto_28px] md:grid-cols-[26px_40px_minmax(0,1fr)_minmax(0,1fr)_var(--row-right)_36px_44px]',
+        'md:gap-3.5 md:px-2.5',
         'transition-colors hover:bg-raised-hover cursor-default',
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
         active ? 'text-accent' : 'text-text-primary',
       ].join(' ')}
-      style={{ gridTemplateColumns: `26px 40px 1fr 1fr ${rightWidth} 36px 44px` }}
+      style={{ '--row-right': rightWidth } as React.CSSProperties}
     >
       {/* Lead: index or Equalizer when active */}
-      <span className="grid place-items-center text-sm font-bold text-text-muted">
+      <span className="relative grid h-7 place-items-center text-sm font-bold text-text-muted">
         {active ? (
           <Equalizer playing={playing} />
         ) : (
-          <span>{index !== undefined ? index + 1 : ''}</span>
+          <span className={compact ? 'md:group-hover:invisible' : undefined}>{index !== undefined ? index + 1 : ''}</span>
+        )}
+        {compact && (
+          <button
+            type="button"
+            aria-label={`Play ${track.title}`}
+            onClick={(e) => { e.stopPropagation(); onPlay() }}
+            onDoubleClick={(e) => e.stopPropagation()}
+            className={[
+              'absolute inset-0 hidden place-items-center rounded-md text-text-primary',
+              active ? '' : 'md:group-hover:inline-grid',
+              'focus-visible:inline-grid focus-visible:bg-raised focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
+            ].join(' ')}
+          >
+            <Icon name="play" className="w-3.5 h-3.5" />
+          </button>
         )}
       </span>
 
       {/* Cover — with hover play button overlaid */}
+      {!compact && (
       <div className="relative flex-none">
         <Cover src={src} alt={track.title} size={40} rounded="md" />
         {/* Hover play button: hidden by default, revealed on row hover */}
@@ -94,6 +129,7 @@ export function TrackRow({ track, index, active = false, playing, onPlay, right,
           <Icon name="play" className="w-4 h-4" />
         </button>
       </div>
+      )}
 
       {/* Title + Artist */}
       <span className="min-w-0">
@@ -123,6 +159,7 @@ export function TrackRow({ track, index, active = false, playing, onPlay, right,
       </span>
 
       {/* Album */}
+      {!compact && (
       <span className="truncate text-sm text-text-secondary hidden md:block">
         {albumNode ?? ((albumTo ?? (track.albumId ? `/album/library/${track.albumId}` : null)) ? (
           <Link
@@ -137,9 +174,10 @@ export function TrackRow({ track, index, active = false, playing, onPlay, right,
           track.album
         ))}
       </span>
+      )}
 
       {/* Right slot (Phase 5: download badge) */}
-      <span className="flex items-center justify-end gap-2">
+      <span className="flex min-w-0 items-center justify-end gap-2">
         {right}
       </span>
 
@@ -154,7 +192,8 @@ export function TrackRow({ track, index, active = false, playing, onPlay, right,
             className={[
               'inline-grid place-items-center w-7 h-7 rounded-md',
               'text-text-muted hover:text-text-primary',
-              'opacity-0 group-hover:opacity-100',
+              // Touch has no hover, so the button stays visible below md.
+              'md:opacity-0 md:group-hover:opacity-100',
               'transition-opacity duration-150',
               'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:opacity-100',
             ].join(' ')}
@@ -165,7 +204,7 @@ export function TrackRow({ track, index, active = false, playing, onPlay, right,
       </span>
 
       {/* Duration */}
-      <span className="text-sm text-text-muted text-right tabular-nums">
+      <span className="hidden text-sm text-text-muted text-right tabular-nums md:block">
         {formatDuration(track.durationMs)}
       </span>
     </div>

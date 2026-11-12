@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, waitFor, fireEvent, act } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent, act, within } from '@testing-library/react'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import SyncedPlaylist from './SyncedPlaylist'
@@ -132,11 +132,11 @@ const mockDetail: SyncedPlaylistDetail = {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-function wrapper(ui: React.ReactElement) {
+function wrapper(ui: React.ReactElement, state?: unknown) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
     <QueryClientProvider client={qc}>
-      <MemoryRouter initialEntries={['/synced-playlist/sp1']}>
+      <MemoryRouter initialEntries={[{ pathname: '/synced-playlist/sp1', state }]}>
         <Routes>
           <Route path="/synced-playlist/:id" element={ui} />
           <Route path="/library" element={<div>Library</div>} />
@@ -494,26 +494,39 @@ describe('SyncedPlaylist page', () => {
     })
   })
 
+  it('a just-created playlist opens with its name in edit mode', async () => {
+    mockUseSyncedPlaylist.mockReturnValue({ data: mockDetail, isLoading: false, isError: false })
+    wrapper(<SyncedPlaylist />, { rename: true })
+    const input = await screen.findByRole('textbox', { name: 'Playlist name' })
+    expect(input).toHaveValue(mockDetail.name)
+    // The flag is cleared so a reload does not reopen the editor.
+    expect(mockNavigate).toHaveBeenCalledWith('/synced-playlist/sp1', { replace: true, state: null })
+  })
+
+  it('an existing playlist opens with a plain title', async () => {
+    await renderLoaded()
+    expect(screen.queryByRole('textbox', { name: 'Playlist name' })).not.toBeInTheDocument()
+  })
+
   // ── Remove ─────────────────────────────────────────────────────────────────
 
   it('Remove (confirm=true) calls deleteSyncedPlaylist and navigates to /library', async () => {
-    vi.spyOn(window, 'confirm').mockReturnValue(true)
     await renderLoaded()
     fireEvent.click(screen.getByRole('button', { name: /more options/i }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Remove' }))
+    expect(mockDeleteSyncedPlaylist).not.toHaveBeenCalled()
     await act(async () => {
-      fireEvent.click(screen.getByRole('menuitem', { name: 'Remove' }))
+      fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Remove' }))
     })
     expect(mockDeleteSyncedPlaylist).toHaveBeenCalledWith('sp1')
     await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/library'))
   })
 
   it('Remove (confirm=false) does NOT call deleteSyncedPlaylist', async () => {
-    vi.spyOn(window, 'confirm').mockReturnValue(false)
     await renderLoaded()
     fireEvent.click(screen.getByRole('button', { name: /more options/i }))
-    await act(async () => {
-      fireEvent.click(screen.getByRole('menuitem', { name: 'Remove' }))
-    })
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Remove' }))
+    fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Cancel' }))
     expect(mockDeleteSyncedPlaylist).not.toHaveBeenCalled()
     expect(mockNavigate).not.toHaveBeenCalled()
   })

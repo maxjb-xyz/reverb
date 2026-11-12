@@ -117,7 +117,7 @@ function setAuth(caps: string[]) {
   )
 }
 
-describe('Collection page', () => {
+describe('Discographies page', () => {
   beforeEach(() => {
     useDownloads.setState({ jobs: {}, paused: false })
     vi.clearAllMocks()
@@ -165,8 +165,9 @@ describe('Collection page', () => {
 
     render(wrap(<Collection />))
 
-    expect(screen.getByText('No coverage yet')).toBeInTheDocument()
-    expect(screen.getByText(/open an artist page to map their discography/i)).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Discographies' })).toBeInTheDocument()
+    expect(screen.getByText('No discographies yet')).toBeInTheDocument()
+    expect(screen.getByText(/open any artist's page and reverb looks up everything/i)).toBeInTheDocument()
   })
 
   it('shows progress ring when a download job is upserted and status is running', async () => {

@@ -253,7 +253,7 @@ describe('Home feed', () => {
     expect(titleLink).toHaveAttribute('href', '/album/library/al99')
   })
 
-  it('hero section has min-w-0 and overflow-hidden, and h1 has truncate, with a very long album title', async () => {
+  it('hero section has min-w-0 and overflow-hidden, and h1 clamps, with a very long album title', async () => {
     const { useAlbums } = await import('../lib/libraryApi')
 
     const longTitle = 'A'.repeat(200)
@@ -268,7 +268,8 @@ describe('Home feed', () => {
 
     const h1 = heroSection.querySelector('h1')
     expect(h1).not.toBeNull()
-    expect(h1!.classList.contains('truncate')).toBe(true)
+    expect(h1!.className).toContain('line-clamp-2')
+    expect(h1!.className).toContain('sm:line-clamp-1')
   })
 
   it('clicking the hero Play button does NOT navigate — calls play instead', async () => {
@@ -390,5 +391,34 @@ describe('Home feed', () => {
     expect(screen.getByRole('heading', { name: /jump back in/i })).toBeInTheDocument()
     // The library album name appears somewhere in the page (fallback source active)
     expect(screen.getAllByText('Fallback Album').length).toBeGreaterThan(0)
+  })
+
+  it('fills Home with a "Recently added" carousel of the newest albums after the hero (no listening history needed)', async () => {
+    const { useAlbums } = await import('../lib/libraryApi')
+    const newest = [
+      makeAlbum({ id: 'n1', name: 'Hero Album' }),
+      makeAlbum({ id: 'n2', name: 'Second Newest' }),
+      makeAlbum({ id: 'n3', name: 'Third Newest' }),
+    ]
+    vi.mocked(useAlbums).mockImplementation(((type: string) =>
+      ({ data: type === 'newest' ? newest : [], isLoading: false, error: null })) as unknown as typeof useAlbums)
+
+    render(wrap(<Home />))
+
+    const section = screen.getByRole('heading', { name: 'Recently added' }).closest('section') as HTMLElement
+    expect(section).toHaveTextContent('Second Newest')
+    expect(section).toHaveTextContent('Third Newest')
+    // The hero album is not repeated in the carousel.
+    expect(section).not.toHaveTextContent('Hero Album')
+  })
+
+  it('omits "Recently added" when the hero is the only album', async () => {
+    const { useAlbums } = await import('../lib/libraryApi')
+    vi.mocked(useAlbums).mockImplementation(((type: string) =>
+      ({ data: type === 'newest' ? [makeAlbum()] : [], isLoading: false, error: null })) as unknown as typeof useAlbums)
+
+    render(wrap(<Home />))
+
+    expect(screen.queryByText('Recently added')).toBeNull()
   })
 })

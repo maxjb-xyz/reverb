@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { adapterDisplayName } from '../../lib/displayNames'
 import { Button, EmptyState, Icon } from '../ui'
 import { AdapterCard } from './AdapterCard'
 import { AdapterForm } from '../AdapterForm'
@@ -118,11 +119,12 @@ export function AdapterSection({
   return (
     <section className="space-y-3">
       {/* Section header */}
-      <div className="flex items-center gap-3">
-        <h2 className="text-lg font-extrabold tracking-tight text-text-primary">{title}</h2>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+        <h2 className="whitespace-nowrap text-lg font-extrabold tracking-tight text-text-primary">{title}</h2>
         <span className="text-xs font-bold text-text-muted">{instances.length}</span>
-        {subtitle && <span className="text-xs text-text-muted">{subtitle}</span>}
-        <div className="ml-auto">
+        {/* On phones the subtitle drops to its own line below the title + button. */}
+        {subtitle && <span className="order-last basis-full text-xs text-text-muted sm:order-none sm:basis-auto">{subtitle}</span>}
+        <div className="ml-auto flex-none">
           <Button
             size="sm"
             variant="secondary"
@@ -153,7 +155,7 @@ export function AdapterSection({
                       onClick={() => setChosenName(a.name)}
                       className="rounded-full border border-border-subtle px-3 py-1.5 text-sm font-semibold text-text-primary transition-colors hover:bg-raised-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
                     >
-                      {a.name}
+                      {adapterDisplayName(a.name)}
                     </button>
                   ))}
                 </div>
@@ -176,7 +178,7 @@ export function AdapterSection({
                   </button>
                 )}
                 <h3 className="text-sm font-extrabold text-text-primary">
-                  {chosen ? `Add ${chosen.name}` : `Edit ${editing?.name}`}
+                  {chosen ? `Add ${adapterDisplayName(chosen.name)}` : `Edit ${adapterDisplayName(editing?.name ?? '')}`}
                 </h3>
               </div>
               <AdapterForm
@@ -256,7 +258,7 @@ export function AdapterSection({
                         data-testid="downloader-name"
                         className="text-sm font-semibold text-text-primary"
                       >
-                        {dl.name}
+                        {adapterDisplayName(dl.name)}
                       </span>
                     </div>
                     <div className="flex gap-1">
@@ -295,7 +297,7 @@ export function AdapterSection({
                         data-testid="downloader-name"
                         className="text-sm font-semibold text-text-primary"
                       >
-                        {dl.name}
+                        {adapterDisplayName(dl.name)}
                       </span>
                     </div>
                     <div className="flex gap-1">

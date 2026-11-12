@@ -1,11 +1,11 @@
 import { useState, useRef, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { IconButton, Button, Icon, Logo } from '../ui'
 import { SearchSuggest } from '../search/SearchSuggest'
 import { useUI } from '../../lib/uiStore'
 import { useDownloads } from '../../lib/downloadStore'
 import { useSearch } from '../../lib/searchStore'
-import { useAuthStore, isManagerCaps } from '../../lib/authStore'
+import { useAuthStore } from '../../lib/authStore'
 import { useRequestStore } from '../../lib/requestApi'
 import { NotificationBell } from '../NotificationBell'
 
@@ -16,10 +16,6 @@ export function TopBar() {
   const query = useSearch((s) => s.query)
   const setQuery = useSearch((s) => s.setQuery)
 
-  // Defense-in-depth: hide the Admin entry for users without a management
-  // capability (the backend enforces this regardless). Account/Settings stay
-  // available to every authenticated user.
-  const isManager = useAuthStore((s) => isManagerCaps(s.me?.capabilities))
   const username = useAuthStore((s) => s.me?.username)
   const canRequest = useAuthStore((s) => s.can('request'))
   const canManageRequests = useAuthStore((s) => s.can('manage_requests'))
@@ -28,6 +24,7 @@ export function TopBar() {
   // Typeahead dropdown — typing only updates the shared query; submitting
   // (Enter) navigates to the full /search results page.
   const [suggestOpen, setSuggestOpen] = useState(false)
+  const onSearchPage = useLocation().pathname === '/search'
   const searchRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -78,7 +75,7 @@ export function TopBar() {
     <header className="flex items-center justify-between px-4 h-16 bg-surface">
       {/* Mobile wordmark — desktop shows the history nav + search instead */}
       <div className="md:hidden">
-        <Logo iconClassName="h-7 w-auto" textClassName="text-lg" />
+        <Logo textClassName="text-lg" />
       </div>
 
       {/* Left — history nav (desktop only) */}
@@ -127,7 +124,9 @@ export function TopBar() {
             />
           </form>
 
-          {suggestOpen && query.trim() !== '' && (
+          {/* The results page already shows everything for this query; a
+              dropdown on top of it would just cover the results. */}
+          {suggestOpen && !onSearchPage && query.trim() !== '' && (
             <SearchSuggest
               query={query}
               onNavigateAll={goToResults}
@@ -243,20 +242,47 @@ export function TopBar() {
               >
                 Settings
               </button>
-              {isManager && (
+              {/* Phones only (md:hidden): the bottom tab bar holds Home, Search,
+                  Library and Downloads. Everything else a phone needs is here;
+                  desktop reaches these from the top bar and the library page. */}
+              <button
+                role="menuitem"
+                type="button"
+                onClick={() => { setMenuOpen(false); navigate('/stats') }}
+                className={[
+                  'w-full text-left px-4 py-2 text-sm text-text-primary md:hidden',
+                  'hover:bg-raised-hover transition-colors',
+                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-inset',
+                ].join(' ')}
+              >
+                Stats
+              </button>
+              {canRequest && (
                 <button
                   role="menuitem"
                   type="button"
-                  onClick={() => { setMenuOpen(false); navigate('/admin') }}
+                  onClick={() => { setMenuOpen(false); navigate('/requests') }}
                   className={[
-                    'w-full text-left px-4 py-2 text-sm text-text-primary',
+                    'w-full text-left px-4 py-2 text-sm text-text-primary md:hidden',
                     'hover:bg-raised-hover transition-colors',
                     'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-inset',
                   ].join(' ')}
                 >
-                  Admin
+                  Requests
                 </button>
               )}
+              <button
+                role="menuitem"
+                type="button"
+                onClick={() => { setMenuOpen(false); navigate('/discographies') }}
+                className={[
+                  'w-full text-left px-4 py-2 text-sm text-text-primary md:hidden',
+                  'hover:bg-raised-hover transition-colors',
+                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-inset',
+                ].join(' ')}
+              >
+                Discographies
+              </button>
               <button
                 role="menuitem"
                 type="button"

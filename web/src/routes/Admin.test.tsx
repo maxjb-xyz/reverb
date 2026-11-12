@@ -3,7 +3,7 @@ import type { ReactElement } from 'react'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router-dom'
-import Admin from './Admin'
+import { AdminProviders } from './Admin'
 
 // ── Mock adaptersApi ──────────────────────────────────────────────────────────
 const mockUseAdapters = vi.fn()
@@ -141,21 +141,8 @@ describe('Admin', () => {
   afterEach(() => vi.clearAllMocks())
 
   // ── Header + tabs ────────────────────────────────────────────────────────────
-  it('renders the Admin heading', () => {
-    wrap(<Admin />)
-    expect(screen.getByRole('heading', { name: /admin/i })).toBeInTheDocument()
-  })
-
-  it('shows Providers and Users tabs', () => {
-    wrap(<Admin />)
-    expect(screen.getByRole('button', { name: /providers/i })).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /^server$/i })).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /users/i })).toBeInTheDocument()
-  })
-
-  // ── Library backend: single-active switch (lives in Providers, not user Settings) ─
   it('changing the dropdown does NOT auto-save; Apply persists the choice', () => {
-    wrap(<Admin />) // saved + running = built-in
+    wrap(<AdminProviders />) // saved + running = built-in
     const select = screen.getByLabelText('Library backend')
     fireEvent.change(select, { target: { value: 'external' } })
     // Picking a mode must not persist on its own (it queues a restart-only change).
@@ -169,14 +156,14 @@ describe('Admin', () => {
   })
 
   it('no Apply button when the selection matches the saved mode', () => {
-    wrap(<Admin />) // saved = built-in, no pending pick
+    wrap(<AdminProviders />) // saved = built-in, no pending pick
     expect(screen.queryByRole('button', { name: /apply \(requires restart\)/i })).toBeNull()
   })
 
   it('shows a running-vs-pending note when the saved mode differs from the running mode', () => {
     mockUseSettings.mockReturnValue(settingsData('built-in')) // desired: built-in
     mockUseLibraryStatus.mockReturnValue({ data: { mode: 'external', state: 'ready' } }) // running: external
-    wrap(<Admin />)
+    wrap(<AdminProviders />)
     const note = screen.getByRole('status')
     expect(note).toHaveTextContent(/running external subsonic/i)
     expect(note).toHaveTextContent(/restart reverb to apply built-in/i)
@@ -185,14 +172,14 @@ describe('Admin', () => {
   it('hides the running-vs-pending note when running matches saved', () => {
     mockUseSettings.mockReturnValue(settingsData('built-in'))
     mockUseLibraryStatus.mockReturnValue({ data: { mode: 'built-in', state: 'ready' } })
-    wrap(<Admin />)
+    wrap(<AdminProviders />)
     expect(screen.queryByRole('status')).toBeNull()
   })
 
   it('Built-in mode shows the bundled hint and NOT the external server form', () => {
     mockUseSettings.mockReturnValue(settingsData('built-in'))
     mockUseAvailableAdapters.mockReturnValue({ data: [subsonicAvailable], isLoading: false })
-    wrap(<Admin />)
+    wrap(<AdminProviders />)
     expect(screen.getByText(/bundled music server/i)).toBeInTheDocument()
     expect(screen.queryByLabelText('Server URL')).toBeNull()
   })
@@ -200,7 +187,7 @@ describe('Admin', () => {
   it('External mode shows the single Subsonic server form (no "add" list)', () => {
     mockUseSettings.mockReturnValue(settingsData('external'))
     mockUseAvailableAdapters.mockReturnValue({ data: [subsonicAvailable], isLoading: false })
-    wrap(<Admin />)
+    wrap(<AdminProviders />)
     expect(screen.getByLabelText('Server URL')).toBeInTheDocument()
     // It's a switch, not a list: no "Add library" affordance anywhere.
     expect(screen.queryByRole('button', { name: /add library/i })).toBeNull()
@@ -210,7 +197,7 @@ describe('Admin', () => {
     mockUseSettings.mockReturnValue(settingsData('external'))
     mockUseAvailableAdapters.mockReturnValue({ data: [subsonicAvailable], isLoading: false })
     mockUseAdapters.mockReturnValue({ data: [], isLoading: false })
-    const { container } = wrap(<Admin />)
+    const { container } = wrap(<AdminProviders />)
     fireEvent.change(screen.getByLabelText('Server URL'), { target: { value: 'http://nav:4533' } })
     fireEvent.change(screen.getByLabelText('Username'), { target: { value: 'admin' } })
     fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'pw' } })
@@ -243,7 +230,7 @@ describe('Admin', () => {
       data: [makeAdapter({ id: '1', type: 'library', name: 'subsonic', enabled: true })],
       isLoading: false,
     })
-    wrap(<Admin />)
+    wrap(<AdminProviders />)
     const select = screen.getByLabelText('Library backend') as HTMLSelectElement
     expect(select.value).toBe('external')
     expect(screen.getByLabelText('Server URL')).toBeInTheDocument()
@@ -253,7 +240,7 @@ describe('Admin', () => {
     mockUseSettings.mockReturnValue(settingsData(''))
     mockUseAvailableAdapters.mockReturnValue({ data: [subsonicAvailable], isLoading: false })
     mockUseAdapters.mockReturnValue({ data: [], isLoading: false })
-    wrap(<Admin />)
+    wrap(<AdminProviders />)
     const select = screen.getByLabelText('Library backend') as HTMLSelectElement
     expect(select.value).toBe('built-in')
     expect(screen.queryByLabelText('Server URL')).toBeNull()
@@ -261,7 +248,7 @@ describe('Admin', () => {
 
   // ── Providers tab — section headings (library is a switch card, not a list) ───
   it('Providers tab renders the library switch + search/downloader sections', () => {
-    wrap(<Admin />)
+    wrap(<AdminProviders />)
     expect(screen.getByRole('heading', { name: /library backend/i })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: /search providers/i })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: /downloaders/i })).toBeInTheDocument()
@@ -270,7 +257,7 @@ describe('Admin', () => {
   })
 
   it('Providers tab renders the ScrobblingSection with Last.fm heading', async () => {
-    wrap(<Admin />)
+    wrap(<AdminProviders />)
     // ScrobblingSection is in the Providers tab (default active tab)
     expect(await screen.findByRole('heading', { name: /last\.fm/i })).toBeInTheDocument()
   })
@@ -278,7 +265,7 @@ describe('Admin', () => {
   it('shows skeleton loaders while adapters are loading', () => {
     mockUseAdapters.mockReturnValue({ data: undefined, isLoading: true })
     mockUseAvailableAdapters.mockReturnValue({ data: undefined, isLoading: true })
-    wrap(<Admin />)
+    wrap(<AdminProviders />)
     expect(screen.getByLabelText(/loading providers/i)).toBeInTheDocument()
   })
 
@@ -288,7 +275,7 @@ describe('Admin', () => {
       data: [makeAvailable({ type: 'search', name: 'MusicBrainz', configSchema: { fields: [{ key: 'path', label: 'Path', type: 'text', required: true, secret: false }] } })],
       isLoading: false,
     })
-    wrap(<Admin />)
+    wrap(<AdminProviders />)
     fireEvent.click(screen.getByRole('button', { name: /add search/i }))
     expect(screen.getByText('Add MusicBrainz')).toBeInTheDocument()
     expect(screen.getByLabelText(/path/i)).toBeInTheDocument()
@@ -299,7 +286,7 @@ describe('Admin', () => {
       data: [makeAvailable({ type: 'search', name: 'MusicBrainz', configSchema: { fields: [{ key: 'path', label: 'Path', type: 'text', required: true, secret: false }] } })],
       isLoading: false,
     })
-    wrap(<Admin />)
+    wrap(<AdminProviders />)
     fireEvent.click(screen.getByRole('button', { name: /add search/i }))
     fireEvent.change(screen.getByLabelText(/path/i), { target: { value: '/x' } })
     fireEvent.click(screen.getByRole('button', { name: /^add$/i }))
@@ -316,20 +303,12 @@ describe('Admin', () => {
 
   // ── Live apply (no restart banner) ───────────────────────────────────────────
   it('never shows a restart-to-apply banner (changes apply live)', () => {
-    wrap(<Admin />)
+    wrap(<AdminProviders />)
     expect(screen.queryByRole('alert')).toBeNull()
     expect(screen.queryByText(/restart reverb/i)).toBeNull()
   })
 
   // ── Users tab — real UsersSection ────────────────────────────────────────────
-  it('Users tab renders the real UsersSection with Users heading and Create user button', () => {
-    wrap(<Admin />)
-    fireEvent.click(screen.getByRole('button', { name: /users/i }))
-    expect(screen.getByRole('heading', { name: /^users$/i })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /create user/i })).toBeInTheDocument()
-  })
-
-  // ── Adapter instances render (search/downloader are multi-instance lists) ─────
   it('renders search and downloader instances in their sections', () => {
     mockUseAdapters.mockReturnValue({
       data: [
@@ -338,7 +317,7 @@ describe('Admin', () => {
       ],
       isLoading: false,
     })
-    wrap(<Admin />)
+    wrap(<AdminProviders />)
     expect(screen.getByText('MusicBrainz')).toBeInTheDocument()
     expect(screen.getByText('spotDL')).toBeInTheDocument()
   })
@@ -349,7 +328,7 @@ describe('Admin', () => {
       data: [makeAvailable({ type: 'search', name: 'MusicBrainz', configSchema: { fields: [{ key: 'path', label: 'Path', type: 'text', required: true, secret: false }] } })],
       isLoading: false,
     })
-    wrap(<Admin />)
+    wrap(<AdminProviders />)
     fireEvent.click(screen.getByRole('button', { name: /add search/i }))
     expect(screen.getByLabelText(/path/i)).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: /cancel/i }))
@@ -358,7 +337,7 @@ describe('Admin', () => {
 
   // ── Request quota field ───────────────────────────────────────────────────────
   it('Providers tab renders "Max pending requests per user" number input with "0 = unlimited" helper', () => {
-    wrap(<Admin />)
+    wrap(<AdminProviders />)
     const input = screen.getByLabelText(/max pending requests per user/i)
     expect(input).toBeInTheDocument()
     expect(input).toHaveAttribute('type', 'number')
@@ -367,13 +346,13 @@ describe('Admin', () => {
 
   it('quota input reflects the saved maxPendingRequestsPerUser value from settings', () => {
     mockUseSettings.mockReturnValue(settingsData('built-in', 5))
-    wrap(<Admin />)
+    wrap(<AdminProviders />)
     const input = screen.getByLabelText(/max pending requests per user/i) as HTMLInputElement
     expect(input.value).toBe('5')
   })
 
   it('changing quota input and saving calls updateSettings.mutate with maxPendingRequestsPerUser', async () => {
-    wrap(<Admin />)
+    wrap(<AdminProviders />)
     const input = screen.getByLabelText(/max pending requests per user/i)
     fireEvent.change(input, { target: { value: '3' } })
     fireEvent.blur(input)

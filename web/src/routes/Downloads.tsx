@@ -8,7 +8,7 @@ import {
   retryDownload,
 } from '../lib/downloadApi'
 import { coverUrl } from '../lib/libraryApi'
-import { Button, Chip, Cover, Icon, EmptyState } from '../components/ui'
+import { Button, Chip, Cover, Icon, EmptyState, PageHeader } from '../components/ui'
 import { StatusLabel, DownloadProgress } from '../components/download/parts'
 import { failureMessage } from '../components/download/failureMessage'
 import type { DownloadJob, DownloadStatus } from '../lib/types'
@@ -99,7 +99,7 @@ function Group({
   if (jobs.length === 0) return null
   return (
     <section>
-      <h2 className="mb-1 mt-4 px-2 text-[11px] font-bold uppercase tracking-wider text-text-muted">
+      <h2 className="mb-1 mt-5 px-2 text-base font-bold text-text-primary">
         {title} · {jobs.length}
       </h2>
       <ul className="space-y-1">
@@ -221,39 +221,54 @@ export default function Downloads() {
   }
 
   const isEmpty = all.length === 0
+  const hasAnyJobs = counts.running + counts.queued + counts.finished > 0
   const nothingVisible = running.length + queued.length + finished.length === 0
 
   return (
     <div className="space-y-4">
       {/* Header */}
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-text-primary">Downloads</h1>
-          <p className="mt-0.5 text-xs text-text-secondary">
-            {counts.running} downloading · {counts.queued} queued · {counts.finished} finished
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant="ghost" size="sm" aria-label={paused ? 'Resume queue' : 'Pause queue'} onClick={togglePause}>
-            <span className="inline-flex items-center gap-1.5">
-              <Icon name={paused ? 'play' : 'pause'} className="h-4 w-4" />
-              {paused ? 'Resume queue' : 'Pause queue'}
-            </span>
-          </Button>
-          <Button variant="secondary" size="sm" aria-label="Clear finished" onClick={clearFinished}>
-            Clear finished
-          </Button>
-        </div>
-      </div>
+      {/* Counters and queue actions only appear once there is something to act
+          on — an empty page shouldn't offer to pause or clear nothing. A paused
+          queue always keeps its Resume button so it can't get stuck. */}
+      <PageHeader
+        title="Downloads"
+        subtitle={
+          hasAnyJobs
+            ? `${counts.running} downloading · ${counts.queued} queued · ${counts.finished} finished`
+            : undefined
+        }
+        actions={
+          hasAnyJobs || paused ? (
+            <>
+              {(counts.running + counts.queued > 0 || paused) && (
+                <Button variant="ghost" size="sm" aria-label={paused ? 'Resume queue' : 'Pause queue'} onClick={togglePause}>
+                  <span className="inline-flex items-center gap-1.5">
+                    <Icon name={paused ? 'play' : 'pause'} className="h-4 w-4" />
+                    {paused ? 'Resume queue' : 'Pause queue'}
+                  </span>
+                </Button>
+              )}
+              {counts.finished > 0 && (
+                <Button variant="secondary" size="sm" aria-label="Clear finished" onClick={clearFinished}>
+                  Clear finished
+                </Button>
+              )}
+            </>
+          ) : undefined
+        }
+      />
 
       {/* Toolbar: chips + search */}
-      <div className="flex flex-wrap items-center gap-2">
-        {FILTERS.map(({ key, label }) => (
-          <Chip key={key} selected={filter === key} onClick={() => setFilter(key)}>
-            {label}
-          </Chip>
-        ))}
-        <div className="ml-auto flex items-center gap-2 rounded-lg bg-input px-3 py-1.5">
+      <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:gap-2">
+        {/* One scrolling row of chips on phones rather than a ragged wrap */}
+        <div className="-mx-4 flex gap-2 overflow-x-auto px-4 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0">
+          {FILTERS.map(({ key, label }) => (
+            <Chip key={key} selected={filter === key} onClick={() => setFilter(key)}>
+              {label}
+            </Chip>
+          ))}
+        </div>
+        <div className="flex items-center gap-2 rounded-full bg-input px-3 py-1.5 sm:ml-auto">
           <Icon name="search" className="h-4 w-4 text-text-muted" />
           <input
             type="text"
@@ -261,7 +276,7 @@ export default function Downloads() {
             placeholder="Search downloads"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            className="w-44 bg-transparent text-sm text-text-primary placeholder:text-text-muted outline-none"
+            className="w-full min-w-0 bg-transparent text-sm text-text-primary placeholder:text-text-muted outline-none sm:w-44"
           />
         </div>
       </div>

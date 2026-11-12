@@ -9,9 +9,10 @@ import { postDownload } from '../lib/downloadApi'
 import { useDownloads } from '../lib/downloadStore'
 import { coverUrl } from '../lib/libraryApi'
 import { useAuthStore } from '../lib/authStore'
+import { PageHeader } from '../components/ui/PageHeader'
 
 export default function Collection() {
-  useDocumentTitle('Collection')
+  useDocumentTitle('Discographies')
   const navigate = useNavigate()
   const collection = useCollection()
   const queryClient = useQueryClient()
@@ -36,25 +37,24 @@ export default function Collection() {
   const summary = collection.data
   if (!summary || summary.artists.length === 0) {
     return (
-      <EmptyState
-        icon="browse"
-        title="No coverage yet"
-        hint="Open an artist page to map their discography — Reverb remembers it here."
-      />
+      <div className="space-y-8">
+        <PageHeader title="Discographies" subtitle="What you have and what you are missing, artist by artist." />
+        <EmptyState
+          icon="browse"
+          title="No discographies yet"
+          hint="Open any artist's page and Reverb looks up everything they have released. Artists you have opened then show up here with the albums you are missing."
+        />
+      </div>
     )
   }
 
   return (
     <div className="space-y-8">
       {/* Page header */}
-      <header>
-        <h1 className="text-xl font-extrabold text-text-primary">
-          Collection
-        </h1>
-        <p className="text-sm text-text-secondary">
-          {summary.resolvedCount} of {summary.artistCount} artists mapped
-        </p>
-      </header>
+      <PageHeader
+        title="Discographies"
+        subtitle={`What you have and what you are missing. ${summary.resolvedCount} of ${summary.artistCount} artists looked up so far.`}
+      />
 
       {/* Artist sections */}
       {summary.artists.map((artist) => (

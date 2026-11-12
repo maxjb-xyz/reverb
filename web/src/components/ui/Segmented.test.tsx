@@ -28,7 +28,7 @@ describe('Segmented', () => {
   it('applies accent classes to the selected segment', () => {
     render(<Segmented options={options} value="library" onChange={vi.fn()} />)
     const activeTab = screen.getByRole('tab', { name: 'My Library' })
-    expect(activeTab.className).toMatch(/bg-accent/)
+    expect(activeTab.className).toMatch(/bg-text-primary/)
     expect(activeTab.className).toMatch(/text-on-accent/)
   })
 

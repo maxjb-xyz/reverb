@@ -190,19 +190,16 @@ export default function Album() {
         className="relative -mx-4 -mt-4 px-4 pt-4 pb-6 rounded-b-2xl overflow-hidden bg-gradient-to-b from-raised to-transparent"
         style={palette ? { background: `linear-gradient(to bottom, ${rgbToCss(palette.rgb, 0.55)} 0%, transparent 100%)` } : undefined}
       >
-        <header className="relative z-10 flex items-end gap-6 pt-2">
-          <Cover
-            src={coverSrc}
-            alt={album.name}
-            size={208}
-            rounded="md"
-            className="shadow-cover flex-none"
-          />
+        <header className="relative z-10 flex items-end gap-4 pt-2 sm:gap-6">
+          {/* Sized wrapper: the cover shrinks on phones so the title keeps its room. */}
+          <div className="h-28 w-28 flex-none sm:h-52 sm:w-52">
+            <Cover src={coverSrc} alt={album.name} size="full" rounded="md" className="shadow-cover" />
+          </div>
           <div className="min-w-0 pb-1">
             <div className="text-xs font-semibold uppercase tracking-widest text-text-muted mb-1">
               Album
             </div>
-            <h1 className="text-4xl font-black leading-tight tracking-tight text-text-primary truncate">
+            <h1 className="text-2xl font-black leading-tight tracking-tight text-text-primary line-clamp-3 sm:text-4xl sm:line-clamp-1">
               {album.name}
             </h1>
             <div className="mt-2 text-sm text-text-secondary flex flex-wrap items-center gap-x-1">
@@ -250,6 +247,7 @@ export default function Album() {
                 onClick={() => ownedTracks.length && playTrackList(ownedTracks, 0)}
                 aria-label={`Play ${album.name}`}
               >
+                <Icon name="play" className="w-5 h-5 mr-1" />
                 Play
               </Button>
               <IconButton
@@ -381,13 +379,18 @@ export default function Album() {
                 artistTo={t.artistExternalId ? `/artist/spotify/${t.artistExternalId}` : undefined}
                 albumTo={t.albumExternalId ? `/album/spotify/${t.albumExternalId}` : undefined}
                 caption={playCount > 0 ? `Played ${playCount}×` : undefined}
+                variant="album"
+                // Only mark owned rows when some of the album is missing —
+                // on a fully owned album the label is noise on every row.
                 right={
-                  <Badge kind="in-library">
-                    <Icon name="check" className="text-xs" />
-                    In Library
-                  </Badge>
+                  hasMissing ? (
+                    <Badge kind="in-library">
+                      <Icon name="check" className="text-xs" />
+                      In Library
+                    </Badge>
+                  ) : undefined
                 }
-                rightWidth="120px"
+                rightWidth={hasMissing ? '120px' : '0px'}
               />
             )
           }
@@ -410,6 +413,7 @@ export default function Album() {
               index={i}
               onPlay={() => {}}
               coverSrc={t.coverUrl ?? album.coverUrl}
+              variant="album"
               right={right}
               rightWidth={right ? '120px' : undefined}
             />

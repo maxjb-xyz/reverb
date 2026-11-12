@@ -16,51 +16,37 @@ function toInputDate(sec: number): string {
 
 describe('RangeSelector', () => {
   describe('preset chips', () => {
-    it('renders all rolling preset chips', () => {
+    it('offers exactly five choices: 7 days, 30 days, This year, All time, Custom', () => {
       render(<RangeSelector value={makeRange()} onChange={vi.fn()} />)
-      expect(screen.getByRole('button', { name: /^7d$/i })).toBeDefined()
-      expect(screen.getByRole('button', { name: /^30d$/i })).toBeDefined()
-      expect(screen.getByRole('button', { name: /^90d$/i })).toBeDefined()
-      expect(screen.getByRole('button', { name: /^Year$/i })).toBeDefined()
-      expect(screen.getByRole('button', { name: /^All time$/i })).toBeDefined()
+      expect(screen.getAllByRole('button').map((b) => b.textContent)).toEqual([
+        '7 days', '30 days', 'This year', 'All time', 'Custom',
+      ])
     })
 
-    it('renders calendar-aligned chips', () => {
-      render(<RangeSelector value={makeRange()} onChange={vi.fn()} />)
-      expect(screen.getByRole('button', { name: /this week/i })).toBeDefined()
-      expect(screen.getByRole('button', { name: /this month/i })).toBeDefined()
-      expect(screen.getByRole('button', { name: /this year/i })).toBeDefined()
-    })
-
-    it('clicking 7d chip calls onChange with presetRange("7d")', () => {
+    it('clicking "7 days" calls onChange with presetRange("7d")', () => {
       const onChange = vi.fn()
       render(<RangeSelector value={makeRange()} onChange={onChange} />)
-      fireEvent.click(screen.getByRole('button', { name: /7d|Last 7 days/i }))
+      fireEvent.click(screen.getByRole('button', { name: '7 days' }))
       expect(onChange).toHaveBeenCalledTimes(1)
       const called = onChange.mock.calls[0][0] as Range
-      const expected = presetRange('7d')
-      // from/to may differ by a second or two; check bucket and label
-      expect(called.bucket).toBe(expected.bucket)
+      expect(called.bucket).toBe(presetRange('7d').bucket)
       expect(called.label).toBe('Last 7 days')
     })
 
-    it('clicking 90d chip calls onChange with presetRange("90d")', () => {
+    it('clicking "This year" calls onChange with presetRange("thisYear")', () => {
       const onChange = vi.fn()
       render(<RangeSelector value={makeRange()} onChange={onChange} />)
-      fireEvent.click(screen.getByRole('button', { name: /90d|Last 90 days/i }))
-      expect(onChange).toHaveBeenCalledTimes(1)
-      const called = onChange.mock.calls[0][0] as Range
-      expect(called.label).toBe('Last 90 days')
-      expect(called.bucket).toBe('week')
+      fireEvent.click(screen.getByRole('button', { name: 'This year' }))
+      expect((onChange.mock.calls[0][0] as Range).label).toBe('This year')
     })
 
-    it('clicking "This month" chip calls onChange with presetRange("thisMonth")', () => {
-      const onChange = vi.fn()
-      render(<RangeSelector value={makeRange()} onChange={onChange} />)
-      fireEvent.click(screen.getByRole('button', { name: /this month/i }))
-      expect(onChange).toHaveBeenCalledTimes(1)
-      const called = onChange.mock.calls[0][0] as Range
-      expect(called.label).toBe('This month')
+    it('only the active preset is pressed, and a custom range presses Custom', () => {
+      const { unmount } = render(<RangeSelector value={presetRange('30d')} onChange={vi.fn()} />)
+      const pressed = () => screen.getAllByRole('button').filter((b) => b.getAttribute('aria-pressed') === 'true').map((b) => b.textContent)
+      expect(pressed()).toEqual(['30 days'])
+      unmount()
+      render(<RangeSelector value={customRange(new Date(2024, 2, 1), new Date(2024, 2, 7))} onChange={vi.fn()} />)
+      expect(pressed()).toEqual(['Custom'])
     })
 
     it('active chip is visually highlighted (aria-pressed=true)', () => {
