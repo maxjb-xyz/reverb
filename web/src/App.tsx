@@ -10,6 +10,8 @@ import { useAuthStore, isManagerCaps } from './lib/authStore'
 import Login from './routes/Login'
 import Setup from './routes/Setup'
 import Signup from './routes/Signup'
+import { engine } from './lib/playerStore'
+import { startPlayerPersistence } from './lib/playerPersistence'
 import { Button } from './components/ui/Button'
 import { Logo } from './components/ui/Logo'
 
@@ -96,6 +98,14 @@ function Routed() {
   useEffect(() => {
     if (s.authenticated && !me) void refresh()
   }, [s.authenticated, me, refresh])
+
+  // Bring back the last queue and position for this user (paused), and keep
+  // saving it while they listen.
+  const userId = me?.id
+  useEffect(() => {
+    if (!userId) return
+    return startPlayerPersistence(engine, userId)
+  }, [userId])
 
   if (s.loading) return <BootScreen />
   if (s.error)

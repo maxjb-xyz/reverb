@@ -30,6 +30,16 @@ export interface PlayerState {
   repeat: RepeatMode
 }
 
+/** What survives a reload: enough to put the player back where it was, paused. */
+export interface PlayerSnapshot {
+  queue: Track[]
+  index: number
+  positionMs: number
+  volume: number
+  shuffle: boolean
+  repeat: RepeatMode
+}
+
 function realAudioFactory(): AudioElement {
   return new Audio() as unknown as AudioElement
 }
@@ -58,6 +68,10 @@ export class AudioEngine {
   // stream-error recovery
   private consecutiveErrors = 0
   private repeatOneReloadAttempted = false
+
+  // Position to resume from once a restored track is first loaded (see restore()).
+  private resumeAtMs = 0
+  private pendingRestore = false
 
   constructor(
     factory: () => AudioElement = realAudioFactory,
@@ -178,6 +192,30 @@ export class AudioEngine {
     this.emit()
   }
 
+  /**
+   * Put a saved session back, paused. Nothing is fetched until the listener
+   * presses play: the track is only loaded then, and starts from the saved
+   * position. Ignored if something is already queued.
+   */
+  restore(snap: PlayerSnapshot) {
+    if (this.queue.length > 0 || snap.queue.length === 0) return
+    this.queue = snap.queue.slice()
+    this.index = Math.min(Math.max(snap.index, 0), this.queue.length - 1)
+    this.shuffle = snap.shuffle
+    this.repeat = snap.repeat
+    this.volume = Math.min(1, Math.max(0, snap.volume))
+    this.active.volume = this.volume
+    this.preload.volume = this.volume
+    this.rebuildShuffle()
+    const current = this.queue[this.index]
+    this.durationMs = current.durationMs || 0
+    this.resumeAtMs = Math.max(0, Math.min(snap.positionMs, this.durationMs || snap.positionMs))
+    this.currentTimeMs = this.resumeAtMs
+    this.pendingRestore = true
+    this.playing = false
+    this.emit()
+  }
+
   playTrackList(tracks: Track[], startIndex: number) {
     this.setQueue(tracks, startIndex)
     this.loadCurrent(true)
@@ -215,7 +253,7 @@ export class AudioEngine {
     this.emit()
   }
 
-  private loadCurrent(autoplay: boolean) {
+  private loadCurrent(autoplay: boolean, resume = false) {
     const t = this.getState().current
     if (!t) {
       this.playing = false
@@ -224,7 +262,13 @@ export class AudioEngine {
     }
     this.active.src = this.resolveSrc(t)
     this.active.load()
-    this.currentTimeMs = 0
+    // A restored session resumes where it stopped; every other load starts at 0.
+    // Only play() resumes; skipping or picking another track drops the saved position.
+    const resumeAt = resume ? this.resumeAtMs : 0
+    this.resumeAtMs = 0
+    this.pendingRestore = false
+    this.currentTimeMs = resumeAt
+    if (resumeAt > 0) this.active.currentTime = resumeAt / 1000
     if (autoplay) {
       void this.active.play()
       this.playing = true
@@ -243,7 +287,7 @@ export class AudioEngine {
   play() {
     if (this.index < 0 && this.queue.length) this.index = 0
     if (this.getState().current) {
-      if (!this.active.src) this.loadCurrent(true)
+      if (!this.active.src || this.pendingRestore) this.loadCurrent(true, true)
       else {
         void this.active.play()
         this.playing = true
@@ -354,6 +398,8 @@ export class AudioEngine {
 
   seekMs(ms: number) {
     const clamped = Math.max(0, this.durationMs > 0 ? Math.min(ms, this.durationMs) : ms)
+    // Scrubbing a restored-but-not-yet-loaded track moves its resume point.
+    if (this.pendingRestore) this.resumeAtMs = clamped
     this.active.currentTime = clamped / 1000
     this.currentTimeMs = clamped
     this.emit()
@@ -364,6 +410,18 @@ export class AudioEngine {
     this.active.volume = this.volume
     this.preload.volume = this.volume
     this.emit()
+  }
+
+  /** The part of the state worth keeping across a reload. */
+  snapshot(): PlayerSnapshot {
+    return {
+      queue: [...this.queue],
+      index: this.index,
+      positionMs: this.currentTimeMs,
+      volume: this.volume,
+      shuffle: this.shuffle,
+      repeat: this.repeat,
+    }
   }
 
   toggleShuffle() {
