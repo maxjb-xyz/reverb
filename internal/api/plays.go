@@ -12,7 +12,9 @@ import (
 
 // handlePlay serves POST /api/v1/plays.
 // Decodes a play.PlayInput from the request body, records it for the session
-// user via play.Service.Record, and responds 204 No Content on success.
+// user via play.Service.RecordPlay, and responds 200 with {"id": playID}. The
+// player sends the play once it qualifies (half the song or four minutes), then
+// reports the final listened time with PATCH /plays/{id}.
 func (s *Server) handlePlay(w http.ResponseWriter, r *http.Request) {
 	if s.deps.Play == nil {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "play service unavailable"})
@@ -30,7 +32,8 @@ func (s *Server) handlePlay(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.deps.Play.Record(r.Context(), cu.ID, in); err != nil {
+	id, err := s.deps.Play.RecordPlay(r.Context(), cu.ID, in)
+	if err != nil {
 		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
 		return
 	}
@@ -55,6 +58,45 @@ func (s *Server) handlePlay(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	writeJSON(w, http.StatusOK, map[string]string{"id": id})
+}
+
+// playProgressInput is the PATCH /plays/{id} body: the final listened time and
+// whether the song was heard to the end. PascalCase like play.PlayInput.
+type playProgressInput struct {
+	MsPlayed  int
+	Completed bool
+}
+
+// handleUpdatePlay serves PATCH /api/v1/plays/{id}.
+// Records how much of a play was finally heard. Owner-scoped exactly like
+// handleDeletePlay: the user id comes from the session, a non-owned or unknown
+// id is a no-op, and the answer is always 204 so nothing leaks about the id.
+// Values only ever rise, so a repeated or out-of-order update is harmless.
+func (s *Server) handleUpdatePlay(w http.ResponseWriter, r *http.Request) {
+	if s.deps.Play == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "play service unavailable"})
+		return
+	}
+	cu, ok := currentUser(r)
+	if !ok {
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+		return
+	}
+	id := chi.URLParam(r, "id")
+	if id == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing play id"})
+		return
+	}
+	var in playProgressInput
+	if err := decode(r, &in); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+		return
+	}
+	if err := s.deps.Play.UpdateProgress(r.Context(), cu.ID, id, in.MsPlayed, in.Completed); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
 	w.WriteHeader(http.StatusNoContent)
 }
 

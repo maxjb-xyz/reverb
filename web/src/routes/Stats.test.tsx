@@ -330,4 +330,34 @@ describe('Stats page', () => {
       expect(screen.getByText(/no listening history/i)).toBeInTheDocument()
     )
   })
+
+  // ── Live range ────────────────────────────────────────────────────────────
+  // A play recorded while the page is open refreshes the stats. That refetch
+  // must look up to the current time, not to when the page was opened.
+  it('refetches up to the current time after a play is recorded', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true, toFake: ['Date'] })
+    try {
+      const client = makeClient()
+      render(
+        <QueryClientProvider client={client}>
+          <MemoryRouter>
+            <Stats />
+          </MemoryRouter>
+        </QueryClientProvider>,
+      )
+      await waitFor(() => expect(mockSummary).toHaveBeenCalledTimes(1))
+      const firstTo = mockSummary.mock.calls[0][0].to
+
+      vi.setSystemTime(Date.now() + 10 * 60_000)
+      await act(async () => {
+        await client.invalidateQueries({ queryKey: ['stats'] })
+      })
+
+      await waitFor(() => expect(mockSummary.mock.calls.length).toBeGreaterThan(1))
+      const lastTo = mockSummary.mock.calls[mockSummary.mock.calls.length - 1][0].to
+      expect(lastTo).toBeGreaterThanOrEqual(firstTo + 600)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
 })

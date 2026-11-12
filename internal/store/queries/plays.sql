@@ -14,6 +14,15 @@ UPDATE plays SET catalog_id = ? WHERE catalog_id = ?;
 -- name: DeletePlay :exec
 DELETE FROM plays WHERE id = ? AND user_id = ?;
 
+-- name: UpdatePlayProgress :exec
+-- Raises (never lowers) the listened time and completed flag of a play owned
+-- by the user. The play is recorded once it qualifies, part-way through the
+-- song; this records how much of the song was actually heard in the end.
+UPDATE plays
+SET ms_played = MAX(ms_played, CAST(sqlc.arg(ms_played) AS INTEGER)),
+    completed = MAX(completed, CAST(sqlc.arg(completed) AS INTEGER))
+WHERE id = sqlc.arg(id) AND user_id = sqlc.arg(user_id);
+
 -- name: ListRecentPlays :many
 SELECT p.id, p.catalog_id, p.played_at, e.title, e.artist, e.album
 FROM plays p JOIN catalog_entity e ON e.id = p.catalog_id

@@ -114,3 +114,20 @@ export function msToHuman(ms: number): string {
   if (m === 0) return `${h}h`
   return `${h}h ${m}m`
 }
+
+const PRESET_KEYS: PresetKey[] = ['7d', '30d', '90d', 'year', 'all', 'thisWeek', 'thisMonth', 'thisYear']
+
+/** The preset a range was made from (matched by label), or null for a custom range. */
+export function presetKeyOf(r: Range): PresetKey | null {
+  return PRESET_KEYS.find((k) => presetRange(k).label === r.label) ?? null
+}
+
+/**
+ * currentRange recomputes a preset range ("Last 30 days", "This year" …) for
+ * the current time, since presets end at "now" and a range picked when the page
+ * opened would leave out everything played since. Custom ranges are returned as is.
+ */
+export function currentRange(r: Range, now = new Date()): Range {
+  const key = presetKeyOf(r)
+  return key ? presetRange(key, now) : r
+}

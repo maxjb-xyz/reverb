@@ -307,6 +307,7 @@ func (s *Server) routes() {
 			pr.Get("/notifications", s.handleListNotifications)
 			pr.Post("/notifications/read", s.handleMarkNotificationsRead)
 			pr.Post("/plays", s.handlePlay)
+			pr.Patch("/plays/{id}", s.handleUpdatePlay)
 			pr.Delete("/plays/{id}", s.handleDeletePlay)
 			// scrobbling
 			pr.Post("/scrobble/lastfm/auth-url", s.handleScrobbleAuthURL)
