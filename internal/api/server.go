@@ -146,6 +146,10 @@ type Deps struct {
 	// Lyrics resolves track lyrics (local tags → LRCLIB, DB-cached). Nil in
 	// tests/legacy wiring — the lyrics endpoint serves 204.
 	Lyrics LyricsProvider
+	// VoiceReg holds the DJ voice adapters, shown with the other providers.
+	VoiceReg *registry.Registry
+	// Voice is the DJ's voice. Nil disables the /dj/say endpoint.
+	Voice VoiceService
 }
 
 type Server struct {
@@ -155,6 +159,8 @@ type Server struct {
 	// authLimiter throttles the login/signup/setup endpoints per client IP to
 	// slow online password guessing.
 	authLimiter *rateLimiter
+	// djSayLimiter throttles voice-line rendering per user.
+	djSayLimiter *rateLimiter
 
 	// live holds the currently active services. Handlers read them through the
 	// getters under the RLock; reload swaps them under the write lock so adapter
@@ -177,6 +183,7 @@ func NewServer(deps Deps) *Server {
 	// Auth endpoints: at most 10 attempts per IP per minute. Generous enough that
 	// a human never notices, tight enough that bcrypt-slowed guessing stays slow.
 	s.authLimiter = newRateLimiter(10, time.Minute, nil)
+	s.djSayLimiter = newRateLimiter(djSayPerMinute, time.Minute, nil)
 	s.live.library = deps.Library
 	s.live.search = deps.SearchAggregator
 	s.live.coverage = deps.Coverage
@@ -316,6 +323,9 @@ func (s *Server) routes() {
 			pr.Get("/stats/recent", s.handleStatsRecent)
 			pr.Get("/stats/entity", s.handleStatsEntity)
 			pr.Post("/stats/play-counts", s.handlePlayCounts)
+			pr.Get("/dj/voice", s.handleDJVoice)
+			pr.Post("/dj/say", s.handleDJSay)
+			pr.Get("/dj/clips/{id}", s.handleDJClip)
 
 			// manage library & integrations: adapter CRUD + server settings.
 			pr.Group(func(mr chi.Router) {

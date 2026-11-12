@@ -35,8 +35,14 @@ import (
 	"github.com/maxjb-xyz/reverb/internal/search/spotify"
 	"github.com/maxjb-xyz/reverb/internal/store"
 	"github.com/maxjb-xyz/reverb/internal/store/db"
+	"github.com/maxjb-xyz/reverb/internal/voice"
+	"github.com/maxjb-xyz/reverb/internal/voice/elevenlabs"
+	"github.com/maxjb-xyz/reverb/internal/voice/openaispeech"
 	"github.com/maxjb-xyz/reverb/internal/wiring"
 )
+
+// djClipCacheSize is how many rendered DJ voice lines are kept on disk.
+const djClipCacheSize = 500
 
 func main() {
 	log.Printf("reverb %s starting", version)
@@ -90,6 +96,9 @@ func main() {
 	downloaderReg := registry.NewRegistry("downloader")
 	downloaderReg.Register("spotdl", func() registry.Plugin { return spotdl.New() })
 	downloaderReg.Register("lidarr", func() registry.Plugin { return lidarr.New() })
+	voiceReg := registry.NewRegistry(voice.Type)
+	voiceReg.Register("openai-speech", func() registry.Plugin { return openaispeech.New() })
+	voiceReg.Register("elevenlabs", func() registry.Plugin { return elevenlabs.New() })
 	// Surface the async capability to the admin UI (/adapters/available).
 	registry.RegisterCapability("async", func(p registry.Plugin) bool {
 		_, ok := p.(download.AsyncDownloader)
@@ -151,6 +160,12 @@ func main() {
 	// AddTrack mints stable catalog ids for library-source tracks at persist time.
 	// Must be set BEFORE Build so BuildSyncService picks it up via b.canonicalMinter.
 	builder.SetCanonicalMinter(catalogSvc)
+	builder.SetVoiceRegistry(voiceReg)
+
+	// The DJ's voice. Rendered clips are cached under the data dir and survive
+	// voice changes (they are keyed on the voice), so the cache is boot-bound.
+	voiceSvc := voice.NewService(voice.NewCache(filepath.Join(filepath.Dir(cfg.DBPath), "dj-voice"), djClipCacheSize))
+	reloader.voice = voiceSvc
 
 	bundle, err := builder.Build(context.Background())
 	if err != nil {
@@ -161,6 +176,7 @@ func main() {
 	// live-matcher holder so the resolver singleton sees it on its first call.
 	// Matches the pre-P2 behaviour (publishMatcher was called here before the reorder).
 	reloader.publishMatcher(bundle.Matcher)
+	voiceSvc.Set(bundle.Voice)
 
 	// Start the bundled-library supervisor (no-op in external mode).
 	if bundle.Supervisor != nil {
@@ -215,6 +231,8 @@ func main() {
 		Lib:           libraryReg,
 		Search:        searchReg,
 		Downloader:    downloaderReg,
+		VoiceReg:      voiceReg,
+		Voice:         voiceSvc,
 		Adapters:      st.Q(),
 		PlaylistOwner: st.Q(),
 		Events:        bus,
