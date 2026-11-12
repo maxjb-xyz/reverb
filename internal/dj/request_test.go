@@ -250,3 +250,28 @@ func TestNotUnderstoodSuggestsWhatToTry(t *testing.T) {
 		t.Fatalf("understood requests need no suggestions: %+v", it)
 	}
 }
+
+func TestModelNamesMatchLoosely(t *testing.T) {
+	in := NewInterpreter(hipHopCatalog(), &fakeLLM{out: `{"artist":"ASAP Rocky"}`}, nov2026)
+	it, ok := in.ask(context.Background(), "x", hipHopCatalog().artists, hipHopCatalog().genres)
+	if !ok || it.Seed == nil || it.Seed.ID != "a ap rocky" || it.Missing != "" {
+		t.Fatalf("got %+v", it)
+	}
+	in = NewInterpreter(hipHopCatalog(), &fakeLLM{out: `{"genres":["hip-hop"]}`}, nov2026)
+	it, ok = in.ask(context.Background(), "x", hipHopCatalog().artists, hipHopCatalog().genres)
+	if !ok || it.Seed == nil || it.Seed.ID != "hip hop rap" {
+		t.Fatalf("got %+v", it)
+	}
+}
+
+func BenchmarkLooseRequestBigLibrary(b *testing.B) {
+	cat := hipHopCatalog()
+	for i := 0; i < 5000; i++ {
+		n := "Artist Number " + strings.Repeat("x", i%7) + string(rune('a'+i%26)) + string(rune('a'+(i/26)%26)) + string(rune('a'+(i/676)%26))
+		cat.artists = append(cat.artists, Name{Key: strings.ToLower(n), Name: n})
+	}
+	in := NewInterpreter(cat, nil, nov2026)
+	for i := 0; i < b.N; i++ {
+		_, _ = in.Interpret(context.Background(), "could you play something by kendrik lamarr for me please")
+	}
+}
