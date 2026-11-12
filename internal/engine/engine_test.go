@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/maxjb-xyz/reverb/internal/analysis"
 	"math/rand"
 	"testing"
 	"time"
@@ -533,5 +534,58 @@ func TestDiscover_NewArtistsFromFavouritesSkippingExcluded(t *testing.T) {
 	e.taste.in = taste.Inputs{}
 	if got, _ := e.eng.Discover(context.Background(), "u1", 5, nil); len(got) != 0 {
 		t.Errorf("cold start discover = %v", ids(got))
+	}
+}
+
+type fakeSonic struct {
+	ready bool
+	near  map[string][]analysis.Neighbor
+	asked [][]string
+}
+
+func (f *fakeSonic) Ready(context.Context) bool { return f.ready }
+func (f *fakeSonic) SimilarTo(_ context.Context, ids []string, n int) ([]analysis.Neighbor, error) {
+	f.asked = append(f.asked, ids)
+	out := f.near[ids[0]]
+	if len(out) > n {
+		out = out[:n]
+	}
+	return out, nil
+}
+
+func TestSound_TrackRadioAndSoundsLikeUseAudioAnalysisWhenReady(t *testing.T) {
+	e := newEnv(t)
+	seedBonobo(t, e)
+	// Metallica's songs "sound like" Bonobo song 0 in this made-up analysis,
+	// so only audio analysis can bring them in.
+	sonic := &fakeSonic{near: map[string][]analysis.Neighbor{"bonobo-0": {{ID: "metallica-0", Score: 0.9}, {ID: "metallica-1", Score: 0.8}}}}
+	e.eng.SetSonic(sonic)
+	res := e.next(t, Request{Seed: Seed{Kind: SeedTrack, ID: "bonobo-0"}, Lane: LaneSoundsLike, N: 10})
+	for _, c := range res.Items {
+		if c.Reason.Kind == ReasonSound {
+			t.Fatal("used audio analysis before it was ready")
+		}
+	}
+	sonic.ready = true
+	found := 0
+	for i := 0; i < 5; i++ {
+		res = e.next(t, Request{Seed: Seed{Kind: SeedTrack, ID: "bonobo-0"}, Lane: LaneSoundsLike, N: 10})
+		for _, c := range res.Items {
+			if c.Reason.Kind == ReasonSound {
+				found++
+				if c.Reason.SeedTitle != "Bonobo song 0" || c.Reason.Artist != "Metallica" {
+					t.Fatalf("reason = %+v", c.Reason)
+				}
+			}
+		}
+	}
+	if found == 0 {
+		t.Fatal("no sounds-like picks from audio analysis")
+	}
+	// Artist radio asks with a handful of the artist's songs.
+	sonic.asked = nil
+	e.next(t, Request{Seed: Seed{Kind: SeedArtist, ID: "bonobo"}, N: 10})
+	if len(sonic.asked) != 1 || len(sonic.asked[0]) != 8 {
+		t.Fatalf("asked = %v", sonic.asked)
 	}
 }

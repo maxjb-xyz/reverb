@@ -284,6 +284,17 @@ describe('Admin', () => {
     expect(screen.getByRole('button', { name: /add model/i })).toBeEnabled()
   })
 
+  it('Providers tab has an optional audio analysis section', () => {
+    mockUseAvailableAdapters.mockReturnValue({
+      data: [makeAvailable({ type: 'analyzer', name: 'audio-sidecar', configSchema: { fields: [] } })],
+      isLoading: false,
+    })
+    wrap(<AdminProviders />)
+    expect(screen.getByRole('heading', { name: /audio analysis/i })).toBeInTheDocument()
+    expect(screen.getByText(/No audio analysis\. Recommendations use tags/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /add analyzer/i })).toBeEnabled()
+  })
+
   it('Providers tab renders the ScrobblingSection with Last.fm heading', async () => {
     wrap(<AdminProviders />)
     // ScrobblingSection is in the Providers tab (default active tab)
