@@ -139,3 +139,18 @@ func (s *Server) handleEngineStations(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"stations": sug})
 }
+
+// handleEngineGenres serves GET /api/v1/engine/genres: the library's genres,
+// biggest first, for picking a genre station or mix seed.
+func (s *Server) handleEngineGenres(w http.ResponseWriter, r *http.Request) {
+	if s.deps.Engine == nil {
+		writeJSON(w, http.StatusServiceUnavailable, errEngineUnavailable)
+		return
+	}
+	gs, err := s.deps.Engine.Genres(r.Context(), 200)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"genres": gs})
+}

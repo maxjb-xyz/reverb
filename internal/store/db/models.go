@@ -200,6 +200,21 @@ type MatchCache struct {
 	CoverArtID     string         `json:"cover_art_id"`
 }
 
+type Mix struct {
+	ID          string `json:"id"`
+	UserID      string `json:"user_id"`
+	Kind        string `json:"kind"`
+	Position    int64  `json:"position"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Recipe      string `json:"recipe"`
+	Items       string `json:"items"`
+	CoverArtID  string `json:"cover_art_id"`
+	GeneratedAt int64  `json:"generated_at"`
+	CreatedAt   int64  `json:"created_at"`
+	UpdatedAt   int64  `json:"updated_at"`
+}
+
 type Notification struct {
 	ID        string         `json:"id"`
 	UserID    string         `json:"user_id"`

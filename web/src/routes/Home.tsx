@@ -19,6 +19,7 @@ import {
 import type { Album, DownloadJob, Track } from '../lib/types'
 import { useDocumentTitle } from '../lib/useDocumentTitle'
 import { StationsRow } from '../components/radio/StationsRow'
+import { MixesRow } from '../components/mixes/MixesRow'
 import { useAlbumPalette } from '../lib/useAlbumPalette'
 import { rgbToCss } from '../lib/palette'
 
@@ -441,6 +442,9 @@ export default function Home() {
           </Carousel>
         </div>
       ) : null}
+
+      {/* "Your mixes" — daily mixes from the user's taste, then their own */}
+      {!isLoading && <MixesRow />}
 
       {/* "Radio for you" — stations from the user's taste */}
       {!isLoading && <StationsRow />}

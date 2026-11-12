@@ -17,6 +17,7 @@ import (
 	"github.com/maxjb-xyz/reverb/internal/events"
 	"github.com/maxjb-xyz/reverb/internal/libindex"
 	"github.com/maxjb-xyz/reverb/internal/library"
+	"github.com/maxjb-xyz/reverb/internal/mixes"
 	"github.com/maxjb-xyz/reverb/internal/notification"
 	"github.com/maxjb-xyz/reverb/internal/play"
 	"github.com/maxjb-xyz/reverb/internal/registry"
@@ -163,6 +164,9 @@ type Deps struct {
 	// Engine picks songs for radio, the DJ's lanes and mixes. Nil in
 	// tests/legacy wiring — its endpoints answer 503.
 	Engine *engine.Engine
+	// Mixes serves daily and custom mixes. Nil in tests/legacy wiring — its
+	// endpoints answer 503.
+	Mixes *mixes.Service
 }
 
 type Server struct {
@@ -348,6 +352,13 @@ func (s *Server) routes() {
 			pr.Get("/artists/similar", s.handleSimilarArtists)
 			pr.Post("/engine/next", s.handleEngineNext)
 			pr.Get("/engine/stations", s.handleEngineStations)
+			pr.Get("/engine/genres", s.handleEngineGenres)
+			pr.Get("/mixes", s.handleListMixes)
+			pr.Post("/mixes", s.handleCreateMix)
+			pr.Get("/mixes/{id}", s.handleGetMix)
+			pr.Put("/mixes/{id}", s.handleUpdateMix)
+			pr.Delete("/mixes/{id}", s.handleDeleteMix)
+			pr.Post("/mixes/{id}/refresh", s.handleRefreshMix)
 
 			// manage library & integrations: adapter CRUD + server settings.
 			pr.Group(func(mr chi.Router) {
