@@ -1,0 +1,124 @@
+name: Refresh Latest Image
+
+# Rebuilds the current stable release's image weekly and re-points `latest`
+# at it, so the bundled yt-dlp (floated at build time, see the Dockerfile)
+# doesn't age between releases (#20). The release's code is unchanged: this
+# checks out the release tag and only the yt-dlp layer and the layers after
+# it rebuild; the web and Go build stages come from the build cache.
+#
+# To keep Actions usage minimal, the check job exits in seconds when nothing
+# would change: the image's labels record which release and yt-dlp version it
+# was built with, and if both still match, no build runs.
+#
+# Only `latest` moves. Exact version tags (e.g. 0.3.1) stay as released.
+on:
+  schedule:
+    - cron: '41 6 * * 1' # Mondays 06:41 UTC, after the staging rebuild
+  workflow_dispatch:
+    inputs:
+      force:
+        description: Rebuild even if yt-dlp is unchanged
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: refresh-latest
+  cancel-in-progress: false
+
+jobs:
+  check:
+    name: Check for a newer yt-dlp
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.check.outputs.tag }}
+      ytdlp: ${{ steps.check.outputs.ytdlp }}
+      rebuild: ${{ steps.check.outputs.rebuild }}
+    steps:
+      - id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FORCE: ${{ inputs.force }}
+        run: |
+          image="ghcr.io/${{ github.repository_owner }}/reverb"
+          # Latest stable release (GitHub excludes prereleases and drafts here).
+          tag="$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq .tag_name)"
+          ytdlp="$(curl -fsS https://pypi.org/pypi/yt-dlp/json | jq -r .info.version)"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "ytdlp=$ytdlp" >> "$GITHUB_OUTPUT"
+
+          # A multi-arch image yields a platform->config map; a single-arch one
+          # yields the config itself. Images built before this workflow have no
+          # labels, so they rebuild once.
+          labels="$(docker buildx imagetools inspect "${image}:latest" --format '{{json .Image}}' \
+            | jq -c 'if has("config") then .config.Labels else ([.[]][0].config.Labels) end // {}')"
+          built_tag="$(jq -r '."org.reverb.release" // ""' <<<"$labels")"
+          built_ytdlp="$(jq -r '."org.reverb.ytdlp-version" // ""' <<<"$labels")"
+          echo "latest image: release=${built_tag:-?} yt-dlp=${built_ytdlp:-?}; current: release=$tag yt-dlp=$ytdlp"
+
+          if [ "$FORCE" = "true" ] || [ "$built_tag" != "$tag" ] || [ "$built_ytdlp" != "$ytdlp" ]; then
+            echo "rebuild=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "rebuild=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::latest already has yt-dlp $ytdlp; nothing to do."
+          fi
+
+  build:
+    name: Build & Push ${{ matrix.arch }}
+    needs: check
+    if: needs.check.outputs.rebuild == 'true'
+    strategy:
+      matrix:
+        include:
+          - { arch: amd64, runner: ubuntu-latest }
+          - { arch: arm64, runner: ubuntu-24.04-arm }
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.check.outputs.tag }}
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          platforms: linux/${{ matrix.arch }}
+          # Fixed per-arch tag; the manifest job reads it back by name.
+          tags: ghcr.io/${{ github.repository_owner }}/reverb:build-refresh-${{ github.run_id }}-${{ matrix.arch }}
+          labels: |
+            org.reverb.release=${{ needs.check.outputs.tag }}
+            org.reverb.ytdlp-version=${{ needs.check.outputs.ytdlp }}
+          cache-from: type=gha,scope=reverb-${{ matrix.arch }}
+          cache-to: type=gha,scope=reverb-${{ matrix.arch }},mode=max
+          build-args: |
+            VERSION=${{ needs.check.outputs.tag }}
+            YTDLP_BUILD_STAMP=${{ needs.check.outputs.ytdlp }}-${{ github.run_id }}
+          provenance: true
+
+  publish-manifest:
+    name: Re-point latest
+    needs: [check, build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Publish image manifest
+        run: |
+          image="ghcr.io/${{ github.repository_owner }}/reverb"
+          docker buildx imagetools create \
+            -t "${image}:latest" \
+            "${image}:build-refresh-${{ github.run_id }}-amd64" \
+            "${image}:build-refresh-${{ github.run_id }}-arm64"
