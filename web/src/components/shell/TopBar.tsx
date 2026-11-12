@@ -78,7 +78,7 @@ export function TopBar() {
     <header className="flex items-center justify-between px-4 h-16 bg-surface">
       {/* Mobile wordmark — desktop shows the history nav + search instead */}
       <div className="md:hidden">
-        <Logo iconClassName="h-7 w-auto" textClassName="text-lg" />
+        <Logo textClassName="text-lg" />
       </div>
 
       {/* Left — history nav (desktop only) */}

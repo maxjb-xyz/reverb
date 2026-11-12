@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="web/public/logo.png" alt="Reverb" width="120" />
+  <img src="web/public/wordmark.png" alt="Reverb." width="240" />
 </p>
 
 <h1 align="center">Reverb</h1>
