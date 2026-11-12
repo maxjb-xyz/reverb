@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { AudioEngine, type PlayerState } from './audioEngine'
 import { loadPlaybackPrefs, savePlaybackPrefs } from './playbackPrefs'
 import type { Track } from './types'
+import { contextFromPath, setPlayContext, type PlayContext } from './playContext'
 
 // Single imperative engine instance, living OUTSIDE React.
 export const engine = new AudioEngine()
@@ -10,7 +11,12 @@ export const engine = new AudioEngine()
 engine.setCrossfade(loadPlaybackPrefs().crossfadeMs)
 
 interface PlayerActions {
-  playTrackList(tracks: Track[], startIndex: number): void
+  /**
+   * Replace the queue and start playing. `context` says where the tracks came
+   * from (radio, a DJ lane, a mix...); when omitted it is inferred from the
+   * page the user pressed play on. Listens are stamped with it.
+   */
+  playTrackList(tracks: Track[], startIndex: number, context?: PlayContext): void
   enqueue(t: Track): void
   removeAt(i: number): void
   moveItem(from: number, to: number): void
@@ -35,7 +41,10 @@ export const usePlayer = create<PlayerStore>((set) => {
   engine.subscribe((s) => set(s))
   return {
     ...engine.getState(),
-    playTrackList: (tracks, startIndex) => engine.playTrackList(tracks, startIndex),
+    playTrackList: (tracks, startIndex, context) => {
+      setPlayContext(context ?? contextFromPath(typeof window === 'undefined' ? '/' : window.location.pathname))
+      engine.playTrackList(tracks, startIndex)
+    },
     enqueue: (t) => engine.enqueue(t),
     removeAt: (i) => engine.removeAt(i),
     moveItem: (from, to) => engine.moveItem(from, to),

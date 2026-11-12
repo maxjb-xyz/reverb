@@ -64,6 +64,22 @@ func (s *Service) repointCanonicalRefs(ctx context.Context, winner, loser string
 		return err
 	}
 
+	// 5. Repoint the taste tables. listen_events.catalog_id is FK-constrained, so
+	//    like plays it must move before the loser entity is deleted. A thumbs-down
+	//    that would collide with one the user already gave the winner is dropped.
+	if err := s.q.RepointListenEvents(ctx, db.RepointListenEventsParams{CatalogID: winner, CatalogID_2: loser}); err != nil {
+		return err
+	}
+	if err := s.q.RepointTasteSignals(ctx, db.RepointTasteSignalsParams{CatalogID: winner, CatalogID_2: loser}); err != nil {
+		return err
+	}
+	if err := s.q.RepointTrackFeedback(ctx, db.RepointTrackFeedbackParams{TargetKey: winner, TargetKey_2: loser}); err != nil {
+		return err
+	}
+	if err := s.q.DeleteTrackFeedbackFor(ctx, loser); err != nil {
+		return err
+	}
+
 	return nil
 }
 

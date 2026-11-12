@@ -23,6 +23,7 @@ import { useAlbumPalette } from '../lib/useAlbumPalette'
 import { trackCoverUrl } from '../lib/libraryApi'
 import { rgbToCss } from '../lib/palette'
 import { startPlayTracker } from '../lib/playTracker'
+import { startListenTracker } from '../lib/listenTracker'
 import { startNowPlaying } from '../lib/nowPlaying'
 import { startMediaSession } from '../lib/mediaSession'
 import { recordPlay, updatePlay } from '../lib/playApi'
@@ -79,6 +80,8 @@ export function AppShell() {
       }
     },
   }), [pushToast, queryClient])
+  // Taste signals: how every started track ended (finished / skipped / stopped).
+  useEffect(() => startListenTracker(engine), [])
   useEffect(() => startNowPlaying(engine), [])
   useEffect(() => startMediaSession(engine), [])
 

@@ -23,6 +23,7 @@ import { IconButton } from '../ui/IconButton'
 import { Icon } from '../ui/Icon'
 import { Waveform } from '../ui/Waveform'
 import { AddToPlaylistMenu } from '../AddToPlaylistMenu'
+import { NotForMeMenu } from '../NotForMeMenu'
 import { ProgressRing } from '../ui/ProgressRing'
 import { usePendingPlay } from '../../lib/pendingPlayStore'
 import { usePeaks } from '../../lib/peaksApi'
@@ -249,6 +250,7 @@ export function PlayerBar() {
             )}
           </div>
         )}
+        {current && <NotForMeMenu track={current} className="flex-none" />}
       </div>
 
       {/* ── CENTER: transport + scrubber ────────────────────────────────── */}

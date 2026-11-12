@@ -435,6 +435,70 @@ paths:
         - { name: bucket, in: query, schema: { type: string, enum: [day, week, month] } }
         - { name: tzOffsetMinutes, in: query, schema: { type: integer } }
       responses: { "200": { description: "array of {Start, Plays, MsPlayed}" } }
+  /listens:
+    post:
+      summary: >
+        Record how one started track ended for the session user (taste signal).
+        Unlike /plays (scrobble-qualified plays only), every outcome is stored,
+        including skips. contextKind/contextId say where it was played from
+        (album, playlist, radio, dj, mix, ...).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                libraryTrackId: { type: string }
+                title: { type: string }
+                artist: { type: string }
+                album: { type: string }
+                isrc: { type: string }
+                durationMs: { type: integer }
+                msPlayed: { type: integer }
+                outcome: { type: string, enum: [completed, skip_early, skip_late, stopped] }
+                contextKind: { type: string }
+                contextId: { type: string }
+                startedAt: { type: integer, description: unix seconds; 0 or omitted = now }
+              required: [title, artist, msPlayed, outcome]
+      responses: { "204": { description: recorded }, "400": { description: invalid }, "503": { description: taste service unavailable } }
+  /taste/profile:
+    get:
+      summary: The session user's top artists and tracks by taste score, plus counts.
+      responses: { "200": { description: "{ topArtists, topTracks, trackCount, artistCount, hiddenTracks, hiddenArtists }" } }
+  /taste/feedback:
+    get:
+      summary: The session user's thumbs-downs, newest first.
+      responses: { "200": { description: "array of { targetKind, targetKey, label, sublabel, libraryId, createdAt }" } }
+    put:
+      summary: >
+        Thumbs-down a track ("not this song") or an artist ("less of this
+        artist"). Track feedback needs the track's metadata; artist feedback
+        needs only artist.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                targetKind: { type: string, enum: [track, artist] }
+                libraryTrackId: { type: string }
+                libraryArtistId: { type: string }
+                title: { type: string }
+                artist: { type: string }
+                album: { type: string }
+                isrc: { type: string }
+                durationMs: { type: integer }
+              required: [targetKind, artist]
+      responses: { "200": { description: the stored feedback row }, "400": { description: invalid } }
+  /taste/feedback/{kind}/{key}:
+    delete:
+      summary: Undo a thumbs-down. kind is track or artist; key is the row's targetKey (percent-encoded).
+      parameters:
+        - { name: kind, in: path, required: true, schema: { type: string, enum: [track, artist] } }
+        - { name: key, in: path, required: true, schema: { type: string } }
+      responses: { "204": { description: removed (or was not present) } }
   /ws:
     get:
       summary: >
