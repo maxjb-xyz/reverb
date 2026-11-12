@@ -31,7 +31,18 @@ export interface PlayerState {
   repeat: RepeatMode
   /** Crossfade length in ms; 0 = off. */
   crossfadeMs: number
+  /** A voice-over line (the DJ) is playing over the music. */
+  speaking: boolean
 }
+
+export interface SpeakOptions {
+  /** Music level while the line plays, 0..1 (default 0.25). */
+  duckTo?: number
+}
+
+const DUCK_TO = 0.25
+const DUCK_DOWN_MS = 400
+const DUCK_UP_MS = 800
 
 /** Longest crossfade the player offers. */
 export const MAX_CROSSFADE_MS = 12_000
@@ -90,6 +101,10 @@ export class AudioEngine {
   private mixer: Mixer | null | undefined = undefined
   private routed = false
   private fading: { el: AudioElement; timer: ReturnType<typeof setTimeout> } | null = null
+
+  // Voice-over: a third element made on first use, and the line playing on it.
+  private voice: AudioElement | null = null
+  private line: { finish: () => void } | null = null
 
   constructor(
     factory: () => AudioElement = realAudioFactory,
@@ -222,6 +237,7 @@ export class AudioEngine {
       shuffle: this.shuffle,
       repeat: this.repeat,
       crossfadeMs: this.crossfadeMs,
+      speaking: this.line !== null,
     }
   }
 
@@ -347,6 +363,7 @@ export class AudioEngine {
   }
 
   pause() {
+    this.line?.finish()
     this.stopFade()
     this.active.pause()
     this.playing = false
@@ -481,8 +498,8 @@ export class AudioEngine {
    * lazy on purpose: an element wrapped by Web Audio plays only through it, so
    * people who never turn crossfade on keep the plain element path.
    */
-  private route(): boolean {
-    if (this.crossfadeMs <= 0 && !this.routed) return false
+  private route(force = false): boolean {
+    if (!force && this.crossfadeMs <= 0 && !this.routed) return false
     if (this.mixer === undefined) this.mixer = this.makeMixer()
     if (!this.mixer) return false
     if (!this.routed) {
@@ -553,10 +570,62 @@ export class AudioEngine {
     this.mixer?.setGain(this.active, 1)
   }
 
+  /**
+   * Play a short voice line (the DJ) over the music, lowering the music while
+   * it plays and bringing it back after. Resolves when the line ends, fails,
+   * or is cut off by pause() or another line. Never touches the queue.
+   */
+  speak(src: string, opts: SpeakOptions = {}): Promise<void> {
+    this.line?.finish()
+    const duckTo = Math.min(1, Math.max(0, opts.duckTo ?? DUCK_TO))
+    const mixed = this.route(true)
+    const mixer = mixed ? this.mixer : null
+    if (!this.voice) {
+      this.voice = this.factory()
+      if (mixer) mixer.connect(this.voice, 'voice')
+    }
+    const voice = this.voice
+    voice.volume = this.volume
+
+    // Lower the music: on the bus when mixed, else on the elements themselves
+    // (the fallback does nothing on iOS, which ignores element volume).
+    if (mixer) mixer.duckMusic(duckTo, DUCK_DOWN_MS)
+    else {
+      this.active.volume = this.volume * duckTo
+      this.preload.volume = this.volume * duckTo
+    }
+
+    return new Promise<void>((resolve) => {
+      const finish = () => {
+        if (this.line !== line) return
+        this.line = null
+        voice.removeEventListener('ended', finish)
+        voice.removeEventListener('error', finish)
+        voice.pause()
+        if (mixer) mixer.duckMusic(1, DUCK_UP_MS)
+        else {
+          this.active.volume = this.volume
+          this.preload.volume = this.volume
+        }
+        this.emit()
+        resolve()
+      }
+      const line = { finish }
+      this.line = line
+      voice.addEventListener('ended', finish)
+      voice.addEventListener('error', finish)
+      voice.src = src
+      voice.currentTime = 0
+      void voice.play()
+      this.emit()
+    })
+  }
+
   setVolume(v: number) {
     this.volume = Math.min(1, Math.max(0, v))
     this.active.volume = this.volume
     this.preload.volume = this.volume
+    if (this.voice) this.voice.volume = this.volume
     this.emit()
   }
 

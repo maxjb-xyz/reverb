@@ -4,17 +4,20 @@ import type { AudioElement } from './audioEngine'
 // ("channel"), every channel feeds one music bus, and the bus feeds the
 // speakers:
 //
-//   element -> channel gain -> music bus -> destination
+//   track element -> channel gain -> music bus -> destination
+//   voice element -> channel gain ----------------> destination
 //
 // Channel gains carry crossfades; the music bus is lowered when the DJ talks
-// over a song. Elements are only routed here when a feature needs it: once an
+// over a song, and the voice skips the bus so it is never lowered with it. Elements are only routed here when a feature needs it: once an
 // element is wrapped by createMediaElementSource its sound only reaches the
 // speakers through this graph, and the graph is silent while the browser keeps
 // the audio context suspended.
 
+export type Bus = 'music' | 'voice'
+
 export interface Mixer {
   /** Route an element through the mixer. False when it cannot be routed. Safe to repeat. */
-  connect(el: AudioElement): boolean
+  connect(el: AudioElement, bus?: Bus): boolean
   /** Set an element's channel gain now, cancelling any fade in progress. */
   setGain(el: AudioElement, v: number): void
   /** Fade an element's channel gain from `from` to `to` over `ms`, equal-power. */
@@ -81,7 +84,7 @@ export function createWebAudioMixer(): Mixer | null {
   }
 
   return {
-    connect(el) {
+    connect(el, bus = 'music') {
       if (channels.has(el)) return true
       if (typeof HTMLMediaElement === 'undefined' || !(el instanceof HTMLMediaElement)) return false
       try {
@@ -89,7 +92,7 @@ export function createWebAudioMixer(): Mixer | null {
         const source = g.ctx.createMediaElementSource(el)
         const channel = g.ctx.createGain()
         source.connect(channel)
-        channel.connect(g.music)
+        channel.connect(bus === 'voice' ? g.ctx.destination : g.music)
         channels.set(el, channel)
         return true
       } catch {

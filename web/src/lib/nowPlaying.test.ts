@@ -38,6 +38,7 @@ function baseState(): PlayerState {
     shuffle: false,
     repeat: 'off',
     crossfadeMs: 0,
+    speaking: false,
   }
 }
 
