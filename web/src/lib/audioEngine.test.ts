@@ -51,12 +51,14 @@ class FakeAudio implements AudioElement {
 // FakeMixer records what the engine asks of the Web Audio graph.
 class FakeMixer implements Mixer {
   connected = new Set<AudioElement>()
+  buses = new Map<AudioElement, string>()
   gains = new Map<AudioElement, number>()
   fades: Array<{ el: AudioElement; from: number; to: number; ms: number }> = []
   ducks: Array<{ level: number; ms: number }> = []
   resumed = 0
-  connect(el: AudioElement) {
+  connect(el: AudioElement, bus: 'music' | 'voice' = 'music') {
     this.connected.add(el)
+    this.buses.set(el, bus)
     return true
   }
   setGain(el: AudioElement, v: number) {
@@ -501,5 +503,81 @@ describe('AudioEngine crossfade', () => {
     expect(plain.engine.getState().index).toBe(0)
     plain.audios[0].fire('ended')
     expect(plain.engine.getState().index).toBe(1)
+  })
+})
+
+describe('AudioEngine voice-over', () => {
+  let engine: AudioEngine
+  let audios: FakeAudio[]
+  let mixer: FakeMixer
+  beforeEach(() => {
+    mixer = new FakeMixer()
+    ;({ engine, audios } = newEngine(mixer))
+  })
+
+  it('plays a line on its own element, on the voice bus, with the music ducked', async () => {
+    engine.playTrackList(list, 0)
+    const done = engine.speak('mock://line-1')
+    const voice = audios[2]
+    expect(voice.src).toBe('mock://line-1')
+    expect(voice.paused).toBe(false)
+    expect(mixer.buses.get(voice)).toBe('voice')
+    expect(mixer.connected.has(audios[0])).toBe(true) // music routed even with crossfade off
+    expect(mixer.ducks.at(-1)).toEqual({ level: 0.25, ms: 400 })
+    voice.fire('ended')
+    await done
+    expect(mixer.ducks.at(-1)).toEqual({ level: 1, ms: 800 })
+    expect(engine.getState().speaking).toBe(false)
+  })
+
+  it('reports speaking in state while a line plays', () => {
+    engine.playTrackList(list, 0)
+    void engine.speak('mock://line-1')
+    expect(engine.getState().speaking).toBe(true)
+  })
+
+  it('takes a custom duck level', () => {
+    engine.playTrackList(list, 0)
+    void engine.speak('mock://line-1', { duckTo: 0.5 })
+    expect(mixer.ducks.at(-1)).toEqual({ level: 0.5, ms: 400 })
+  })
+
+  it('a broken line restores the music and still resolves', async () => {
+    engine.playTrackList(list, 0)
+    const done = engine.speak('mock://broken')
+    audios[2].fire('error')
+    await done
+    expect(mixer.ducks.at(-1)?.level).toBe(1)
+    expect(engine.getState().index).toBe(0) // never touches the queue
+  })
+
+  it('a new line cuts off the one playing', async () => {
+    engine.playTrackList(list, 0)
+    const first = engine.speak('mock://line-1')
+    void engine.speak('mock://line-2')
+    await first
+    expect(audios[2].src).toBe('mock://line-2')
+    expect(audios[2].paused).toBe(false)
+  })
+
+  it('pausing drops the line and brings the music back up', async () => {
+    engine.playTrackList(list, 0)
+    const done = engine.speak('mock://line-1')
+    engine.pause()
+    await done
+    expect(audios[2].paused).toBe(true)
+    expect(mixer.ducks.at(-1)?.level).toBe(1)
+    expect(engine.getState().speaking).toBe(false)
+  })
+
+  it('without Web Audio, lowers the element volume instead and restores it', async () => {
+    const plain = newEngine(null)
+    plain.engine.setVolume(0.8)
+    plain.engine.playTrackList(list, 0)
+    const done = plain.engine.speak('mock://line-1')
+    expect(plain.audios[0].volume).toBeCloseTo(0.2)
+    plain.audios[2].fire('ended')
+    await done
+    expect(plain.audios[0].volume).toBeCloseTo(0.8)
   })
 })

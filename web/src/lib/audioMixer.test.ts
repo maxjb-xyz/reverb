@@ -112,6 +112,16 @@ describe('createWebAudioMixer', () => {
     expect(music.out).toEqual([ctx.destination])
   })
 
+  it('routes a voice element straight to the speakers, past the music bus', () => {
+    vi.stubGlobal('AudioContext', FakeContext)
+    const m = createWebAudioMixer()!
+    const voice = new Audio()
+    expect(m.connect(voice, 'voice')).toBe(true)
+    const ctx = FakeContext.made[0]
+    const channel = ctx.gains[1]
+    expect(channel.out).toEqual([ctx.destination])
+  })
+
   it('refuses things that are not media elements', () => {
     vi.stubGlobal('AudioContext', FakeContext)
     const m = createWebAudioMixer()!
