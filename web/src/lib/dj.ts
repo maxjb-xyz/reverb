@@ -16,7 +16,7 @@
 import { create } from 'zustand'
 import type { AudioEngine, PlayerState } from './audioEngine'
 import { getNext, type EngineItem, type EngineNextRequest, type EngineResult, type EngineStation, type Lane } from './engineApi'
-import { getDJStatus, sayLine, writeLine, type DJClip, type DJLine, type DJSegment, type DJStatus, type DJTrack } from './djApi'
+import { getDJStatus, readRequest, sayLine, writeLine, type DJClip, type DJIntent, type DJLine, type DJSegment, type DJStatus, type DJTrack } from './djApi'
 import { getPlayContext, setTrackContexts, type PlayContext } from './playContext'
 import type { Track } from './types'
 
@@ -32,6 +32,8 @@ export const TALK_WINDOW_MS = 20_000
 export const CARD_MS = 12_000
 /** How long a spoken line stays on screen after the voice ends. */
 const CARD_AFTER_VOICE_MS = 4_000
+/** How many blocks a request steers before the DJ goes back to its lanes. */
+export const REQUEST_BLOCKS = 2
 /** Wait this long before trying again after every lane came back empty or failed. */
 const RETRY_MS = 30_000
 const MAX_EXCLUDE = 500
@@ -49,6 +51,7 @@ export interface DJDeps {
   line: (s: DJSegment) => Promise<DJLine>
   say: (text: string) => Promise<DJClip>
   status: () => Promise<DJStatus>
+  intent: (text: string) => Promise<DJIntent>
   /** The player's playTrackList. */
   play: (tracks: Track[], startIndex: number, context?: PlayContext) => void
   /** The listener's name, for the greeting. */
@@ -62,6 +65,7 @@ const defaults: Omit<DJDeps, 'play'> = {
   line: writeLine,
   say: sayLine,
   status: getDJStatus,
+  intent: readRequest,
   listener: () => undefined,
   now: () => new Date(),
   random: Math.random,
@@ -85,9 +89,11 @@ export interface DJView {
   card: DJCard | null
   /** Whether a voice is configured (otherwise lines are shown, not spoken). */
   voice: boolean
+  /** An artist the listener asked for that the library lacks: offer to find it. */
+  missing: string | null
 }
 
-const idle: DJView = { active: false, busy: false, label: '', card: null, voice: false }
+const idle: DJView = { active: false, busy: false, label: '', card: null, voice: false, missing: null }
 export const useDJ = create<DJView>(() => ({ ...idle }))
 
 // ---- Session ----
@@ -98,7 +104,9 @@ interface Prepared {
 }
 
 interface Block {
-  lane: Lane
+  lane: Lane | 'request'
+  /** What the bar shows while the block plays. */
+  label: string
   station: EngineStation
   tracks: Track[]
   prepared: Promise<Prepared>
@@ -115,6 +123,14 @@ interface Session {
   /** Every song the DJ has queued, so lanes don't repeat each other. */
   handed: string[]
   fetching: boolean
+  /** A listener request steering the next blocks. */
+  request?: ActiveRequest
+}
+
+interface ActiveRequest {
+  req: EngineNextRequest
+  text: string
+  left: number
 }
 
 let session: Session | null = null
@@ -138,15 +154,16 @@ export function throwbackYears(now: Date, r: number): { fromYear: number; toYear
 }
 
 /** Said when the line writer can't be reached at all. */
-function plainLine(b: { station: EngineStation; tracks: Track[] }): string {
+function plainLine(b: { label: string; tracks: Track[] }): string {
   const t = b.tracks[0]
-  return `${b.station.label}. Starting with ${t.title} by ${t.artist}.`
+  return `${b.label}. Starting with ${t.title} by ${t.artist}.`
 }
 
-function segmentFor(s: Session, lane: Lane, items: EngineItem[], previous?: Track): DJSegment {
+function segmentFor(s: Session, lane: Lane | 'request', items: EngineItem[], previous?: Track, request?: string): DJSegment {
   const r = items[0].reason
   return {
     lane,
+    request,
     reason: { artist: r.artist, play_count: r.playCount, seed: r.seedArtist },
     previous: previous ? toDJ(previous) : undefined,
     next: items.slice(0, 5).map((it) => toDJ(it.track as Track, it.year)),
@@ -155,7 +172,7 @@ function segmentFor(s: Session, lane: Lane, items: EngineItem[], previous?: Trac
   }
 }
 
-async function prepare(s: Session, seg: DJSegment, b: { station: EngineStation; tracks: Track[] }): Promise<Prepared> {
+async function prepare(s: Session, seg: DJSegment, b: { label: string; tracks: Track[] }): Promise<Prepared> {
   let text: string
   try {
     text = (await s.deps.line(seg)).text
@@ -172,11 +189,75 @@ async function prepare(s: Session, seg: DJSegment, b: { station: EngineStation; 
   }
 }
 
+/** Turn an engine answer into a block, or null when nothing in it can play. */
+function makeBlock(
+  s: Session,
+  lane: Lane | 'request',
+  label: string | null,
+  res: EngineResult,
+  previous: Track | undefined,
+  skip: Set<string>,
+  request?: string,
+): Block | null {
+  const items = res.items.filter((it) => it.owned && it.track && !skip.has(it.track.id))
+  if (items.length === 0) return null
+  const tracks = items.map((it) => it.track as Track)
+  const shown = label ?? res.station.label
+  const block: Block = {
+    lane,
+    label: shown,
+    station: res.station,
+    tracks,
+    prepared: prepare(s, segmentFor(s, lane, items, previous, request), { label: shown, tracks }),
+    announced: false,
+  }
+  s.blocks.set(tracks[0].id, block)
+  for (const t of tracks) s.handed.push(t.id)
+  if (s.handed.length > MAX_EXCLUDE * 2) s.handed = s.handed.slice(-MAX_EXCLUDE)
+  return block
+}
+
+/** The next block for the active request, or null (and the request ends) when it has run out. */
+async function requestBlock(s: Session, previous: Track | undefined, skip: Set<string>): Promise<Block | null> {
+  const r = s.request
+  if (!r || r.left <= 0) {
+    s.request = undefined
+    return null
+  }
+  r.left--
+  let b: Block | null
+  try {
+    const exclude = s.handed.slice(-MAX_EXCLUDE)
+    b = makeBlock(s, 'request', requestLabel(r.text), await s.deps.next({ ...r.req, n: BLOCK_SIZE, exclude }), previous, skip, r.text)
+    if (!b && r.req.seed && r.req.lane) {
+      // "More like X" with nothing similar on hand: play X itself.
+      r.req = { ...r.req, lane: undefined }
+      b = makeBlock(s, 'request', requestLabel(r.text), await s.deps.next({ ...r.req, n: BLOCK_SIZE, exclude }), previous, skip, r.text)
+    }
+  } catch {
+    s.request = undefined
+    return null
+  }
+  if (!b || r.left <= 0) s.request = undefined
+  return b
+}
+
+/** How a request shows in the bar. */
+export function requestLabel(text: string): string {
+  const t = text.trim().replace(/\s+/g, ' ')
+  return `“${t.length > 40 ? t.slice(0, 39) + '…' : t}”`
+}
+
 /**
- * The next lane's block, trying each lane once. Songs in `skip` (already
- * queued) are left out. Null when every lane is empty or failed.
+ * The next block: the active request's, else the next lane's, trying each
+ * lane once. Songs in `skip` (already queued) are left out. Null when every
+ * lane is empty or failed.
  */
 async function nextBlock(s: Session, previous: Track | undefined, skip: Set<string>): Promise<Block | null> {
+  if (s.request) {
+    const b = await requestBlock(s, previous, skip)
+    if (b) return b
+  }
   for (let tries = 0; tries < DJ_LANES.length; tries++) {
     const lane = DJ_LANES[s.lane % DJ_LANES.length]
     s.lane = (s.lane + 1) % DJ_LANES.length
@@ -188,21 +269,8 @@ async function nextBlock(s: Session, previous: Track | undefined, skip: Set<stri
     } catch {
       continue
     }
-    const items = res.items.filter((it) => it.owned && it.track && !skip.has(it.track.id))
-    if (items.length === 0) continue
-    const tracks = items.map((it) => it.track as Track)
-    const shell = { station: res.station, tracks }
-    const block: Block = {
-      lane,
-      station: res.station,
-      tracks,
-      prepared: prepare(s, segmentFor(s, lane, items, previous), shell),
-      announced: false,
-    }
-    s.blocks.set(tracks[0].id, block)
-    for (const t of tracks) s.handed.push(t.id)
-    if (s.handed.length > MAX_EXCLUDE * 2) s.handed = s.handed.slice(-MAX_EXCLUDE)
-    return block
+    const b = makeBlock(s, lane, null, res, previous, skip)
+    if (b) return b
   }
   return null
 }
@@ -225,7 +293,7 @@ function hideCard(key: number, afterMs: number) {
 }
 
 async function announce(s: Session, b: Block, trackId: string) {
-  useDJ.setState({ label: b.station.label })
+  useDJ.setState({ label: b.label })
   const p = await b.prepared
   const eng = bound
   if (session !== s || !eng) return
@@ -233,11 +301,11 @@ async function announce(s: Session, b: Block, trackId: string) {
   // The listener moved on, or the line took too long: the moment has passed.
   if (st.current?.id !== trackId || st.currentTimeMs > TALK_WINDOW_MS) return
   if (p.url && st.playing) {
-    const key = showCard(b.station.label, p.text)
+    const key = showCard(b.label, p.text)
     await eng.speak(p.url)
     hideCard(key, CARD_AFTER_VOICE_MS)
   } else {
-    showCard(b.station.label, p.text, CARD_MS)
+    showCard(b.label, p.text, CARD_MS)
   }
 }
 
@@ -311,7 +379,7 @@ export async function startDJ(deps: Partial<DJDeps> & Pick<DJDeps, 'play'>): Pro
     session = s
     s.fetching = false
     setTrackContexts(b.tracks.map((t) => [t.id, laneContext(b)]), true)
-    useDJ.setState({ active: true, label: b.station.label, voice: s.voice })
+    useDJ.setState({ active: true, label: b.label, voice: s.voice })
     d.play(b.tracks, 0, DJ_CONTEXT)
     return b.station
   } finally {
@@ -327,15 +395,75 @@ export async function changeVibe(): Promise<boolean> {
   const s = session
   if (!s || s.fetching) return false
   s.fetching = true
-  useDJ.setState({ busy: true })
+  s.request = undefined
+  useDJ.setState({ busy: true, missing: null })
   try {
     const cur = bound?.getState().current ?? undefined
     const b = await nextBlock(s, cur, new Set(cur ? [cur.id] : []))
     if (session !== s || !b) return false
-    setTrackContexts(b.tracks.map((t) => [t.id, laneContext(b)]))
-    useDJ.setState({ label: b.station.label })
-    s.deps.play(b.tracks, 0, DJ_CONTEXT)
+    playNow(s, b)
     return true
+  } finally {
+    if (session === s) s.fetching = false
+    useDJ.setState({ busy: false })
+  }
+}
+
+function playNow(s: Session, b: Block) {
+  setTrackContexts(b.tracks.map((t) => [t.id, laneContext(b)]))
+  useDJ.setState({ label: b.label })
+  s.deps.play(b.tracks, 0, DJ_CONTEXT)
+}
+
+export type AskResult =
+  /** Playing what was asked for. `missing` names an artist it couldn't include. */
+  | { status: 'playing'; missing?: string }
+  /** Nothing in the request could be read as music in the library. */
+  | { status: 'not-understood'; missing?: string }
+  /** Understood, but nothing in the library fits it. */
+  | { status: 'empty'; missing?: string }
+  /** The DJ is off or already busy. */
+  | { status: 'busy' }
+
+function engineRequest(it: DJIntent): EngineNextRequest {
+  const req: EngineNextRequest = {}
+  if (it.seed) req.seed = { kind: it.seed.kind, id: it.seed.id, ...(it.seed.artist ? { artist: it.seed.artist } : {}) }
+  if (it.lane) req.lane = it.lane as Lane
+  if (it.fromYear && it.toYear) {
+    req.fromYear = it.fromYear
+    req.toYear = it.toYear
+  }
+  return req
+}
+
+/**
+ * Ask the DJ for something ("90s hip hop", "more like Bonobo"). When it can,
+ * the DJ plays a block of it now, introduces it, and keeps to it for one more
+ * block before going back to its lanes.
+ */
+export async function askDJ(text: string): Promise<AskResult> {
+  const s = session
+  if (!s || s.fetching || !text.trim()) return { status: 'busy' }
+  s.fetching = true
+  useDJ.setState({ busy: true, missing: null })
+  try {
+    let it: DJIntent
+    try {
+      it = await s.deps.intent(text)
+    } catch {
+      return { status: 'not-understood' }
+    }
+    if (session !== s) return { status: 'busy' }
+    const missing = it.missing || undefined
+    if (missing) useDJ.setState({ missing })
+    if (!it.understood) return { status: 'not-understood', missing }
+    s.request = { req: engineRequest(it), text, left: REQUEST_BLOCKS }
+    const cur = bound?.getState().current ?? undefined
+    const b = await requestBlock(s, cur, new Set(cur ? [cur.id] : []))
+    if (session !== s) return { status: 'busy' }
+    if (!b) return { status: 'empty', missing }
+    playNow(s, b)
+    return { status: 'playing', missing }
   } finally {
     if (session === s) s.fetching = false
     useDJ.setState({ busy: false })

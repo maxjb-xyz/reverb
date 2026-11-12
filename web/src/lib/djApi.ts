@@ -52,3 +52,17 @@ export interface DJClip {
 export const getDJStatus = () => api.get<DJStatus>('/dj/status')
 export const writeLine = (seg: DJSegment) => api.post<DJLine>('/dj/line', seg)
 export const sayLine = (text: string) => api.post<DJClip>('/dj/say', { text })
+
+/** What a request asked for, in engine terms (see POST /dj/request). */
+export interface DJIntent {
+  understood: boolean
+  seed?: { kind: 'artist' | 'genre'; id: string; artist?: string; label?: string }
+  lane?: string
+  fromYear?: number
+  toYear?: number
+  /** An artist asked for that the library doesn't have. */
+  missing?: string
+  source: 'rules' | 'llm'
+}
+
+export const readRequest = (text: string) => api.post<DJIntent>('/dj/request', { text })

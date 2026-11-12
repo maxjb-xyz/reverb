@@ -93,8 +93,10 @@ type Seed struct {
 
 // Request asks for the next n songs of a station or lane.
 type Request struct {
-	Seed     Seed
-	Lane     string
+	Seed Seed
+	Lane string
+	// FromYear..ToYear is the period for throwback; on other lanes, when
+	// set, it keeps every pick inside that period.
 	FromYear int
 	ToYear   int
 	// Exclude holds library track ids (or catalog ids) that must not be picked:
@@ -767,6 +769,9 @@ func (e *Engine) filter(in []*Candidate, prof *taste.Profile, req Request, seed 
 		}
 		if t.DurationMs > 0 && t.DurationMs < 45_000 {
 			continue // intros, skits, interludes
+		}
+		if req.FromYear > 0 && req.ToYear >= req.FromYear && (c.Year < req.FromYear || c.Year > req.ToYear) {
+			continue // a period was asked for ("90s hip hop"): stay in it on every lane
 		}
 		if prof.HiddenArtists[c.artistKey] {
 			continue

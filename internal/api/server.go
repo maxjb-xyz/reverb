@@ -13,6 +13,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/maxjb-xyz/reverb/internal/auth"
 	"github.com/maxjb-xyz/reverb/internal/core"
+	"github.com/maxjb-xyz/reverb/internal/dj"
 	"github.com/maxjb-xyz/reverb/internal/engine"
 	"github.com/maxjb-xyz/reverb/internal/events"
 	"github.com/maxjb-xyz/reverb/internal/libindex"
@@ -158,6 +159,9 @@ type Deps struct {
 	LLMReg *registry.Registry
 	// LLM writes DJ lines. Nil means templates only.
 	LLM LLMService
+	// DJCatalog lists the library's artists and genres for reading DJ
+	// requests. Nil reads requests with lanes and periods only.
+	DJCatalog dj.Catalog
 	// Taste records listen outcomes, playlist/download signals and thumbs-down,
 	// and serves per-user taste profiles. Nil in tests/legacy wiring — listen
 	// and feedback endpoints answer 503 and signal hooks are skipped.
@@ -351,6 +355,7 @@ func (s *Server) routes() {
 			pr.Get("/dj/voice", s.handleDJVoice)
 			pr.Get("/dj/status", s.handleDJStatus)
 			pr.Post("/dj/line", s.handleDJLine)
+			pr.Post("/dj/request", s.handleDJRequest)
 			pr.Post("/dj/say", s.handleDJSay)
 			pr.Get("/dj/clips/{id}", s.handleDJClip)
 			pr.Post("/listens", s.handleListen)
