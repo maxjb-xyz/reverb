@@ -78,7 +78,9 @@ function qualify(state: TrackState): boolean {
  *    seconds as listened ones.
  *  - Repeat-one re-loop (backward jump to near-0 on the SAME track after fire)
  *    closes out the first play and resets so a second qualification can fire.
- *  - completed = currentTimeMs >= durationMs - 1 500 at fire time.
+ *  - completed = currentTimeMs >= durationMs - 1 500 at fire time; the final
+ *    update marks it completed if listening reached that close to the end
+ *    (widened by the crossfade length, when crossfade is on).
  *
  * The play is recorded as soon as it qualifies (so it is scrobbled and shows up
  * in stats right away), when only half the song may have been heard. When it
@@ -211,7 +213,9 @@ export function startPlayTracker(
     const listened = playing && delta > 0 && (delta < MAX_DELTA_MS || delta <= wallDelta + CLOCK_SLACK_MS)
     if (listened) {
       t.msPlayed += delta
-      if (t.durationMs > 0 && currentTimeMs >= t.durationMs - COMPLETE_WITHIN_MS) t.reachedEnd = true
+      // With crossfade on, the next song takes over crossfadeMs before the end.
+      const endWindow = COMPLETE_WITHIN_MS + Math.max(0, s.crossfadeMs || 0)
+      if (t.durationMs > 0 && currentTimeMs >= t.durationMs - endWindow) t.reachedEnd = true
     }
 
     t.lastTimeMs = currentTimeMs

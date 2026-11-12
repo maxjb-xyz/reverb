@@ -422,6 +422,24 @@ describe('playTracker', () => {
       expect(updateFn).toHaveBeenCalledTimes(1)
     })
 
+    // With crossfade on, the next song takes over a few seconds before the end.
+    it('counts a song that crossfaded into the next one as completed', async () => {
+      const eng = fakeEngine()
+      const stop = startPlayTracker(eng as any, recordFn, { update: updateFn })
+      const t1 = mkTrack('x1', 60_000)
+      const xf = { crossfadeMs: 6_000 }
+      eng.emit({ ...baseState(), ...xf, current: t1, durationMs: 60_000, playing: true, currentTimeMs: 0 })
+      for (let pos = 1_000; pos <= 54_500; pos += 500) {
+        eng.emit({ ...baseState(), ...xf, current: t1, durationMs: 60_000, playing: true, currentTimeMs: pos })
+      }
+      await flush()
+      eng.emit({ ...baseState(), ...xf, current: mkTrack('x2', 60_000), durationMs: 60_000, playing: true, currentTimeMs: 0 })
+
+      expect(updateFn).toHaveBeenCalledTimes(1)
+      expect(updateFn.mock.calls[0][1].completed).toBe(true)
+      stop()
+    })
+
     it('closes out the first loop of a repeated song before counting the next', async () => {
       const eng = fakeEngine()
       const stop = startPlayTracker(eng as any, recordFn, { update: updateFn })
