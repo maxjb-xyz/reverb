@@ -6,6 +6,7 @@ import (
 
 	"github.com/maxjb-xyz/reverb/internal/api"
 	"github.com/maxjb-xyz/reverb/internal/library"
+	"github.com/maxjb-xyz/reverb/internal/llm"
 	"github.com/maxjb-xyz/reverb/internal/resolver"
 	"github.com/maxjb-xyz/reverb/internal/voice"
 	"github.com/maxjb-xyz/reverb/internal/wiring"
@@ -39,6 +40,8 @@ type serviceReloader struct {
 	liveMatcher atomic.Pointer[matcherHolder]
 	// voice, when set, receives the rebuilt DJ voice on every reload.
 	voice *voice.Service
+	// llm, when set, receives the rebuilt DJ writer model on every reload.
+	llm *llm.Service
 }
 
 var _ api.ServiceReloader = (*serviceReloader)(nil)
@@ -92,6 +95,9 @@ func (r *serviceReloader) Reload(ctx context.Context) (library.LibraryAdapter, a
 
 	if r.voice != nil {
 		r.voice.Set(bundle.Voice)
+	}
+	if r.llm != nil {
+		r.llm.Set(bundle.LLM)
 	}
 
 	// LibraryAdapter is itself an interface; a nil bundle.Library is a usable nil

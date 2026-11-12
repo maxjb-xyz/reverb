@@ -8,8 +8,64 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/maxjb-xyz/reverb/internal/dj"
+	"github.com/maxjb-xyz/reverb/internal/llm"
 	"github.com/maxjb-xyz/reverb/internal/voice"
 )
+
+// LLMService is the DJ's writer model. *llm.Service satisfies it.
+type LLMService interface {
+	Active() string
+	Complete(ctx context.Context, req llm.Request) (string, error)
+}
+
+// djLinePerMinute caps how many DJ lines one user can have written per minute.
+const djLinePerMinute = 30
+
+type djProvider struct {
+	Available bool   `json:"available"`
+	Name      string `json:"name"`
+}
+
+func (s *Server) handleDJStatus(w http.ResponseWriter, r *http.Request) {
+	var v, m string
+	if s.deps.Voice != nil {
+		v = s.deps.Voice.Active()
+	}
+	if s.deps.LLM != nil {
+		m = s.deps.LLM.Active()
+	}
+	writeJSON(w, http.StatusOK, map[string]djProvider{
+		"voice":  {Available: v != "", Name: v},
+		"writer": {Available: m != "", Name: m},
+	})
+}
+
+func (s *Server) handleDJLine(w http.ResponseWriter, r *http.Request) {
+	var seg dj.Segment
+	if err := decode(r, &seg); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "bad request"})
+		return
+	}
+	if len(seg.Normalize().Next) == 0 {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "next must name at least one song"})
+		return
+	}
+	key := "anon"
+	if cu, ok := currentUser(r); ok {
+		key = cu.ID
+	}
+	if !s.djLineLimiter.allow(key) {
+		w.Header().Set("Retry-After", "60")
+		writeJSON(w, http.StatusTooManyRequests, map[string]string{"error": "too many DJ lines, try again in a minute"})
+		return
+	}
+	var m dj.Completer
+	if s.deps.LLM != nil && s.deps.LLM.Active() != "" {
+		m = s.deps.LLM
+	}
+	writeJSON(w, http.StatusOK, dj.NewWriter(m).Line(r.Context(), seg))
+}
 
 // VoiceService is the DJ's voice: it renders a line to a cached clip.
 // *voice.Service satisfies it.

@@ -19,6 +19,7 @@ import (
 	"github.com/maxjb-xyz/reverb/internal/library"
 	"github.com/maxjb-xyz/reverb/internal/library/embedded"
 	"github.com/maxjb-xyz/reverb/internal/library/subsonic"
+	"github.com/maxjb-xyz/reverb/internal/llm"
 	"github.com/maxjb-xyz/reverb/internal/matching"
 	"github.com/maxjb-xyz/reverb/internal/playlistsync"
 	"github.com/maxjb-xyz/reverb/internal/registry"
@@ -299,6 +300,8 @@ type ServiceBundle struct {
 	Matcher resolver.Rematcher
 	// Voice is the DJ's voice; nil when no voice provider is enabled.
 	Voice voice.Voice
+	// LLM writes the DJ's lines; nil when no model provider is enabled.
+	LLM llm.LLM
 }
 
 // VersionStore is the library_version reader/writer the Manager + matcher need.
@@ -493,6 +496,14 @@ type Builder struct {
 	// voiceReg holds the DJ voice adapters. Optional: nil means Build never
 	// produces a voice.
 	voiceReg *registry.Registry
+	// llmReg holds the DJ writer models. Optional, like voiceReg.
+	llmReg *registry.Registry
+}
+
+// SetLLMRegistry gives the Builder the language-model adapters so Build can
+// pick the DJ's writer. Call before Build.
+func (b *Builder) SetLLMRegistry(reg *registry.Registry) {
+	b.llmReg = reg
 }
 
 // SetVoiceRegistry gives the Builder the voice adapters so Build can pick the
@@ -717,6 +728,7 @@ func (b *Builder) Build(ctx context.Context) (ServiceBundle, error) {
 	// PlaylistProvider-capable search source is configured, Import/ImportOnce/Sync
 	// return ErrSpotifyNotConfigured but all managed-playlist operations work.
 	bundle.Voice = BuildVoice(b.voiceReg, instances, b.getenv)
+	bundle.LLM = BuildLLM(b.llmReg, instances, b.getenv)
 	bundle.Sync = b.BuildSyncService(sources, libAdapter, bundle.Manager)
 	if bundle.Sync != nil {
 		log.Printf("playlist sync service active")

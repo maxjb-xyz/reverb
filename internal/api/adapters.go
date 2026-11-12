@@ -53,7 +53,7 @@ type updateAdapterBody struct {
 
 // registries returns the adapter registries in a stable order for lookup.
 func (s *Server) registries() []*registry.Registry {
-	return []*registry.Registry{s.deps.Lib, s.deps.Search, s.deps.Downloader, s.deps.VoiceReg}
+	return []*registry.Registry{s.deps.Lib, s.deps.Search, s.deps.Downloader, s.deps.VoiceReg, s.deps.LLMReg}
 }
 
 // schemaFor finds the ConfigSchema for an adapter name across all registries.
@@ -289,6 +289,10 @@ func overlayEnvSecrets(name string, cfg map[string]any) {
 	case "spotify":
 		if v := os.Getenv("REVERB_SPOTIFY_CLIENT_SECRET"); v != "" {
 			cfg["client_secret"] = v
+		}
+	case "anthropic":
+		if v := os.Getenv("REVERB_ANTHROPIC_API_KEY"); v != "" {
+			cfg["api_key"] = v
 		}
 	case "elevenlabs":
 		if v := os.Getenv("REVERB_ELEVENLABS_API_KEY"); v != "" {

@@ -133,10 +133,12 @@ export function AdminProviders() {
   const searchInstances = list.filter((a) => a.type === 'search')
   const downloaderInstances = list.filter((a) => a.type === 'downloader')
   const voiceInstances = list.filter((a) => a.type === 'voice')
+  const llmInstances = list.filter((a) => a.type === 'llm')
 
   const searchAvail = avail.filter((a) => a.type === 'search')
   const downloaderAvail = avail.filter((a) => a.type === 'downloader')
   const voiceAvail = avail.filter((a) => a.type === 'voice')
+  const llmAvail = avail.filter((a) => a.type === 'llm')
 
   // Library is single-active: a "switch", not a list — Built-in (bundled, no
   // config) or External (one Subsonic server).
@@ -333,6 +335,19 @@ export function AdminProviders() {
             instances={voiceInstances}
             available={voiceAvail}
             onCreate={(name, config) => onCreate('voice', name, config)}
+            onUpdate={onUpdate}
+            onToggle={(inst) => void onToggle(inst)}
+            onRemove={(id) => void onRemove(id)}
+            onReorder={(inst, delta) => void onReorder(inst, delta)}
+          />
+
+          <AdapterSection
+            title="DJ writer"
+            subtitle="Optional: a language model writes what the DJ says. Without one it uses templates"
+            type="llm"
+            instances={llmInstances}
+            available={llmAvail}
+            onCreate={(name, config) => onCreate('llm', name, config)}
             onUpdate={onUpdate}
             onToggle={(inst) => void onToggle(inst)}
             onRemove={(id) => void onRemove(id)}

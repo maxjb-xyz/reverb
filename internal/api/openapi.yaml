@@ -450,6 +450,42 @@ paths:
       summary: Whether the DJ has a voice configured, and which provider
       responses:
         "200": { description: '{"available":bool,"name":string}; name is "" when no voice is enabled' }
+  /dj/status:
+    get:
+      summary: Which DJ voice and writer model are configured
+      responses:
+        "200": { description: '{"voice":{"available":bool,"name":string},"writer":{"available":bool,"name":string}}' }
+  /dj/line:
+    post:
+      summary: >
+        Write what the DJ says before a block of songs. Uses the writer model
+        when one is configured and falls back to templates on any problem, so a
+        valid request always gets a line. Rate-limited per user.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                lane: { type: string, enum: [on-repeat, throwback, deep-cuts, sounds-like, new-to-you, fresh-finds, request] }
+                reason:
+                  type: object
+                  properties:
+                    artist: { type: string }
+                    play_count: { type: integer }
+                    last_played: { type: string, description: 'spoken phrase, e.g. "last spring"' }
+                    seed: { type: string }
+                previous: { $ref: '#/components/schemas/DJTrack' }
+                next: { type: array, maxItems: 5, items: { $ref: '#/components/schemas/DJTrack' } }
+                listener: { type: string }
+                hour: { type: integer, description: listener local hour 0-23, -1 unknown }
+                request: { type: string, maxLength: 200 }
+              required: [next]
+      responses:
+        "200": { description: '{"text":string,"source":"llm"|"template"}' }
+        "400": { description: next is empty or the body is not JSON }
+        "429": { description: too many lines this minute }
   /dj/say:
     post:
       summary: >
@@ -475,3 +511,13 @@ paths:
       summary: A rendered DJ voice clip (immutable; audio/*)
       parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
       responses: { "200": { description: audio bytes }, "404": { description: clip not found } }
+components:
+  schemas:
+    DJTrack:
+      type: object
+      properties:
+        title: { type: string }
+        artist: { type: string }
+        album: { type: string }
+        year: { type: integer }
+      required: [title]
