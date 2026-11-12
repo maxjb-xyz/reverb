@@ -259,13 +259,16 @@ export default function Downloads() {
       />
 
       {/* Toolbar: chips + search */}
-      <div className="flex flex-wrap items-center gap-2">
-        {FILTERS.map(({ key, label }) => (
-          <Chip key={key} selected={filter === key} onClick={() => setFilter(key)}>
-            {label}
-          </Chip>
-        ))}
-        <div className="ml-auto flex items-center gap-2 rounded-lg bg-input px-3 py-1.5">
+      <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:gap-2">
+        {/* One scrolling row of chips on phones rather than a ragged wrap */}
+        <div className="-mx-4 flex gap-2 overflow-x-auto px-4 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0">
+          {FILTERS.map(({ key, label }) => (
+            <Chip key={key} selected={filter === key} onClick={() => setFilter(key)}>
+              {label}
+            </Chip>
+          ))}
+        </div>
+        <div className="flex items-center gap-2 rounded-full bg-input px-3 py-1.5 sm:ml-auto">
           <Icon name="search" className="h-4 w-4 text-text-muted" />
           <input
             type="text"
@@ -273,7 +276,7 @@ export default function Downloads() {
             placeholder="Search downloads"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            className="w-44 bg-transparent text-sm text-text-primary placeholder:text-text-muted outline-none"
+            className="w-full min-w-0 bg-transparent text-sm text-text-primary placeholder:text-text-muted outline-none sm:w-44"
           />
         </div>
       </div>
