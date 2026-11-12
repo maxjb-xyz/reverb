@@ -80,7 +80,7 @@ describe('StationsRow', () => {
     wrap(<StationsRow />)
     expect(await screen.findByText('Radio for you')).toBeInTheDocument()
     expect(get).toHaveBeenCalledWith('/engine/stations?n=10')
-    fireEvent.click(screen.getByText('Electronic radio'))
+    fireEvent.click(await screen.findByText('Electronic radio'))
     await waitFor(() => expect(post).toHaveBeenCalledWith('/engine/next', { seed: { kind: 'genre', id: 'electronic' }, n: 20 }))
   })
 
