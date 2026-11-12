@@ -277,6 +277,34 @@ export class AudioEngine {
     this.emit()
   }
 
+  /**
+   * Take over a session from another device: replace whatever is queued with
+   * `snap`, positioned where it was, and start playing if `autoplay`. Unlike
+   * restore() this always replaces the queue.
+   */
+  adopt(snap: PlayerSnapshot, autoplay: boolean) {
+    this.line?.finish()
+    this.stopFade()
+    this.active.pause()
+    this.playing = false
+    this.bufferedMs = 0
+    this.queue = []
+    this.index = -1
+    this.pendingRestore = false
+    this.resumeAtMs = 0
+    if (snap.queue.length === 0) {
+      this.currentTimeMs = 0
+      this.durationMs = 0
+      this.shuffle = snap.shuffle
+      this.repeat = snap.repeat
+      this.rebuildShuffle()
+      this.emit()
+      return
+    }
+    this.restore(snap)
+    if (autoplay) this.play()
+  }
+
   playTrackList(tracks: Track[], startIndex: number) {
     this.setQueue(tracks, startIndex)
     this.loadCurrent(true)

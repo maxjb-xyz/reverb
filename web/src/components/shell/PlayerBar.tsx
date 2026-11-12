@@ -21,6 +21,7 @@ import { playerTint } from '../../lib/palette'
 import { Cover } from '../ui/Cover'
 import { IconButton } from '../ui/IconButton'
 import { DJControl } from '../dj/DJControl'
+import { DevicePicker } from '../DevicePicker'
 import { Icon } from '../ui/Icon'
 import { Waveform } from '../ui/Waveform'
 import { AddToPlaylistMenu } from '../AddToPlaylistMenu'
@@ -334,6 +335,7 @@ export function PlayerBar() {
           size="sm"
           onClick={() => togglePanel('nowplaying')}
         />
+        <DevicePicker />
 
         {/* Volume — icon + slider (styled thumb + accent fill in index.css) */}
         <div className="flex items-center gap-1.5">

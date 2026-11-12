@@ -339,6 +339,37 @@ describe('AudioEngine session restore', () => {
     expect(engine.getState().current?.id).toBe('9')
   })
 
+  it('adopt replaces a playing queue and resumes where the other device was', () => {
+    const { engine, audios: els } = newEngine()
+    engine.playTrackList([track('9')], 0)
+    engine.adopt(snap(), true)
+    const s = engine.getState()
+    expect(s.queue.map((t) => t.id)).toEqual(['1', '2', '3'])
+    expect(s.current?.id).toBe('2')
+    expect(s.playing).toBe(true)
+    expect(els[0].src).toContain('2')
+    expect(els[0].currentTime).toBeCloseTo(0.4)
+  })
+
+  it('adopt without autoplay pauses, ready to resume', () => {
+    const { engine, audios: els } = newEngine()
+    engine.playTrackList([track('9')], 0)
+    engine.adopt(snap(), false)
+    expect(engine.getState().playing).toBe(false)
+    expect(els[0].paused).toBe(true)
+    expect(engine.getState().current?.id).toBe('2')
+    engine.play()
+    expect(els[0].src).toContain('2')
+  })
+
+  it('adopt of an empty session clears the queue', () => {
+    const { engine } = newEngine()
+    engine.playTrackList([track('9')], 0)
+    engine.adopt(snap({ queue: [], index: -1 }), false)
+    expect(engine.getState().current).toBeNull()
+    expect(engine.getState().playing).toBe(false)
+  })
+
   it('snapshot round-trips through restore', () => {
     const { engine } = newEngine()
     engine.restore(snap())

@@ -34,6 +34,7 @@ import (
 	"github.com/maxjb-xyz/reverb/internal/mixes"
 	"github.com/maxjb-xyz/reverb/internal/notification"
 	"github.com/maxjb-xyz/reverb/internal/play"
+	"github.com/maxjb-xyz/reverb/internal/playback"
 	"github.com/maxjb-xyz/reverb/internal/playlistsync"
 	"github.com/maxjb-xyz/reverb/internal/registry"
 	"github.com/maxjb-xyz/reverb/internal/request"
@@ -308,8 +309,19 @@ func main() {
 	scrobbleSvc := scrobble.NewService(st.Q(), lastfm.New(), scrobbleCfg, time.Now, uuid.NewString)
 	go scrobbleSvc.RunWorker(ctx, 30*time.Second)
 
+	// Account-level playback sessions (devices + the active one's state).
+	// The state is saved to the settings table every 15s and on shutdown.
+	playbackHub := playback.NewHub(playback.NewSettingsStore(
+		func(ctx context.Context, key string) (string, error) { return st.Q().GetSetting(ctx, key) },
+		func(ctx context.Context, key, value string) error {
+			return st.Q().UpsertSetting(ctx, db.UpsertSettingParams{Key: key, Value: value})
+		},
+	), time.Now, nil)
+	go playbackHub.Run(ctx, 15*time.Second)
+
 	deps := api.Deps{
 		Auth:          authSvc,
+		Playback:      playbackHub,
 		Library:       bundle.Library,
 		Lib:           libraryReg,
 		Search:        searchReg,
@@ -393,6 +405,9 @@ func main() {
 
 	httpSrv := newHTTPServer(srv.Handler())
 	if err := serveWithShutdown(httpSrv, ln, stop, func(ctx context.Context) error {
+		// Keep where everyone was in their queue.
+		playbackHub.Flush()
+		playbackHub.Wait()
 		if bundle.Supervisor != nil {
 			return bundle.Supervisor.Shutdown(ctx)
 		}

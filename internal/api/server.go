@@ -23,6 +23,7 @@ import (
 	"github.com/maxjb-xyz/reverb/internal/mixes"
 	"github.com/maxjb-xyz/reverb/internal/notification"
 	"github.com/maxjb-xyz/reverb/internal/play"
+	"github.com/maxjb-xyz/reverb/internal/playback"
 	"github.com/maxjb-xyz/reverb/internal/registry"
 	"github.com/maxjb-xyz/reverb/internal/request"
 	"github.com/maxjb-xyz/reverb/internal/resolver"
@@ -184,6 +185,10 @@ type Deps struct {
 	// Discover serves Discover Weekly. Nil in tests/legacy wiring — its
 	// endpoints answer 503.
 	Discover *discover.Service
+	// Playback holds each account's listening session and its devices (the
+	// Spotify Connect-style device picker). Nil turns the WebSocket's
+	// playback frames off.
+	Playback *playback.Hub
 }
 
 type Server struct {
