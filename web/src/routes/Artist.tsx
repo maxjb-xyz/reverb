@@ -154,7 +154,14 @@ export default function Artist() {
       }))
   }, [detail, coverage])
 
-  const palette = useAlbumPalette(detail?.coverArtId ? coverUrl(detail.coverArtId, 300) : detail?.coverUrl)
+  // Tint the header from album artwork: it is the artist's real visual identity,
+  // and the artist photo is often missing (or a stock picture) on a home library.
+  const tintAlbum = detail?.libraryAlbums?.[0] ?? detail?.albums?.[0]
+  const palette = useAlbumPalette(
+    tintAlbum?.coverUrl ||
+      (tintAlbum?.libraryAlbumId ? coverUrl(tintAlbum.libraryAlbumId, 300) : undefined) ||
+      (detail?.coverArtId ? coverUrl(detail.coverArtId, 300) : detail?.coverUrl),
+  )
 
   if (isLoading) {
     return (

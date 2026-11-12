@@ -348,6 +348,12 @@ describe('Artist page', () => {
     expect(bg).toMatch(/200/)
   })
 
+  it('tints the header from album artwork rather than the artist photo', () => {
+    vi.mocked(useAlbumPalette).mockReturnValue(null)
+    wrapper(<Artist />)
+    expect(vi.mocked(useAlbumPalette)).toHaveBeenLastCalledWith('https://cdn.example.com/kida.jpg')
+  })
+
   it('header wrapper has no inline style when palette is null', () => {
     vi.mocked(useAlbumPalette).mockReturnValue(null)
     wrapper(<Artist />)
