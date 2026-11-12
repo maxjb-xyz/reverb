@@ -121,6 +121,8 @@ Reverb is configured by flags, environment variables, and the in-app Settings UI
 | `REVERB_SPOTIFY_CLIENT_ID` | Spotify app Client ID (alternative to setting it in the Settings UI) |
 | `REVERB_SPOTIFY_CLIENT_SECRET` | Spotify search adapter Client Secret (overrides stored config) |
 | `REVERB_ELEVENLABS_API_KEY` | ElevenLabs key for the DJ voice provider (overrides stored config) |
+| `REVERB_PYTHON` | Python used to set up the built-in DJ voice (default `python3`) |
+| `REVERB_VOICE_THREADS` | CPU threads the built-in DJ voice may use (default half the cores, at most 4) |
 | `REVERB_LIBRARY_PASSWORD` | Subsonic/Navidrome library adapter password (overrides stored config) |
 | `REVERB_SPOTDL_PATH` | Path to the spotDL binary. Defaults to the bundled one; rarely needed |
 | `REVERB_NAVIDROME_BIN` | Path to the Navidrome binary for bundled library mode. Defaults to the bundled one; rarely needed |

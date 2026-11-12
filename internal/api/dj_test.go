@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -96,6 +97,7 @@ func TestDJSayErrors(t *testing.T) {
 	}{
 		{"no voice service", nil, `{"text":"hi"}`, http.StatusServiceUnavailable},
 		{"no voice configured", &fakeVoiceSvc{err: voice.ErrNoVoice}, `{"text":"hi"}`, http.StatusServiceUnavailable},
+		{"still setting up", &fakeVoiceSvc{name: "kokoro", err: fmt.Errorf("%w: Downloading", voice.ErrWarmingUp)}, `{"text":"hi"}`, http.StatusServiceUnavailable},
 		{"empty", &fakeVoiceSvc{name: "f", err: voice.ErrEmptyText}, `{"text":" "}`, http.StatusBadRequest},
 		{"too long", &fakeVoiceSvc{name: "f", err: voice.ErrTextTooLong}, `{"text":"x"}`, http.StatusBadRequest},
 		{"bad json", &fakeVoiceSvc{name: "f"}, `nope`, http.StatusBadRequest},

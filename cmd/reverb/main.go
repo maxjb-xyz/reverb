@@ -37,6 +37,7 @@ import (
 	"github.com/maxjb-xyz/reverb/internal/store/db"
 	"github.com/maxjb-xyz/reverb/internal/voice"
 	"github.com/maxjb-xyz/reverb/internal/voice/elevenlabs"
+	"github.com/maxjb-xyz/reverb/internal/voice/kokoro"
 	"github.com/maxjb-xyz/reverb/internal/voice/openaispeech"
 	"github.com/maxjb-xyz/reverb/internal/wiring"
 )
@@ -99,6 +100,11 @@ func main() {
 	voiceReg := registry.NewRegistry(voice.Type)
 	voiceReg.Register("openai-speech", func() registry.Plugin { return openaispeech.New() })
 	voiceReg.Register("elevenlabs", func() registry.Plugin { return elevenlabs.New() })
+	// The built-in CPU voice shares one runtime (install + worker process) across
+	// adapter rebuilds. Nothing is installed until an admin enables it.
+	kokoroRT := kokoro.NewRuntime(filepath.Join(filepath.Dir(cfg.DBPath), "kokoro"), os.Getenv)
+	defer kokoroRT.Close()
+	voiceReg.Register("kokoro", func() registry.Plugin { return kokoro.New(kokoroRT) })
 	// Surface the async capability to the admin UI (/adapters/available).
 	registry.RegisterCapability("async", func(p registry.Plugin) bool {
 		_, ok := p.(download.AsyncDownloader)
