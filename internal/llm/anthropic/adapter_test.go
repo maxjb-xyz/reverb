@@ -90,23 +90,33 @@ func TestSendsMessagesRequest(t *testing.T) {
 	if oc["effort"] != "low" {
 		t.Fatalf("output_config = %v, want effort low", s.body["output_config"])
 	}
-	// Refusals fall back server-side to a model chosen by the API.
-	if s.body["fallbacks"] != "default" || !strings.Contains(s.beta, "server-side-fallback-2026-07-01") {
-		t.Fatalf("fallbacks=%v beta=%q", s.body["fallbacks"], s.beta)
+	// Haiku has no server-side fallback, so none is asked for.
+	if _, ok := s.body["fallbacks"]; ok || strings.Contains(s.beta, "server-side-fallback") {
+		t.Fatalf("fallbacks=%v beta=%q, want none for %s", s.body["fallbacks"], s.beta, DefaultModel)
 	}
 	if !strings.Contains(string(mustJSON(s.body["system"])), "You are a DJ.") {
 		t.Fatalf("system = %v", s.body["system"])
 	}
 }
 
-func TestUsesConfiguredModel(t *testing.T) {
+func TestDefaultsToTheLowCostModel(t *testing.T) {
+	if DefaultModel != "claude-haiku-5-5" {
+		t.Fatalf("DefaultModel = %q", DefaultModel)
+	}
+}
+
+func TestOptInModelGetsRefusalFallbacks(t *testing.T) {
 	var s seen
-	a := configured(t, fakeServer(t, &s, textReply("ok")), map[string]any{"api_key": "k", "model": "claude-haiku-5-5"})
+	a := configured(t, fakeServer(t, &s, textReply("ok")), map[string]any{"api_key": "k", "model": "claude-opus-5-5"})
 	if _, err := a.Complete(context.Background(), llm.Request{Prompt: "hi"}); err != nil {
 		t.Fatal(err)
 	}
-	if s.body["model"] != "claude-haiku-5-5" {
+	if s.body["model"] != "claude-opus-5-5" {
 		t.Fatalf("model = %v", s.body["model"])
+	}
+	// Refusals fall back server-side to a model chosen by the API.
+	if s.body["fallbacks"] != "default" || !strings.Contains(s.beta, "server-side-fallback-2026-07-01") {
+		t.Fatalf("fallbacks=%v beta=%q", s.body["fallbacks"], s.beta)
 	}
 }
 

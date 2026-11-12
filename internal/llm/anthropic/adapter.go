@@ -15,8 +15,10 @@ import (
 )
 
 const (
-	// DefaultModel is used when the admin names none.
-	DefaultModel = "claude-opus-5-5"
+	// DefaultModel is used when the admin names none. DJ lines are short and
+	// frequent, so the default is the low-cost model (well under a cent per
+	// listening hour); Opus is an opt-in in the model field.
+	DefaultModel = "claude-haiku-5-5"
 	// minMaxTokens leaves room for the model's thinking before the line itself.
 	minMaxTokens = 4096
 )
@@ -41,7 +43,7 @@ func (a *Adapter) ConfigSchema() registry.ConfigSchema {
 		{Key: "api_key", Label: "API key", Type: "string", Required: true, Secret: true,
 			Help: "From platform.claude.com under API keys. It can also be set with REVERB_ANTHROPIC_API_KEY."},
 		{Key: "model", Label: "Model", Type: "string",
-			Help: "Defaults to " + DefaultModel + ". claude-haiku-5-5 costs far less per line."},
+			Help: "Defaults to " + DefaultModel + ", the low-cost model. claude-sonnet-5-5 or claude-opus-5-5 write livelier lines at a higher price per line."},
 	}}
 }
 
@@ -88,9 +90,13 @@ func (a *Adapter) Complete(ctx context.Context, req llm.Request) (string, error)
 		Messages:  []sdk.BetaMessageParam{sdk.NewBetaUserMessage(sdk.NewBetaTextBlock(req.Prompt))},
 		// A DJ line is short and simple; low effort keeps it quick and cheap.
 		OutputConfig: sdk.BetaOutputConfigParam{Effort: sdk.BetaOutputConfigEffortLow},
-		// A refused request is re-served by a fallback model the API picks.
-		Fallbacks: sdk.BetaFallbacksParamOfDefault(),
-		Betas:     []sdk.AnthropicBeta{sdk.AnthropicBetaServerSideFallback2026_07_01},
+	}
+	// Where the model supports it, a refused request is re-served by a
+	// fallback model the API picks. Haiku has no server-side fallback; a refusal
+	// there just means the DJ uses a template line.
+	if supportsFallbacks(a.model) {
+		params.Fallbacks = sdk.BetaFallbacksParamOfDefault()
+		params.Betas = []sdk.AnthropicBeta{sdk.AnthropicBetaServerSideFallback2026_07_01}
 	}
 	if strings.TrimSpace(req.System) != "" {
 		params.System = []sdk.BetaTextBlockParam{{Text: req.System}}
@@ -113,4 +119,14 @@ func (a *Adapter) Complete(ctx context.Context, req llm.Request) (string, error)
 		return "", llm.ErrNoText
 	}
 	return out, nil
+}
+
+// supportsFallbacks reports whether the model takes server-side refusal
+// fallbacks.
+func supportsFallbacks(model string) bool {
+	switch model {
+	case "claude-opus-5-5", "claude-opus-5", "claude-sonnet-5-5", "claude-fable-5-1", "claude-fable-5-2":
+		return true
+	}
+	return false
 }
