@@ -1355,8 +1355,13 @@ func TestBackfillPlaylistAdderCalledWhenAddToPlaylistIDSet(t *testing.T) {
 		t.Fatal("timed out waiting for backfill complete event")
 	}
 
-	// Give the playlist add a moment to execute (it runs synchronously inside the
-	// backfill loop, so by the time gotEvent fires it should already be called).
+	// The backfill publishes the complete event just BEFORE it calls
+	// AddTracksToPlaylist, so the event can arrive while the add is still in
+	// flight. Wait for the call rather than asserting immediately.
+	deadline := time.Now().Add(2 * time.Second)
+	for adder.callCount() == 0 && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
 	if adder.callCount() != 1 {
 		t.Fatalf("expected 1 AddTracksToPlaylist call from backfill, got %d", adder.callCount())
 	}
