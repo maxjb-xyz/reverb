@@ -21,7 +21,7 @@ import {
   Skeleton,
 } from '../components/ui'
 import type { SourceStatus } from '../lib/everywhereStore'
-import type { ExternalResult, EnvelopeStatus, Track } from '../lib/types'
+import type { DownloadJob, ExternalResult, EnvelopeStatus, Track } from '../lib/types'
 import { useDocumentTitle } from '../lib/useDocumentTitle'
 import { useDebouncedValue } from '../lib/useDebouncedValue'
 import { usePendingPlay } from '../lib/pendingPlayStore'
@@ -57,7 +57,7 @@ function sourceLabel(s: SourceStatus): string {
 }
 
 /** Minimal library Track synthesised from an external result + matched library id. */
-function trackFromMatch(r: ExternalResult, libraryTrackId: string): Track {
+function trackFromMatch(r: ExternalResult, libraryTrackId: string, coverArtId?: string): Track {
   return {
     id: libraryTrackId,
     title: r.title,
@@ -65,7 +65,7 @@ function trackFromMatch(r: ExternalResult, libraryTrackId: string): Track {
     album: r.album,
     artistId: '',
     artist: r.artist,
-    coverArtId: r.coverArtId ?? '',
+    coverArtId: coverArtId || r.coverArtId || '',
     trackNumber: 0,
     discNumber: 0,
     durationMs: r.durationMs,
@@ -74,6 +74,20 @@ function trackFromMatch(r: ExternalResult, libraryTrackId: string): Track {
     contentType: '',
     isrc: r.isrc,
   }
+}
+
+// The finished download of this exact result, if any. A result's `match` is a
+// snapshot from when the search ran, so a song downloaded from this page is only
+// known to be owned through its job. Prefers a job already linked to a library
+// track over one still waiting for the library scan to pick the file up.
+function completedJobFor(jobs: Record<string, DownloadJob>, r: ExternalResult): DownloadJob | undefined {
+  let pending: DownloadJob | undefined
+  for (const j of Object.values(jobs)) {
+    if (j.status !== 'completed' || j.source !== r.source || j.externalId !== r.externalId) continue
+    if (j.libraryTrackId) return j
+    pending ??= j
+  }
+  return pending
 }
 
 // ── Source chips ──────────────────────────────────────────────────────────────
@@ -178,6 +192,7 @@ export default function Search() {
 
   const playTrackList = usePlayer((s) => s.playTrackList)
   const currentTrackId = usePlayer((s) => s.current?.id)
+  const downloadJobs = useDownloads((s) => s.jobs)
   const navigate = useNavigate()
   // The bulk album "Download all" is a direct download — gated on auto_approve.
   // Search has no bulk-request path; a user without auto_approve simply sees no
@@ -282,9 +297,12 @@ export default function Search() {
                 />
               ))}
               {externalTracks.map((r) => {
+                const doneJob = completedJobFor(downloadJobs, r)
                 const matchedId =
-                  (r.match?.status === 'in_library' && r.match.libraryTrackId) || ''
-                const syntheticTrack = matchedId ? trackFromMatch(r, matchedId) : null
+                  (r.match?.status === 'in_library' && r.match.libraryTrackId) ||
+                  doneJob?.libraryTrackId ||
+                  ''
+                const syntheticTrack = matchedId ? trackFromMatch(r, matchedId, doneJob?.coverArtId) : null
 
                 // For display in TrackRow we need a Track shape. We always render
                 // a synthetic Track — the right slot carries the DownloadAction.
@@ -339,6 +357,10 @@ export default function Search() {
                     onPlay={() => {
                       if (syntheticTrack) {
                         playTrackList([syntheticTrack], 0)
+                      } else if (doneJob) {
+                        // Downloaded, but the library hasn't indexed the file yet.
+                        // Downloading it again would only make a duplicate.
+                        useToastStore.getState().push(`"${r.title}" is still being added to your library`, 'info')
                       } else {
                         // Not in your library yet — clicking the song downloads it
                         // (server picks the downloader via the fallback chain).
@@ -361,7 +383,7 @@ export default function Search() {
                       <DownloadAction
                         result={r}
                         onPlay={(libraryTrackId) => {
-                          playTrackList([trackFromMatch(r, libraryTrackId)], 0)
+                          playTrackList([trackFromMatch(r, libraryTrackId, doneJob?.coverArtId)], 0)
                         }}
                       />
                     }
