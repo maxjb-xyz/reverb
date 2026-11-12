@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Button } from '../ui'
+import { DiscordLink } from './DiscordLink'
 import {
   getLinks,
   lastfmAuthUrl,
@@ -252,6 +253,20 @@ export function IntegrationsSection() {
           ) : (
             <span className="text-xs text-text-secondary">Loading…</span>
           )}
+        </div>
+      </div>
+
+      {/* Discord: play this account's session in a voice channel */}
+      <div className="flex items-start gap-5 py-5">
+        <div className="flex-1 min-w-0">
+          <div className="text-sm font-bold text-text-primary">Discord</div>
+          <div className="text-xs text-text-secondary mt-0.5">
+            Play your Reverb session in a Discord voice channel with <code>/join</code>. It shows up in your
+            device picker like any other speaker.
+          </div>
+        </div>
+        <div className="flex-none max-w-xs">
+          <DiscordLink />
         </div>
       </div>
     </section>

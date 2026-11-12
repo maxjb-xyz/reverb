@@ -18,6 +18,7 @@ import (
 	"github.com/maxjb-xyz/reverb/internal/auth"
 	"github.com/maxjb-xyz/reverb/internal/catalog"
 	"github.com/maxjb-xyz/reverb/internal/config"
+	"github.com/maxjb-xyz/reverb/internal/discord"
 	"github.com/maxjb-xyz/reverb/internal/dj"
 	"github.com/maxjb-xyz/reverb/internal/download"
 	"github.com/maxjb-xyz/reverb/internal/download/lidarr"
@@ -319,9 +320,37 @@ func main() {
 	), time.Now, nil)
 	go playbackHub.Run(ctx, 15*time.Second)
 
+	// The optional Discord bot: a device on each linked account's session.
+	// It starts once an admin saves a bot token (or REVERB_DISCORD_TOKEN).
+	discordSettings := settingsKV{q: st.Q()}
+	discordLinks := discord.NewLinks(discordSettings, time.Now)
+	discordCore := &discord.Core{
+		Hub:     playbackHub,
+		Links:   discordLinks,
+		Library: bundle.Library,
+		Opener:  &discord.FFmpegOpener{Library: bundle.Library, Path: os.Getenv("REVERB_FFMPEG_PATH")},
+		Users: func(ctx context.Context, userID string) (string, bool) {
+			u, err := st.Q().GetUserByID(ctx, userID)
+			if err != nil || u.Disabled != 0 {
+				return "", false
+			}
+			return u.Username, true
+		},
+	}
+	discordSvc := &discord.Service{Core: discordCore, EnvToken: os.Getenv("REVERB_DISCORD_TOKEN")}
+	if bundle.Library != nil {
+		go func() {
+			tok, _ := st.Q().GetSetting(ctx, api.KeyDiscordToken)
+			if err := discordSvc.Apply(ctx, tok); err != nil {
+				log.Printf("discord bot: %v", err)
+			}
+		}()
+	}
+
 	deps := api.Deps{
 		Auth:          authSvc,
 		Playback:      playbackHub,
+		DiscordLinks:  discordLinks,
 		Library:       bundle.Library,
 		Lib:           libraryReg,
 		Search:        searchReg,
@@ -389,6 +418,7 @@ func main() {
 			return "built-in", string(h)
 		}
 	}
+	deps.Discord = discordSvc
 	srv := api.NewServer(deps)
 
 	addr := fmt.Sprintf(":%d", cfg.Port)
@@ -406,6 +436,7 @@ func main() {
 	httpSrv := newHTTPServer(srv.Handler())
 	if err := serveWithShutdown(httpSrv, ln, stop, func(ctx context.Context) error {
 		// Keep where everyone was in their queue.
+		discordSvc.Stop()
 		playbackHub.Shutdown()
 		if bundle.Supervisor != nil {
 			return bundle.Supervisor.Shutdown(ctx)
@@ -447,4 +478,15 @@ func (a *authManagerLister) ListManagerIDs(ctx context.Context) ([]string, error
 		}
 	}
 	return ids, nil
+}
+
+// settingsKV adapts the settings table to discord.Settings.
+type settingsKV struct{ q *db.Queries }
+
+func (k settingsKV) Get(ctx context.Context, key string) (string, error) {
+	return k.q.GetSetting(ctx, key)
+}
+
+func (k settingsKV) Put(ctx context.Context, key, value string) error {
+	return k.q.UpsertSetting(ctx, db.UpsertSettingParams{Key: key, Value: value})
 }

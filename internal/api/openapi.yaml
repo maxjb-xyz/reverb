@@ -734,6 +734,34 @@ paths:
       responses:
         "101": { description: Switching Protocols (WebSocket upgrade) }
         "401": { description: unauthorized }
+  /admin/integrations/discord:
+    get:
+      summary: The Discord bot's token state and status (the token is never returned). Needs can_manage_library.
+      responses:
+        "200": { description: '{"tokenSet":bool,"status":{"state":"off|connecting|online|error","botName","inviteUrl","error","sessions","fromEnv"}}' }
+    put:
+      summary: >
+        Save the Discord bot token and (re)start the bot; answers once it is online
+        or failed. {"token":""} reconnects with the saved token, {"clear":true}
+        removes it. REVERB_DISCORD_TOKEN, when set, wins over the saved token.
+      responses:
+        "200": { description: same shape as GET }
+        "400": { description: bad body }
+  /discord/link:
+    get:
+      summary: Whether the Discord bot is available and the caller's Discord account is linked
+      responses:
+        "200": { description: '{"available":bool,"linked":bool,"discordName"?:string}' }
+    delete:
+      summary: Unlink the caller's Discord account
+      responses:
+        "204": { description: unlinked }
+  /discord/link-code:
+    post:
+      summary: A one-time code (10 minutes) the caller runs as /link <code> in Discord
+      responses:
+        "200": { description: '{"code":"ABCD-EFGH","expiresAt":unix seconds}' }
+        "503": { description: the bot is not online }
   /dj/voice:
     get:
       summary: Whether the DJ has a voice configured, and which provider

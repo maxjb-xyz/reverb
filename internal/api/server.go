@@ -14,6 +14,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/maxjb-xyz/reverb/internal/auth"
 	"github.com/maxjb-xyz/reverb/internal/core"
+	"github.com/maxjb-xyz/reverb/internal/discord"
 	"github.com/maxjb-xyz/reverb/internal/discover"
 	"github.com/maxjb-xyz/reverb/internal/dj"
 	"github.com/maxjb-xyz/reverb/internal/engine"
@@ -189,6 +190,10 @@ type Deps struct {
 	// Spotify Connect-style device picker). Nil turns the WebSocket's
 	// playback frames off.
 	Playback *playback.Hub
+	// Discord runs the optional Discord bot; DiscordLinks ties Discord
+	// accounts to Reverb accounts. Nil turns the endpoints off.
+	Discord      DiscordBot
+	DiscordLinks *discord.Links
 }
 
 type Server struct {
@@ -356,6 +361,9 @@ func (s *Server) routes() {
 			pr.Post("/scrobble/lastfm/complete", s.handleScrobbleComplete)
 			pr.Delete("/scrobble/lastfm", s.handleScrobbleUnlink)
 			pr.Get("/scrobble/links", s.handleScrobbleLinks)
+			pr.Get("/discord/link", s.handleGetDiscordLink)
+			pr.Post("/discord/link-code", s.handleCreateDiscordLinkCode)
+			pr.Delete("/discord/link", s.handleDeleteDiscordLink)
 			pr.Post("/scrobble/nowplaying", s.handleScrobbleNowPlaying)
 			pr.Get("/stats/summary", s.handleStatsSummary)
 			pr.Get("/stats/top/tracks", s.handleStatsTopTracks)
@@ -414,6 +422,8 @@ func (s *Server) routes() {
 				mr.Put("/settings", s.handlePutSettings)
 				mr.Get("/admin/integrations/lastfm", s.handleGetLastfmIntegration)
 				mr.Put("/admin/integrations/lastfm", s.handlePutLastfmIntegration)
+				mr.Get("/admin/integrations/discord", s.handleGetDiscordIntegration)
+				mr.Put("/admin/integrations/discord", s.handlePutDiscordIntegration)
 			})
 
 			// download tracks + manage the queue: enqueue create/batch, plus the

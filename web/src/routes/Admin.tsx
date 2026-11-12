@@ -11,6 +11,7 @@ import {
 } from '../lib/adaptersApi'
 import { AdapterSection } from '../components/admin/AdapterSection'
 import { ScrobblingSection } from '../components/admin/ScrobblingSection'
+import { DiscordSection } from '../components/admin/DiscordSection'
 import { AdapterForm } from '../components/AdapterForm'
 import { Skeleton, Select, Button } from '../components/ui'
 import { useSettings, useUpdateSettings } from '../lib/settingsApi'
@@ -370,6 +371,7 @@ export function AdminProviders() {
           />
 
           <ScrobblingSection />
+          <DiscordSection />
         </>
       )}
     </div>
