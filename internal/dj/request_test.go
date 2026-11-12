@@ -183,3 +183,95 @@ func TestLibraryCatalog(t *testing.T) {
 		t.Fatalf("%+v %+v", a, g)
 	}
 }
+
+func hipHopCatalog() *fakeCatalog {
+	return &fakeCatalog{
+		artists: []Name{
+			{Key: "a ap rocky", Name: "A$AP Rocky"},
+			{Key: "kendrick lamar", Name: "Kendrick Lamar"},
+			{Key: "playboi carti", Name: "Playboi Carti"},
+			{Key: "travis scott", Name: "Travis Scott"},
+			{Key: "lil uzi vert", Name: "Lil Uzi Vert"},
+			{Key: "lil baby", Name: "Lil Baby"},
+		},
+		genres: []Name{{Key: "hip hop rap", Name: "Hip hop rap"}, {Key: "phonk", Name: "Phonk"}, {Key: "lo fi", Name: "Lo fi"}, {Key: "new wave", Name: "New wave"}},
+	}
+}
+
+// Real libraries have names with symbols, compound genre tags and listeners
+// who type half a name or misspell it. The rules should still find them.
+func TestRulesReadLooseRequests(t *testing.T) {
+	artist := func(key string) *IntentSeed { return &IntentSeed{Kind: "artist", ID: key} }
+	genre := func(key string) *IntentSeed { return &IntentSeed{Kind: "genre", ID: key} }
+	cases := []struct {
+		text     string
+		seed     *IntentSeed
+		lane     string
+		from, to int
+	}{
+		{"play asap rocky", artist("a ap rocky"), "", 0, 0},
+		{"A$AP Rocky please", artist("a ap rocky"), "", 0, 0},
+		{"put on some kendrick", artist("kendrick lamar"), "", 0, 0},
+		{"play carti", artist("playboi carti"), "", 0, 0},
+		{"kendrik lamar", artist("kendrick lamar"), "", 0, 0},
+		{"play travis scot", artist("travis scott"), "", 0, 0},
+		{"more like travis", artist("travis scott"), "sounds-like", 0, 0},
+		{"some rap", genre("hip hop rap"), "", 0, 0},
+		{"hip hop from the 2010s", genre("hip hop rap"), "", 2010, 2019},
+		{"something chill", genre("lo fi"), "", 0, 0},
+		{"something hype for the gym", genre("phonk"), "", 0, 0},
+		{"something new", nil, "new-to-you", 0, 0},
+		// "lil" names several artists, so it names none of them.
+		{"play lil", nil, "", 0, 0},
+	}
+	for _, c := range cases {
+		it, err := NewInterpreter(hipHopCatalog(), nil, nov2026).Interpret(context.Background(), c.text)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if it.Lane != c.lane || it.FromYear != c.from || it.ToYear != c.to || it.Understood != (c.seed != nil || c.lane != "") {
+			t.Errorf("%q: got %+v", c.text, it)
+		}
+		if (it.Seed == nil) != (c.seed == nil) || (it.Seed != nil && (it.Seed.Kind != c.seed.Kind || it.Seed.ID != c.seed.ID)) {
+			t.Errorf("%q: seed %+v, want %+v", c.text, it.Seed, c.seed)
+		}
+	}
+}
+
+func TestNotUnderstoodSuggestsWhatToTry(t *testing.T) {
+	it, err := NewInterpreter(hipHopCatalog(), nil, nov2026).Interpret(context.Background(), "blorp")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if it.Understood || len(it.Try) != 2 || it.Try[0] != "A$AP Rocky" || it.Try[1] != "Hip hop rap" {
+		t.Fatalf("got %+v", it)
+	}
+	if it, _ := NewInterpreter(hipHopCatalog(), nil, nov2026).Interpret(context.Background(), "play asap rocky"); len(it.Try) != 0 {
+		t.Fatalf("understood requests need no suggestions: %+v", it)
+	}
+}
+
+func TestModelNamesMatchLoosely(t *testing.T) {
+	in := NewInterpreter(hipHopCatalog(), &fakeLLM{out: `{"artist":"ASAP Rocky"}`}, nov2026)
+	it, ok := in.ask(context.Background(), "x", hipHopCatalog().artists, hipHopCatalog().genres)
+	if !ok || it.Seed == nil || it.Seed.ID != "a ap rocky" || it.Missing != "" {
+		t.Fatalf("got %+v", it)
+	}
+	in = NewInterpreter(hipHopCatalog(), &fakeLLM{out: `{"genres":["hip-hop"]}`}, nov2026)
+	it, ok = in.ask(context.Background(), "x", hipHopCatalog().artists, hipHopCatalog().genres)
+	if !ok || it.Seed == nil || it.Seed.ID != "hip hop rap" {
+		t.Fatalf("got %+v", it)
+	}
+}
+
+func BenchmarkLooseRequestBigLibrary(b *testing.B) {
+	cat := hipHopCatalog()
+	for i := 0; i < 5000; i++ {
+		n := "Artist Number " + strings.Repeat("x", i%7) + string(rune('a'+i%26)) + string(rune('a'+(i/26)%26)) + string(rune('a'+(i/676)%26))
+		cat.artists = append(cat.artists, Name{Key: strings.ToLower(n), Name: n})
+	}
+	in := NewInterpreter(cat, nil, nov2026)
+	for i := 0; i < b.N; i++ {
+		_, _ = in.Interpret(context.Background(), "could you play something by kendrik lamarr for me please")
+	}
+}

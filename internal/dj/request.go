@@ -56,6 +56,8 @@ type Intent struct {
 	Missing string `json:"missing,omitempty"`
 	// Source says how it was read: "rules" or "llm".
 	Source string `json:"source"`
+	// Try names a library artist and genre to suggest when nothing was understood.
+	Try []string `json:"try,omitempty"`
 }
 
 // Interpreter turns requests into intents.
@@ -185,17 +187,16 @@ func (in *Interpreter) rules(text string, artists, genres []Name) Intent {
 	t := padded(normalizeRequest(text))
 	it := Intent{Source: "rules"}
 
-	if a, at := findName(t, artists, 2); at >= 0 {
-		it.Seed = &IntentSeed{Kind: "artist", ID: a.Key, Artist: a.Name, Label: a.Name}
-		before := t[:at+1]
-		for _, w := range likeWords {
-			if strings.HasSuffix(before, padded(w)) {
-				it.Lane = "sounds-like"
-				break
-			}
-		}
+	forms := artistForms(artists)
+	if a, at := findArtist(t, forms); at >= 0 {
+		it.Seed = artistSeed(a)
+		it.Lane = likeLane(t, at)
 	} else if g, at := findName(t, genres, 3); at >= 0 {
-		it.Seed = &IntentSeed{Kind: "genre", ID: g.Key, Label: g.Name}
+		it.Seed = genreSeed(g)
+	} else if g, ok := partOfGenre(t, genres); ok {
+		it.Seed = genreSeed(g)
+	} else if g, ok := moodGenre(t, genres); ok {
+		it.Seed = genreSeed(g)
 	}
 	for _, lw := range laneWords {
 		if it.Lane != "" {
@@ -209,8 +210,37 @@ func (in *Interpreter) rules(text string, artists, genres []Name) Intent {
 		}
 	}
 	it.FromYear, it.ToYear = period(t, in.now())
+	if it.Seed == nil && it.Lane == "" && it.FromYear == 0 {
+		// Nothing else in the request: half an artist's name, or a typo.
+		if a, at, ok := looseArtist(t, forms); ok {
+			it.Seed = artistSeed(a)
+			it.Lane = likeLane(t, at)
+		}
+	}
 	in.finish(&it)
+	if !it.Understood {
+		it.Try = suggestions(artists, genres)
+	}
 	return it
+}
+
+func artistSeed(a Name) *IntentSeed {
+	return &IntentSeed{Kind: "artist", ID: a.Key, Artist: a.Name, Label: a.Name}
+}
+
+func genreSeed(g Name) *IntentSeed { return &IntentSeed{Kind: "genre", ID: g.Key, Label: g.Name} }
+
+// suggestions names the library's biggest artist and genre, for a listener
+// whose request wasn't understood.
+func suggestions(artists, genres []Name) []string {
+	var out []string
+	if len(artists) > 0 {
+		out = append(out, artists[0].Name)
+	}
+	if len(genres) > 0 {
+		out = append(out, genres[0].Name)
+	}
+	return out
 }
 
 // finish settles how seed, lane and period combine, and whether anything
@@ -273,12 +303,12 @@ func (in *Interpreter) ask(ctx context.Context, text string, artists, genres []N
 
 	it := Intent{Source: "llm"}
 	if a := clip(mi.Artist, maxField); a != "" {
-		key := matching.ArtistKey(a)
-		for _, n := range artists {
-			if n.Key == key {
-				it.Seed = &IntentSeed{Kind: "artist", ID: n.Key, Artist: n.Name, Label: n.Name}
-				break
-			}
+		forms := artistForms(artists)
+		t := padded(normalizeRequest(a))
+		if n, at := findArtist(t, forms); at >= 0 {
+			it.Seed = artistSeed(n)
+		} else if n, _, ok := looseArtist(t, forms); ok {
+			it.Seed = artistSeed(n)
 		}
 		if it.Seed == nil {
 			it.Missing = a
@@ -288,15 +318,11 @@ func (in *Interpreter) ask(ctx context.Context, text string, artists, genres []N
 	}
 	if it.Seed == nil {
 		for _, g := range mi.Genres {
-			key := matching.GenreKey(clip(g, maxField))
-			for _, n := range genres {
-				if key != "" && n.Key == key {
-					it.Seed = &IntentSeed{Kind: "genre", ID: n.Key, Label: n.Name}
+			if key := matching.GenreKey(clip(g, maxField)); key != "" {
+				if n, ok := genreFor(key, genres); ok {
+					it.Seed = genreSeed(n)
 					break
 				}
-			}
-			if it.Seed != nil {
-				break
 			}
 		}
 	}

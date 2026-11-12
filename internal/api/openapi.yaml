@@ -768,7 +768,8 @@ paths:
         Read what the listener asked the DJ for ("90s hip hop", "more like
         Bonobo", "something I haven't heard") as an engine seed, lane and
         period, to pass on to /engine/next. Rules match the library's own artist
-        and genre names; the writer model, when configured, reads what they
+        and genre names, loosely (symbols, part of a name, a typo, part of a
+        genre tag, a mood); the writer model, when configured, reads what they
         can't. Only library artists and genres are returned; an artist the
         library lacks comes back as `missing`. Shares /dj/line's rate limit.
       requestBody:
@@ -801,6 +802,7 @@ paths:
                   toYear: { type: integer }
                   missing: { type: string, description: an artist asked for that the library lacks }
                   source: { type: string, enum: [rules, llm] }
+                  try: { type: array, items: { type: string }, description: "when not understood: the library's biggest artist and genre, to suggest" }
                 required: [understood, source]
         "400": { description: text is empty or the body is not JSON }
         "429": { description: too many DJ requests this minute }

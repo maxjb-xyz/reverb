@@ -63,6 +63,8 @@ export interface DJIntent {
   /** An artist asked for that the library doesn't have. */
   missing?: string
   source: 'rules' | 'llm'
+  /** When not understood: a library artist and genre to suggest. */
+  try?: string[]
 }
 
 export const readRequest = (text: string) => api.post<DJIntent>('/dj/request', { text })
