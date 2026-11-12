@@ -9,13 +9,30 @@ export interface PlayContext {
 }
 
 let current: PlayContext = { kind: 'other' }
+const perTrack = new Map<string, PlayContext>()
 
 export function setPlayContext(ctx: PlayContext): void {
   current = { kind: ctx.kind || 'other', ...(ctx.id ? { id: ctx.id } : {}) }
 }
 
-export function getPlayContext(): PlayContext {
-  return current
+/**
+ * The context the current queue was played from. Given a track id, a finer
+ * context set for that track (the DJ lane that picked it) wins, but only while
+ * the queue is still of the same kind: the same song played later from an
+ * album counts as the album's.
+ */
+export function getPlayContext(trackId?: string): PlayContext {
+  const own = trackId ? perTrack.get(trackId) : undefined
+  return own && own.kind === current.kind ? own : current
+}
+
+/**
+ * Give queued tracks their own contexts (set these before playing them, so the
+ * first song is stamped correctly). `replace` forgets the earlier ones first.
+ */
+export function setTrackContexts(entries: Iterable<[string, PlayContext]>, replace = false): void {
+  if (replace) perTrack.clear()
+  for (const [id, ctx] of entries) perTrack.set(id, ctx)
 }
 
 /** Infer a context from the route the user was on when they pressed play. */

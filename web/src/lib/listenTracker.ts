@@ -59,7 +59,7 @@ function outcomeFor(c: Current): ListenOutcome {
 export function startListenTracker(
   engine: Enginelike,
   recordFn: RecordFn = recordListen,
-  getContext: () => PlayContext = getPlayContext,
+  getContext: (trackId?: string) => PlayContext = getPlayContext,
   win: Pick<Window, 'addEventListener' | 'removeEventListener'> | null = typeof window === 'undefined' ? null : window,
   now: () => number = Date.now,
 ): () => void {
@@ -98,7 +98,7 @@ export function startListenTracker(
       isrc: t.isrc,
       durationMs: t.durationMs > 0 ? t.durationMs : s.durationMs,
       startedAt: Math.floor(now() / 1000),
-      ctx: getContext(),
+      ctx: getContext(t.id),
       lastTimeMs: s.currentTimeMs,
       lastWallMs: now(),
       msPlayed: 0,

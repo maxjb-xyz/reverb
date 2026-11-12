@@ -3,10 +3,11 @@ import { MediaCard } from '../ui/MediaCard'
 import { Icon } from '../ui/Icon'
 import { useStations } from '../../lib/engineApi'
 import { useStartRadio } from './useStartRadio'
+import { DJTile } from '../dj/DJTile'
 
 /**
- * "Radio for you" on Home: stations built from the user's favourite artists and
- * the genres they play. Hidden until the engine has something to suggest.
+ * "Radio for you" on Home: the DJ, then stations built from the user's
+ * favourite artists and the genres they play. Hidden until the engine has something to suggest.
  */
 export function StationsRow() {
   const { data: stations } = useStations(10)
@@ -15,6 +16,7 @@ export function StationsRow() {
   return (
     <div className="mb-8" data-testid="stations-row">
       <Carousel title="Radio for you">
+        <DJTile />
         {stations.map((s) => (
           <MediaCard
             key={`${s.seed.kind}:${s.seed.id}`}
