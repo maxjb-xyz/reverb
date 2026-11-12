@@ -3,12 +3,13 @@ import { useNavigate } from 'react-router-dom'
 import { Carousel } from '../ui/Carousel'
 import { MediaCard } from '../ui/MediaCard'
 import { MixEditor } from './MixEditor'
+import { DiscoverArt } from './DiscoverArt'
 import { mixTracks, useMixes } from '../../lib/mixesApi'
 import { usePlayer } from '../../lib/playerStore'
 
 /**
- * "Your mixes" on Home: the daily mixes Reverb builds from the user's taste,
- * then their own mixes, then a tile to make a new one.
+ * "Your mixes" on Home: Discover Weekly, the daily mixes Reverb builds from
+ * the user's taste, then their own mixes, then a tile to make a new one.
  */
 export function MixesRow() {
   const navigate = useNavigate()
@@ -19,6 +20,7 @@ export function MixesRow() {
   return (
     <div className="mb-8" data-testid="mixes-row">
       <Carousel title="Your mixes">
+        <MediaCard title="Discover Weekly" subtitle="New music for you, every Monday" art={<DiscoverArt />} onClick={() => navigate('/discover')} />
         {(mixes ?? []).map((m) => {
           const tracks = mixTracks(m)
           return (

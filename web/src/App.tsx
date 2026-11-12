@@ -43,6 +43,7 @@ const Downloads = lazy(() => import('./routes/Downloads'))
 const Requests = lazy(() => import('./routes/Requests'))
 const SyncedPlaylist = lazy(() => import('./routes/SyncedPlaylist'))
 const Mix = lazy(() => import('./routes/Mix'))
+const Discover = lazy(() => import('./routes/Discover'))
 const Account = lazy(() => import('./routes/Account'))
 const Stats = lazy(() => import('./routes/Stats'))
 const ExternalPlaylist = lazy(() => import('./routes/ExternalPlaylist'))
@@ -146,6 +147,7 @@ function Routed() {
         <Route path="/artist/:id" element={<RedirectToLibrary kind="artist" />} />
         <Route path="/playlist/:id" element={<SyncedPlaylist />} />
         <Route path="/mix/:id" element={<Mix />} />
+        <Route path="/discover" element={<Discover />} />
         <Route path="/playlist/:source/:id" element={<ExternalPlaylist />} />
         <Route path="/synced-playlist/:id" element={<RedirectToPlaylist />} />
         <Route path="/stats" element={<Stats />} />

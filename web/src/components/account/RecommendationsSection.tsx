@@ -2,6 +2,7 @@ import { Button, EmptyState } from '../ui'
 import { useTasteFeedback, useUnhide } from '../../lib/tasteApi'
 import { useIndexStatus, useRebuildIndex } from '../../lib/engineApi'
 import { useAuthStore, isManagerCaps } from '../../lib/authStore'
+import { DiscoverSettings } from './DiscoverSettings'
 
 /** Managers see how much of the library the recommendation index covers. */
 function IndexStatusRow() {
@@ -29,9 +30,8 @@ function IndexStatusRow() {
 }
 
 /**
- * Settings → Recommendations. Lists the songs and artists the user said "not
- * for me" to, with a way to bring each back. Later phases add mix and
- * Discover settings here.
+ * Settings → Recommendations: Discover Weekly, then the songs and artists the
+ * user said "not for me" to, with a way to bring each back.
  */
 export function RecommendationsSection() {
   const { data, isLoading, isError } = useTasteFeedback()
@@ -44,6 +44,7 @@ export function RecommendationsSection() {
   return (
     <div className="space-y-6">
       {isManager && <IndexStatusRow />}
+      <DiscoverSettings isManager={isManager} />
       <div>
         <div className="text-sm font-bold text-text-primary">Hidden from recommendations</div>
         <div className="mt-0.5 text-xs text-text-secondary">
