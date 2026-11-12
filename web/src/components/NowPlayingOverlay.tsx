@@ -24,7 +24,12 @@ export function NowPlayingOverlay() {
   if (!open) return null
 
   const ambient = palette
-    ? { background: `linear-gradient(180deg, ${rgbToCss(palette.rgb, 0.45)} 0%, var(--bg-base) 70%)`, color: palette.text }
+    ? {
+        // Translucent wash over an opaque base (see CinemaView) so the page
+        // behind the sheet never shows through.
+        background: `linear-gradient(180deg, ${rgbToCss(palette.rgb, 0.45)} 0%, var(--bg-base) 70%), var(--bg-base)`,
+        color: palette.text,
+      }
     : undefined
 
   const pct = durationMs > 0 ? (currentTimeMs / durationMs) * 100 : 0

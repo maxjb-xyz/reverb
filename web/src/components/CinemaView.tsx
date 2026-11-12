@@ -53,7 +53,10 @@ export function CinemaView() {
   // (Spotify-cinema style) rather than a thin header tint fading to black.
   const ambient = palette
     ? {
-        background: `linear-gradient(180deg, ${rgbToCss(palette.rgb, 0.75)} 0%, ${rgbToCss(palette.rgb, 0.3)} 55%, var(--bg-base) 100%)`,
+        // The wash is translucent, so it must sit on an opaque base layer —
+        // an inline `background` replaces the bg-canvas class, and without the
+        // base the app underneath shows through the artwork and controls.
+        background: `linear-gradient(180deg, ${rgbToCss(palette.rgb, 0.75)} 0%, ${rgbToCss(palette.rgb, 0.3)} 55%, var(--bg-base) 100%), var(--bg-base)`,
         color: palette.text,
       }
     : undefined

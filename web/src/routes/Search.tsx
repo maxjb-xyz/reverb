@@ -1,4 +1,4 @@
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useLibrarySearch } from '../lib/libraryApi'
 import { dedupKey, useEverywhere } from '../lib/everywhereStore'
 import { usePlayer } from '../lib/playerStore'
@@ -8,7 +8,7 @@ import { useDownloads } from '../lib/downloadStore'
 import { useAuthStore } from '../lib/authStore'
 import { useToastStore } from '../lib/toastStore'
 import { DownloadAction } from '../components/download/DownloadAction'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   Segmented,
   TrackRow,
@@ -142,6 +142,24 @@ export default function Search() {
   const q = useSearch((s) => s.query)
   const setQ = useSearch((s) => s.setQuery)
   const debouncedQ = useDebouncedValue(q, 400)
+
+  // Keep the query in the URL (?q=) so a search can be bookmarked, shared and
+  // restored by the back button. On first mount the URL seeds the shared store;
+  // after that the store (typed in either search box) drives the URL. `replace`
+  // keeps keystrokes out of the history stack.
+  const [params, setParams] = useSearchParams()
+  const urlSeeded = useRef(false)
+  useEffect(() => {
+    const urlQ = params.get('q') ?? ''
+    if (!urlSeeded.current) {
+      urlSeeded.current = true
+      if (urlQ && urlQ !== q) {
+        setQ(urlQ)
+        return
+      }
+    }
+    if (q !== urlQ) setParams(q ? { q } : {}, { replace: true })
+  }, [q, params, setQ, setParams])
 
   const playTrackList = usePlayer((s) => s.playTrackList)
   const currentTrackId = usePlayer((s) => s.current?.id)

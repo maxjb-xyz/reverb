@@ -243,6 +243,35 @@ export function TopBar() {
               >
                 Settings
               </button>
+              {/* Phones only (md:hidden): desktop reaches Requests from the top bar
+                  and Collection from the library page; the bottom tab bar has no
+                  room for either, so without these they are unreachable. */}
+              {canRequest && (
+                <button
+                  role="menuitem"
+                  type="button"
+                  onClick={() => { setMenuOpen(false); navigate('/requests') }}
+                  className={[
+                    'w-full text-left px-4 py-2 text-sm text-text-primary md:hidden',
+                    'hover:bg-raised-hover transition-colors',
+                    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-inset',
+                  ].join(' ')}
+                >
+                  Requests
+                </button>
+              )}
+              <button
+                role="menuitem"
+                type="button"
+                onClick={() => { setMenuOpen(false); navigate('/collection') }}
+                className={[
+                  'w-full text-left px-4 py-2 text-sm text-text-primary md:hidden',
+                  'hover:bg-raised-hover transition-colors',
+                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-inset',
+                ].join(' ')}
+              >
+                Collection
+              </button>
               {isManager && (
                 <button
                   role="menuitem"
