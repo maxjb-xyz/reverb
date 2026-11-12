@@ -63,6 +63,9 @@ func (s *Server) handleDJSay(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"id": id, "url": "/api/v1/dj/clips/" + id})
 	case errors.Is(err, voice.ErrNoVoice):
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "no voice is configured"})
+	case errors.Is(err, voice.ErrWarmingUp):
+		w.Header().Set("Retry-After", "30")
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "the voice is still being set up"})
 	case errors.Is(err, voice.ErrEmptyText), errors.Is(err, voice.ErrTextTooLong):
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 	default:

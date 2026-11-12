@@ -435,7 +435,7 @@ paths:
         "400": { description: text empty or longer than 600 characters }
         "429": { description: too many lines this minute }
         "502": { description: the voice provider failed }
-        "503": { description: no voice is configured }
+        "503": { description: no voice is configured, or the built-in voice is still being set up (Retry-After) }
   /dj/clips/{id}:
     get:
       summary: A rendered DJ voice clip (immutable; audio/*)

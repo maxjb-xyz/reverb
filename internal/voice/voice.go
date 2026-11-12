@@ -24,6 +24,10 @@ var ErrEmptyText = errors.New("voice: text is empty")
 // ErrTextTooLong is returned for a line over MaxTextLen.
 var ErrTextTooLong = errors.New("voice: text is too long")
 
+// ErrWarmingUp means the voice exists but is not ready yet, for example while
+// a built-in voice downloads its model. Try again later.
+var ErrWarmingUp = errors.New("voice: still being set up")
+
 // Audio is one rendered line.
 type Audio struct {
 	Data        []byte

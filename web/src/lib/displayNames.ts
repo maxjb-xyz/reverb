@@ -11,6 +11,7 @@ const ADAPTER_NAMES: Record<string, string> = {
   embedded: 'Built-in library',
   library: 'Library',
   elevenlabs: 'ElevenLabs',
+  kokoro: 'Built-in voice (Kokoro)',
   'openai-speech': 'OpenAI-compatible speech',
 }
 
