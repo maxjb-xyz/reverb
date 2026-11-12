@@ -25,6 +25,8 @@ import { rgbToCss } from '../lib/palette'
 import { startPlayTracker } from '../lib/playTracker'
 import { startListenTracker } from '../lib/listenTracker'
 import { startRadioRefill } from '../lib/radio'
+import { startDJWatcher } from '../lib/dj'
+import { DJBar } from './dj/DJBar'
 import { startNowPlaying } from '../lib/nowPlaying'
 import { startMediaSession } from '../lib/mediaSession'
 import { recordPlay, updatePlay } from '../lib/playApi'
@@ -84,6 +86,7 @@ export function AppShell() {
   // Taste signals: how every started track ended (finished / skipped / stopped).
   useEffect(() => startListenTracker(engine), [])
   useEffect(() => startRadioRefill(engine), [])
+  useEffect(() => startDJWatcher(engine), [])
   useEffect(() => startNowPlaying(engine), [])
   useEffect(() => startMediaSession(engine), [])
 
@@ -156,6 +159,8 @@ export function AppShell() {
               <Outlet />
             </Suspense>
           </div>
+          {/* The DJ's lane, latest line and controls, while the DJ is on */}
+          <DJBar />
         </main>
 
         {/* Right column — desktop: occupies a column at xl+; mid: overlay; absent when null */}
