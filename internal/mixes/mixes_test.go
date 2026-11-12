@@ -335,3 +335,41 @@ func names(ms []Mix) []string {
 	}
 	return out
 }
+
+func TestDailyMixes_RebuildOnDemand(t *testing.T) {
+	e := newEnv(t)
+	library(t, e)
+	e.likes(map[string]int{"Bonobo": 5})
+	ctx := context.Background()
+	m1, err := e.svc.List(ctx, "u1")
+	if err != nil || len(m1) != 1 {
+		t.Fatalf("list = %v %v", names(m1), err)
+	}
+	// Later the same day the user has been playing metal too.
+	e.now = e.now.Add(2 * time.Hour)
+	e.likes(map[string]int{"Bonobo": 5, "Metallica": 6})
+	m2, err := e.svc.RebuildDaily(ctx, "u1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(m2) != 2 || m2[0].GeneratedAt != e.now.Unix() {
+		t.Fatalf("rebuilt = %v", names(m2))
+	}
+	// Custom mixes are left alone.
+	if _, err := e.svc.Create(ctx, "u1", "Mine", Recipe{Seeds: []engine.Seed{{Kind: engine.SeedGenre, ID: "Jazz"}}}); err != nil {
+		t.Fatal(err)
+	}
+	m3, err := e.svc.RebuildDaily(ctx, "u1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	custom := 0
+	for _, m := range m3 {
+		if m.Kind == KindCustom {
+			custom++
+		}
+	}
+	if custom != 1 {
+		t.Fatalf("custom mixes after rebuild = %d", custom)
+	}
+}

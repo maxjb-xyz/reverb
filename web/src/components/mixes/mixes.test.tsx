@@ -80,6 +80,16 @@ describe('MixesRow', () => {
     fireEvent.click(screen.getByText('New mix'))
     expect(await screen.findByRole('dialog', { name: 'New mix' })).toBeInTheDocument()
   })
+
+  it('rebuilds the daily mixes on demand', async () => {
+    const base = get.getMockImplementation()!
+    get.mockImplementation((p: string) => (p === '/mixes' ? Promise.resolve({ mixes: [mix()] }) : base(p)))
+    post.mockImplementation((p: string) => (p === '/mixes/daily/rebuild' ? Promise.resolve({ mixes: [mix({ name: 'Daily Mix 2' })] }) : Promise.reject(new Error(p))))
+    wrap(<MixesRow />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Refresh daily mixes' }))
+    await waitFor(() => expect(post).toHaveBeenCalledWith('/mixes/daily/rebuild', undefined))
+    expect(await screen.findByText('Daily Mix 2')).toBeInTheDocument()
+  })
 })
 
 describe('MixEditor', () => {

@@ -101,3 +101,11 @@ func TestMixesAPI_UnavailableAndUnauthenticated(t *testing.T) {
 		t.Errorf("unauthenticated = %d", rec.Code)
 	}
 }
+
+func TestMixesAPI_RebuildDaily(t *testing.T) {
+	srv, cookie, _ := mixesTestServer(t, true)
+	rec := do(t, srv, cookie, http.MethodPost, "/api/v1/mixes/daily/rebuild", "")
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"mixes":`) {
+		t.Fatalf("rebuild = %d %s", rec.Code, rec.Body.String())
+	}
+}

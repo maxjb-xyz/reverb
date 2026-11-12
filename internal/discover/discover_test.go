@@ -42,8 +42,15 @@ func (f *fakeEngine) Discover(_ context.Context, _ string, n int, exclude map[st
 func (f *fakeEngine) Next(_ context.Context, _ string, req engine.Request) (engine.Result, error) {
 	f.nextCalls++
 	var out []engine.Candidate
-	for i := 0; i < req.N; i++ {
+	skip := map[string]bool{}
+	for _, id := range req.Exclude {
+		skip[id] = true
+	}
+	for i := 0; len(out) < req.N && i < 200; i++ {
 		id := fmt.Sprintf("own-%d-%d", f.week, i)
+		if skip[id] {
+			continue
+		}
 		out = append(out, engine.Candidate{Owned: true, Track: &core.Track{ID: id, Title: "Owned " + id, Artist: "Lib"}, Reason: engine.Reason{Kind: engine.ReasonNewToYou}})
 	}
 	return engine.Result{Items: out}, nil
@@ -471,5 +478,90 @@ func TestSafeRemover(t *testing.T) {
 	}
 	if _, err := os.Stat(out); err != nil {
 		t.Fatal("file outside the root was deleted")
+	}
+}
+
+func TestRegenerate_ReplacesPicksNotDownloadedAndKeepsDownloads(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	e.setPrefs(t, "u1", Prefs{Enabled: true, Size: 10, NewShare: 70, KeepRule: KeepPlaylist})
+	before := e.current(t, "u1")
+	downloading := map[string]bool{}
+	oldOwned := map[string]bool{}
+	for _, it := range before.Items {
+		if it.State == StateDownloading {
+			downloading[it.ID] = true
+		} else if it.Track != nil {
+			oldOwned[it.Track.ID] = true
+		}
+	}
+	if len(downloading) != 7 || len(oldOwned) != 3 {
+		t.Fatalf("setup: %d downloading, %d owned", len(downloading), len(oldOwned))
+	}
+	// Prefs changed mid-week apply to the regenerated list.
+	e.setPrefs(t, "u1", Prefs{Enabled: true, Size: 12, NewShare: 70, KeepRule: KeepPlaylist})
+	w, err := e.svc.Regenerate(ctx, "u1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(w.Items) != 12 {
+		t.Fatalf("regenerated %d items, want 12", len(w.Items))
+	}
+	kept := 0
+	for _, it := range w.Items {
+		if downloading[it.ID] {
+			kept++
+			continue
+		}
+		if it.Track != nil && oldOwned[it.Track.ID] {
+			t.Errorf("old pick %s offered again", it.Track.ID)
+		}
+		if it.External != nil && it.State == StateDownloading && it.JobID == "" {
+			t.Errorf("new download without a job: %+v", it)
+		}
+	}
+	if kept != 7 {
+		t.Fatalf("downloaded songs kept = %d, want 7", kept)
+	}
+	// The weekly cap still holds across regenerations (30 by default).
+	if len(e.dl.enqueued) > DefaultWeeklyCap {
+		t.Fatalf("enqueued %d, over the weekly cap", len(e.dl.enqueued))
+	}
+}
+
+func TestRegenerate_EverythingNewWithoutDownloadsAndRefusedWhenOff(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	e.setPrefs(t, "u2", Prefs{Enabled: true, Size: 10, NewShare: 50, KeepRule: KeepPlaylist})
+	before := e.current(t, "u2")
+	old := map[string]bool{}
+	for _, it := range before.Items {
+		if it.External != nil {
+			old[it.External.ExternalID] = true
+		} else if it.Track != nil {
+			old[it.Track.ID] = true
+		}
+	}
+	w, err := e.svc.Regenerate(ctx, "u2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(w.Items) != 10 {
+		t.Fatalf("regenerated %d items", len(w.Items))
+	}
+	for _, it := range w.Items {
+		id := ""
+		if it.External != nil {
+			id = it.External.ExternalID
+		} else if it.Track != nil {
+			id = it.Track.ID
+		}
+		if old[id] {
+			t.Errorf("%s was in the old list", id)
+		}
+	}
+	e.setPrefs(t, "u2", Prefs{Enabled: false, Size: 10, NewShare: 50, KeepRule: KeepPlaylist})
+	if _, err := e.svc.Regenerate(ctx, "u2"); !errors.Is(err, ErrDisabled) {
+		t.Fatalf("regenerate while off = %v, want ErrDisabled", err)
 	}
 }
