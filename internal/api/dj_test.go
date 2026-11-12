@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/maxjb-xyz/reverb/internal/llm"
 	"github.com/maxjb-xyz/reverb/internal/registry"
 	"github.com/maxjb-xyz/reverb/internal/store"
 	"github.com/maxjb-xyz/reverb/internal/voice"
@@ -158,5 +159,57 @@ func TestAdaptersAvailableListsVoiceProviders(t *testing.T) {
 	rec := do(t, srv, c, http.MethodGet, "/api/v1/adapters/available", "")
 	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"type":"voice","name":"elevenlabs"`) {
 		t.Fatalf("got %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+type fakeLLMSvc struct {
+	name string
+	out  string
+}
+
+func (f *fakeLLMSvc) Active() string { return f.name }
+func (f *fakeLLMSvc) Complete(context.Context, llm.Request) (string, error) {
+	if f.name == "" {
+		return "", llm.ErrNoLLM
+	}
+	return f.out, nil
+}
+
+func djLineServer(t *testing.T, m LLMService) (*Server, *http.Cookie) {
+	t.Helper()
+	srv, c := djTestServer(t, &fakeVoiceSvc{name: "kokoro"})
+	srv.deps.LLM = m
+	return srv, c
+}
+
+func TestDJStatusNamesVoiceAndWriter(t *testing.T) {
+	srv, c := djLineServer(t, &fakeLLMSvc{name: "anthropic"})
+	rec := doGET(t, srv, "/api/v1/dj/status", c.Value)
+	want := `{"voice":{"available":true,"name":"kokoro"},"writer":{"available":true,"name":"anthropic"}}`
+	if rec.Code != http.StatusOK || strings.TrimSpace(rec.Body.String()) != want {
+		t.Fatalf("got %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestDJLineUsesTheModel(t *testing.T) {
+	srv, c := djLineServer(t, &fakeLLMSvc{name: "anthropic", out: "Here's Cirrus, one you've had on repeat."})
+	body := `{"lane":"on-repeat","reason":{"artist":"Bonobo","play_count":14},"next":[{"title":"Cirrus","artist":"Bonobo"}],"hour":21}`
+	rec := do(t, srv, c, http.MethodPost, "/api/v1/dj/line", body)
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"source":"llm"`) || !strings.Contains(rec.Body.String(), "Cirrus") {
+		t.Fatalf("got %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestDJLineFallsBackToTemplates(t *testing.T) {
+	srv, c := djLineServer(t, nil)
+	rec := do(t, srv, c, http.MethodPost, "/api/v1/dj/line", `{"next":[{"title":"Cirrus","artist":"Bonobo"}],"hour":-1}`)
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"source":"template"`) {
+		t.Fatalf("got %d %s", rec.Code, rec.Body.String())
+	}
+	if rec := do(t, srv, c, http.MethodPost, "/api/v1/dj/line", `{"next":[]}`); rec.Code != http.StatusBadRequest {
+		t.Fatalf("nothing to introduce: %d", rec.Code)
+	}
+	if rec := do(t, srv, c, http.MethodPost, "/api/v1/dj/line", `nope`); rec.Code != http.StatusBadRequest {
+		t.Fatalf("bad json: %d", rec.Code)
 	}
 }

@@ -25,6 +25,9 @@ import (
 	"github.com/maxjb-xyz/reverb/internal/library/embedded"
 	"github.com/maxjb-xyz/reverb/internal/library/lyrics"
 	"github.com/maxjb-xyz/reverb/internal/library/subsonic"
+	"github.com/maxjb-xyz/reverb/internal/llm"
+	anthropicllm "github.com/maxjb-xyz/reverb/internal/llm/anthropic"
+	"github.com/maxjb-xyz/reverb/internal/llm/openaichat"
 	"github.com/maxjb-xyz/reverb/internal/mixes"
 	"github.com/maxjb-xyz/reverb/internal/notification"
 	"github.com/maxjb-xyz/reverb/internal/play"
@@ -110,6 +113,9 @@ func main() {
 	kokoroRT := kokoro.NewRuntime(filepath.Join(filepath.Dir(cfg.DBPath), "kokoro"), os.Getenv)
 	defer kokoroRT.Close()
 	voiceReg.Register("kokoro", func() registry.Plugin { return kokoro.New(kokoroRT) })
+	llmReg := registry.NewRegistry(llm.Type)
+	llmReg.Register("anthropic", func() registry.Plugin { return anthropicllm.New() })
+	llmReg.Register("openai-chat", func() registry.Plugin { return openaichat.New() })
 	// Surface the async capability to the admin UI (/adapters/available).
 	registry.RegisterCapability("async", func(p registry.Plugin) bool {
 		_, ok := p.(download.AsyncDownloader)
@@ -172,11 +178,14 @@ func main() {
 	// Must be set BEFORE Build so BuildSyncService picks it up via b.canonicalMinter.
 	builder.SetCanonicalMinter(catalogSvc)
 	builder.SetVoiceRegistry(voiceReg)
+	builder.SetLLMRegistry(llmReg)
 
 	// The DJ's voice. Rendered clips are cached under the data dir and survive
 	// voice changes (they are keyed on the voice), so the cache is boot-bound.
 	voiceSvc := voice.NewService(voice.NewCache(filepath.Join(filepath.Dir(cfg.DBPath), "dj-voice"), djClipCacheSize))
 	reloader.voice = voiceSvc
+	llmSvc := llm.NewService()
+	reloader.llm = llmSvc
 
 	bundle, err := builder.Build(context.Background())
 	if err != nil {
@@ -188,6 +197,7 @@ func main() {
 	// Matches the pre-P2 behaviour (publishMatcher was called here before the reorder).
 	reloader.publishMatcher(bundle.Matcher)
 	voiceSvc.Set(bundle.Voice)
+	llmSvc.Set(bundle.LLM)
 	reloader.publishServices(bundle)
 
 	// Recommendation index: the library's tracks with genres/years, plus the
@@ -281,6 +291,8 @@ func main() {
 		Downloader:    downloaderReg,
 		VoiceReg:      voiceReg,
 		Voice:         voiceSvc,
+		LLMReg:        llmReg,
+		LLM:           llmSvc,
 		Adapters:      st.Q(),
 		PlaylistOwner: st.Q(),
 		Events:        bus,

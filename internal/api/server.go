@@ -154,6 +154,10 @@ type Deps struct {
 	VoiceReg *registry.Registry
 	// Voice is the DJ's voice. Nil disables the /dj/say endpoint.
 	Voice VoiceService
+	// LLMReg holds the DJ writer models, shown with the other providers.
+	LLMReg *registry.Registry
+	// LLM writes DJ lines. Nil means templates only.
+	LLM LLMService
 	// Taste records listen outcomes, playlist/download signals and thumbs-down,
 	// and serves per-user taste profiles. Nil in tests/legacy wiring — listen
 	// and feedback endpoints answer 503 and signal hooks are skipped.
@@ -178,6 +182,8 @@ type Server struct {
 	authLimiter *rateLimiter
 	// djSayLimiter throttles voice-line rendering per user.
 	djSayLimiter *rateLimiter
+	// djLineLimiter throttles DJ line writing per user.
+	djLineLimiter *rateLimiter
 
 	// live holds the currently active services. Handlers read them through the
 	// getters under the RLock; reload swaps them under the write lock so adapter
@@ -201,6 +207,7 @@ func NewServer(deps Deps) *Server {
 	// a human never notices, tight enough that bcrypt-slowed guessing stays slow.
 	s.authLimiter = newRateLimiter(10, time.Minute, nil)
 	s.djSayLimiter = newRateLimiter(djSayPerMinute, time.Minute, nil)
+	s.djLineLimiter = newRateLimiter(djLinePerMinute, time.Minute, nil)
 	s.live.library = deps.Library
 	s.live.search = deps.SearchAggregator
 	s.live.coverage = deps.Coverage
@@ -342,6 +349,8 @@ func (s *Server) routes() {
 			pr.Get("/stats/entity", s.handleStatsEntity)
 			pr.Post("/stats/play-counts", s.handlePlayCounts)
 			pr.Get("/dj/voice", s.handleDJVoice)
+			pr.Get("/dj/status", s.handleDJStatus)
+			pr.Post("/dj/line", s.handleDJLine)
 			pr.Post("/dj/say", s.handleDJSay)
 			pr.Get("/dj/clips/{id}", s.handleDJClip)
 			pr.Post("/listens", s.handleListen)

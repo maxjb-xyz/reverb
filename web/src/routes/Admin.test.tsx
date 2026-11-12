@@ -274,6 +274,16 @@ describe('Admin', () => {
     expect(within(form as HTMLElement).getByLabelText(/api key/i)).toBeInTheDocument()
   })
 
+  it('Providers tab has a DJ writer section for a language model', () => {
+    mockUseAvailableAdapters.mockReturnValue({
+      data: [makeAvailable({ type: 'llm', name: 'anthropic', configSchema: { fields: [] } })],
+      isLoading: false,
+    })
+    wrap(<AdminProviders />)
+    expect(screen.getByRole('heading', { name: /dj writer/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /add model/i })).toBeEnabled()
+  })
+
   it('Providers tab renders the ScrobblingSection with Last.fm heading', async () => {
     wrap(<AdminProviders />)
     // ScrobblingSection is in the Providers tab (default active tab)
