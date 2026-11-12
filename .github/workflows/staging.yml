@@ -4,19 +4,20 @@ name: Staging Image
 # can be run in a real container before they are released.
 #
 # Triggers:
-#   - CI finished on a push to `staging`: publish that commit once it is green.
+#   - Push to `staging` (a merged pull request): publish that commit.
 #   - Weekly schedule: rebuild the current staging head even with no new
 #     commits, so yt-dlp (floated at image-build time, see the Dockerfile) never
 #     goes stale the way it did when images were only built on release (#20).
 #   - Manual dispatch: rebuild on demand, e.g. right after YouTube breaks yt-dlp.
 #
-# As with releases, a commit without a successful CI run is never published.
-# Note: `workflow_run` and `schedule` only fire from the copy of this file on
-# the default branch, so it must be on main to take effect.
+# CI runs on the pull request, not again on the merge. As with releases, a
+# commit is never published without passing CI: if the pull request's passing
+# CI run doesn't cover the merged code exactly (see
+# .github/scripts/ci-verified.sh), CI runs here first and the build waits on it.
+# Note: `schedule` only fires from the copy of this file on the default branch;
+# `push` uses the copy on staging, so keep both in sync.
 on:
-  workflow_run:
-    workflows: [CI]
-    types: [completed]
+  push:
     branches: [staging]
   schedule:
     - cron: '17 6 * * 1' # Mondays 06:17 UTC
@@ -34,66 +35,67 @@ concurrency:
 jobs:
   verify:
     name: Resolve staging commit
-    # For workflow_run, only continue on a green CI run triggered by a push to
-    # staging (not a pull request whose head branch happens to be named staging).
-    if: >-
-      github.event_name != 'workflow_run' ||
-      (github.event.workflow_run.conclusion == 'success' &&
-       github.event.workflow_run.event == 'push')
     runs-on: ubuntu-latest
     outputs:
       sha: ${{ steps.source.outputs.sha }}
       short: ${{ steps.source.outputs.short }}
+      tested: ${{ steps.tested.outputs.tested }}
     steps:
+      - uses: actions/checkout@v5
+        with:
+          sparse-checkout: .github/scripts
       - id: source
         name: Resolve the commit to publish
         env:
           GH_TOKEN: ${{ github.token }}
-          RUN_SHA: ${{ github.event.workflow_run.head_sha }}
+          PUSH_SHA: ${{ github.event_name == 'push' && github.sha || '' }}
         run: |
-          if [ -n "$RUN_SHA" ]; then
-            sha="$RUN_SHA"
+          if [ -n "$PUSH_SHA" ]; then
+            sha="$PUSH_SHA"
           else
             sha="$(gh api "repos/$GITHUB_REPOSITORY/commits/staging" --jq .sha)"
           fi
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
           echo "short=${sha:0:7}" >> "$GITHUB_OUTPUT"
-      - name: Require successful CI for the commit
+      - id: tested
+        name: Check whether CI already passed for this code
         env:
           GH_TOKEN: ${{ github.token }}
           SHA: ${{ steps.source.outputs.sha }}
-        run: |
-          successful_runs="$(gh run list \
-            --repo "$GITHUB_REPOSITORY" \
-            --workflow ci.yml \
-            --commit "$SHA" \
-            --status completed \
-            --json conclusion \
-            --jq '[.[] | select(.conclusion == "success")] | length')"
-          if [ "$successful_runs" -eq 0 ]; then
-            echo "::error::No successful CI run for $SHA; not publishing."
-            exit 1
-          fi
+        run: echo "tested=$(.github/scripts/ci-verified.sh "$SHA")" >> "$GITHUB_OUTPUT"
+
+  ci:
+    name: CI
+    needs: verify
+    if: needs.verify.outputs.tested != 'true'
+    permissions:
+      contents: read
+    uses: ./.github/workflows/ci.yml
+    with:
+      ref: ${{ needs.verify.outputs.sha }}
 
   build-amd64:
     name: Build & Push AMD64
-    needs: verify
+    needs: [verify, ci]
+    if: >-
+      !cancelled() && needs.verify.result == 'success' &&
+      (needs.ci.result == 'success' || needs.ci.result == 'skipped')
     runs-on: ubuntu-latest
     outputs:
       digest: ${{ steps.build.outputs.digest }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: ${{ needs.verify.outputs.sha }}
-      - uses: docker/setup-buildx-action@v3
-      - uses: docker/login-action@v3
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Build and push AMD64 image
         id: build
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           push: true
@@ -109,23 +111,26 @@ jobs:
 
   build-arm64:
     name: Build & Push ARM64
-    needs: verify
+    needs: [verify, ci]
+    if: >-
+      !cancelled() && needs.verify.result == 'success' &&
+      (needs.ci.result == 'success' || needs.ci.result == 'skipped')
     runs-on: ubuntu-24.04-arm
     outputs:
       digest: ${{ steps.build.outputs.digest }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: ${{ needs.verify.outputs.sha }}
-      - uses: docker/setup-buildx-action@v3
-      - uses: docker/login-action@v3
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Build and push ARM64 image
         id: build
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           push: true
@@ -141,10 +146,13 @@ jobs:
   publish-manifest:
     name: Publish multi-arch staging image
     needs: [verify, build-amd64, build-arm64]
+    if: >-
+      !cancelled() && needs.build-amd64.result == 'success' &&
+      needs.build-arm64.result == 'success'
     runs-on: ubuntu-latest
     steps:
-      - uses: docker/setup-buildx-action@v3
-      - uses: docker/login-action@v3
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
