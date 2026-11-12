@@ -6,11 +6,12 @@ import type { ReactNode } from 'react'
 
 const get = vi.fn()
 const put = vi.fn()
+const post = vi.fn()
 vi.mock('../../lib/api', () => ({
   api: {
     get: (p: string) => get(p),
     put: (p: string, b?: unknown) => put(p, b),
-    post: vi.fn(),
+    post: (p: string, b?: unknown) => post(p, b),
     del: vi.fn(),
   },
 }))
@@ -111,6 +112,21 @@ describe('Discover page', () => {
     )
     wrap(<Discover />)
     expect(await screen.findByTestId('discover-blurb')).toHaveTextContent('from your library for now')
+  })
+
+  it('swaps in new songs on demand', async () => {
+    get.mockImplementation((p: string) => (p === '/discover' ? Promise.resolve(week()) : Promise.reject(new Error(p))))
+    post.mockImplementation((p: string) =>
+      p === '/discover/regenerate' ? Promise.resolve(week({ items: [{ ...week().items[2], id: 'i9', track: track('z') }] })) : Promise.reject(new Error(p)),
+    )
+    wrap(<Discover />)
+    fireEvent.click(await screen.findByRole('button', { name: 'New songs' }))
+    // Songs were downloaded for this list: the keep rule is spelled out first.
+    expect(await screen.findByText(/deleted when the week ends\. That happens now for the 2 songs/)).toBeInTheDocument()
+    expect(post).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: 'Start over' }))
+    await waitFor(() => expect(post).toHaveBeenCalledWith('/discover/regenerate', undefined))
+    expect(await screen.findByText('Song z')).toBeInTheDocument()
   })
 
   it('says when Discover Weekly is off', async () => {

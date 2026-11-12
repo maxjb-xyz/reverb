@@ -176,6 +176,19 @@ func (s *Service) List(ctx context.Context, userID string) ([]Mix, error) {
 	return out, nil
 }
 
+// RebuildDaily rebuilds the user's daily mixes now from their latest taste
+// (normally once a day) and returns all their mixes.
+func (s *Service) RebuildDaily(ctx context.Context, userID string) ([]Mix, error) {
+	l := s.userLock(userID)
+	l.Lock()
+	err := s.rebuildDaily(ctx, userID)
+	l.Unlock()
+	if err != nil {
+		return nil, err
+	}
+	return s.List(ctx, userID)
+}
+
 // Get returns one mix, refreshed if it is due.
 func (s *Service) Get(ctx context.Context, userID, id string) (Mix, error) {
 	l := s.userLock(userID)

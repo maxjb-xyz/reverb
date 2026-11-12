@@ -1,12 +1,14 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Button, EmptyState, Icon, Skeleton } from '../components/ui'
+import { ConfirmDialog } from '../components/ui/ConfirmDialog'
+import { useToastStore } from '../lib/toastStore'
 import { TrackRow } from '../components/ui/TrackRow'
 import { PageHero, StickyHeroBar } from '../components/ui/PageHero'
 import { DownloadAction } from '../components/download/DownloadAction'
 import { DiscoverArt } from '../components/mixes/DiscoverArt'
 import { reasonText } from '../lib/engineApi'
-import { KEEP_RULES, discoverTracks, refreshLabel, useDiscover, type DiscoverItem } from '../lib/discoverApi'
+import { KEEP_RULES, discoverTracks, downloadedThisWeek, refreshLabel, useDiscover, useRegenerateDiscover, type DiscoverItem } from '../lib/discoverApi'
 import { usePlayer } from '../lib/playerStore'
 import { useDocumentTitle } from '../lib/useDocumentTitle'
 import type { ExternalResult, Track } from '../lib/types'
@@ -39,6 +41,9 @@ export default function Discover() {
   const shuffle = usePlayer((s) => s.shuffle)
   const toggleShuffle = usePlayer((s) => s.toggleShuffle)
   const [heroGone, setHeroGone] = useState(false)
+  const [confirmRegen, setConfirmRegen] = useState(false)
+  const regen = useRegenerateDiscover()
+  const push = useToastStore((s) => s.push)
 
   if (isLoading) {
     return (
@@ -78,6 +83,15 @@ export default function Discover() {
   const keep = KEEP_RULES.find((k) => k.value === week.prefs.keepRule)
   const items = week.items.filter((i) => i.state !== 'removed' && i.state !== 'expired')
 
+  // Starting over closes the old list: the keep rule may delete songs
+  // Reverb downloaded for it, so say so first.
+  const atRisk = week.prefs.keepRule !== 'always' ? downloadedThisWeek(week) : 0
+  const regenerate = () =>
+    regen.mutate(undefined, {
+      onSuccess: () => push('New songs in your Discover Weekly', 'success'),
+      onError: () => push("Couldn't get new songs", 'error'),
+    })
+
   let status = `${tracks.length} of ${items.length} songs ready`
   if (fetching) status += ` · fetching ${fetching}`
   status += ` · ${refreshLabel(week.endsAt)}`
@@ -107,10 +121,25 @@ export default function Discover() {
                 <Icon name="shuffle" className="w-4 h-4" />
                 Shuffle
               </Button>
+              <Button onClick={() => (atRisk ? setConfirmRegen(true) : regenerate())} disabled={regen.isPending} className="gap-2">
+                <Icon name="retry" className="w-4 h-4" />
+                {regen.isPending ? 'Finding…' : 'New songs'}
+              </Button>
             </div>
           </div>
         </header>
       </PageHero>
+      <ConfirmDialog
+        open={confirmRegen}
+        title="Start this week over?"
+        body={`${keep?.hint ?? ''} That happens now for the ${atRisk} ${atRisk === 1 ? 'song' : 'songs'} Reverb downloaded for this list.`}
+        confirmLabel="Start over"
+        onCancel={() => setConfirmRegen(false)}
+        onConfirm={() => {
+          setConfirmRegen(false)
+          regenerate()
+        }}
+      />
       <StickyHeroBar visible={heroGone} title="Discover Weekly" onPlay={() => play(0)} playDisabled={!tracks.length} playLabel="Play Discover Weekly" />
 
       {items.length === 0 ? (

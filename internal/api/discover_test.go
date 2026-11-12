@@ -88,3 +88,14 @@ func TestDiscoverAPI_Unavailable(t *testing.T) {
 		}
 	}
 }
+
+func TestDiscoverAPI_Regenerate(t *testing.T) {
+	srv, cookie := discoverTestServer(t, true)
+	if rec := do(t, srv, cookie, http.MethodPost, "/api/v1/discover/regenerate", ""); rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"week":"`) {
+		t.Fatalf("regenerate = %d %s", rec.Code, rec.Body.String())
+	}
+	do(t, srv, cookie, http.MethodPut, "/api/v1/discover/prefs", `{"enabled":false,"size":30,"newShare":70,"keepRule":"playlist"}`)
+	if rec := do(t, srv, cookie, http.MethodPost, "/api/v1/discover/regenerate", ""); rec.Code != http.StatusConflict {
+		t.Fatalf("regenerate while off = %d, want 409", rec.Code)
+	}
+}

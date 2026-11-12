@@ -44,6 +44,14 @@ export function useMixes() {
   return useQuery({ queryKey: ['mixes'], queryFn: listMixes, staleTime: 5 * 60_000 })
 }
 
+export const rebuildDailyMixes = () => api.post<{ mixes: Mix[] }>('/mixes/daily/rebuild').then((r) => r.mixes)
+
+/** Rebuild the daily mixes now from the latest listening. */
+export function useRebuildDailyMixes() {
+  const qc = useQueryClient()
+  return useMutation({ mutationFn: rebuildDailyMixes, onSuccess: (mixes) => qc.setQueryData(['mixes'], mixes) })
+}
+
 export function useMix(id: string | undefined) {
   return useQuery({ queryKey: ['mixes', id], queryFn: () => getMix(id as string), enabled: !!id })
 }

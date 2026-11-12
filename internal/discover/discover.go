@@ -58,6 +58,9 @@ const (
 	DefaultWeeklyCap = 30
 )
 
+// ErrDisabled is returned when the user has Discover Weekly switched off.
+var ErrDisabled = errors.New("discover: Discover Weekly is off")
+
 // ErrInvalid is a bad prefs update.
 var ErrInvalid = errors.New("discover: invalid settings")
 
@@ -117,6 +120,7 @@ type Querier interface {
 	CountOtherDiscoverHolds(ctx context.Context, arg db.CountOtherDiscoverHoldsParams) (int64, error)
 	GetLibraryTrack(ctx context.Context, id string) (db.LibraryTrack, error)
 	GetSetting(ctx context.Context, key string) (string, error)
+	ArchiveDiscoverWeek(ctx context.Context, arg db.ArchiveDiscoverWeekParams) error
 }
 
 // Engine is the recommendation engine.
@@ -290,7 +294,7 @@ func (s *Service) Current(ctx context.Context, userID string) (Week, error) {
 		return Week{}, err
 	}
 	if len(rows) == 0 {
-		if err := s.build(ctx, userID, prefs, key, start, wk.Downloads); err != nil {
+		if err := s.build(ctx, userID, prefs, key, start, wk.Downloads, buildFrom{}); err != nil {
 			return Week{}, err
 		}
 		if rows, err = s.q.ListDiscoverItems(ctx, db.ListDiscoverItemsParams{UserID: userID, Week: key}); err != nil {
@@ -301,6 +305,59 @@ func (s *Service) Current(ctx context.Context, userID string) (Week, error) {
 		wk.Items = append(wk.Items, s.view(ctx, r))
 	}
 	return wk, nil
+}
+
+// Regenerate starts this week's list over on demand, with the user's
+// current length and mix. The old list is closed the way the end of a week
+// closes it: the keep rule decides, right now, which songs Reverb downloaded
+// for it stay (downloads still in flight are decided once they land). None of
+// the old picks is offered again, and new downloads still count against the
+// weekly cap.
+func (s *Service) Regenerate(ctx context.Context, userID string) (Week, error) {
+	l := s.userLock(userID)
+	l.Lock()
+	err := s.regenerate(ctx, userID)
+	l.Unlock()
+	if err != nil {
+		return Week{}, err
+	}
+	return s.Current(ctx, userID)
+}
+
+func (s *Service) regenerate(ctx context.Context, userID string) error {
+	prefs, err := s.Prefs(ctx, userID)
+	if err != nil {
+		return err
+	}
+	if !prefs.Enabled {
+		return ErrDisabled
+	}
+	now := s.now()
+	key, start, _ := weekOf(now)
+	rows, err := s.q.ListDiscoverItems(ctx, db.ListDiscoverItemsParams{UserID: userID, Week: key})
+	if err != nil {
+		return err
+	}
+	var from buildFrom
+	for _, r := range rows {
+		if r.LibraryTrackID != "" {
+			from.excludeOwned = append(from.excludeOwned, r.LibraryTrackID)
+		}
+	}
+	// Outside songs stay excluded through the archived rows themselves.
+	archived := fmt.Sprintf("%s/r%d", key, now.UnixNano())
+	if err := s.q.ArchiveDiscoverWeek(ctx, db.ArchiveDiscoverWeekParams{Archived: archived, UserID: userID, Week: key}); err != nil {
+		return err
+	}
+	if err := s.closeWeeks(ctx, userID, key, prefs.KeepRule); err != nil {
+		return err
+	}
+	return s.build(ctx, userID, prefs, key, start, s.mayDownload(ctx, userID), from)
+}
+
+// buildFrom carries what a regenerate passes on from the week's old list.
+type buildFrom struct {
+	excludeOwned []string // library songs already offered this week
 }
 
 // RunAll builds (and closes) every user's week. Run from a background loop so
@@ -338,8 +395,9 @@ func (s *Service) Start(ctx context.Context, initialDelay, interval time.Duratio
 	}()
 }
 
-func (s *Service) build(ctx context.Context, userID string, p Prefs, week string, start time.Time, downloads bool) error {
-	nNew := int(math.Round(float64(p.Size) * float64(p.NewShare) / 100))
+func (s *Service) build(ctx context.Context, userID string, p Prefs, week string, start time.Time, downloads bool, from buildFrom) error {
+	size := p.Size
+	nNew := int(math.Round(float64(size) * float64(p.NewShare) / 100))
 	exclude := map[string]bool{}
 	refs, err := s.q.ListDiscoveredExternalIDs(ctx, userID)
 	if err != nil {
@@ -356,10 +414,10 @@ func (s *Service) build(ctx context.Context, userID string, p Prefs, week string
 	}
 	// Whatever the outside world couldn't fill comes from the library: songs
 	// the user has never played, near what they like.
-	nOwned := p.Size - len(ext)
+	nOwned := size - len(ext)
 	var own []engine.Candidate
 	if nOwned > 0 {
-		res, err := s.eng.Next(ctx, userID, engine.Request{Lane: engine.LaneNewToYou, N: nOwned})
+		res, err := s.eng.Next(ctx, userID, engine.Request{Lane: engine.LaneNewToYou, N: nOwned, Exclude: from.excludeOwned})
 		if err != nil && !errors.Is(err, engine.ErrInvalid) {
 			return err
 		}

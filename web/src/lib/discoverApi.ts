@@ -70,6 +70,19 @@ export function useDiscover() {
   })
 }
 
+export const regenerateDiscover = () => api.post<DiscoverWeek>('/discover/regenerate')
+
+/** Start this week's list over (the keep rule applies to the old one). */
+export function useRegenerateDiscover() {
+  const qc = useQueryClient()
+  return useMutation({ mutationFn: regenerateDiscover, onSuccess: (w) => qc.setQueryData(['discover'], w) })
+}
+
+/** Songs Reverb downloaded for this week that the keep rule could delete. */
+export function downloadedThisWeek(w: DiscoverWeek): number {
+  return w.items.filter((i) => i.jobId && i.state === 'downloading').length
+}
+
 export function useDiscoverPrefs() {
   return useQuery({ queryKey: ['discover', 'prefs'], queryFn: getDiscoverPrefs })
 }

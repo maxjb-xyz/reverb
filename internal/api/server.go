@@ -382,7 +382,9 @@ func (s *Server) routes() {
 			pr.Put("/mixes/{id}", s.handleUpdateMix)
 			pr.Delete("/mixes/{id}", s.handleDeleteMix)
 			pr.Post("/mixes/{id}/refresh", s.handleRefreshMix)
+			pr.Post("/mixes/daily/rebuild", s.handleRebuildDailyMixes)
 			pr.Get("/discover", s.handleDiscover)
+			pr.Post("/discover/regenerate", s.handleRegenerateDiscover)
 			pr.Get("/discover/prefs", s.handleGetDiscoverPrefs)
 			pr.Put("/discover/prefs", s.handlePutDiscoverPrefs)
 
