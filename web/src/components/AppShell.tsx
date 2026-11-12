@@ -23,7 +23,7 @@ import { rgbToCss } from '../lib/palette'
 import { startPlayTracker } from '../lib/playTracker'
 import { startNowPlaying } from '../lib/nowPlaying'
 import { startMediaSession } from '../lib/mediaSession'
-import { recordPlay } from '../lib/playApi'
+import { recordPlay, updatePlay } from '../lib/playApi'
 import { useToastStore } from '../lib/toastStore'
 
 function RouteLoading() {
@@ -51,18 +51,31 @@ export function AppShell() {
   // download store, TanStack invalidation, and play-when-ready auto-play.
   useRealtime()
 
-  // One app-wide play tracker: scores qualified plays off the audio engine and
-  // POSTs them to /api/v1/plays.  Starts once when AppShell mounts and cleans
+  // One app-wide play tracker: scores qualified plays off the audio engine,
+  // POSTs them to /api/v1/plays, then PATCHes the final listened time.  Starts once when AppShell mounts and cleans
   // up (unsubscribes) when it unmounts.
   const queryClient = useQueryClient()
   const pushToast = useToastStore((s) => s.push)
   useEffect(() => startPlayTracker(engine, async (input) => {
     try {
-      await recordPlay(input)
+      const id = await recordPlay(input)
       await queryClient.invalidateQueries({ queryKey: ['stats'] })
+      return id
     } catch {
       pushToast("Couldn't record this play. Check your connection and try again.", 'error')
+      return null
     }
+  }, {
+    // Once the song ends, record how much of it was really heard. Quiet on
+    // failure: the play itself is already counted.
+    update: async (id, progress, keepalive) => {
+      try {
+        await updatePlay(id, progress, keepalive)
+        if (!keepalive) await queryClient.invalidateQueries({ queryKey: ['stats'] })
+      } catch {
+        /* the play stays with the time heard when it was recorded */
+      }
+    },
   }), [pushToast, queryClient])
   useEffect(() => startNowPlaying(engine), [])
   useEffect(() => startMediaSession(engine), [])

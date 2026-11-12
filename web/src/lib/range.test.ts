@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { presetRange, customRange } from './range'
+import { presetRange, customRange, currentRange } from './range'
 import type { Range } from './range'
 
 // Fixed reference point: 2024-03-15 12:00:00 UTC (a Friday)
@@ -164,5 +164,22 @@ describe('customRange', () => {
     expect(['day', 'week', 'month']).toContain(shape.bucket)
     expect(typeof shape.tzOffsetMinutes).toBe('number')
     expect(typeof shape.label).toBe('string')
+  })
+})
+
+// A preset like "Last 30 days" ends at "now". Picked when the page opened, it
+// froze there, so songs played while the page was open never showed up.
+describe('currentRange', () => {
+  it('moves a preset range forward to the current time', () => {
+    const opened = new Date(2024, 2, 15, 12, 0, 0)
+    const later = new Date(2024, 2, 15, 12, 30, 0)
+    const r = currentRange(presetRange('30d', opened), later)
+    expect(r.to).toBe(Math.floor(later.getTime() / 1000))
+    expect(r.label).toBe('Last 30 days')
+  })
+
+  it('leaves a custom range alone', () => {
+    const custom = customRange(new Date(2024, 0, 1), new Date(2024, 0, 31))
+    expect(currentRange(custom, new Date(2024, 5, 1))).toEqual(custom)
   })
 })

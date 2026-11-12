@@ -161,7 +161,7 @@ export default function Home() {
   const [recentPlays, setRecentPlays] = useState<RecentRow[] | null>(null)
 
   useEffect(() => {
-    statsApi.recent(Date.now() / 1000, 20)
+    statsApi.recent(Math.floor(Date.now() / 1000), 20)
       .then((rows) => {
         // De-duplicate consecutive entries with the same CatalogID
         const deduped: RecentRow[] = []

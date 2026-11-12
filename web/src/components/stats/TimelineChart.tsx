@@ -3,9 +3,13 @@ import type { TimeBucket } from '../../lib/statsApi'
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
+type Granularity = 'day' | 'week' | 'month'
+
 interface Props {
   data: TimeBucket[]
   metric?: 'plays' | 'ms'
+  /** The requested range. With it, every day/week/month gets a slot, played or not. */
+  range?: { from: number; to: number; bucket: Granularity }
 }
 
 interface Tooltip {
@@ -18,6 +22,59 @@ interface Tooltip {
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
+
+/** Local start (unix seconds) of the day/week (Monday)/month containing sec. */
+function slotFloor(sec: number, g: Granularity): Date {
+  const d = new Date(sec * 1000)
+  if (g === 'month') return new Date(d.getFullYear(), d.getMonth(), 1)
+  if (g === 'week') return new Date(d.getFullYear(), d.getMonth(), d.getDate() - ((d.getDay() + 6) % 7))
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate())
+}
+
+function nextSlot(d: Date, g: Granularity): Date {
+  if (g === 'month') return new Date(d.getFullYear(), d.getMonth() + 1, 1)
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate() + (g === 'week' ? 7 : 1))
+}
+
+const MAX_SLOTS = 400
+
+/**
+ * fillBuckets lays the server's non-empty buckets onto every day/week/month of
+ * the range, so quiet days show as gaps instead of disappearing. An all-time
+ * range (from 0) starts at the first bucket with plays. Buckets are matched to
+ * slots by their middle, not their exact start, so a start that is an hour off
+ * local midnight (the server uses one fixed UTC offset across daylight saving)
+ * still lands on its own day.
+ */
+function fillBuckets(data: TimeBucket[], range: { from: number; to: number; bucket: Granularity }): TimeBucket[] {
+  if (data.length === 0) return data
+  const g = range.bucket
+  const first = Math.min(...data.map((b) => b.Start))
+  const startSec = range.from > 0 ? Math.min(range.from, first) : first
+  const starts: number[] = []
+  for (let d = slotFloor(startSec, g); d.getTime() / 1000 < range.to; d = nextSlot(d, g)) {
+    starts.push(Math.floor(d.getTime() / 1000))
+    if (starts.length > MAX_SLOTS) return data
+  }
+  if (starts.length === 0) return data
+  const out = starts.map((start) => ({ Start: start, Plays: 0, MsPlayed: 0 }))
+  for (const b of data) {
+    const mid = b.Start + 43_200
+    let i = starts.length - 1
+    while (i > 0 && starts[i] > mid) i--
+    out[i].Plays += b.Plays
+    out[i].MsPlayed += b.MsPlayed
+  }
+  return out
+}
+
+/** A round step (1, 2 or 5 × 10^n) of at least raw. */
+function niceStep(raw: number): number {
+  if (raw <= 0) return 1
+  const magnitude = Math.pow(10, Math.floor(Math.log10(raw)))
+  const n = raw / magnitude
+  return (n <= 1 ? 1 : n <= 2 ? 2 : n <= 5 ? 5 : 10) * magnitude
+}
 
 /** Infer bucket granularity by checking the smallest gap between starts. */
 function inferGranularity(data: TimeBucket[]): 'day' | 'week' | 'month' {
@@ -76,9 +133,10 @@ const BAR_GAP = 0.18 // fraction of bar+gap width reserved for gap
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-export function TimelineChart({ data, metric = 'plays' }: Props) {
+export function TimelineChart({ data: rawData, metric = 'plays', range }: Props) {
   const [tooltip, setTooltip] = useState<Tooltip | null>(null)
   const gradId = useId()
+  const data = range ? fillBuckets(rawData, range) : rawData
 
   if (data.length === 0) {
     return (
@@ -88,26 +146,21 @@ export function TimelineChart({ data, metric = 'plays' }: Props) {
     )
   }
 
-  const granularity = inferGranularity(data)
+  const granularity = range?.bucket ?? inferGranularity(data)
   const values = data.map((b) => metric === 'plays' ? b.Plays : b.MsPlayed)
   const maxVal = Math.max(...values, 1)
 
-  // Y axis nice round max
-  const yAxisMax = (() => {
-    const raw = maxVal
-    const magnitude = Math.pow(10, Math.floor(Math.log10(raw)))
-    const normalized = raw / magnitude
-    const nice = normalized <= 1 ? 1 : normalized <= 2 ? 2 : normalized <= 5 ? 5 : 10
-    return nice * magnitude
-  })()
+  // Y axis: about Y_GRIDLINES round steps. Plays are whole numbers, so their
+  // step is never below 1 (a max of 1 used to label the axis 0, 0, 1, 1, 1).
+  const rawStep = maxVal / Y_GRIDLINES
+  const gridStep = metric === 'plays' ? Math.max(1, niceStep(rawStep)) : niceStep(rawStep)
+  const yAxisMax = gridStep * Math.ceil(maxVal / gridStep)
 
   // Bar layout
   const slotW = CHART_W / data.length
   const barW = slotW * (1 - BAR_GAP)
 
-  // Y grid steps
-  const gridStep = yAxisMax / Y_GRIDLINES
-  const gridLines = Array.from({ length: Y_GRIDLINES + 1 }, (_, i) => i * gridStep)
+  const gridLines = Array.from({ length: Math.round(yAxisMax / gridStep) + 1 }, (_, i) => i * gridStep)
 
   const xLabelIndices = thinIndices(data.length, MAX_X_LABELS)
 
@@ -157,6 +210,7 @@ export function TimelineChart({ data, metric = 'plays' }: Props) {
                   strokeWidth={1}
                 />
                 <text
+                  data-ylabel
                   x={-8}
                   y={y}
                   textAnchor="end"
