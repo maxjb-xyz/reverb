@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import type { ConfigField, ConfigSchema } from '../lib/adaptersApi'
 import { testAdapter } from '../lib/adaptersApi'
 import { Icon } from './ui/Icon'
+import { Button } from './ui/Button'
 
 export interface AdapterFormProps {
   name: string
@@ -218,12 +219,12 @@ export function AdapterForm({
 
       {submitError && <p className="text-sm text-error">{submitError}</p>}
       <div className="flex items-center gap-3 pt-1">
-        <button type="submit" disabled={submitting} className="rounded bg-accent px-4 py-2 font-medium text-on-accent disabled:opacity-50">
+        <Button type="submit" variant="primary" disabled={submitting}>
           {submitLabel}
-        </button>
-        <button type="button" onClick={runTest} disabled={testState.status === 'testing'} className="rounded border border-border-subtle px-4 py-2 text-text-primary hover:bg-raised-hover">
-          {testState.status === 'testing' ? 'Testing...' : 'Test Connection'}
-        </button>
+        </Button>
+        <Button onClick={runTest} disabled={testState.status === 'testing'}>
+          {testState.status === 'testing' ? 'Testing…' : 'Test connection'}
+        </Button>
         {testState.status === 'ok' && <span className="flex items-center gap-1 text-sm text-success"><Icon name="check" className="w-4 h-4" /> Connection OK</span>}
         {testState.status === 'error' && <span className="flex items-center gap-1 text-sm text-error"><Icon name="x" className="w-4 h-4" /> {testState.msg}</span>}
       </div>

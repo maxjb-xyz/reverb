@@ -9,7 +9,7 @@ import { coverUrl } from '../lib/libraryApi'
 import { postBatchRequest } from '../lib/requestApi'
 import { useAuthStore } from '../lib/authStore'
 import { useToastStore } from '../lib/toastStore'
-import { Cover, Skeleton, EmptyState, MediaCard } from '../components/ui'
+import { Cover, Skeleton, EmptyState, MediaCard, ConfirmDialog } from '../components/ui'
 import { Chip } from '../components/ui/Chip'
 import { Button } from '../components/ui/Button'
 import type { AlbumCoverage, DiscographyAlbum } from '../lib/types'
@@ -109,6 +109,7 @@ export default function Artist() {
   const canAutoApprove = useAuthStore((s) => s.can('auto_approve'))
   const [bulkSubmitting, setBulkSubmitting] = useState(false)
   const [requestAllOpen, setRequestAllOpen] = useState(false)
+  const [confirmDownloadOpen, setConfirmDownloadOpen] = useState(false)
 
   // Per-entity listening stats — fetched once detail.name is known
   // DEFERRED: album-page strip needs backend entity kind="album"; per-track "played N×"
@@ -313,16 +314,7 @@ export default function Artist() {
                     variant="secondary"
                     size="md"
                     disabled={bulkSubmitting}
-                    onClick={() => {
-                      if (
-                        window.confirm(
-                          `Download ${allMissingTracks.length} missing tracks?`,
-                        )
-                      ) {
-                        setBulkSubmitting(true)
-                        void postBatchDownload(allMissingTracks).finally(() => setBulkSubmitting(false))
-                      }
-                    }}
+                    onClick={() => setConfirmDownloadOpen(true)}
                   >
                     {bulkSubmitting ? 'Starting downloads…' : `Download all missing · ${allMissingTracks.length}`}
                   </Button>
@@ -414,6 +406,18 @@ export default function Artist() {
       )}
 
       {/* Request all disclosure modal */}
+      <ConfirmDialog
+        open={confirmDownloadOpen}
+        title={`Download ${allMissingTracks.length} missing ${allMissingTracks.length === 1 ? 'track' : 'tracks'}?`}
+        body={`Everything by ${detail.name} that is not in your library yet will be queued.`}
+        confirmLabel="Download"
+        onCancel={() => setConfirmDownloadOpen(false)}
+        onConfirm={() => {
+          setConfirmDownloadOpen(false)
+          setBulkSubmitting(true)
+          void postBatchDownload(allMissingTracks).finally(() => setBulkSubmitting(false))
+        }}
+      />
       {requestAllOpen &&
         createPortal(
           <>

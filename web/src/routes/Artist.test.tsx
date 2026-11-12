@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import Artist from './Artist'
 
@@ -208,24 +208,25 @@ describe('Artist page', () => {
 
   it('"Download all missing" button calls postBatchDownload when confirmed', () => {
     setAuth(['auto_approve'])
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
     wrapper(<Artist />)
     const dlBtn = screen.getByRole('button', { name: /download all missing/i })
     fireEvent.click(dlBtn)
-    expect(confirmSpy).toHaveBeenCalledWith('Download 1 missing tracks?')
+    // In-app dialog, not window.confirm; nothing is queued until it is confirmed.
+    expect(postBatchDownload).not.toHaveBeenCalled()
+    const dialog = screen.getByRole('alertdialog', { name: 'Download 1 missing track?' })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Download' }))
     expect(postBatchDownload).toHaveBeenCalledWith([MISSING_TRACK])
-    confirmSpy.mockRestore()
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
   })
 
   it('"Download all missing" does NOT download when confirm is cancelled', () => {
     setAuth(['auto_approve'])
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
     wrapper(<Artist />)
     const dlBtn = screen.getByRole('button', { name: /download all missing/i })
     fireEvent.click(dlBtn)
-    expect(confirmSpy).toHaveBeenCalled()
+    fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Cancel' }))
     expect(postBatchDownload).not.toHaveBeenCalled()
-    confirmSpy.mockRestore()
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
   })
 
   // ── Acquisition-button gating (capability-driven, mutually exclusive) ────────
