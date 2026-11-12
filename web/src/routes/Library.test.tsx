@@ -141,6 +141,58 @@ describe('Library page', () => {
     expect(screen.getByRole('button', { name: /ok computer/i })).toBeInTheDocument()
   })
 
+  it('lists the views in the same order as the library rail', () => {
+    render(wrap(<Library />))
+    const group = screen.getByRole('group', { name: 'Library filter' })
+    expect(Array.from(group.querySelectorAll('button')).map((b) => b.textContent)).toEqual([
+      'Playlists', 'Albums', 'Artists',
+    ])
+  })
+
+  it('the filter box narrows albums by title or artist, and says so when nothing matches', async () => {
+    const { useAlbums } = await import('../lib/libraryApi')
+    vi.mocked(useAlbums).mockReturnValue({
+      data: [
+        makeAlbum({ id: 'a', name: 'OK Computer', artist: 'Radiohead' }),
+        makeAlbum({ id: 'b', name: 'Blue', artist: 'Joni Mitchell' }),
+      ],
+      isLoading: false,
+      error: null,
+    } as unknown as UseQueryResult<Album[], Error>)
+    render(wrap(<Library />))
+    const box = screen.getByRole('searchbox', { name: 'Filter albums' })
+
+    fireEvent.change(box, { target: { value: 'joni' } })
+    expect(screen.getByRole('button', { name: 'Blue' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'OK Computer' })).not.toBeInTheDocument()
+
+    fireEvent.change(box, { target: { value: 'zzz' } })
+    expect(screen.getByText('No matches')).toBeInTheDocument()
+    // Not the "empty library" message: the library has music, the filter hides it.
+    expect(screen.queryByText('Nothing here yet')).not.toBeInTheDocument()
+  })
+
+  it('albums can be sorted by title or artist; the default keeps newest first', async () => {
+    const { useAlbums } = await import('../lib/libraryApi')
+    vi.mocked(useAlbums).mockReturnValue({
+      data: [
+        makeAlbum({ id: 'a', name: 'Zebra', artist: 'Beta' }),
+        makeAlbum({ id: 'b', name: 'Apple', artist: 'Gamma' }),
+        makeAlbum({ id: 'c', name: 'Mango', artist: 'Alpha' }),
+      ],
+      isLoading: false,
+      error: null,
+    } as unknown as UseQueryResult<Album[], Error>)
+    render(wrap(<Library />))
+    const order = () =>
+      screen.getAllByRole('button').map((b) => b.getAttribute('aria-label')).filter((n) => ['Zebra', 'Apple', 'Mango'].includes(n ?? ''))
+    expect(order()).toEqual(['Zebra', 'Apple', 'Mango'])
+    fireEvent.change(screen.getByRole('combobox', { name: 'Sort albums' }), { target: { value: 'title' } })
+    expect(order()).toEqual(['Apple', 'Mango', 'Zebra'])
+    fireEvent.change(screen.getByRole('combobox', { name: 'Sort albums' }), { target: { value: 'artist' } })
+    expect(order()).toEqual(['Mango', 'Zebra', 'Apple'])
+  })
+
   it('switches to Artists grid when Artists chip is clicked', async () => {
     const { useArtists } = await import('../lib/libraryApi')
     vi.mocked(useArtists).mockReturnValue({

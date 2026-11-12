@@ -111,13 +111,17 @@ export default function SyncedPlaylist() {
   const location = useLocation()
   const openRenaming = (location.state as { rename?: boolean } | null)?.rename === true
   const detailName = detail?.name
-  useEffect(() => {
-    if (!openRenaming || detailName === undefined) return
+  // Adjusted during render (not in an effect) so the editor is open on first paint.
+  const [renameArmed, setRenameArmed] = useState(openRenaming)
+  if (renameArmed && detailName !== undefined) {
+    setRenameArmed(false)
     setNameInput(detailName)
     setEditingName(true)
+  }
+  useEffect(() => {
     // Drop the flag so a reload or Back does not reopen the editor.
-    navigate(location.pathname, { replace: true, state: null })
-  }, [openRenaming, detailName, navigate, location.pathname])
+    if (openRenaming) navigate(location.pathname, { replace: true, state: null })
+  }, [openRenaming, navigate, location.pathname])
   // Set synchronously by Escape so the blur-triggered handleRename can tell a
   // cancel from a save (React state wouldn't flush before the blur fires).
   const renameCancelledRef = useRef(false)

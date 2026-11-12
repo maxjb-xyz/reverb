@@ -86,9 +86,9 @@ async function goToAdmin(page: import('@playwright/test').Page) {
   const dl = await installDownloadersMocks(page)
   await stubAdminRoutes(page)
 
-  await page.goto('/admin')
+  await page.goto('/settings/providers')
   await expect(page.getByTestId('app-shell-root')).toBeVisible()
-  await expect(page.getByRole('heading', { name: 'Admin' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Library backend' })).toBeVisible()
   // Admin defaults to the Providers tab — verify it's active.
   await expect(page.getByTestId('downloaders-song-col')).toBeVisible()
 
@@ -105,9 +105,9 @@ async function goToAdminWithSeed(
   const dl = await installDownloadersMocksWithSeed(page, seed)
   await stubAdminRoutes(page)
 
-  await page.goto('/admin')
+  await page.goto('/settings/providers')
   await expect(page.getByTestId('app-shell-root')).toBeVisible()
-  await expect(page.getByRole('heading', { name: 'Admin' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Library backend' })).toBeVisible()
 
   return dl
 }

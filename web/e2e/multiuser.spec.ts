@@ -71,12 +71,12 @@ test('setup: first-run requires a username AND a password, then creates the owne
   await usernameInput.fill('owner')
   await passwordInput.fill('pw12345')
   await page.getByRole('button', { name: 'Continue' }).click()
-  await expect(page.getByRole('heading', { name: 'Add a Library' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Choose a library' })).toBeVisible()
 })
 
 // ── 2) Admin surface is capability-gated ─────────────────────────────────────
 
-test('admin gating: an admin sees the Admin menu entry; a non-admin does not and is redirected from /admin', async ({ page }) => {
+test('admin gating: an admin gets the admin sections inside Settings, and /admin lands on them', async ({ page }) => {
   const authed = { value: true }
   // Admin (is_admin) session.
   await installApiMocks(page, authed, { me: ownerMe })
@@ -84,12 +84,19 @@ test('admin gating: an admin sees the Admin menu entry; a non-admin does not and
   await page.goto('/')
   await expect(page.getByTestId('app-shell-root')).toBeVisible()
 
-  // Open the account menu — the Admin entry is present for a manager.
+  // Admin lives inside Settings now: one menu entry, with the admin sections listed.
   await page.getByRole('button', { name: 'Account menu' }).click()
-  await expect(page.getByRole('menuitem', { name: 'Admin' })).toBeVisible()
+  await page.getByRole('menuitem', { name: 'Settings' }).click()
+  const sections = page.getByRole('navigation', { name: 'Settings sections' })
+  await expect(sections.getByRole('button', { name: 'Providers' })).toBeVisible()
+  await expect(sections.getByRole('button', { name: 'Users and roles' })).toBeVisible()
+
+  // Old /admin links still work.
+  await page.goto('/admin')
+  await expect(page).toHaveURL(/\/settings\/providers$/)
 })
 
-test('admin gating: a non-admin user has no Admin entry and is redirected away from /admin', async ({ page }) => {
+test('admin gating: a non-admin user has no admin sections and is redirected away from /admin', async ({ page }) => {
   const authed = { value: true }
   // A plain requester: no management capabilities at all.
   const requester = {
@@ -114,7 +121,13 @@ test('admin gating: a non-admin user has no Admin entry and is redirected away f
   // Hitting /admin directly redirects home (defense-in-depth route guard).
   await page.goto('/admin')
   await expect(page).toHaveURL(/\/$/)
-  await expect(page.getByRole('heading', { name: 'Admin' })).toHaveCount(0)
+
+  // A direct link to an admin section of Settings shows Profile instead.
+  await page.goto('/settings/providers')
+  const sections = page.getByRole('navigation', { name: 'Settings sections' })
+  await expect(sections.getByRole('button', { name: 'Profile' })).toBeVisible()
+  await expect(sections.getByRole('button', { name: 'Providers' })).toHaveCount(0)
+  await expect(page.getByRole('heading', { name: 'Library backend' })).toHaveCount(0)
 })
 
 // ── 3) Download control is capability-gated ──────────────────────────────────
