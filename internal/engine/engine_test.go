@@ -35,12 +35,17 @@ func (f fakeSimilar) Similar(_ context.Context, key string) ([]libindex.SimilarA
 type fakeTop struct {
 	search.SearchSource
 	calls int
+	songs int // top songs per artist (default 1)
 }
 
 func (f *fakeTop) Name() string { return "deezer" }
-func (f *fakeTop) ArtistTopTracks(_ context.Context, id string, _ int) ([]core.ExternalResult, error) {
+func (f *fakeTop) ArtistTopTracks(_ context.Context, id string, limit int) ([]core.ExternalResult, error) {
 	f.calls++
-	return []core.ExternalResult{{Source: "deezer", ExternalID: "t-" + id, Title: "Hit of " + id, Artist: id}}, nil
+	out := []core.ExternalResult{{Source: "deezer", ExternalID: "t-" + id, Title: "Hit of " + id, Artist: id}}
+	for i := 1; i < f.songs && i < limit; i++ {
+		out = append(out, core.ExternalResult{Source: "deezer", ExternalID: fmt.Sprintf("t-%s-%d", id, i), Title: fmt.Sprintf("Song %d of %s", i, id), Artist: id})
+	}
+	return out, nil
 }
 
 type env struct {
@@ -599,5 +604,53 @@ func TestGenreRadio_FewAlbumsStillFillTheStation(t *testing.T) {
 	res := e.next(t, Request{Seed: Seed{Kind: SeedGenre, ID: "Metal"}, N: 10})
 	if len(res.Items) != 10 {
 		t.Fatalf("genre radio over two albums gave %d songs, want 10: %v", len(res.Items), ids(res.Items))
+	}
+}
+
+func TestDiscover_OneFavouriteStillFillsTheList(t *testing.T) {
+	e := newEnv(t)
+	seedBonobo(t, e)
+	// Only Bonobo has history; Deezer knows 25 artists like Bonobo.
+	e.sim["bonobo"] = nil
+	for i := 0; i < 25; i++ {
+		e.sim["bonobo"] = append(e.sim["bonobo"], libindex.SimilarArtist{Key: fmt.Sprintf("new %d", i), Name: fmt.Sprintf("New %d", i), Rank: i, Source: "deezer", ExternalID: fmt.Sprintf("d%d", i)})
+	}
+	var ls []taste.Listen
+	for i := 0; i < 6; i++ {
+		ls = append(ls, taste.Listen{CatalogID: fmt.Sprintf("c%d", i), LibraryTrackID: fmt.Sprintf("bonobo-%d", i), Title: fmt.Sprintf("Bonobo song %d", i), Artist: "Bonobo",
+			StartedAt: now.Add(-48 * time.Hour).Unix(), Outcome: taste.OutcomeCompleted, DurationMs: 200_000, MsPlayed: 200_000})
+	}
+	e.taste.in = taste.Inputs{Listens: ls}
+	got, err := e.eng.Discover(context.Background(), "u1", 21, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 21 {
+		t.Fatalf("one favourite gave %d new songs, want 21", len(got))
+	}
+
+	// Few similar artists: take more than one song from each rather than run short.
+	e.sim["bonobo"] = e.sim["bonobo"][:4]
+	e.top.songs = 5
+	got, err = e.eng.Discover(context.Background(), "u1", 10, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 10 {
+		t.Fatalf("4 similar artists with 5 songs each gave %d, want 10", len(got))
+	}
+	seen := map[string]bool{}
+	per := map[string]int{}
+	for _, c := range got {
+		if seen[c.External.ExternalID] {
+			t.Fatalf("song %s picked twice", c.External.ExternalID)
+		}
+		seen[c.External.ExternalID] = true
+		per[c.artistKey]++
+	}
+	for a, n := range per {
+		if n > 3 {
+			t.Errorf("%s has %d songs; keep it varied", a, n)
+		}
 	}
 }
