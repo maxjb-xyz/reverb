@@ -944,10 +944,6 @@ func (e *Engine) shuffle(n int, swap func(i, j int)) {
 // discover finds songs not in the library: top songs of artists similar to
 // the seed (or the user's favourites) that the library doesn't have.
 func (e *Engine) discover(ctx context.Context, prof *taste.Profile, req Request, seed seedInfo, n int) []Candidate {
-	srcs := e.top()
-	if len(srcs) == 0 || n <= 0 {
-		return nil
-	}
 	anchors := []string{}
 	names := map[string]string{}
 	if seed.artistKey != "" {
@@ -958,7 +954,46 @@ func (e *Engine) discover(ctx context.Context, prof *taste.Profile, req Request,
 		anchors = append(anchors, a.Key)
 		names[a.Key] = a.Name
 	}
-	anchors = nonEmpty(anchors)
+	ex := map[string]bool{}
+	for _, id := range req.Exclude {
+		ex[id] = true
+	}
+	return e.discoverFrom(ctx, prof, nonEmpty(anchors), names, n, ex)
+}
+
+// Discover returns up to n songs that aren't in the library, for a user's
+// Discover Weekly: one top song each from artists that fans of the user's
+// favourites also play, skipping artists the library has, thumbed-down
+// artists, and any song in exclude (keyed "source:externalId").
+func (e *Engine) Discover(ctx context.Context, userID string, n int, exclude map[string]bool) ([]Candidate, error) {
+	if e.top == nil || n <= 0 {
+		return []Candidate{}, nil
+	}
+	prof, err := e.taste.Profile(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	var anchors []string
+	names := map[string]string{}
+	for _, a := range prof.TopArtists(12) {
+		anchors = append(anchors, a.Key)
+		names[a.Key] = a.Name
+	}
+	out := e.discoverFrom(ctx, prof, anchors, names, n, exclude)
+	if out == nil {
+		out = []Candidate{}
+	}
+	return out, nil
+}
+
+func (e *Engine) discoverFrom(ctx context.Context, prof *taste.Profile, anchors []string, names map[string]string, n int, exclude map[string]bool) []Candidate {
+	if e.top == nil || e.similar == nil || n <= 0 {
+		return nil
+	}
+	srcs := e.top()
+	if len(srcs) == 0 {
+		return nil
+	}
 	type pick struct {
 		sim    libindex.SimilarArtist
 		anchor string
@@ -966,27 +1001,32 @@ func (e *Engine) discover(ctx context.Context, prof *taste.Profile, req Request,
 	var picks []pick
 	seen := map[string]bool{}
 	for _, a := range anchors {
+		seen[a] = true
+	}
+	for _, a := range anchors {
 		sims, err := e.similar.Similar(ctx, a)
 		if err != nil {
 			continue
 		}
+		taken := 0
 		for _, s := range sims {
 			if s.OwnedTracks > 0 || s.ExternalID == "" || seen[s.Key] || prof.HiddenArtists[s.Key] {
 				continue
 			}
 			seen[s.Key] = true
 			picks = append(picks, pick{s, a})
-			if len(picks) >= n*2 {
+			// Spread over anchors: no one favourite takes the whole list.
+			if taken++; taken >= max(2, n/2) {
 				break
 			}
 		}
 	}
 	e.shuffle(len(picks), func(i, j int) { picks[i], picks[j] = picks[j], picks[i] })
-	ctx, cancel := context.WithTimeout(ctx, 8*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
 	var out []Candidate
 	for _, pk := range picks {
-		if len(out) >= n {
+		if len(out) >= n || ctx.Err() != nil {
 			break
 		}
 		for _, src := range srcs {
@@ -994,15 +1034,23 @@ func (e *Engine) discover(ctx context.Context, prof *taste.Profile, req Request,
 				continue
 			}
 			tracks, err := src.ArtistTopTracks(ctx, pk.sim.ExternalID, 5)
-			if err != nil || len(tracks) == 0 {
+			if err != nil {
+				continue
+			}
+			var fresh []core.ExternalResult
+			for _, t := range tracks {
+				if !exclude[t.Source+":"+t.ExternalID] {
+					fresh = append(fresh, t)
+				}
+			}
+			if len(fresh) == 0 {
 				continue
 			}
 			e.mu.Lock()
-			t := tracks[e.rng.Intn(len(tracks))]
+			t := fresh[e.rng.Intn(len(fresh))]
 			e.mu.Unlock()
-			tc := t
 			out = append(out, Candidate{
-				External: &tc, Score: 0.5,
+				External: &t, Score: 0.5,
 				Reason:    Reason{Kind: ReasonDiscovery, Artist: pk.sim.Name, ArtistKey: pk.sim.Key, SeedArtist: names[pk.anchor]},
 				artistKey: pk.sim.Key,
 			})

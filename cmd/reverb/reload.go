@@ -5,6 +5,7 @@ import (
 	"sync/atomic"
 
 	"github.com/maxjb-xyz/reverb/internal/api"
+	"github.com/maxjb-xyz/reverb/internal/download"
 	"github.com/maxjb-xyz/reverb/internal/library"
 	"github.com/maxjb-xyz/reverb/internal/llm"
 	"github.com/maxjb-xyz/reverb/internal/resolver"
@@ -23,6 +24,7 @@ type matcherHolder struct{ m resolver.Rematcher }
 type liveServices struct {
 	lib     library.LibraryAdapter
 	sources []search.SearchSource
+	dl      *download.Manager
 }
 
 // bundleBuilder is the seam serviceReloader builds a fresh ServiceBundle through.
@@ -83,7 +85,18 @@ func (r *serviceReloader) publishMatcher(m resolver.Rematcher) {
 
 // publishServices installs the bundle's library and search sources as live.
 func (r *serviceReloader) publishServices(b wiring.ServiceBundle) {
-	r.live.Store(&liveServices{lib: b.Library, sources: b.Sources})
+	r.live.Store(&liveServices{lib: b.Library, sources: b.Sources, dl: b.Manager})
+}
+
+// downloadsProvider returns a func reading the live download manager (nil
+// when none is configured).
+func (r *serviceReloader) downloadsProvider() func() *download.Manager {
+	return func() *download.Manager {
+		if l := r.live.Load(); l != nil {
+			return l.dl
+		}
+		return nil
+	}
 }
 
 // servicesProvider returns a func reading the live library + sources.

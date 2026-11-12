@@ -37,6 +37,7 @@ export type IconName =
   | 'chart'
   | 'thumbs-down'
   | 'radio'
+  | 'compass'
 
 /**
  * Per-icon descriptor.
@@ -251,6 +252,15 @@ const icons: Record<IconName, IconDef> = {
         <circle cx="12" cy="12" r="2" />
         <path d="M16.2 7.8c2.3 2.3 2.3 6.1 0 8.5" />
         <path d="M19.1 4.9C23 8.8 23 15.1 19.1 19" />
+      </>
+    ),
+  },
+  // compass: Discover Weekly (new music to explore)
+  compass: {
+    content: (
+      <>
+        <circle cx="12" cy="12" r="9" />
+        <path d="m15.5 8.5-2 5-5 2 2-5z" />
       </>
     ),
   },

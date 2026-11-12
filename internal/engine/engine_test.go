@@ -508,3 +508,30 @@ func TestGenres_ListsLibraryGenresWithLabels(t *testing.T) {
 		t.Fatalf("genres = %+v", gs)
 	}
 }
+
+func TestDiscover_NewArtistsFromFavouritesSkippingExcluded(t *testing.T) {
+	e := newEnv(t)
+	seedBonobo(t, e)
+	e.sim["bonobo"] = append(e.sim["bonobo"], libindex.SimilarArtist{Key: "nightmares on wax", Name: "Nightmares On Wax", Rank: 3, Source: "deezer", ExternalID: "d-now"})
+	var ls []taste.Listen
+	for i := 0; i < 6; i++ {
+		ls = append(ls, taste.Listen{CatalogID: fmt.Sprintf("c%d", i), LibraryTrackID: fmt.Sprintf("bonobo-%d", i), Title: fmt.Sprintf("Bonobo song %d", i), Artist: "Bonobo",
+			StartedAt: now.Add(-48 * time.Hour).Unix(), Outcome: taste.OutcomeCompleted, DurationMs: 200_000, MsPlayed: 200_000})
+	}
+	e.taste.in = taste.Inputs{Listens: ls}
+	got, err := e.eng.Discover(context.Background(), "u1", 5, map[string]bool{"deezer:t-d-eman": true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].Owned || got[0].External.ExternalID != "t-d-now" {
+		t.Fatalf("discover = %+v", ids(got))
+	}
+	if r := got[0].Reason; r.Kind != ReasonDiscovery || r.SeedArtist != "Bonobo" || r.Artist != "Nightmares On Wax" {
+		t.Errorf("reason = %+v", r)
+	}
+	// No history, nothing to discover from.
+	e.taste.in = taste.Inputs{}
+	if got, _ := e.eng.Discover(context.Background(), "u1", 5, nil); len(got) != 0 {
+		t.Errorf("cold start discover = %v", ids(got))
+	}
+}

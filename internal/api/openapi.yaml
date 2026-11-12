@@ -607,6 +607,68 @@ paths:
       summary: Rebuild a mix now with new songs.
       parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
       responses: { "200": { description: Mix }, "404": { description: not found } }
+  /discover:
+    get:
+      summary: >
+        The session user's Discover Weekly. Built on first read each week
+        (Monday to Sunday): mostly songs not in the library, picked by the
+        engine from artists like the user's favourites, the rest owned songs
+        they haven't played. When the user may add music (owner or
+        auto_approve), downloads are on and a downloader is configured, the
+        new songs are downloaded ahead of time, up to the weekly cap. Reading
+        it also closes earlier weeks: each song Reverb downloaded for Discover
+        is kept or deleted by the user's keep rule. A song stays whenever it
+        is in any playlist, another user played it through, or it was already
+        in the library or downloaded before Discover asked for it.
+      responses:
+        "200":
+          description: >
+            { week ("2027-W02"), startsAt, endsAt (unix seconds), prefs,
+            downloads (bool: songs are fetched ahead for this user), items:
+            [{ id, state (suggested|downloading|kept|removed|expired), owned,
+            track?, external?, reason, jobId?, jobStatus?, progress? }] }
+        "503": { description: discover unavailable }
+  /discover/prefs:
+    get:
+      summary: The session user's Discover Weekly preferences.
+      responses: { "200": { description: "{ enabled, size, newShare, keepRule }" } }
+    put:
+      summary: Save the session user's Discover Weekly preferences.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                enabled: { type: boolean, default: true }
+                size: { type: integer, minimum: 10, maximum: 100, default: 30 }
+                newShare: { type: integer, minimum: 0, maximum: 100, default: 70, description: "Percent of songs that aren't in the library yet." }
+                keepRule:
+                  type: string
+                  enum: [playlist, played, always]
+                  default: playlist
+                  description: >
+                    What happens to downloaded songs when the week ends.
+                    playlist keeps only songs added to a playlist; played also
+                    keeps songs the user played through; always keeps everything.
+      responses: { "200": { description: "the saved prefs" }, "400": { description: invalid prefs } }
+  /discover/settings:
+    get:
+      summary: Server-wide Discover settings (managers).
+      responses: { "200": { description: "{ downloads (bool, default true), weeklyCap (songs per user per week, default 30) }" }, "403": { description: not a manager } }
+    put:
+      summary: Save server-wide Discover settings (managers).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                downloads: { type: boolean }
+                weeklyCap: { type: integer, minimum: 0, maximum: 500 }
+      responses: { "200": { description: "the saved settings" }, "400": { description: invalid settings }, "403": { description: not a manager } }
   /ws:
     get:
       summary: >
