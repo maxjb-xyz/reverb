@@ -7,6 +7,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/maxjb-xyz/reverb/internal/core"
+	"github.com/maxjb-xyz/reverb/internal/taste"
 )
 
 // createDownloadBody is the POST /downloads request DTO.
@@ -54,6 +55,7 @@ func (s *Server) handleCreateDownload(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": err.Error()})
 		return
 	}
+	s.recordTasteSignal(r.Context(), cu.ID, taste.SignalDownload, tasteRefFor(body.Source, body.ExternalID, body.Title, body.Artist, body.Album, body.ISRC, body.DurationMs))
 	writeJSON(w, http.StatusOK, job)
 }
 

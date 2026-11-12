@@ -4,6 +4,7 @@ import { useLyrics } from '../lib/lyricsApi'
 import { useActiveLyricLine } from '../lib/useActiveLyricLine'
 import { LyricsLines } from './lyrics/LyricsLines'
 import { AddToPlaylistMenu } from './AddToPlaylistMenu'
+import { NotForMeMenu } from './NotForMeMenu'
 import { useUI } from '../lib/uiStore'
 import { trackCoverUrl } from '../lib/libraryApi'
 import { formatDuration } from '../lib/types'
@@ -161,6 +162,7 @@ export function NowPlayingOverlay() {
           </div>
           <div className="mt-1 truncate text-sm text-text-secondary">{current?.artist ?? ''}</div>
         </div>
+        {current && <NotForMeMenu track={current} size="md" />}
         {current && (
           <button type="button" aria-label="Add to playlist" onClick={() => setAddOpen(true)} className={iconBtn()}>
             <Icon name="plus" className="h-5 w-5" />

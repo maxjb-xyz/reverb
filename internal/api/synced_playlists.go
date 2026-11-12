@@ -18,6 +18,7 @@ import (
 	"github.com/maxjb-xyz/reverb/internal/core"
 	"github.com/maxjb-xyz/reverb/internal/playlistsync"
 	"github.com/maxjb-xyz/reverb/internal/store/db"
+	"github.com/maxjb-xyz/reverb/internal/taste"
 )
 
 var validIDRe = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
@@ -403,6 +404,9 @@ func (s *Server) handleAddSyncedTrack(w http.ResponseWriter, r *http.Request) {
 		}
 		writeJSON(w, status, map[string]string{"error": err.Error()})
 		return
+	}
+	if cu, ok := currentUser(r); ok {
+		s.recordTasteSignal(r.Context(), cu.ID, taste.SignalPlaylistAdd, tasteRefFor(body.Source, body.ExternalID, body.Title, body.Artist, body.Album, body.ISRC, body.DurationMs))
 	}
 	writeJSON(w, http.StatusOK, det)
 }

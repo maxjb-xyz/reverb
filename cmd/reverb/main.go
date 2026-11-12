@@ -35,6 +35,7 @@ import (
 	"github.com/maxjb-xyz/reverb/internal/search/spotify"
 	"github.com/maxjb-xyz/reverb/internal/store"
 	"github.com/maxjb-xyz/reverb/internal/store/db"
+	"github.com/maxjb-xyz/reverb/internal/taste"
 	"github.com/maxjb-xyz/reverb/internal/voice"
 	"github.com/maxjb-xyz/reverb/internal/voice/elevenlabs"
 	"github.com/maxjb-xyz/reverb/internal/voice/kokoro"
@@ -219,6 +220,7 @@ func main() {
 	// catalogSvc is already constructed above (before Build) and injected into the Manager.
 	playSvc := play.NewService(st.Q(), catalogSvc, time.Now, uuid.NewString)
 	statsSvc := play.NewStats(st.Q())
+	tasteSvc := taste.NewService(st.Q(), catalogSvc, time.Now, uuid.NewString)
 
 	// Scrobbling: cfg() reads app key/secret from settings on every call so that
 	// admin changes (Task 5 UI) take effect without a restart.
@@ -253,6 +255,7 @@ func main() {
 		Play:          playSvc,
 		Stats:         statsSvc,
 		Scrobble:      scrobbleSvc,
+		Taste:         tasteSvc,
 		Lyrics: &lyrics.Service{
 			Store: st.Q(),
 			Client: &lyrics.LRCLibClient{

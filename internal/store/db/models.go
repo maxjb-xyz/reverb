@@ -115,6 +115,21 @@ type Invite struct {
 	CreatedAt int64          `json:"created_at"`
 }
 
+type ListenEvent struct {
+	ID             string `json:"id"`
+	UserID         string `json:"user_id"`
+	CatalogID      string `json:"catalog_id"`
+	LibraryTrackID string `json:"library_track_id"`
+	ArtistKey      string `json:"artist_key"`
+	StartedAt      int64  `json:"started_at"`
+	MsPlayed       int64  `json:"ms_played"`
+	DurationMs     int64  `json:"duration_ms"`
+	Outcome        string `json:"outcome"`
+	ContextKind    string `json:"context_kind"`
+	ContextID      string `json:"context_id"`
+	CreatedAt      int64  `json:"created_at"`
+}
+
 type Lyric struct {
 	TrackKey  string `json:"track_key"`
 	Synced    int64  `json:"synced"`
@@ -244,6 +259,26 @@ type SyncedPlaylist struct {
 	CreatedAt       int64          `json:"created_at"`
 	Mode            string         `json:"mode"`
 	OwnerUserID     sql.NullString `json:"owner_user_id"`
+}
+
+type TasteFeedback struct {
+	UserID     string `json:"user_id"`
+	TargetKind string `json:"target_kind"`
+	TargetKey  string `json:"target_key"`
+	Label      string `json:"label"`
+	Sublabel   string `json:"sublabel"`
+	LibraryID  string `json:"library_id"`
+	CreatedAt  int64  `json:"created_at"`
+}
+
+type TasteSignal struct {
+	ID         string `json:"id"`
+	UserID     string `json:"user_id"`
+	Kind       string `json:"kind"`
+	CatalogID  string `json:"catalog_id"`
+	ArtistKey  string `json:"artist_key"`
+	ArtistName string `json:"artist_name"`
+	CreatedAt  int64  `json:"created_at"`
 }
 
 type User struct {

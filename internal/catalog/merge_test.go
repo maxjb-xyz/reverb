@@ -406,3 +406,75 @@ func TestMerge_RepointsDownloadJobCanonicalID(t *testing.T) {
 		t.Fatal("loser entity should be deleted after merge")
 	}
 }
+
+// TestMerge_RepointsTasteRefs verifies a merge moves listen events, taste
+// signals and track thumbs-down from loser to winner, and that a thumbs-down
+// the user had already given the winner wins over the loser's duplicate.
+func TestMerge_RepointsTasteRefs(t *testing.T) {
+	s, q := newTestServiceWithQueries(t)
+	ctx := context.Background()
+
+	winner, err := s.CanonicalFor(ctx, Identity{Kind: "track", Title: "Winner Song", Artist: "A", Album: "B", DurationMs: 180000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	loser, err := s.CanonicalFor(ctx, Identity{Kind: "track", Title: "Loser Song", Artist: "A", Album: "B", DurationMs: 180000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	const u1, u2 = "user-1", "user-2"
+	if err := q.InsertListenEvent(ctx, db.InsertListenEventParams{
+		ID: "le-1", UserID: u1, CatalogID: loser, StartedAt: 1_700_000_000, MsPlayed: 5000,
+		Outcome: "skip_early", CreatedAt: 1_700_000_000,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := q.InsertTasteSignal(ctx, db.InsertTasteSignalParams{
+		ID: "ts-1", UserID: u1, Kind: "playlist_add", CatalogID: loser, CreatedAt: 1_700_000_000,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	// u1 thumbed down both; u2 only the loser.
+	for _, fb := range []db.UpsertTasteFeedbackParams{
+		{UserID: u1, TargetKind: "track", TargetKey: loser, Label: "loser", CreatedAt: 1},
+		{UserID: u1, TargetKind: "track", TargetKey: winner, Label: "winner", CreatedAt: 2},
+		{UserID: u2, TargetKind: "track", TargetKey: loser, Label: "loser", CreatedAt: 3},
+	} {
+		if err := q.UpsertTasteFeedback(ctx, fb); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if err := s.merge(ctx, loser, winner); err != nil {
+		t.Fatalf("merge: %v", err)
+	}
+
+	events, err := q.ListListenEventsSince(ctx, db.ListListenEventsSinceParams{UserID: u1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 1 || events[0].CatalogID != winner {
+		t.Fatalf("listen events after merge = %+v; want one on winner", events)
+	}
+	sigs, err := q.ListTasteSignalsSince(ctx, db.ListTasteSignalsSinceParams{UserID: u1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sigs) != 1 || sigs[0].CatalogID != winner {
+		t.Fatalf("signals after merge = %+v; want one on winner", sigs)
+	}
+	fb1, err := q.ListTasteFeedback(ctx, u1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(fb1) != 1 || fb1[0].TargetKey != winner || fb1[0].Label != "winner" {
+		t.Fatalf("u1 feedback after merge = %+v; want only the original winner row", fb1)
+	}
+	fb2, err := q.ListTasteFeedback(ctx, u2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(fb2) != 1 || fb2[0].TargetKey != winner {
+		t.Fatalf("u2 feedback after merge = %+v; want one repointed row", fb2)
+	}
+}
