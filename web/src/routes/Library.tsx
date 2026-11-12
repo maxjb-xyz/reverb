@@ -82,15 +82,15 @@ export default function Library() {
         title="Your Library"
         actions={
           <>
-          {/* Collection is a lens on the library (what you're missing), so it
-              lives here rather than as a standalone rail entry. */}
+          {/* Discographies is a lens on the library (what you're missing), so
+              it lives here rather than as a standalone rail entry. */}
           <Button
             size="sm"
             variant="ghost"
-            aria-label="Open collection"
-            onClick={() => navigate('/collection')}
+            aria-label="Open discographies"
+            onClick={() => navigate('/discographies')}
           >
-            Collection
+            Discographies
           </Button>
           <Button
             size="sm"

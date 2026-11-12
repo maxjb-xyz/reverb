@@ -11,7 +11,7 @@ export interface Command { id: string; title: string; hint?: string; icon: IconN
 export function baseCommands(isManager: boolean): Command[] {
   const nav = (id: string, title: string, to: string, icon: IconName): Command => ({ id, title, icon, keywords: ['navigate'], run: (ctx) => ctx.navigate(to) })
   const commands: Command[] = [
-    nav('nav-home', 'Go to Home', '/', 'home'), nav('nav-search', 'Search', '/search', 'search'), nav('nav-library', 'Library', '/library', 'browse'), nav('nav-collection', 'Collection', '/collection', 'browse'),
+    nav('nav-home', 'Go to Home', '/', 'home'), nav('nav-search', 'Search', '/search', 'search'), nav('nav-library', 'Library', '/library', 'browse'), nav('nav-collection', 'Discographies', '/discographies', 'browse'),
     { id: 'panel-downloads', title: 'Downloads', icon: 'dl', keywords: ['download', 'panel'], run: (ctx) => ctx.ui.togglePanel('downloads') },
     nav('nav-requests', 'Requests', '/requests', 'bell'), nav('nav-stats', 'Stats', '/stats', 'chart'), nav('nav-settings', 'Settings', '/settings', 'full'),
     { id: 'player-toggle', title: 'Play / Pause', icon: 'play', hint: 'Space', keywords: ['pause', 'resume'], run: (ctx) => ctx.player.toggle() },
@@ -21,7 +21,7 @@ export function baseCommands(isManager: boolean): Command[] {
     { id: 'player-repeat', title: 'Cycle repeat', icon: 'repeat', keywords: ['loop'], run: (ctx) => ctx.player.cycleRepeat() },
     { id: 'player-cinema', title: 'Full screen', icon: 'expand', keywords: ['cinema'], run: (ctx) => ctx.ui.openCinema() },
   ]
-  if (isManager) commands.splice(7, 0, nav('nav-admin', 'Admin', '/admin', 'browse'))
+  if (isManager) commands.splice(7, 0, nav('nav-admin', 'Admin settings', '/settings/providers', 'browse'))
   return commands
 }
 export function matchCommands(query: string, commands: Command[]): Command[] {

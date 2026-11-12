@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { MobileTabNav } from './MobileTabNav'
 import { useUI } from '../lib/uiStore'
@@ -37,10 +37,17 @@ describe('MobileTabNav', () => {
     expect(screen.getByRole('link', { name: /search/i })).toHaveAttribute('href', '/search')
   })
 
-  it('the Downloads tab toggles the downloads panel', () => {
+  it('Downloads is a real tab that goes to the downloads page, not a panel toggle', () => {
     renderNav()
-    fireEvent.click(screen.getByRole('button', { name: /downloads/i }))
-    expect(useUI.getState().rightPanel).toBe('downloads')
+    expect(screen.getByRole('link', { name: /downloads/i })).toHaveAttribute('href', '/downloads')
+    expect(screen.queryByRole('button', { name: /downloads/i })).not.toBeInTheDocument()
+  })
+
+  it('has exactly four tabs; Stats moved to the account menu', () => {
+    renderNav()
+    expect(screen.getAllByRole('link').map((l) => l.getAttribute('aria-label'))).toEqual([
+      'Home', 'Search', 'Library', 'Downloads',
+    ])
   })
 
   it('tap targets are at least 44px', () => {

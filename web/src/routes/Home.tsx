@@ -271,7 +271,7 @@ export default function Home() {
             <Icon name="search" className="mr-1.5 h-4 w-4" />
             Search music
           </Button>
-          <Button variant="secondary" onClick={() => navigate('/admin')} aria-label="Connect a library">
+          <Button variant="secondary" onClick={() => navigate('/settings/providers')} aria-label="Connect a library">
             Connect a library
           </Button>
         </div>

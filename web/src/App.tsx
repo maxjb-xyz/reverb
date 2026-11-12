@@ -127,7 +127,8 @@ function Routed() {
         <Route path="/" element={<Home />} />
         <Route path="/search" element={<Search />} />
         <Route path="/library" element={<Library />} />
-        <Route path="/collection" element={<Collection />} />
+        <Route path="/discographies" element={<Collection />} />
+        <Route path="/collection" element={<Navigate to="/discographies" replace />} />
         <Route path="/album/:source/:id" element={<Album />} />
         <Route path="/album/:id" element={<RedirectToLibrary kind="album" />} />
         <Route path="/artist/:source/:id" element={<Artist />} />
@@ -138,6 +139,7 @@ function Routed() {
         <Route path="/stats" element={<Stats />} />
         <Route path="/account" element={<Account />} />
         <Route path="/settings" element={<Settings />} />
+        <Route path="/settings/:section" element={<Settings />} />
         <Route
           path="/admin"
           element={

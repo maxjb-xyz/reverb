@@ -26,10 +26,19 @@ const mockMe = {
   createdAt: 1700000000,
 }
 
+let mockIsManager = false
 vi.mock('../lib/authStore', () => ({
   useAuthStore: (selector: (s: { me: typeof mockMe; logout: typeof mockLogout; refresh: typeof mockRefresh }) => unknown) =>
     selector({ me: mockMe, logout: mockLogout, refresh: mockRefresh }),
+  isManagerCaps: () => mockIsManager,
 }))
+
+// The admin sections are covered by their own tests; here they only need to
+// prove which one the section list selects.
+vi.mock('./Admin', () => ({ AdminProviders: () => <div>providers-section</div> }))
+vi.mock('../components/admin/UsersSection', () => ({ UsersSection: () => <div>users-section</div> }))
+vi.mock('../components/admin/RolesSection', () => ({ RolesSection: () => <div>roles-section</div> }))
+vi.mock('../components/admin/RegistrationSection', () => ({ RegistrationSection: () => <div>registration-section</div> }))
 
 // ── Account API mock ──────────────────────────────────────────────────────────
 const mockChangePassword = vi.fn()
@@ -83,11 +92,11 @@ vi.mock('../lib/adaptersApi', () => ({
 
 import Settings from './Settings'
 
-function wrap(ui: ReactElement) {
+function wrap(ui: ReactElement, path = '/settings') {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
     <QueryClientProvider client={qc}>
-      <MemoryRouter>{ui}</MemoryRouter>
+      <MemoryRouter initialEntries={[path]}>{ui}</MemoryRouter>
     </QueryClientProvider>,
   )
 }
@@ -116,6 +125,33 @@ describe('Settings — tab bar', () => {
     expect(screen.getByRole('button', { name: /^sessions$/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /^integrations$/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /^appearance$/i })).toBeInTheDocument()
+  })
+
+  it('opens the section named in the URL, so sections can be linked to', () => {
+    wrap(<Settings />, '/settings/security')
+    expect(screen.getByLabelText(/current password/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^security$/i })).toHaveAttribute('aria-current', 'page')
+  })
+
+  it('hides the admin sections from people who cannot manage the server', () => {
+    mockIsManager = false
+    wrap(<Settings />, '/settings/providers')
+    expect(screen.queryByRole('button', { name: /^providers$/i })).not.toBeInTheDocument()
+    // A direct link to an admin section falls back to Profile.
+    expect(screen.queryByText('providers-section')).not.toBeInTheDocument()
+    expect(screen.getByText('alice')).toBeInTheDocument()
+  })
+
+  it('managers get Providers, Users and roles, and Registration in the same list', () => {
+    mockIsManager = true
+    wrap(<Settings />, '/settings/providers')
+    expect(screen.getByText('providers-section')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /^users and roles$/i }))
+    expect(screen.getByText('users-section')).toBeInTheDocument()
+    expect(screen.getByText('roles-section')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /^registration$/i }))
+    expect(screen.getByText('registration-section')).toBeInTheDocument()
+    mockIsManager = false
   })
 
   it('defaults to the Profile tab on first render', () => {
