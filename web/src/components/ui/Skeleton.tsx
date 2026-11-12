@@ -11,7 +11,7 @@ export function Skeleton({ className, rounded = 'md', 'data-testid': testId }: S
     <div
       data-testid={testId}
       className={[
-        'bg-raised animate-pulse',
+        'bg-raised rvb-shimmer',
         roundedClass,
         className,
       ]

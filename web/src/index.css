@@ -29,9 +29,20 @@
 
   /* dynamic album wash — set live by the palette service; defaults to surface (invisible) */
   --album-wash: 18 18 18;
+
+  /* motion — one vocabulary for every transition in the app.
+     out: decelerates hard, for things arriving. spring: a small overshoot, for
+     things that react to a press or a toggle. */
+  --ease-out: cubic-bezier(.22, 1, .36, 1);
+  --ease-spring: cubic-bezier(.34, 1.56, .64, 1);
+  --dur-fast: 140ms;
+  --dur-base: 220ms;
+  --dur-slow: 360ms;
+  --stagger-step: 28ms;
 }
 
 html, body, #root { height: 100%; }
+::selection { background: rgb(var(--color-accent) / .35); color: #fff; }
 body { @apply bg-canvas text-text-secondary font-sans; margin: 0; -webkit-font-smoothing: antialiased; }
 
 @media (prefers-reduced-motion: reduce) {
@@ -66,4 +77,59 @@ input[type='range'].rvb-range::-moz-range-thumb {
   border-radius: 9999px;
   background: #ffffff;
   border: none;
+}
+
+/* ── Motion helpers ────────────────────────────────────────────────────────
+   Page entrance: every route fades and rises a few pixels when it mounts. */
+.rvb-page { animation: rvb-rise-in var(--dur-slow) var(--ease-out) backwards; }
+
+/* Staggered entrance for grids and lists: each direct child rises in a beat
+   after the previous one. Capped at 12 so a 200-row playlist never drags. */
+.rvb-stagger > * { animation: rvb-rise-in var(--dur-slow) var(--ease-out) backwards; }
+.rvb-stagger > :nth-child(2)  { animation-delay: calc(var(--stagger-step) * 1); }
+.rvb-stagger > :nth-child(3)  { animation-delay: calc(var(--stagger-step) * 2); }
+.rvb-stagger > :nth-child(4)  { animation-delay: calc(var(--stagger-step) * 3); }
+.rvb-stagger > :nth-child(5)  { animation-delay: calc(var(--stagger-step) * 4); }
+.rvb-stagger > :nth-child(6)  { animation-delay: calc(var(--stagger-step) * 5); }
+.rvb-stagger > :nth-child(7)  { animation-delay: calc(var(--stagger-step) * 6); }
+.rvb-stagger > :nth-child(8)  { animation-delay: calc(var(--stagger-step) * 7); }
+.rvb-stagger > :nth-child(9)  { animation-delay: calc(var(--stagger-step) * 8); }
+.rvb-stagger > :nth-child(10) { animation-delay: calc(var(--stagger-step) * 9); }
+.rvb-stagger > :nth-child(11) { animation-delay: calc(var(--stagger-step) * 10); }
+.rvb-stagger > :nth-child(n+12) { animation-delay: calc(var(--stagger-step) * 11); }
+
+/* Tactile press: anything clickable sinks slightly under the pointer and
+   springs back on release. */
+.rvb-press {
+  transition-property: transform, background-color, color, opacity, box-shadow, filter;
+  transition-duration: var(--dur-fast);
+  transition-timing-function: var(--ease-out);
+}
+.rvb-press:active:not(:disabled) {
+  transform: scale(.95);
+  transition-timing-function: var(--ease-spring);
+}
+
+/* Panels: a faint top highlight and hairline edge give the flat surfaces
+   some depth without changing their colour. */
+.rvb-panel {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .045), inset 0 0 0 1px rgba(255, 255, 255, .02);
+}
+
+/* Shimmer for loading placeholders: a soft light sweeps across, slower and
+   calmer than a pulse. */
+.rvb-shimmer {
+  background-image: linear-gradient(100deg, transparent 20%, rgba(255, 255, 255, .055) 50%, transparent 80%);
+  background-size: 200% 100%;
+  background-repeat: no-repeat;
+  animation: rvb-shimmer 1.6s ease-in-out infinite;
+}
+
+@keyframes rvb-rise-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes rvb-shimmer {
+  from { background-position: 150% 0; }
+  to { background-position: -50% 0; }
 }

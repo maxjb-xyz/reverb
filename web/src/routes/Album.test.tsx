@@ -327,7 +327,7 @@ describe('Album page', () => {
     vi.mocked(useAlbumPalette).mockReturnValue({ rgb: [120, 80, 200], text: '#FFFFFF', scrim: false })
     await renderLoaded()
     // The gradient wrapper div is the first child of the outer space-y-6 div
-    const wrapper = screen.getByRole('heading', { name: 'Kid A' }).closest('[class*="from-raised"]')
+    const wrapper = screen.getByRole('heading', { name: 'Kid A' }).closest('[data-testid="page-hero"]')
     expect(wrapper).toBeTruthy()
     const bg = (wrapper as HTMLElement).style.background
     expect(bg).toContain('linear-gradient')
@@ -337,12 +337,12 @@ describe('Album page', () => {
     expect(bg).toMatch(/200/)
   })
 
-  it('header wrapper has no inline style when palette is null', async () => {
+  it('header wrapper takes no cover colour when palette is null', async () => {
     vi.mocked(useAlbumPalette).mockReturnValue(null)
     await renderLoaded()
-    const wrapper = screen.getByRole('heading', { name: 'Kid A' }).closest('[class*="from-raised"]')
+    const wrapper = screen.getByRole('heading', { name: 'Kid A' }).closest('[data-testid="page-hero"]')
     expect(wrapper).toBeTruthy()
-    expect((wrapper as HTMLElement).style.background).toBe('')
+    expect((wrapper as HTMLElement).style.background).not.toMatch(/rgba?\(\d/)
   })
 
   describe('now-playing indicator (Bug 8)', () => {

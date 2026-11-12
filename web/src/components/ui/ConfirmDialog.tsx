@@ -33,7 +33,7 @@ export function ConfirmDialog({ open, title, body, confirmLabel, cancelLabel = '
 
   return createPortal(
     <>
-      <div className="fixed inset-0 z-40 bg-canvas/80 backdrop-blur-sm" aria-hidden="true" onClick={onCancel} />
+      <div className="fixed inset-0 z-40 bg-canvas/80 backdrop-blur-sm animate-fade-in" aria-hidden="true" onClick={onCancel} />
       <div
         role="alertdialog"
         aria-modal="true"

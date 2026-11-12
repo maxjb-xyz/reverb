@@ -48,7 +48,7 @@ export default function ExternalPlaylist() {
         </div>
       </header>
       <section aria-label="Songs">
-        <div className="space-y-0.5">
+        <div className="rvb-stagger space-y-0.5">
           {playlist.tracks.map((track, index) => (
             <TrackRow
               key={`${track.source}:${track.externalId}`}

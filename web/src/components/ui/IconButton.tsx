@@ -31,7 +31,7 @@ export function IconButton({
       disabled={disabled}
       onClick={disabled ? undefined : onClick}
       className={[
-        'inline-grid place-items-center rounded-full transition-colors',
+        'rvb-press inline-grid place-items-center rounded-full hover:bg-white/[.06]',
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
         'disabled:opacity-40 disabled:cursor-not-allowed',
         active ? 'text-accent' : 'text-text-secondary hover:text-text-primary',

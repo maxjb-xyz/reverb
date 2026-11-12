@@ -17,7 +17,7 @@ import { useAuthStore } from '../lib/authStore'
 import { Button, IconButton, Cover, Skeleton, EmptyState, Badge, Icon } from '../components/ui'
 import { useAlbumPalette } from '../lib/useAlbumPalette'
 import { useFocusTrap } from '../lib/useFocusTrap'
-import { rgbToCss } from '../lib/palette'
+import { PageHero, StickyHeroBar } from '../components/ui/PageHero'
 import * as statsApi from '../lib/statsApi'
 import type { EntityStats, PlayCountTrack } from '../lib/statsApi'
 import { presetRange, msToHuman } from '../lib/range'
@@ -73,6 +73,7 @@ export default function Album() {
   const currentTrack = usePlayer((s) => s.current)
   const isPlaying = usePlayer((s) => s.playing)
   const palette = useAlbumPalette(album?.coverArtId ? coverUrl(album.coverArtId, 300) : album?.coverUrl)
+  const [heroGone, setHeroGone] = useState(false)
   const canRequest = useAuthStore((s) => s.can('request'))
   const canAutoApprove = useAuthStore((s) => s.can('auto_approve'))
   const [bulkSubmitting, setBulkSubmitting] = useState(false)
@@ -186,10 +187,7 @@ export default function Album() {
   return (
     <div className="space-y-6">
       {/* Subtle gradient wash behind header */}
-      <div
-        className="relative -mx-4 -mt-4 px-4 pt-4 pb-6 rounded-b-2xl overflow-hidden bg-gradient-to-b from-raised to-transparent"
-        style={palette ? { background: `linear-gradient(to bottom, ${rgbToCss(palette.rgb, 0.55)} 0%, transparent 100%)` } : undefined}
-      >
+      <PageHero rgb={palette?.rgb} onVisibleChange={(v) => setHeroGone(!v)}>
         <header className="relative z-10 flex items-end gap-4 pt-2 sm:gap-6">
           {/* Sized wrapper: the cover shrinks on phones so the title keeps its room. */}
           <div className="h-28 w-28 flex-none sm:h-52 sm:w-52">
@@ -291,7 +289,8 @@ export default function Album() {
             </div>
           </div>
         </header>
-      </div>
+      </PageHero>
+      <StickyHeroBar visible={heroGone} title={album.name} rgb={palette?.rgb} onPlay={() => ownedTracks.length && playTrackList(ownedTracks, 0)} playDisabled={ownedTracks.length === 0} playLabel={`Play ${album.name}`} />
 
       {/* Request album disclosure modal */}
       {requestDisclosureOpen &&
@@ -307,7 +306,7 @@ export default function Album() {
               role="dialog"
               aria-modal="true"
               aria-label="Request album"
-              className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-80 max-w-[calc(100vw-2rem)] rounded-xl border border-border-subtle bg-raised p-4 shadow-pop"
+              className="animate-fade-in fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-80 max-w-[calc(100vw-2rem)] rounded-xl border border-border-subtle bg-raised p-4 shadow-pop"
               onClick={(e) => e.stopPropagation()}
             >
               <p className="text-sm font-bold text-text-primary">Request the whole album?</p>
@@ -361,7 +360,7 @@ export default function Album() {
         )}
 
       {/* Track list */}
-      <div className="space-y-0.5">
+      <div className="rvb-stagger space-y-0.5">
         {album.tracks.map((t, i) => {
           if (t.state === 'full' && t.libraryTrack) {
             const ownedIdx = ownedIndexMap.get(t.libraryTrack.id) ?? 0

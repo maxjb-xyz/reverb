@@ -338,7 +338,7 @@ describe('Artist page', () => {
     vi.mocked(useAlbumPalette).mockReturnValue({ rgb: [120, 80, 200], text: '#FFFFFF', scrim: false })
     wrapper(<Artist />)
     const heading = screen.getByRole('heading', { name: 'Radiohead' })
-    const gradientWrapper = heading.closest('[class*="from-raised"]')
+    const gradientWrapper = heading.closest('[data-testid="page-hero"]')
     expect(gradientWrapper).toBeTruthy()
     const bg = (gradientWrapper as HTMLElement).style.background
     expect(bg).toContain('linear-gradient')
@@ -354,13 +354,13 @@ describe('Artist page', () => {
     expect(vi.mocked(useAlbumPalette)).toHaveBeenLastCalledWith('https://cdn.example.com/kida.jpg')
   })
 
-  it('header wrapper has no inline style when palette is null', () => {
+  it('header wrapper takes no cover colour when palette is null', () => {
     vi.mocked(useAlbumPalette).mockReturnValue(null)
     wrapper(<Artist />)
     const heading = screen.getByRole('heading', { name: 'Radiohead' })
-    const gradientWrapper = heading.closest('[class*="from-raised"]')
+    const gradientWrapper = heading.closest('[data-testid="page-hero"]')
     expect(gradientWrapper).toBeTruthy()
-    expect((gradientWrapper as HTMLElement).style.background).toBe('')
+    expect((gradientWrapper as HTMLElement).style.background).not.toMatch(/rgba?\(\d/)
   })
 
   it('clicking an album with libraryAlbumId navigates to /album/library/:id', () => {

@@ -316,7 +316,7 @@ export function DownloadAction({ result, onPlay }: Props) {
                 role="dialog"
                 aria-modal="true"
                 aria-label="Download from a link"
-                className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-80 max-w-[calc(100vw-2rem)] rounded-xl border border-border-subtle bg-raised shadow-pop"
+                className="animate-fade-in fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-80 max-w-[calc(100vw-2rem)] rounded-xl border border-border-subtle bg-raised shadow-pop"
                 onClick={(e) => e.stopPropagation()}
               >
                 <div className="px-4 pt-4 pb-2 flex items-center justify-between">

@@ -1,5 +1,5 @@
-import { Suspense, useEffect } from 'react'
-import { Outlet } from 'react-router-dom'
+import { Suspense, useEffect, useRef } from 'react'
+import { Outlet, useLocation, useNavigationType } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { TopBar } from './shell/TopBar'
 import { LibraryRail } from './shell/LibraryRail'
@@ -14,6 +14,8 @@ import { LyricsView } from './lyrics/LyricsView'
 import { CommandPalette } from './CommandPalette'
 import { Toaster } from './ui/Toaster'
 import { Skeleton } from './ui/Skeleton'
+import { STICKY_SLOT_ID } from './ui/PageHero'
+import { pageKey } from '../lib/pageKey'
 import { useRealtime } from '../lib/realtimeWiring'
 import { usePlayer, engine } from '../lib/playerStore'
 import { useUI } from '../lib/uiStore'
@@ -67,6 +69,15 @@ export function AppShell() {
   useEffect(() => startNowPlaying(engine), [])
   useEffect(() => startMediaSession(engine), [])
 
+  // A new page starts at the top. Back/forward (POP) leaves the scroll alone.
+  const location = useLocation()
+  const navType = useNavigationType()
+  const mainRef = useRef<HTMLElement>(null)
+  const key = pageKey(location.pathname)
+  useEffect(() => {
+    if (navType !== 'POP') mainRef.current?.scrollTo?.({ top: 0 })
+  }, [key, navType])
+
   const current = usePlayer((s) => s.current)
   const rightPanel = useUI((s) => s.rightPanel)
   const closePanel = useUI((s) => s.closePanel)
@@ -119,8 +130,10 @@ export function AppShell() {
         </div>
 
         {/* Center main content — bg-surface rounded card that scrolls */}
-        <main className="flex-1 min-h-0 overflow-auto bg-surface rounded-lg relative">
-          <div className="px-4 py-5 sm:px-6 sm:py-6 lg:px-8">
+        <main ref={mainRef} className="rvb-panel flex-1 min-h-0 overflow-auto bg-surface rounded-lg relative">
+          {/* Zero-height sticky slot: pages portal their compact header bar here. */}
+          <div id={STICKY_SLOT_ID} className="sticky top-0 z-30 h-0" />
+          <div key={key} data-testid="page" className="rvb-page px-4 py-5 sm:px-6 sm:py-6 lg:px-8">
             <Suspense fallback={<RouteLoading />}>
               <Outlet />
             </Suspense>
