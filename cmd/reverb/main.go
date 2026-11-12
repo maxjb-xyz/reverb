@@ -25,6 +25,7 @@ import (
 	"github.com/maxjb-xyz/reverb/internal/library/embedded"
 	"github.com/maxjb-xyz/reverb/internal/library/lyrics"
 	"github.com/maxjb-xyz/reverb/internal/library/subsonic"
+	"github.com/maxjb-xyz/reverb/internal/mixes"
 	"github.com/maxjb-xyz/reverb/internal/notification"
 	"github.com/maxjb-xyz/reverb/internal/play"
 	"github.com/maxjb-xyz/reverb/internal/playlistsync"
@@ -259,6 +260,7 @@ func main() {
 		}
 		return out
 	}, time.Now, nil, engine.DefaultOptions)
+	mixSvc := mixes.New(st.Q(), engineSvc, tasteSvc, indexSvc, time.Now, uuid.NewString)
 
 	// Scrobbling: cfg() reads app key/secret from settings on every call so that
 	// admin changes (Task 5 UI) take effect without a restart.
@@ -296,6 +298,7 @@ func main() {
 		Taste:         tasteSvc,
 		LibIndex:      indexSvc,
 		Engine:        engineSvc,
+		Mixes:         mixSvc,
 		Lyrics: &lyrics.Service{
 			Store: st.Q(),
 			Client: &lyrics.LRCLibClient{

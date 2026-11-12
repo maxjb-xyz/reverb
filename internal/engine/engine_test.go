@@ -481,3 +481,15 @@ func TestSuggestions_FavouriteArtistsThenTheirGenres(t *testing.T) {
 		t.Fatalf("second suggestion should be the favourite's genre: %+v", sug)
 	}
 }
+
+func TestGenres_ListsLibraryGenresWithLabels(t *testing.T) {
+	e := newEnv(t)
+	seedBonobo(t, e)
+	gs, err := e.eng.Genres(context.Background(), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(gs) == 0 || gs[0].Key != "electronic" || gs[0].Label != "Electronic" || gs[0].Tracks != 24 {
+		t.Fatalf("genres = %+v", gs)
+	}
+}

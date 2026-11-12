@@ -6,6 +6,7 @@ describe('playContext', () => {
     expect(contextFromPath('/')).toEqual({ kind: 'home' })
     expect(contextFromPath('/album/library/al-1')).toEqual({ kind: 'album', id: 'al-1' })
     expect(contextFromPath('/playlist/pl%201')).toEqual({ kind: 'playlist', id: 'pl 1' })
+    expect(contextFromPath('/mix/m1')).toEqual({ kind: 'mix', id: 'm1' })
     expect(contextFromPath('/search')).toEqual({ kind: 'search' })
     expect(contextFromPath('/settings/profile')).toEqual({ kind: 'other' })
   })
