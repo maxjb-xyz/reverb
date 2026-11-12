@@ -271,6 +271,8 @@ func main() {
 		return out
 	}, time.Now, nil, engine.DefaultOptions)
 	mixSvc := mixes.New(st.Q(), engineSvc, tasteSvc, indexSvc, time.Now, uuid.NewString)
+	discoverSvc := newDiscoverService(st.Q(), engineSvc, reloader)
+	discoverSvc.Start(ctx, 2*time.Minute, time.Hour)
 
 	// Scrobbling: cfg() reads app key/secret from settings on every call so that
 	// admin changes (Task 5 UI) take effect without a restart.
@@ -311,6 +313,7 @@ func main() {
 		LibIndex:      indexSvc,
 		Engine:        engineSvc,
 		Mixes:         mixSvc,
+		Discover:      discoverSvc,
 		Lyrics: &lyrics.Service{
 			Store: st.Q(),
 			Client: &lyrics.LRCLibClient{

@@ -22,6 +22,8 @@ interface MediaCardProps {
   downloadProgress?: { active: boolean; value: number; indeterminate: boolean }
   /** Ghost cards represent known-but-unowned library items. */
   ghost?: boolean
+  /** Custom square art in place of a cover image. */
+  art?: ReactNode
 }
 
 export function MediaCard({
@@ -37,6 +39,7 @@ export function MediaCard({
   onDownload,
   downloadProgress,
   ghost = false,
+  art,
 }: MediaCardProps) {
   const src = coverSrc ?? (coverId ? coverUrl(coverId, 300) : undefined)
 
@@ -63,13 +66,15 @@ export function MediaCard({
         className={['relative mb-3 transition-transform duration-300 ease-smooth group-hover:-translate-y-1', rounded === 'full' ? 'rounded-full overflow-hidden' : '', ghost ? 'opacity-60 saturate-50' : ''].filter(Boolean).join(' ')}
         data-testid="mediacard-cover"
       >
-        <Cover
-          src={src}
-          alt={title}
-          size="full"
-          rounded={rounded}
-          className="aspect-square w-full shadow-cover transition-shadow duration-300 ease-smooth group-hover:shadow-lift"
-        />
+        {art ?? (
+          <Cover
+            src={src}
+            alt={title}
+            size="full"
+            rounded={rounded}
+            className="aspect-square w-full shadow-cover transition-shadow duration-300 ease-smooth group-hover:shadow-lift"
+          />
+        )}
         {/* Badge / Coverage slot (top-left overlay) — coverage takes precedence */}
         {coverage && (
           <div className="absolute left-2 top-2"><CoverageChip state={coverage.state} owned={coverage.owned} total={coverage.total} /></div>

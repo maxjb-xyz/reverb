@@ -13,6 +13,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/maxjb-xyz/reverb/internal/auth"
 	"github.com/maxjb-xyz/reverb/internal/core"
+	"github.com/maxjb-xyz/reverb/internal/discover"
 	"github.com/maxjb-xyz/reverb/internal/engine"
 	"github.com/maxjb-xyz/reverb/internal/events"
 	"github.com/maxjb-xyz/reverb/internal/libindex"
@@ -171,6 +172,9 @@ type Deps struct {
 	// Mixes serves daily and custom mixes. Nil in tests/legacy wiring — its
 	// endpoints answer 503.
 	Mixes *mixes.Service
+	// Discover serves Discover Weekly. Nil in tests/legacy wiring — its
+	// endpoints answer 503.
+	Discover *discover.Service
 }
 
 type Server struct {
@@ -368,6 +372,9 @@ func (s *Server) routes() {
 			pr.Put("/mixes/{id}", s.handleUpdateMix)
 			pr.Delete("/mixes/{id}", s.handleDeleteMix)
 			pr.Post("/mixes/{id}/refresh", s.handleRefreshMix)
+			pr.Get("/discover", s.handleDiscover)
+			pr.Get("/discover/prefs", s.handleGetDiscoverPrefs)
+			pr.Put("/discover/prefs", s.handlePutDiscoverPrefs)
 
 			// manage library & integrations: adapter CRUD + server settings.
 			pr.Group(func(mr chi.Router) {
@@ -381,6 +388,8 @@ func (s *Server) routes() {
 				mr.Get("/settings", s.handleGetSettings)
 				mr.Get("/engine/index", s.handleIndexStatus)
 				mr.Post("/engine/index/rebuild", s.handleIndexRebuild)
+				mr.Get("/discover/settings", s.handleGetDiscoverSettings)
+				mr.Put("/discover/settings", s.handlePutDiscoverSettings)
 				mr.Put("/settings", s.handlePutSettings)
 				mr.Get("/admin/integrations/lastfm", s.handleGetLastfmIntegration)
 				mr.Put("/admin/integrations/lastfm", s.handlePutLastfmIntegration)

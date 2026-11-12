@@ -101,6 +101,38 @@ type DiscographyCache struct {
 	FetchedAt        int64  `json:"fetched_at"`
 }
 
+type DiscoverItem struct {
+	ID             string `json:"id"`
+	UserID         string `json:"user_id"`
+	Week           string `json:"week"`
+	Position       int64  `json:"position"`
+	Owned          int64  `json:"owned"`
+	LibraryTrackID string `json:"library_track_id"`
+	Source         string `json:"source"`
+	ExternalID     string `json:"external_id"`
+	Title          string `json:"title"`
+	Artist         string `json:"artist"`
+	Album          string `json:"album"`
+	CoverUrl       string `json:"cover_url"`
+	Isrc           string `json:"isrc"`
+	DurationMs     int64  `json:"duration_ms"`
+	ItemJson       string `json:"item_json"`
+	JobID          string `json:"job_id"`
+	Preexisting    int64  `json:"preexisting"`
+	State          string `json:"state"`
+	DecidedAt      int64  `json:"decided_at"`
+	CreatedAt      int64  `json:"created_at"`
+}
+
+type DiscoverPref struct {
+	UserID    string `json:"user_id"`
+	Enabled   int64  `json:"enabled"`
+	Size      int64  `json:"size"`
+	NewShare  int64  `json:"new_share"`
+	KeepRule  string `json:"keep_rule"`
+	UpdatedAt int64  `json:"updated_at"`
+}
+
 type DownloadJob struct {
 	ID             string         `json:"id"`
 	DedupKey       string         `json:"dedup_key"`
