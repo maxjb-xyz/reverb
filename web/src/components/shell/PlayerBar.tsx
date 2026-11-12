@@ -24,6 +24,7 @@ import { Icon } from '../ui/Icon'
 import { Waveform } from '../ui/Waveform'
 import { AddToPlaylistMenu } from '../AddToPlaylistMenu'
 import { NotForMeMenu } from '../NotForMeMenu'
+import { RadioButton } from '../radio/RadioButton'
 import { ProgressRing } from '../ui/ProgressRing'
 import { usePendingPlay } from '../../lib/pendingPlayStore'
 import { usePeaks } from '../../lib/peaksApi'
@@ -251,6 +252,9 @@ export function PlayerBar() {
           </div>
         )}
         {current && <NotForMeMenu track={current} className="flex-none" />}
+        {current && (
+          <RadioButton look="icon" label="Song radio" className="flex-none" seed={{ kind: 'track', id: current.id, title: current.title, artist: current.artist }} />
+        )}
       </div>
 
       {/* ── CENTER: transport + scrubber ────────────────────────────────── */}

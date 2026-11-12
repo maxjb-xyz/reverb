@@ -19,6 +19,7 @@ import (
 	"github.com/maxjb-xyz/reverb/internal/download"
 	"github.com/maxjb-xyz/reverb/internal/download/lidarr"
 	"github.com/maxjb-xyz/reverb/internal/download/spotdl"
+	"github.com/maxjb-xyz/reverb/internal/engine"
 	"github.com/maxjb-xyz/reverb/internal/events"
 	"github.com/maxjb-xyz/reverb/internal/libindex"
 	"github.com/maxjb-xyz/reverb/internal/library/embedded"
@@ -35,6 +36,7 @@ import (
 	"github.com/maxjb-xyz/reverb/internal/resolver"
 	"github.com/maxjb-xyz/reverb/internal/scrobble"
 	"github.com/maxjb-xyz/reverb/internal/scrobble/lastfm"
+	"github.com/maxjb-xyz/reverb/internal/search"
 	"github.com/maxjb-xyz/reverb/internal/search/deezer"
 	"github.com/maxjb-xyz/reverb/internal/search/spotify"
 	"github.com/maxjb-xyz/reverb/internal/store"
@@ -256,6 +258,17 @@ func main() {
 	playSvc := play.NewService(st.Q(), catalogSvc, time.Now, uuid.NewString)
 	statsSvc := play.NewStats(st.Q())
 	tasteSvc := taste.NewService(st.Q(), catalogSvc, time.Now, uuid.NewString)
+	liveSvc := reloader.servicesProvider()
+	engineSvc := engine.New(st.Q(), tasteSvc, indexSvc, func() []search.ArtistTopTracksProvider {
+		_, sources := liveSvc()
+		var out []search.ArtistTopTracksProvider
+		for _, src := range sources {
+			if p, ok := src.(search.ArtistTopTracksProvider); ok {
+				out = append(out, p)
+			}
+		}
+		return out
+	}, time.Now, nil, engine.DefaultOptions)
 
 	// Scrobbling: cfg() reads app key/secret from settings on every call so that
 	// admin changes (Task 5 UI) take effect without a restart.
@@ -294,6 +307,7 @@ func main() {
 		Scrobble:      scrobbleSvc,
 		Taste:         tasteSvc,
 		LibIndex:      indexSvc,
+		Engine:        engineSvc,
 		Lyrics: &lyrics.Service{
 			Store: st.Q(),
 			Client: &lyrics.LRCLibClient{

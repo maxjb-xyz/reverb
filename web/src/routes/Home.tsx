@@ -18,6 +18,7 @@ import {
 } from '../components/ui'
 import type { Album, DownloadJob, Track } from '../lib/types'
 import { useDocumentTitle } from '../lib/useDocumentTitle'
+import { StationsRow } from '../components/radio/StationsRow'
 import { useAlbumPalette } from '../lib/useAlbumPalette'
 import { rgbToCss } from '../lib/palette'
 
@@ -440,6 +441,9 @@ export default function Home() {
           </Carousel>
         </div>
       ) : null}
+
+      {/* "Radio for you" — stations from the user's taste */}
+      {!isLoading && <StationsRow />}
 
       {/* "Recently added" carousel — newest library albums after the hero */}
       {!isLoading && recentlyAdded.length > 0 && (

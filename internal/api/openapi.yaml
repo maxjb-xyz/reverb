@@ -517,6 +517,47 @@ paths:
     post:
       summary: Queue a re-index of the library and similarity map now (managers).
       responses: { "202": { description: queued }, "403": { description: not a manager } }
+  /engine/next:
+    post:
+      summary: >
+        The next songs for a radio station or a DJ lane, picked by the
+        recommendation engine from the user's taste, the library index and the
+        artist-similarity map. Each item carries a structured reason. Radio
+        refills pass the queue so far in exclude.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                seed:
+                  type: object
+                  description: "What the station is built around. kind: track (id = library track id), artist (id = artist key, or artist = name), genre (id = genre), taste (no seed)."
+                  properties:
+                    kind: { type: string, enum: [track, artist, genre, taste] }
+                    id: { type: string }
+                    title: { type: string }
+                    artist: { type: string }
+                lane:
+                  type: string
+                  description: Empty for radio, or a DJ lane.
+                  enum: ["", on-repeat, throwback, deep-cuts, sounds-like, new-to-you, fresh-finds]
+                fromYear: { type: integer, description: "throwback lane: first year" }
+                toYear: { type: integer, description: "throwback lane: last year" }
+                exclude: { type: array, items: { type: string }, description: Library track ids (or catalog ids) not to pick. }
+                includeExternal: { type: boolean, description: "Also suggest songs that aren't in the library (owned: false, external set)." }
+                n: { type: integer, description: "batch size, default 20, max 100" }
+      responses:
+        "200": { description: "{ station: { id, kind, lane, label }, items: [{ owned, track?, external?, year, genres, score, reason: { kind, artist, artistKey, seedArtist, genre, year, playCount } }] }" }
+        "400": { description: invalid station or lane }
+        "404": { description: seed track not in the library index }
+  /engine/stations:
+    get:
+      summary: Radio stations suggested from the user's taste (favourite artists, then their genres; the library's biggest genres for a new user).
+      parameters:
+        - { name: n, in: query, schema: { type: integer, default: 8, maximum: 24 } }
+      responses: { "200": { description: "{ stations: [{ seed, label, sublabel, coverArtId, libraryArtistId }] }" } }
   /ws:
     get:
       summary: >
