@@ -654,3 +654,56 @@ func TestDiscover_OneFavouriteStillFillsTheList(t *testing.T) {
 		}
 	}
 }
+
+func TestDiscover_DoesNotRunDryAfterRefreshes(t *testing.T) {
+	e := newEnv(t)
+	seedBonobo(t, e)
+	// Bonobo has only one new artist like it left (Emancipator); Tycho, which
+	// the library has, leads on to 20 more.
+	e.sim["tycho"] = nil
+	for i := 0; i < 20; i++ {
+		e.sim["tycho"] = append(e.sim["tycho"], libindex.SimilarArtist{Key: fmt.Sprintf("far %d", i), Name: fmt.Sprintf("Far %d", i), Rank: i, Source: "deezer", ExternalID: fmt.Sprintf("f%d", i)})
+	}
+	var ls []taste.Listen
+	for i := 0; i < 6; i++ {
+		ls = append(ls, taste.Listen{CatalogID: fmt.Sprintf("c%d", i), LibraryTrackID: fmt.Sprintf("bonobo-%d", i), Title: fmt.Sprintf("Bonobo song %d", i), Artist: "Bonobo",
+			StartedAt: now.Add(-48 * time.Hour).Unix(), Outcome: taste.OutcomeCompleted, DurationMs: 200_000, MsPlayed: 200_000})
+	}
+	e.taste.in = taste.Inputs{Listens: ls}
+	got, err := e.eng.Discover(context.Background(), "u1", 21, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 21 {
+		t.Fatalf("got %d new songs, want 21 through artists like Tycho", len(got))
+	}
+	viaTycho := 0
+	for _, c := range got {
+		if c.Reason.SeedArtist == "Tycho" {
+			viaTycho++
+		}
+	}
+	if viaTycho == 0 {
+		t.Error("no pick explained as coming via Tycho")
+	}
+
+	// Earlier refreshes offered each artist's five biggest songs: there are more.
+	e.top.songs = 10
+	exclude := map[string]bool{"deezer:t-d-eman": true}
+	for i := 1; i < 5; i++ {
+		exclude[fmt.Sprintf("deezer:t-d-eman-%d", i)] = true
+	}
+	for a := 0; a < 20; a++ {
+		exclude[fmt.Sprintf("deezer:t-f%d", a)] = true
+		for i := 1; i < 5; i++ {
+			exclude[fmt.Sprintf("deezer:t-f%d-%d", a, i)] = true
+		}
+	}
+	got, err = e.eng.Discover(context.Background(), "u1", 21, exclude)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 21 {
+		t.Fatalf("with the top five of every artist already offered, got %d, want 21", len(got))
+	}
+}
