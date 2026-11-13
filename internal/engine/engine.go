@@ -18,8 +18,10 @@ import (
 	"context"
 	"errors"
 	"github.com/maxjb-xyz/reverb/internal/analysis"
+	"maps"
 	"math"
 	"math/rand"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -1116,9 +1118,47 @@ func (e *Engine) discoverFrom(ctx context.Context, prof *taste.Profile, anchors 
 			}
 		}
 	}
+	// Then one step further out: new artists like the library artists that
+	// are like the favourites. Every song Discover offers is never offered
+	// again, and an artist that gets downloaded counts as owned, so without
+	// this a listener with few favourites runs out after a few refreshes and
+	// the list falls back to songs they already have.
+	var far []pick
+	names = maps.Clone(names)
+	for _, a := range anchors {
+		sims, err := e.similar.Similar(ctx, a)
+		if err != nil {
+			continue
+		}
+		bridges := 0
+		for _, b := range sims {
+			if bridges >= maxDiscoverBridges {
+				break
+			}
+			if b.OwnedTracks == 0 || prof.HiddenArtists[b.Key] || slices.Contains(anchors, b.Key) {
+				continue
+			}
+			bridges++
+			next, err := e.similar.Similar(ctx, b.Key)
+			if err != nil {
+				continue
+			}
+			for _, s := range next {
+				if s.OwnedTracks > 0 || s.ExternalID == "" || seen[s.Key] || prof.HiddenArtists[s.Key] {
+					continue
+				}
+				seen[s.Key] = true
+				if _, ok := names[b.Key]; !ok {
+					names[b.Key] = b.Name
+				}
+				far = append(far, pick{s, b.Key})
+			}
+		}
+	}
 	e.shuffle(len(picks), func(i, j int) { picks[i], picks[j] = picks[j], picks[i] })
 	e.shuffle(len(rest), func(i, j int) { rest[i], rest[j] = rest[j], rest[i] })
-	picks = append(picks, rest...)
+	e.shuffle(len(far), func(i, j int) { far[i], far[j] = far[j], far[i] })
+	picks = append(append(picks, rest...), far...)
 
 	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
@@ -1141,7 +1181,7 @@ func (e *Engine) discoverFrom(ctx context.Context, prof *taste.Profile, anchors 
 					if ss, ok := src.(search.SearchSource); ok && ss.Name() != pk.sim.Source {
 						continue
 					}
-					tracks, err := src.ArtistTopTracks(ctx, pk.sim.ExternalID, 5)
+					tracks, err := src.ArtistTopTracks(ctx, pk.sim.ExternalID, discoverTopTracks)
 					if err != nil {
 						continue
 					}
@@ -1180,6 +1220,15 @@ func (e *Engine) discoverFrom(ctx context.Context, prof *taste.Profile, anchors 
 
 // maxDiscoverPerArtist caps how many new songs one new artist brings.
 const maxDiscoverPerArtist = 3
+
+// discoverTopTracks is how deep into a new artist's best-known songs
+// Discover looks. Songs offered before are skipped, so this is what lets an
+// artist keep bringing something new over several weeks.
+const discoverTopTracks = 10
+
+// maxDiscoverBridges caps how many owned artists per favourite Discover
+// steps through to reach artists one step further out.
+const maxDiscoverBridges = 6
 
 // interleave spreads external picks through the owned list.
 func interleave(own, ext []Candidate, n int) []Candidate {
