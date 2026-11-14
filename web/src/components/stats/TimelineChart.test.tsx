@@ -123,4 +123,56 @@ describe('TimelineChart', () => {
       expect(container.innerHTML).not.toMatch(/stop-color="var\(--color-accent/)
     })
   })
+
+  // A 30-day range with plays on two days used to draw two fat bars that
+  // spanned the whole chart, with no sign of the quiet days in between.
+  describe('empty days', () => {
+    // Local midnights, so the test holds in any time zone.
+    const d0 = new Date(2024, 2, 1)
+    const at = (days: number) => Math.floor(new Date(d0.getFullYear(), d0.getMonth(), d0.getDate() + days).getTime() / 1000)
+
+    it('draws a slot for every day of the range, including days without plays', () => {
+      const data = [makeBucket(at(2), 4), makeBucket(at(5), 1)]
+      const { container } = render(
+        <TimelineChart data={data} range={{ from: at(0), to: at(7), bucket: 'day' }} />,
+      )
+      const bars = Array.from(container.querySelectorAll('[data-bar]'))
+      expect(bars.length).toBe(7)
+      const heights = bars.map((b) => parseFloat(b.getAttribute('height') ?? '0'))
+      expect(heights[2]).toBeGreaterThan(heights[5])
+      expect(heights[5]).toBeGreaterThan(0)
+      expect(heights[0]).toBe(0)
+      expect(heights[6]).toBe(0)
+    })
+
+    it('places a bucket whose start is an hour off local midnight (daylight saving) on its own day', () => {
+      const data = [makeBucket(at(3) - 3600, 2)]
+      const { container } = render(
+        <TimelineChart data={data} range={{ from: at(0), to: at(5), bucket: 'day' }} />,
+      )
+      const heights = Array.from(container.querySelectorAll('[data-bar]')).map((b) => parseFloat(b.getAttribute('height') ?? '0'))
+      expect(heights.findIndex((h) => h > 0)).toBe(3)
+    })
+
+    it('starts an all-time range at the first month with plays, not 1970', () => {
+      const data = [makeBucket(Math.floor(new Date(2024, 0, 1).getTime() / 1000), 3)]
+      const to = Math.floor(new Date(2024, 3, 10).getTime() / 1000)
+      const { container } = render(<TimelineChart data={data} range={{ from: 0, to, bucket: 'month' }} />)
+      expect(container.querySelectorAll('[data-bar]').length).toBe(4) // Jan–Apr
+    })
+  })
+
+  describe('y axis', () => {
+    it('labels whole numbers of plays only, without repeats', () => {
+      const { container } = render(<TimelineChart data={[makeBucket(EPOCH_DAY, 1)]} />)
+      const labels = Array.from(container.querySelectorAll('[data-ylabel]')).map((n) => n.textContent)
+      expect(labels).toEqual(['0', '1'])
+    })
+
+    it('uses round steps for larger counts', () => {
+      const { container } = render(<TimelineChart data={[makeBucket(EPOCH_DAY, 3), makeBucket(EPOCH_DAY + DAY, 1)]} />)
+      const labels = Array.from(container.querySelectorAll('[data-ylabel]')).map((n) => n.textContent)
+      expect(labels).toEqual(['0', '1', '2', '3'])
+    })
+  })
 })

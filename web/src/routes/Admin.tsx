@@ -11,6 +11,7 @@ import {
 } from '../lib/adaptersApi'
 import { AdapterSection } from '../components/admin/AdapterSection'
 import { ScrobblingSection } from '../components/admin/ScrobblingSection'
+import { DiscordSection } from '../components/admin/DiscordSection'
 import { AdapterForm } from '../components/AdapterForm'
 import { Skeleton, Select, Button } from '../components/ui'
 import { useSettings, useUpdateSettings } from '../lib/settingsApi'
@@ -132,9 +133,15 @@ export function AdminProviders() {
 
   const searchInstances = list.filter((a) => a.type === 'search')
   const downloaderInstances = list.filter((a) => a.type === 'downloader')
+  const voiceInstances = list.filter((a) => a.type === 'voice')
+  const llmInstances = list.filter((a) => a.type === 'llm')
+  const analyzerInstances = list.filter((a) => a.type === 'analyzer')
 
   const searchAvail = avail.filter((a) => a.type === 'search')
   const downloaderAvail = avail.filter((a) => a.type === 'downloader')
+  const voiceAvail = avail.filter((a) => a.type === 'voice')
+  const llmAvail = avail.filter((a) => a.type === 'llm')
+  const analyzerAvail = avail.filter((a) => a.type === 'analyzer')
 
   // Library is single-active: a "switch", not a list — Built-in (bundled, no
   // config) or External (one Subsonic server).
@@ -324,7 +331,47 @@ export function AdminProviders() {
             onMoveInColumn={(col, idx, dir, g) => void moveInColumn(col, idx, dir, g)}
           />
 
+          <AdapterSection
+            title="DJ voice"
+            subtitle="The first enabled voice speaks for the DJ"
+            type="voice"
+            instances={voiceInstances}
+            available={voiceAvail}
+            onCreate={(name, config) => onCreate('voice', name, config)}
+            onUpdate={onUpdate}
+            onToggle={(inst) => void onToggle(inst)}
+            onRemove={(id) => void onRemove(id)}
+            onReorder={(inst, delta) => void onReorder(inst, delta)}
+          />
+
+          <AdapterSection
+            title="DJ writer"
+            subtitle="Optional: a language model writes what the DJ says. Without one it uses templates"
+            type="llm"
+            instances={llmInstances}
+            available={llmAvail}
+            onCreate={(name, config) => onCreate('llm', name, config)}
+            onUpdate={onUpdate}
+            onToggle={(inst) => void onToggle(inst)}
+            onRemove={(id) => void onRemove(id)}
+            onReorder={(inst, delta) => void onReorder(inst, delta)}
+          />
+
+          <AdapterSection
+            title="Audio analysis"
+            subtitle="Optional and heavier: a separate service listens to each song so radio can add songs that sound alike. A GPU helps"
+            type="analyzer"
+            instances={analyzerInstances}
+            available={analyzerAvail}
+            onCreate={(name, config) => onCreate('analyzer', name, config)}
+            onUpdate={onUpdate}
+            onToggle={(inst) => void onToggle(inst)}
+            onRemove={(id) => void onRemove(id)}
+            onReorder={(inst, delta) => void onReorder(inst, delta)}
+          />
+
           <ScrobblingSection />
+          <DiscordSection />
         </>
       )}
     </div>

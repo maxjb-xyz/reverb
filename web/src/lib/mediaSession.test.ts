@@ -58,6 +58,8 @@ function makeState(overrides: Partial<PlayerState> = {}): PlayerState {
     volume: 1,
     shuffle: false,
     repeat: 'off',
+    crossfadeMs: 0,
+    speaking: false,
     ...overrides,
   }
 }

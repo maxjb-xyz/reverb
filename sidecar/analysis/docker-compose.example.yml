@@ -1,0 +1,25 @@
+# Run next to Reverb's own compose file, on the same network, then in Reverb:
+# Settings → Providers → Audio analysis → Add analyzer → Analysis service,
+# URL http://reverb-analysis:8765.
+services:
+  reverb-analysis:
+    build: .
+    image: reverb-analysis
+    restart: unless-stopped
+    environment:
+      # Optional. If set, put the same key in Reverb's provider settings.
+      ANALYSIS_API_KEY: ""
+    volumes:
+      - analysis-models:/models
+    # NVIDIA GPU (needs the NVIDIA Container Toolkit). Remove this block, and
+    # build with the CPU arguments in the Dockerfile, to run on the CPU.
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+volumes:
+  analysis-models:

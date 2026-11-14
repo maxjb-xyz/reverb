@@ -22,6 +22,8 @@ interface MediaCardProps {
   downloadProgress?: { active: boolean; value: number; indeterminate: boolean }
   /** Ghost cards represent known-but-unowned library items. */
   ghost?: boolean
+  /** Custom square art in place of a cover image. */
+  art?: ReactNode
 }
 
 export function MediaCard({
@@ -37,6 +39,7 @@ export function MediaCard({
   onDownload,
   downloadProgress,
   ghost = false,
+  art,
 }: MediaCardProps) {
   const src = coverSrc ?? (coverId ? coverUrl(coverId, 300) : undefined)
 
@@ -52,23 +55,26 @@ export function MediaCard({
       onClick={onClick}
       className={[
         'group relative w-full text-left p-3 rounded-lg',
-        'bg-raised hover:bg-raised-hover transition-colors',
+        'bg-raised hover:bg-raised-hover',
+        'transition-[background-color,transform] duration-200 ease-smooth active:scale-[.985]',
         ghost ? 'border border-dashed border-border-subtle' : '',
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
       ].join(' ')}
     >
       {/* Cover */}
       <div
-        className={['relative mb-3', rounded === 'full' ? 'rounded-full overflow-hidden' : '', ghost ? 'opacity-60 saturate-50' : ''].filter(Boolean).join(' ')}
+        className={['relative mb-3 transition-transform duration-300 ease-smooth group-hover:-translate-y-1', rounded === 'full' ? 'rounded-full overflow-hidden' : '', ghost ? 'opacity-60 saturate-50' : ''].filter(Boolean).join(' ')}
         data-testid="mediacard-cover"
       >
-        <Cover
-          src={src}
-          alt={title}
-          size="full"
-          rounded={rounded}
-          className="aspect-square w-full shadow-cover"
-        />
+        {art ?? (
+          <Cover
+            src={src}
+            alt={title}
+            size="full"
+            rounded={rounded}
+            className="aspect-square w-full shadow-cover transition-shadow duration-300 ease-smooth group-hover:shadow-lift"
+          />
+        )}
         {/* Badge / Coverage slot (top-left overlay) — coverage takes precedence */}
         {coverage && (
           <div className="absolute left-2 top-2"><CoverageChip state={coverage.state} owned={coverage.owned} total={coverage.total} /></div>
@@ -85,7 +91,7 @@ export function MediaCard({
               'w-10 h-10 rounded-full bg-accent text-surface',
               'inline-grid place-items-center shadow-cover',
               'opacity-0 translate-y-2 group-hover:opacity-100 group-hover:translate-y-0',
-              'transition-all duration-150',
+              'transition-all duration-300 ease-smooth hover:scale-110 hover:shadow-glow active:scale-95',
               'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
               'focus-visible:opacity-100 focus-visible:translate-y-0',
             ].join(' ')}
@@ -113,7 +119,7 @@ export function MediaCard({
               'absolute right-3 bottom-3 w-10 h-10 rounded-full bg-accent text-surface',
               'inline-grid place-items-center shadow-cover',
               'opacity-0 translate-y-2 group-hover:opacity-100 group-hover:translate-y-0',
-              'transition-all duration-150',
+              'transition-all duration-300 ease-smooth hover:scale-110 hover:shadow-glow active:scale-95',
               'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
               'focus-visible:opacity-100 focus-visible:translate-y-0',
             ].join(' ')}

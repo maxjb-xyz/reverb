@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest'
 import { startPlayTracker } from './playTracker'
 import type { PlayerState } from './audioEngine'
 import type { Track } from './types'
-import type { PlayInput } from './playApi'
+import type { PlayInput, PlayProgress } from './playApi'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -38,6 +38,8 @@ function baseState(): PlayerState {
     volume: 1,
     shuffle: false,
     repeat: 'off',
+    crossfadeMs: 0,
+    speaking: false,
   }
 }
 
@@ -312,5 +314,181 @@ describe('playTracker', () => {
     expect(recordFn).toHaveBeenCalledTimes(1)
     expect(recordFn.mock.calls[0][0].durationMs).toBe(60_000)
     stop()
+  })
+
+  // ── Final listened time ───────────────────────────────────────────────────
+  // The play is recorded at the halfway mark. Without a follow-up, every play
+  // counted only half the song, and "completed" was almost never true.
+  describe('final listened time', () => {
+    const flush = () => new Promise<void>((r) => setTimeout(r, 0))
+    let updateFn: Mock<(id: string, u: PlayProgress, keepalive: boolean) => Promise<void>>
+
+    beforeEach(() => {
+      recordFn.mockResolvedValue('play-1' as unknown as void)
+      updateFn = vi.fn<(id: string, u: PlayProgress, keepalive: boolean) => Promise<void>>().mockResolvedValue(undefined)
+    })
+
+    it('reports the full listened time and completion when the song ends and the next starts', async () => {
+      const eng = fakeEngine()
+      const stop = startPlayTracker(eng as any, recordFn, { update: updateFn })
+      const t1 = mkTrack('f1', 60_000)
+      const t2 = mkTrack('f2', 60_000)
+
+      eng.emit({ ...baseState(), current: t1, durationMs: 60_000, playing: true, currentTimeMs: 0 })
+      playFromTo(eng, t1, 60_000, 0, 31_000)
+      expect(recordFn).toHaveBeenCalledTimes(1)
+      await flush()
+
+      playFromTo(eng, t1, 60_000, 31_000, 60_000)
+      eng.emit({ ...baseState(), current: t2, durationMs: 60_000, playing: true, currentTimeMs: 0 })
+
+      expect(updateFn).toHaveBeenCalledTimes(1)
+      const [id, u, keepalive] = updateFn.mock.calls[0]
+      expect(id).toBe('play-1')
+      expect(u.msPlayed).toBeGreaterThanOrEqual(59_000)
+      expect(u.completed).toBe(true)
+      expect(keepalive).toBe(false)
+      stop()
+    })
+
+    it('reports progress when playback pauses, and not again without new listening', async () => {
+      const eng = fakeEngine()
+      const stop = startPlayTracker(eng as any, recordFn, { update: updateFn })
+      const t = mkTrack('f3', 100_000)
+
+      eng.emit({ ...baseState(), current: t, durationMs: 100_000, playing: true, currentTimeMs: 0 })
+      playFromTo(eng, t, 100_000, 0, 70_000)
+      await flush()
+      eng.emit({ ...baseState(), current: t, durationMs: 100_000, playing: false, currentTimeMs: 70_000 })
+      expect(updateFn).toHaveBeenCalledTimes(1)
+      expect(updateFn.mock.calls[0][1]).toEqual({ msPlayed: 70_000, completed: false })
+
+      // Pausing and resuming with nothing heard in between sends nothing new.
+      eng.emit({ ...baseState(), current: t, durationMs: 100_000, playing: true, currentTimeMs: 70_000 })
+      eng.emit({ ...baseState(), current: t, durationMs: 100_000, playing: false, currentTimeMs: 70_000 })
+      expect(updateFn).toHaveBeenCalledTimes(1)
+      stop()
+    })
+
+    it('waits for the play id when the song changes before the record request returns', async () => {
+      let resolveId: (id: string) => void = () => {}
+      recordFn.mockImplementation(() => new Promise((r) => { resolveId = r as (id: string) => void }) as unknown as Promise<void>)
+      const eng = fakeEngine()
+      const stop = startPlayTracker(eng as any, recordFn, { update: updateFn })
+      const t1 = mkTrack('f4', 60_000)
+
+      eng.emit({ ...baseState(), current: t1, durationMs: 60_000, playing: true, currentTimeMs: 0 })
+      playFromTo(eng, t1, 60_000, 0, 50_000)
+      eng.emit({ ...baseState(), current: null })
+      expect(updateFn).not.toHaveBeenCalled()
+
+      resolveId('late-id')
+      await flush()
+      expect(updateFn).toHaveBeenCalledTimes(1)
+      expect(updateFn.mock.calls[0][0]).toBe('late-id')
+      expect(updateFn.mock.calls[0][1].msPlayed).toBe(50_000)
+      stop()
+    })
+
+    it('sends nothing for a song that never qualified', async () => {
+      const eng = fakeEngine()
+      const stop = startPlayTracker(eng as any, recordFn, { update: updateFn })
+      const t1 = mkTrack('f5', 120_000)
+      eng.emit({ ...baseState(), current: t1, durationMs: 120_000, playing: true, currentTimeMs: 0 })
+      playFromTo(eng, t1, 120_000, 0, 20_000)
+      eng.emit({ ...baseState(), current: mkTrack('f6', 120_000), durationMs: 120_000, playing: true, currentTimeMs: 0 })
+      await flush()
+      expect(recordFn).not.toHaveBeenCalled()
+      expect(updateFn).not.toHaveBeenCalled()
+      stop()
+    })
+
+    it('reports with keepalive when the page is closed mid-song', async () => {
+      const page = new EventTarget()
+      const eng = fakeEngine()
+      const stop = startPlayTracker(eng as any, recordFn, { update: updateFn, page })
+      const t = mkTrack('f7', 100_000)
+      eng.emit({ ...baseState(), current: t, durationMs: 100_000, playing: true, currentTimeMs: 0 })
+      playFromTo(eng, t, 100_000, 0, 80_000)
+      await flush()
+
+      page.dispatchEvent(new Event('pagehide'))
+      expect(updateFn).toHaveBeenCalledTimes(1)
+      expect(updateFn.mock.calls[0][1].msPlayed).toBe(80_000)
+      expect(updateFn.mock.calls[0][2]).toBe(true)
+
+      stop()
+      page.dispatchEvent(new Event('pagehide'))
+      expect(updateFn).toHaveBeenCalledTimes(1)
+    })
+
+    // With crossfade on, the next song takes over a few seconds before the end.
+    it('counts a song that crossfaded into the next one as completed', async () => {
+      const eng = fakeEngine()
+      const stop = startPlayTracker(eng as any, recordFn, { update: updateFn })
+      const t1 = mkTrack('x1', 60_000)
+      const xf = { crossfadeMs: 6_000 }
+      eng.emit({ ...baseState(), ...xf, current: t1, durationMs: 60_000, playing: true, currentTimeMs: 0 })
+      for (let pos = 1_000; pos <= 54_500; pos += 500) {
+        eng.emit({ ...baseState(), ...xf, current: t1, durationMs: 60_000, playing: true, currentTimeMs: pos })
+      }
+      await flush()
+      eng.emit({ ...baseState(), ...xf, current: mkTrack('x2', 60_000), durationMs: 60_000, playing: true, currentTimeMs: 0 })
+
+      expect(updateFn).toHaveBeenCalledTimes(1)
+      expect(updateFn.mock.calls[0][1].completed).toBe(true)
+      stop()
+    })
+
+    it('closes out the first loop of a repeated song before counting the next', async () => {
+      const eng = fakeEngine()
+      const stop = startPlayTracker(eng as any, recordFn, { update: updateFn })
+      const t = mkTrack('f8', 60_000)
+      eng.emit({ ...baseState(), current: t, durationMs: 60_000, playing: true, currentTimeMs: 0 })
+      playFromTo(eng, t, 60_000, 0, 60_000)
+      await flush()
+      eng.emit({ ...baseState(), current: t, durationMs: 60_000, playing: true, currentTimeMs: 0 })
+
+      expect(updateFn).toHaveBeenCalledTimes(1)
+      expect(updateFn.mock.calls[0][1].completed).toBe(true)
+      stop()
+    })
+  })
+
+  // ── Throttled ticks ───────────────────────────────────────────────────────
+  // In a background tab or with the phone screen off, the browser can deliver
+  // progress updates seconds apart. That is still listening, as long as the
+  // song advanced no faster than the clock did.
+  describe('throttled progress updates', () => {
+    it('counts sparse updates that keep pace with the clock', () => {
+      let clock = 0
+      const eng = fakeEngine()
+      const stop = startPlayTracker(eng as any, recordFn, { now: () => clock })
+      const t = mkTrack('b1', 200_000)
+
+      eng.emit({ ...baseState(), current: t, durationMs: 200_000, playing: true, currentTimeMs: 0 })
+      for (let pos = 20_000; pos <= 100_000; pos += 20_000) {
+        clock += 20_000
+        eng.emit({ ...baseState(), current: t, durationMs: 200_000, playing: true, currentTimeMs: pos })
+      }
+
+      expect(recordFn).toHaveBeenCalledTimes(1)
+      expect(recordFn.mock.calls[0][0].msPlayed).toBe(100_000)
+      stop()
+    })
+
+    it('still treats a jump bigger than the time that passed as a seek', () => {
+      let clock = 0
+      const eng = fakeEngine()
+      const stop = startPlayTracker(eng as any, recordFn, { now: () => clock })
+      const t = mkTrack('b2', 200_000)
+
+      eng.emit({ ...baseState(), current: t, durationMs: 200_000, playing: true, currentTimeMs: 0 })
+      clock += 10_000
+      eng.emit({ ...baseState(), current: t, durationMs: 200_000, playing: true, currentTimeMs: 150_000 })
+
+      expect(recordFn).not.toHaveBeenCalled()
+      stop()
+    })
   })
 })

@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/maxjb-xyz/reverb/internal/core"
@@ -20,52 +21,71 @@ type statsTrackFinder interface {
 	FindTrack(context.Context, string, string) (core.ExternalResult, error)
 }
 
+// statsEnrichConcurrency caps how many rows are looked up at once, so a top
+// list costs about one or two round trips instead of one per row, without
+// flooding the search providers.
+const statsEnrichConcurrency = 6
+
 // enrichStatsRows restores source-specific navigation and artwork for durable
 // catalog rows. Stats aggregation only stores text plus a representative track;
 // direct source lookup supplies the artist/album IDs needed by full pages.
+// Rows are looked up concurrently; each goroutine writes only its own row.
 func (s *Server) enrichStatsRows(ctx context.Context, rows []play.TopRow, kind string) {
 	provider, ok := s.searchAggregator().(statsMetadataProvider)
 	if !ok {
 		return
 	}
+	sem := make(chan struct{}, statsEnrichConcurrency)
+	var wg sync.WaitGroup
 	for i := range rows {
-		row := &rows[i]
-		var track core.ExternalResult
-		if row.Source != "" && row.Source != "library" && row.ExternalID != "" {
+		wg.Add(1)
+		sem <- struct{}{}
+		go func(row *play.TopRow) {
+			defer wg.Done()
+			defer func() { <-sem }()
+			enrichStatsRow(ctx, provider, row, kind)
+		}(&rows[i])
+	}
+	wg.Wait()
+}
+
+// enrichStatsRow resolves one row's source ids and artwork.
+func enrichStatsRow(ctx context.Context, provider statsMetadataProvider, row *play.TopRow, kind string) {
+	var track core.ExternalResult
+	if row.Source != "" && row.Source != "library" && row.ExternalID != "" {
+		lookupCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+		track, _ = provider.GetTrack(lookupCtx, row.Source, row.ExternalID)
+		cancel()
+	}
+	if track.ExternalID == "" {
+		if finder, ok := provider.(statsTrackFinder); ok && row.Title != "" && row.Artist != "" {
 			lookupCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
-			track, _ = provider.GetTrack(lookupCtx, row.Source, row.ExternalID)
+			track, _ = finder.FindTrack(lookupCtx, row.Title, row.Artist)
 			cancel()
 		}
-		if track.ExternalID == "" {
-			if finder, ok := provider.(statsTrackFinder); ok && row.Title != "" && row.Artist != "" {
-				lookupCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
-				track, _ = finder.FindTrack(lookupCtx, row.Title, row.Artist)
-				cancel()
-			}
+	}
+	if track.ExternalID == "" {
+		return
+	}
+	row.Source = track.Source
+	row.ExternalID = track.ExternalID
+	row.CoverURL = track.CoverURL
+	row.ArtistExternalID = track.ArtistExternalID
+	row.AlbumExternalID = track.AlbumExternalID
+	if kind == "artist" && row.ArtistExternalID != "" {
+		lookupCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+		artist, err := provider.GetArtist(lookupCtx, row.Source, row.ArtistExternalID)
+		cancel()
+		if err == nil && artist.CoverURL != "" {
+			row.CoverURL = artist.CoverURL
 		}
-		if track.ExternalID == "" {
-			continue
-		}
-		row.Source = track.Source
-		row.ExternalID = track.ExternalID
-		row.CoverURL = track.CoverURL
-		row.ArtistExternalID = track.ArtistExternalID
-		row.AlbumExternalID = track.AlbumExternalID
-		if kind == "artist" && row.ArtistExternalID != "" {
-			lookupCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
-			artist, err := provider.GetArtist(lookupCtx, row.Source, row.ArtistExternalID)
-			cancel()
-			if err == nil && artist.CoverURL != "" {
-				row.CoverURL = artist.CoverURL
-			}
-		}
-		if kind == "album" && row.AlbumExternalID != "" {
-			lookupCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
-			album, err := provider.GetAlbum(lookupCtx, row.Source, row.AlbumExternalID)
-			cancel()
-			if err == nil && album.CoverURL != "" {
-				row.CoverURL = album.CoverURL
-			}
+	}
+	if kind == "album" && row.AlbumExternalID != "" {
+		lookupCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+		album, err := provider.GetAlbum(lookupCtx, row.Source, row.AlbumExternalID)
+		cancel()
+		if err == nil && album.CoverURL != "" {
+			row.CoverURL = album.CoverURL
 		}
 	}
 }
@@ -136,6 +156,16 @@ func parseLimit(r *http.Request) int {
 		}
 	}
 	return statsDefaultLimit
+}
+
+// parseTzOffset parses the "tzOffsetMinutes" query param (minutes east of UTC,
+// the browser's -getTimezoneOffset()), defaulting to 0 and clamped to ±14h.
+func parseTzOffset(r *http.Request) int {
+	v, err := strconv.Atoi(r.URL.Query().Get("tzOffsetMinutes"))
+	if err != nil || v < -14*60 || v > 14*60 {
+		return 0
+	}
+	return v
 }
 
 // nilStats returns 503 when Deps.Stats is not wired in.
@@ -244,7 +274,7 @@ func (s *Server) handleStatsTimeline(w http.ResponseWriter, r *http.Request) {
 	if bucket == "" {
 		bucket = "day"
 	}
-	result, err := s.deps.Stats.Timeline(r.Context(), cu.ID, from, to, bucket)
+	result, err := s.deps.Stats.Timeline(r.Context(), cu.ID, from, to, bucket, parseTzOffset(r))
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
@@ -263,13 +293,7 @@ func (s *Server) handleStatsClock(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	from, to := parseFrom(r), parseTo(r)
-	tzOffsetMin := 0
-	if s := r.URL.Query().Get("tzOffsetMinutes"); s != "" {
-		if v, err := strconv.Atoi(s); err == nil {
-			tzOffsetMin = v
-		}
-	}
-	result, err := s.deps.Stats.Clock(r.Context(), cu.ID, from, to, tzOffsetMin)
+	result, err := s.deps.Stats.Clock(r.Context(), cu.ID, from, to, parseTzOffset(r))
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return

@@ -1,5 +1,6 @@
-import { describe, expect, it, beforeEach } from 'vitest'
+import { afterEach, describe, expect, it, beforeEach, vi } from 'vitest'
 import { AudioEngine, type AudioElement } from './audioEngine'
+import type { Mixer } from './audioMixer'
 import type { Track } from './types'
 
 function track(id: string): Track {
@@ -47,13 +48,45 @@ class FakeAudio implements AudioElement {
   }
 }
 
-function newEngine() {
+// FakeMixer records what the engine asks of the Web Audio graph.
+class FakeMixer implements Mixer {
+  connected = new Set<AudioElement>()
+  buses = new Map<AudioElement, string>()
+  gains = new Map<AudioElement, number>()
+  fades: Array<{ el: AudioElement; from: number; to: number; ms: number }> = []
+  ducks: Array<{ level: number; ms: number }> = []
+  resumed = 0
+  connect(el: AudioElement, bus: 'music' | 'voice' = 'music') {
+    this.connected.add(el)
+    this.buses.set(el, bus)
+    return true
+  }
+  setGain(el: AudioElement, v: number) {
+    this.gains.set(el, v)
+  }
+  fade(el: AudioElement, from: number, to: number, ms: number) {
+    this.fades.push({ el, from, to, ms })
+    this.gains.set(el, to)
+  }
+  duckMusic(level: number, ms: number) {
+    this.ducks.push({ level, ms })
+  }
+  resume() {
+    this.resumed++
+  }
+}
+
+function newEngine(mixer: Mixer | null = null) {
   const audios: FakeAudio[] = []
-  const engine = new AudioEngine(() => {
-    const a = new FakeAudio()
-    audios.push(a)
-    return a
-  }, (t) => `mock://${t.id}`)
+  const engine = new AudioEngine(
+    () => {
+      const a = new FakeAudio()
+      audios.push(a)
+      return a
+    },
+    (t) => `mock://${t.id}`,
+    () => mixer,
+  )
   return { engine, audios }
 }
 
@@ -306,6 +339,47 @@ describe('AudioEngine session restore', () => {
     expect(engine.getState().current?.id).toBe('9')
   })
 
+  it('adopt replaces a playing queue and resumes where the other device was', () => {
+    const { engine, audios: els } = newEngine()
+    engine.playTrackList([track('9')], 0)
+    engine.adopt(snap(), true)
+    const s = engine.getState()
+    expect(s.queue.map((t) => t.id)).toEqual(['1', '2', '3'])
+    expect(s.current?.id).toBe('2')
+    expect(s.playing).toBe(true)
+    expect(els[0].src).toContain('2')
+    expect(els[0].currentTime).toBeCloseTo(0.4)
+  })
+
+  it('adopt without autoplay pauses, ready to resume', () => {
+    const { engine, audios: els } = newEngine()
+    engine.playTrackList([track('9')], 0)
+    engine.adopt(snap(), false)
+    expect(engine.getState().playing).toBe(false)
+    expect(els[0].paused).toBe(true)
+    expect(engine.getState().current?.id).toBe('2')
+    engine.play()
+    expect(els[0].src).toContain('2')
+  })
+
+  it('shows paused when the browser blocks autoplay', async () => {
+    const { engine, audios: els } = newEngine()
+    els[0].play = () => Promise.reject(Object.assign(new Error('blocked'), { name: 'NotAllowedError' }))
+    engine.adopt(snap(), true)
+    expect(engine.getState().playing).toBe(true)
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(engine.getState().playing).toBe(false)
+  })
+
+  it('adopt of an empty session clears the queue', () => {
+    const { engine } = newEngine()
+    engine.playTrackList([track('9')], 0)
+    engine.adopt(snap({ queue: [], index: -1 }), false)
+    expect(engine.getState().current).toBeNull()
+    expect(engine.getState().playing).toBe(false)
+  })
+
   it('snapshot round-trips through restore', () => {
     const { engine } = newEngine()
     engine.restore(snap())
@@ -313,3 +387,238 @@ describe('AudioEngine session restore', () => {
   })
 })
 
+
+describe('AudioEngine crossfade', () => {
+  let engine: AudioEngine
+  let audios: FakeAudio[]
+  let mixer: FakeMixer
+  beforeEach(() => {
+    vi.useFakeTimers()
+    mixer = new FakeMixer()
+    ;({ engine, audios } = newEngine(mixer))
+  })
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  // Move the playing element to `sec` into a 200 s track and tell the engine.
+  function at(el: FakeAudio, sec: number) {
+    el.duration = 200
+    el.currentTime = sec
+    el.fire('timeupdate')
+  }
+
+  it('is off by default: the track plays to its end', () => {
+    engine.playTrackList(list, 0)
+    at(audios[0], 199)
+    expect(engine.getState().index).toBe(0)
+    expect(audios[1].paused).toBe(true)
+    expect(mixer.connected.size).toBe(0) // nothing is routed through Web Audio
+  })
+
+  it('clamps the crossfade to 0..12 s and reports it in state', () => {
+    engine.setCrossfade(30_000)
+    expect(engine.getState().crossfadeMs).toBe(12_000)
+    engine.setCrossfade(-5)
+    expect(engine.getState().crossfadeMs).toBe(0)
+  })
+
+  it('routes both elements through the mixer once crossfade is on and playback starts', () => {
+    engine.setCrossfade(5000)
+    engine.playTrackList(list, 0)
+    expect(mixer.connected.has(audios[0])).toBe(true)
+    expect(mixer.connected.has(audios[1])).toBe(true)
+    expect(mixer.resumed).toBeGreaterThan(0)
+  })
+
+  it('starts the next track on the other element as the current one nears its end', () => {
+    engine.setCrossfade(5000)
+    engine.playTrackList(list, 0)
+    at(audios[0], 190) // 10 s left: too early
+    expect(engine.getState().index).toBe(0)
+    at(audios[0], 195) // 5 s left: fade starts
+    const s = engine.getState()
+    expect(s.index).toBe(1)
+    expect(s.current?.id).toBe('2')
+    expect(audios[1].src).toBe('mock://2')
+    expect(audios[1].paused).toBe(false)
+    expect(audios[1].currentTime).toBe(0)
+    expect(mixer.fades).toContainEqual({ el: audios[1], from: 0, to: 1, ms: 5000 })
+    expect(mixer.fades).toContainEqual({ el: audios[0], from: 1, to: 0, ms: 5000 })
+  })
+
+  it('shortens the fade to the time that is actually left', () => {
+    engine.setCrossfade(5000)
+    engine.playTrackList(list, 0)
+    at(audios[0], 197)
+    expect(mixer.fades).toContainEqual({ el: audios[0], from: 1, to: 0, ms: 3000 })
+  })
+
+  it('stops the old track after the fade and preloads the one after next on it', () => {
+    engine.setCrossfade(5000)
+    engine.playTrackList(list, 0)
+    at(audios[0], 195)
+    expect(audios[0].paused).toBe(false) // still fading out
+    vi.advanceTimersByTime(5000)
+    expect(audios[0].paused).toBe(true)
+    expect(audios[0].src).toBe('mock://3')
+    expect(mixer.gains.get(audios[0])).toBe(1) // ready to be faded in next time
+  })
+
+  it('ignores the old track ending during the fade', () => {
+    engine.setCrossfade(5000)
+    engine.playTrackList(list, 0)
+    at(audios[0], 195)
+    audios[0].fire('ended')
+    expect(engine.getState().index).toBe(1)
+  })
+
+  it('follows the new element for time, errors and its own end', () => {
+    engine.setCrossfade(5000)
+    engine.playTrackList(list, 0)
+    at(audios[0], 195)
+    vi.advanceTimersByTime(5000)
+    at(audios[1], 42)
+    expect(engine.getState().currentTimeMs).toBe(42_000)
+    audios[1].fire('error')
+    expect(engine.getState().index).toBe(2)
+  })
+
+  it('pausing mid-fade silences both tracks and resumes only the new one at full level', () => {
+    engine.setCrossfade(5000)
+    engine.playTrackList(list, 0)
+    at(audios[0], 195)
+    engine.pause()
+    expect(audios[0].paused).toBe(true)
+    expect(audios[1].paused).toBe(true)
+    engine.play()
+    expect(audios[1].paused).toBe(false)
+    expect(audios[0].paused).toBe(true)
+    expect(mixer.gains.get(audios[1])).toBe(1)
+  })
+
+  it('skipping mid-fade drops the old track at once', () => {
+    engine.setCrossfade(5000)
+    engine.playTrackList(list, 0)
+    at(audios[0], 195)
+    engine.next()
+    expect(engine.getState().index).toBe(2)
+    expect(audios[0].paused).toBe(true)
+    expect(mixer.gains.get(audios[1])).toBe(1)
+  })
+
+  it('does not crossfade on repeat one', () => {
+    engine.setCrossfade(5000)
+    engine.playTrackList(list, 0)
+    engine.cycleRepeat()
+    engine.cycleRepeat()
+    at(audios[0], 196)
+    expect(engine.getState().index).toBe(0)
+    expect(audios[1].paused).toBe(true)
+  })
+
+  it('does not crossfade past the end of the queue', () => {
+    engine.setCrossfade(5000)
+    engine.playTrackList(list, 2)
+    at(audios[0], 196)
+    expect(engine.getState().index).toBe(2)
+    expect(audios[1].paused).toBe(true)
+  })
+
+  it('does not crossfade tracks shorter than twice the fade', () => {
+    engine.setCrossfade(5000)
+    engine.playTrackList(list, 0)
+    audios[0].duration = 8
+    audios[0].currentTime = 4
+    audios[0].fire('timeupdate')
+    expect(engine.getState().index).toBe(0)
+  })
+
+  it('plays normally without a crossfade when the browser has no Web Audio', () => {
+    const plain = newEngine(null)
+    plain.engine.setCrossfade(5000)
+    plain.engine.playTrackList(list, 0)
+    plain.audios[0].duration = 200
+    plain.audios[0].currentTime = 196
+    plain.audios[0].fire('timeupdate')
+    expect(plain.engine.getState().index).toBe(0)
+    plain.audios[0].fire('ended')
+    expect(plain.engine.getState().index).toBe(1)
+  })
+})
+
+describe('AudioEngine voice-over', () => {
+  let engine: AudioEngine
+  let audios: FakeAudio[]
+  let mixer: FakeMixer
+  beforeEach(() => {
+    mixer = new FakeMixer()
+    ;({ engine, audios } = newEngine(mixer))
+  })
+
+  it('plays a line on its own element, on the voice bus, with the music ducked', async () => {
+    engine.playTrackList(list, 0)
+    const done = engine.speak('mock://line-1')
+    const voice = audios[2]
+    expect(voice.src).toBe('mock://line-1')
+    expect(voice.paused).toBe(false)
+    expect(mixer.buses.get(voice)).toBe('voice')
+    expect(mixer.connected.has(audios[0])).toBe(true) // music routed even with crossfade off
+    expect(mixer.ducks.at(-1)).toEqual({ level: 0.25, ms: 400 })
+    voice.fire('ended')
+    await done
+    expect(mixer.ducks.at(-1)).toEqual({ level: 1, ms: 800 })
+    expect(engine.getState().speaking).toBe(false)
+  })
+
+  it('reports speaking in state while a line plays', () => {
+    engine.playTrackList(list, 0)
+    void engine.speak('mock://line-1')
+    expect(engine.getState().speaking).toBe(true)
+  })
+
+  it('takes a custom duck level', () => {
+    engine.playTrackList(list, 0)
+    void engine.speak('mock://line-1', { duckTo: 0.5 })
+    expect(mixer.ducks.at(-1)).toEqual({ level: 0.5, ms: 400 })
+  })
+
+  it('a broken line restores the music and still resolves', async () => {
+    engine.playTrackList(list, 0)
+    const done = engine.speak('mock://broken')
+    audios[2].fire('error')
+    await done
+    expect(mixer.ducks.at(-1)?.level).toBe(1)
+    expect(engine.getState().index).toBe(0) // never touches the queue
+  })
+
+  it('a new line cuts off the one playing', async () => {
+    engine.playTrackList(list, 0)
+    const first = engine.speak('mock://line-1')
+    void engine.speak('mock://line-2')
+    await first
+    expect(audios[2].src).toBe('mock://line-2')
+    expect(audios[2].paused).toBe(false)
+  })
+
+  it('pausing drops the line and brings the music back up', async () => {
+    engine.playTrackList(list, 0)
+    const done = engine.speak('mock://line-1')
+    engine.pause()
+    await done
+    expect(audios[2].paused).toBe(true)
+    expect(mixer.ducks.at(-1)?.level).toBe(1)
+    expect(engine.getState().speaking).toBe(false)
+  })
+
+  it('without Web Audio, lowers the element volume instead and restores it', async () => {
+    const plain = newEngine(null)
+    plain.engine.setVolume(0.8)
+    plain.engine.playTrackList(list, 0)
+    const done = plain.engine.speak('mock://line-1')
+    expect(plain.audios[0].volume).toBeCloseTo(0.2)
+    plain.audios[2].fire('ended')
+    await done
+    expect(plain.audios[0].volume).toBeCloseTo(0.8)
+  })
+})

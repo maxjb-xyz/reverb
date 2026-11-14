@@ -1,5 +1,6 @@
 import type { Track } from './types'
 import { streamUrl } from './libraryApi'
+import { createWebAudioMixer, type Mixer } from './audioMixer'
 
 export type RepeatMode = 'off' | 'all' | 'one'
 
@@ -28,7 +29,23 @@ export interface PlayerState {
   volume: number
   shuffle: boolean
   repeat: RepeatMode
+  /** Crossfade length in ms; 0 = off. */
+  crossfadeMs: number
+  /** A voice-over line (the DJ) is playing over the music. */
+  speaking: boolean
 }
+
+export interface SpeakOptions {
+  /** Music level while the line plays, 0..1 (default 0.25). */
+  duckTo?: number
+}
+
+const DUCK_TO = 0.25
+const DUCK_DOWN_MS = 400
+const DUCK_UP_MS = 800
+
+/** Longest crossfade the player offers. */
+export const MAX_CROSSFADE_MS = 12_000
 
 /** What survives a reload: enough to put the player back where it was, paused. */
 export interface PlayerSnapshot {
@@ -47,6 +64,10 @@ function realAudioFactory(): AudioElement {
 export class AudioEngine {
   private factory: () => AudioElement
   private resolveSrc: (t: Track) => string
+  private makeMixer: () => Mixer | null
+  // Two elements ("decks"). `active` is the one the listener hears and the
+  // engine follows; `preload` warms up the next track. A crossfade starts the
+  // next track on `preload` and then swaps the two.
   private active: AudioElement
   private preload: AudioElement
   private listeners = new Set<(s: PlayerState) => void>()
@@ -73,27 +94,64 @@ export class AudioEngine {
   private resumeAtMs = 0
   private pendingRestore = false
 
+  // Crossfade. The mixer is made the first time it is needed (undefined until
+  // then, null if the browser has no Web Audio). `fading` is the outgoing
+  // element while a crossfade runs.
+  private crossfadeMs = 0
+  private mixer: Mixer | null | undefined = undefined
+  private routed = false
+  private fading: { el: AudioElement; timer: ReturnType<typeof setTimeout> } | null = null
+
+  // Voice-over: a third element made on first use, and the line playing on it.
+  private voice: AudioElement | null = null
+  private line: { finish: () => void } | null = null
+
   constructor(
     factory: () => AudioElement = realAudioFactory,
     resolveSrc: (t: Track) => string = (t) => streamUrl(t.id),
+    mixerFactory: () => Mixer | null = createWebAudioMixer,
   ) {
     this.factory = factory
     this.resolveSrc = resolveSrc
+    this.makeMixer = mixerFactory
     this.active = this.factory()
     this.preload = this.factory()
-    this.bindActive()
+    this.bind(this.active)
   }
 
-  private bindActive() {
-    this.active.addEventListener('timeupdate', this.onTime)
-    this.active.addEventListener('durationchange', this.onTime)
-    this.active.addEventListener('progress', this.onTime)
-    this.active.addEventListener('ended', this.onEnded)
-    this.active.addEventListener('play', this.onPlayState)
-    this.active.addEventListener('pause', this.onPlayState)
-    this.active.addEventListener('error', this.onError)
-    // Note: preload errors are intentionally not handled — a preload error should
-    // null/ignore the preload src silently, never advance the queue.
+  // Only the active element drives the engine. Note: preload errors are
+  // intentionally not handled — a preload error should null/ignore the preload
+  // src silently, never advance the queue.
+  private static readonly EVENTS = [
+    'timeupdate',
+    'durationchange',
+    'progress',
+    'ended',
+    'play',
+    'pause',
+    'error',
+  ] as const
+
+  private handler(type: (typeof AudioEngine.EVENTS)[number]): () => void {
+    switch (type) {
+      case 'ended':
+        return this.onEnded
+      case 'play':
+      case 'pause':
+        return this.onPlayState
+      case 'error':
+        return this.onError
+      default:
+        return this.onTime
+    }
+  }
+
+  private bind(el: AudioElement) {
+    for (const type of AudioEngine.EVENTS) el.addEventListener(type, this.handler(type))
+  }
+
+  private unbind(el: AudioElement) {
+    for (const type of AudioEngine.EVENTS) el.removeEventListener(type, this.handler(type))
   }
 
   private onTime = () => {
@@ -105,6 +163,7 @@ export class AudioEngine {
     if (b && b.length > 0) {
       this.bufferedMs = Math.round(b.end(b.length - 1) * 1000)
     }
+    if (this.shouldCrossfade()) this.startCrossfade()
     this.emit()
   }
 
@@ -177,6 +236,8 @@ export class AudioEngine {
       volume: this.volume,
       shuffle: this.shuffle,
       repeat: this.repeat,
+      crossfadeMs: this.crossfadeMs,
+      speaking: this.line !== null,
     }
   }
 
@@ -214,6 +275,34 @@ export class AudioEngine {
     this.pendingRestore = true
     this.playing = false
     this.emit()
+  }
+
+  /**
+   * Take over a session from another device: replace whatever is queued with
+   * `snap`, positioned where it was, and start playing if `autoplay`. Unlike
+   * restore() this always replaces the queue.
+   */
+  adopt(snap: PlayerSnapshot, autoplay: boolean) {
+    this.line?.finish()
+    this.stopFade()
+    this.active.pause()
+    this.playing = false
+    this.bufferedMs = 0
+    this.queue = []
+    this.index = -1
+    this.pendingRestore = false
+    this.resumeAtMs = 0
+    if (snap.queue.length === 0) {
+      this.currentTimeMs = 0
+      this.durationMs = 0
+      this.shuffle = snap.shuffle
+      this.repeat = snap.repeat
+      this.rebuildShuffle()
+      this.emit()
+      return
+    }
+    this.restore(snap)
+    if (autoplay) this.play()
   }
 
   playTrackList(tracks: Track[], startIndex: number) {
@@ -254,6 +343,7 @@ export class AudioEngine {
   }
 
   private loadCurrent(autoplay: boolean, resume = false) {
+    this.stopFade()
     const t = this.getState().current
     if (!t) {
       this.playing = false
@@ -270,7 +360,8 @@ export class AudioEngine {
     this.currentTimeMs = resumeAt
     if (resumeAt > 0) this.active.currentTime = resumeAt / 1000
     if (autoplay) {
-      void this.active.play()
+      this.route()
+      this.startActive()
       this.playing = true
     }
     this.preloadNext()
@@ -278,10 +369,30 @@ export class AudioEngine {
   }
 
   private preloadNext() {
+    // The outgoing track is still on `preload` while a crossfade runs.
+    if (this.fading) return
     const ni = this.peekNextIndex()
     if (ni < 0 || ni >= this.queue.length) return
     this.preload.src = this.resolveSrc(this.queue[ni])
     this.preload.load()
+  }
+
+  /**
+   * Start the active element. A browser that blocks autoplay (no tap on this
+   * page yet, e.g. playback moved here from another device) rejects play();
+   * then the player shows paused instead of pretending to play.
+   */
+  private startActive() {
+    const el = this.active
+    const p = el.play() as Promise<void> | undefined
+    if (p && typeof p.catch === 'function') {
+      p.catch((err: unknown) => {
+        if ((err as { name?: string } | null)?.name === 'NotAllowedError' && el === this.active && this.playing) {
+          this.playing = false
+          this.emit()
+        }
+      })
+    }
   }
 
   play() {
@@ -289,7 +400,8 @@ export class AudioEngine {
     if (this.getState().current) {
       if (!this.active.src || this.pendingRestore) this.loadCurrent(true, true)
       else {
-        void this.active.play()
+        this.route()
+        this.startActive()
         this.playing = true
       }
     }
@@ -297,6 +409,8 @@ export class AudioEngine {
   }
 
   pause() {
+    this.line?.finish()
+    this.stopFade()
     this.active.pause()
     this.playing = false
     this.emit()
@@ -342,33 +456,42 @@ export class AudioEngine {
     return -1
   }
 
-  private advance(dir: 1 | -1, fromEnded = false) {
-    if (this.queue.length === 0) return
+  /**
+   * Move the queue position one step without loading anything. False when
+   * there is nowhere to go (end of the queue with repeat off).
+   */
+  private step(dir: 1 | -1): boolean {
+    if (this.queue.length === 0) return false
     if (this.shuffle) {
       let np = this.shufflePos + dir
       if (np >= this.shuffleOrder.length) {
         if (this.repeat === 'all') np = 0
-        else {
-          if (fromEnded) { this.playing = false; this.emit() }
-          return
-        }
+        else return false
       }
       if (np < 0) np = 0
       this.shufflePos = np
       this.index = this.shuffleOrder[np]
-      this.loadCurrent(this.playing || fromEnded)
-      return
+      return true
     }
     let ni = this.index + dir
     if (ni >= this.queue.length) {
       if (this.repeat === 'all') ni = 0
-      else {
-        if (fromEnded) { this.playing = false; this.emit() }
-        return
-      }
+      else return false
     }
     if (ni < 0) ni = 0
     this.index = ni
+    return true
+  }
+
+  private advance(dir: 1 | -1, fromEnded = false) {
+    if (this.queue.length === 0) return
+    if (!this.step(dir)) {
+      if (fromEnded) {
+        this.playing = false
+        this.emit()
+      }
+      return
+    }
     this.loadCurrent(this.playing || fromEnded)
   }
 
@@ -405,10 +528,150 @@ export class AudioEngine {
     this.emit()
   }
 
+  /**
+   * Crossfade length in ms (0 turns it off, clamped to MAX_CROSSFADE_MS).
+   * Turning it on while something plays routes the player through Web Audio
+   * right away, so call it from a user gesture.
+   */
+  setCrossfade(ms: number) {
+    this.crossfadeMs = Number.isFinite(ms) ? Math.min(MAX_CROSSFADE_MS, Math.max(0, Math.round(ms))) : 0
+    if (this.crossfadeMs > 0 && this.playing) this.route()
+    this.emit()
+  }
+
+  /**
+   * Route both elements through the mixer, once, when a feature needs it. Kept
+   * lazy on purpose: an element wrapped by Web Audio plays only through it, so
+   * people who never turn crossfade on keep the plain element path.
+   */
+  private route(force = false): boolean {
+    if (!force && this.crossfadeMs <= 0 && !this.routed) return false
+    if (this.mixer === undefined) this.mixer = this.makeMixer()
+    if (!this.mixer) return false
+    if (!this.routed) {
+      this.routed = this.mixer.connect(this.active) && this.mixer.connect(this.preload)
+    }
+    this.mixer.resume()
+    return this.routed
+  }
+
+  private shouldCrossfade(): boolean {
+    if (this.crossfadeMs <= 0 || !this.playing || this.fading || this.pendingRestore) return false
+    if (this.repeat === 'one' || !this.routed || !this.mixer) return false
+    if (this.durationMs < this.crossfadeMs * 2) return false
+    const left = this.durationMs - this.currentTimeMs
+    if (left > this.crossfadeMs || left <= 0) return false
+    return this.peekNextIndex() >= 0
+  }
+
+  /** Start the next track on the other element and fade between the two. */
+  private startCrossfade() {
+    const mixer = this.mixer
+    if (!mixer) return
+    const ms = Math.min(this.crossfadeMs, this.durationMs - this.currentTimeMs)
+    if (!this.step(1)) return
+    const next = this.queue[this.index]
+    const outgoing = this.active
+    const incoming = this.preload
+    const src = this.resolveSrc(next)
+    if (incoming.src !== src) {
+      incoming.src = src
+      incoming.load()
+    }
+    this.unbind(outgoing)
+    this.active = incoming
+    this.preload = outgoing
+    this.bind(incoming)
+
+    incoming.volume = this.volume
+    incoming.currentTime = 0
+    mixer.setGain(incoming, 0)
+    void incoming.play()
+    mixer.fade(incoming, 0, 1, ms)
+    mixer.fade(outgoing, 1, 0, ms)
+
+    this.currentTimeMs = 0
+    this.durationMs = next.durationMs || 0
+    this.bufferedMs = 0
+    this.fading = { el: outgoing, timer: setTimeout(() => this.finishFade(), ms) }
+  }
+
+  private finishFade() {
+    if (!this.fading) return
+    const { el } = this.fading
+    this.fading = null
+    el.pause()
+    this.mixer?.setGain(el, 1)
+    this.preloadNext()
+  }
+
+  /** End a crossfade early: drop the outgoing track and bring the new one to full level. */
+  private stopFade() {
+    if (!this.fading) return
+    clearTimeout(this.fading.timer)
+    const { el } = this.fading
+    this.fading = null
+    el.pause()
+    this.mixer?.setGain(el, 1)
+    this.mixer?.setGain(this.active, 1)
+  }
+
+  /**
+   * Play a short voice line (the DJ) over the music, lowering the music while
+   * it plays and bringing it back after. Resolves when the line ends, fails,
+   * or is cut off by pause() or another line. Never touches the queue.
+   */
+  speak(src: string, opts: SpeakOptions = {}): Promise<void> {
+    this.line?.finish()
+    const duckTo = Math.min(1, Math.max(0, opts.duckTo ?? DUCK_TO))
+    const mixed = this.route(true)
+    const mixer = mixed ? this.mixer : null
+    if (!this.voice) {
+      this.voice = this.factory()
+      if (mixer) mixer.connect(this.voice, 'voice')
+    }
+    const voice = this.voice
+    voice.volume = this.volume
+
+    // Lower the music: on the bus when mixed, else on the elements themselves
+    // (the fallback does nothing on iOS, which ignores element volume).
+    if (mixer) mixer.duckMusic(duckTo, DUCK_DOWN_MS)
+    else {
+      this.active.volume = this.volume * duckTo
+      this.preload.volume = this.volume * duckTo
+    }
+
+    return new Promise<void>((resolve) => {
+      const finish = () => {
+        if (this.line !== line) return
+        this.line = null
+        voice.removeEventListener('ended', finish)
+        voice.removeEventListener('error', finish)
+        voice.pause()
+        if (mixer) mixer.duckMusic(1, DUCK_UP_MS)
+        else {
+          this.active.volume = this.volume
+          this.preload.volume = this.volume
+        }
+        this.emit()
+        resolve()
+      }
+      const line = { finish }
+      this.line = line
+      voice.addEventListener('ended', finish)
+      voice.addEventListener('error', finish)
+      voice.src = src
+      voice.currentTime = 0
+      void voice.play()
+      this.emit()
+    })
+  }
+
   setVolume(v: number) {
     this.volume = Math.min(1, Math.max(0, v))
     this.active.volume = this.volume
     this.preload.volume = this.volume
+    if (this.voice) this.voice.volume = this.volume
     this.emit()
   }
 

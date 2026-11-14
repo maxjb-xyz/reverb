@@ -114,7 +114,7 @@ export function ImportPlaylistDialog({ open, onClose, initialURL = '' }: ImportP
       {/* Backdrop */}
       <div
         data-testid="import-playlist-backdrop"
-        className="fixed inset-0 z-40 bg-canvas/80 backdrop-blur-sm"
+        className="fixed inset-0 z-40 bg-canvas/80 backdrop-blur-sm animate-fade-in"
         aria-hidden="true"
         onClick={onClose}
       />

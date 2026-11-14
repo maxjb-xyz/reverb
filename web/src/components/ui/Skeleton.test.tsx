@@ -9,10 +9,10 @@ describe('Skeleton', () => {
     expect(el.className).toMatch(/bg-raised/)
   })
 
-  it('has animate-pulse class for the loading animation', () => {
+  it('has the shimmer class for the loading animation', () => {
     const { container } = render(<Skeleton />)
     const el = container.firstChild as HTMLElement
-    expect(el.className).toMatch(/animate-pulse/)
+    expect(el.className).toMatch(/rvb-shimmer/)
   })
 
   it('accepts a custom className', () => {

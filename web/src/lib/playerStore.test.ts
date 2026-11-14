@@ -44,3 +44,42 @@ describe('playerStore', () => {
     expect(usePlayer.getState().playing).toBe(true)
   })
 })
+
+describe('playerStore as a remote control', () => {
+  it('shows the active device and sends actions to it instead of playing here', async () => {
+    const { handlePlaybackFrame, setPlaybackTransport, useSession, resetPlaybackSession } = await import('./playbackSession')
+    const { engine } = await import('./playerStore')
+    const sent: Array<{ type: string; payload: unknown }> = []
+    act(() => {
+      usePlayer.getState().pause()
+      setPlaybackTransport((f) => sent.push(f))
+      handlePlaybackFrame('playback.session', {
+        devices: [{ id: 'phone', name: 'Pixel', kind: 'phone' }],
+        activeDeviceId: 'phone',
+        state: { queue: [track('r1'), track('r2')], index: 1, positionMs: 0, playing: false, shuffle: false, repeat: 'off', volume: 1, updatedAt: Date.now() },
+        serverTime: Date.now(),
+      })
+    })
+    expect(usePlayer.getState().current?.id).toBe('r2')
+    const before = engine.getState().current?.id
+    act(() => {
+      usePlayer.getState().next()
+      usePlayer.getState().playTrackList([track('z')], 0, { kind: 'album', id: 'a1' })
+      usePlayer.getState().seekMs(1234.4)
+    })
+    expect(engine.getState().current?.id).toBe(before)
+    const cmds = sent.filter((f) => f.type === 'playback.command').map((f) => f.payload)
+    expect(cmds).toEqual([
+      { action: 'next' },
+      { action: 'playTracks', tracks: [track('z')], index: 0, context: { kind: 'album', id: 'a1' } },
+      { action: 'seek', positionMs: 1234 },
+    ])
+    act(() => {
+      expect(useSession.getState().connected).toBe(true)
+      setPlaybackTransport(null)
+    })
+    // Back to the local engine.
+    expect(usePlayer.getState().current?.id).toBe(before)
+    resetPlaybackSession()
+  })
+})

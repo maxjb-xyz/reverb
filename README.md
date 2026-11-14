@@ -58,6 +58,10 @@ _The web player — queue, shuffle, repeat, seek, and keyboard shortcuts._
 - One-click spotDL downloads with live progress and auto play-when-ready, plus
   optional authenticated YouTube cookies and automatic cooldown/retry pacing for
   rate limits and bot challenges.
+- Its own recommendation engine: radio from any song, artist or genre, daily and
+  custom mixes, and Discover Weekly, which downloads new music ahead of time and
+  keeps what you add to a playlist (configurable). Optional audio analysis on a
+  GPU adds "sounds like" picks; see [sidecar/analysis](sidecar/analysis/README.md).
 - Pluggable adapters (library / search / downloader) configured in-app, with a
   first-run setup wizard.
 - Single static binary, SPA embedded; ships as one Docker image (Python3 +
@@ -120,6 +124,10 @@ Reverb is configured by flags, environment variables, and the in-app Settings UI
 | `REVERB_ADMIN_PASSWORD` | Seed the admin password on first run only (ignored once setup is complete). **Unset it after first boot.** |
 | `REVERB_SPOTIFY_CLIENT_ID` | Spotify app Client ID (alternative to setting it in the Settings UI) |
 | `REVERB_SPOTIFY_CLIENT_SECRET` | Spotify search adapter Client Secret (overrides stored config) |
+| `REVERB_ELEVENLABS_API_KEY` | ElevenLabs key for the DJ voice provider (overrides stored config) |
+| `REVERB_ANTHROPIC_API_KEY` | Anthropic key for the Claude DJ writer provider (overrides stored config) |
+| `REVERB_PYTHON` | Python used to set up the built-in DJ voice (default `python3`) |
+| `REVERB_VOICE_THREADS` | CPU threads the built-in DJ voice may use (default half the cores, at most 4) |
 | `REVERB_LIBRARY_PASSWORD` | Subsonic/Navidrome library adapter password (overrides stored config) |
 | `REVERB_SPOTDL_PATH` | Path to the spotDL binary. Defaults to the bundled one; rarely needed |
 | `REVERB_NAVIDROME_BIN` | Path to the Navidrome binary for bundled library mode. Defaults to the bundled one; rarely needed |

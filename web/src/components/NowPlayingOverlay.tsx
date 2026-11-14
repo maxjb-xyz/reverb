@@ -4,6 +4,10 @@ import { useLyrics } from '../lib/lyricsApi'
 import { useActiveLyricLine } from '../lib/useActiveLyricLine'
 import { LyricsLines } from './lyrics/LyricsLines'
 import { AddToPlaylistMenu } from './AddToPlaylistMenu'
+import { NotForMeMenu } from './NotForMeMenu'
+import { RadioButton } from './radio/RadioButton'
+import { reasonFor } from '../lib/radio'
+import { reasonText } from '../lib/engineApi'
 import { useUI } from '../lib/uiStore'
 import { trackCoverUrl } from '../lib/libraryApi'
 import { formatDuration } from '../lib/types'
@@ -20,6 +24,8 @@ export function NowPlayingOverlay() {
   const open = useUI((s) => s.nowPlayingOpen)
   const close = useUI((s) => s.closeNowPlaying)
   const current = usePlayer((s) => s.current)
+  // Why the radio picked this song (nothing for songs the user chose).
+  const why = current ? reasonFor(current.id) : undefined
   const playing = usePlayer((s) => s.playing)
   const toggle = usePlayer((s) => s.toggle)
   const next = usePlayer((s) => s.next)
@@ -160,7 +166,12 @@ export function NowPlayingOverlay() {
             {current ? current.title : 'Nothing playing'}
           </div>
           <div className="mt-1 truncate text-sm text-text-secondary">{current?.artist ?? ''}</div>
+          {why && <div className="mt-1 truncate text-xs text-text-muted" data-testid="radio-reason">{reasonText(why)}</div>}
         </div>
+        {current && <NotForMeMenu track={current} size="md" />}
+        {current && (
+          <RadioButton look="icon" label="Song radio" seed={{ kind: 'track', id: current.id, title: current.title, artist: current.artist }} />
+        )}
         {current && (
           <button type="button" aria-label="Add to playlist" onClick={() => setAddOpen(true)} className={iconBtn()}>
             <Icon name="plus" className="h-5 w-5" />

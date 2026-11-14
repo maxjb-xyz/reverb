@@ -25,6 +25,7 @@ type PlayInput struct {
 // Querier is the narrow persistence slice play needs. *db.Queries satisfies it.
 type Querier interface {
 	InsertPlay(ctx context.Context, arg db.InsertPlayParams) error
+	UpdatePlayProgress(ctx context.Context, arg db.UpdatePlayProgressParams) error
 	DeletePlay(ctx context.Context, arg db.DeletePlayParams) error
 	CountPlaysByCatalog(ctx context.Context, arg db.CountPlaysByCatalogParams) (int64, error)
 }
@@ -54,6 +55,13 @@ func NewService(q Querier, cat CanonicalMinter, now func() time.Time, idgen func
 // to userID. Source and ExternalID are intentionally left empty: the FE Track
 // has no track-level external id, so these are pure-library entities.
 func (s *Service) Record(ctx context.Context, userID string, in PlayInput) error {
+	_, err := s.RecordPlay(ctx, userID, in)
+	return err
+}
+
+// RecordPlay is Record that also returns the new play's id, so the caller can
+// later report the final listened time with UpdateProgress.
+func (s *Service) RecordPlay(ctx context.Context, userID string, in PlayInput) (string, error) {
 	cid, err := s.cat.CanonicalFor(ctx, catalog.Identity{
 		Kind:       "track",
 		Title:      in.Title,
@@ -64,7 +72,7 @@ func (s *Service) Record(ctx context.Context, userID string, in PlayInput) error
 		// Source and ExternalID intentionally empty.
 	})
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	played := in.PlayedAt
@@ -77,14 +85,39 @@ func (s *Service) Record(ctx context.Context, userID string, in PlayInput) error
 		completed = 1
 	}
 
-	return s.q.InsertPlay(ctx, db.InsertPlayParams{
-		ID:        s.idgen(),
+	id := s.idgen()
+	if err := s.q.InsertPlay(ctx, db.InsertPlayParams{
+		ID:        id,
 		UserID:    userID,
 		CatalogID: cid,
 		PlayedAt:  played,
 		MsPlayed:  int64(in.MsPlayed),
 		Completed: completed,
 		CreatedAt: s.now().Unix(),
+	}); err != nil {
+		return "", err
+	}
+	return id, nil
+}
+
+// UpdateProgress records the final listened time of a play owned by userID.
+// A play is recorded as soon as it qualifies (half the song or four minutes),
+// so without this every play would count only the time heard up to that point.
+// Values only ever go up, so a late or repeated update cannot shrink a play,
+// and the query is owner-scoped like Delete: another user's id is a no-op.
+func (s *Service) UpdateProgress(ctx context.Context, userID, playID string, msPlayed int, completed bool) error {
+	if msPlayed < 0 {
+		msPlayed = 0
+	}
+	c := int64(0)
+	if completed {
+		c = 1
+	}
+	return s.q.UpdatePlayProgress(ctx, db.UpdatePlayProgressParams{
+		MsPlayed:  int64(msPlayed),
+		Completed: c,
+		ID:        playID,
+		UserID:    userID,
 	})
 }
 

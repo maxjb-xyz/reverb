@@ -1,0 +1,251 @@
+package api
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/maxjb-xyz/reverb/internal/dj"
+	"github.com/maxjb-xyz/reverb/internal/llm"
+	"github.com/maxjb-xyz/reverb/internal/registry"
+	"github.com/maxjb-xyz/reverb/internal/store"
+	"github.com/maxjb-xyz/reverb/internal/voice"
+)
+
+// fakeVoiceSvc is a controllable VoiceService.
+type fakeVoiceSvc struct {
+	name  string
+	err   error
+	said  []string
+	clips map[string]string // id -> file path
+}
+
+func (f *fakeVoiceSvc) Active() string { return f.name }
+func (f *fakeVoiceSvc) Say(_ context.Context, text string) (string, error) {
+	f.said = append(f.said, text)
+	if f.err != nil {
+		return "", f.err
+	}
+	return "0123456789abcdef0123456789abcdef", nil
+}
+func (f *fakeVoiceSvc) Open(id string) (string, string, bool) {
+	p, ok := f.clips[id]
+	return p, "audio/mpeg", ok
+}
+
+func djTestServer(t *testing.T, vs VoiceService) (*Server, *http.Cookie) {
+	t.Helper()
+	st, err := store.Open(t.TempDir() + "/dj.db")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { st.Close() })
+	if err := st.Migrate(); err != nil {
+		t.Fatal(err)
+	}
+	authSvc, tok := seededAuthToken(t, st)
+	srv := NewServer(Deps{
+		Auth:       authSvc,
+		Search:     registry.NewRegistry("search"),
+		Downloader: registry.NewRegistry("downloader"),
+		Voice:      vs,
+	})
+	return srv, &http.Cookie{Name: sessionCookie, Value: tok}
+}
+
+func TestDJVoiceStatus(t *testing.T) {
+	srv, c := djTestServer(t, &fakeVoiceSvc{name: "elevenlabs"})
+	rec := doGET(t, srv, "/api/v1/dj/voice", c.Value)
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"available":true`) || !strings.Contains(rec.Body.String(), `"name":"elevenlabs"`) {
+		t.Fatalf("got %d %s", rec.Code, rec.Body.String())
+	}
+
+	srv, c = djTestServer(t, nil)
+	rec = doGET(t, srv, "/api/v1/dj/voice", c.Value)
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"available":false`) {
+		t.Fatalf("no voice: got %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestDJSayReturnsClipURL(t *testing.T) {
+	fv := &fakeVoiceSvc{name: "fake"}
+	srv, c := djTestServer(t, fv)
+	rec := do(t, srv, c, http.MethodPost, "/api/v1/dj/say", `{"text":"Here's one you had on repeat."}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("got %d %s", rec.Code, rec.Body.String())
+	}
+	var out struct{ ID, URL string }
+	_ = json.Unmarshal(rec.Body.Bytes(), &out)
+	if out.ID != "0123456789abcdef0123456789abcdef" || out.URL != "/api/v1/dj/clips/"+out.ID {
+		t.Fatalf("body = %s", rec.Body.String())
+	}
+	if len(fv.said) != 1 || fv.said[0] != "Here's one you had on repeat." {
+		t.Fatalf("said = %v", fv.said)
+	}
+}
+
+func TestDJSayErrors(t *testing.T) {
+	cases := []struct {
+		name string
+		svc  VoiceService
+		body string
+		want int
+	}{
+		{"no voice service", nil, `{"text":"hi"}`, http.StatusServiceUnavailable},
+		{"no voice configured", &fakeVoiceSvc{err: voice.ErrNoVoice}, `{"text":"hi"}`, http.StatusServiceUnavailable},
+		{"still setting up", &fakeVoiceSvc{name: "kokoro", err: fmt.Errorf("%w: Downloading", voice.ErrWarmingUp)}, `{"text":"hi"}`, http.StatusServiceUnavailable},
+		{"empty", &fakeVoiceSvc{name: "f", err: voice.ErrEmptyText}, `{"text":" "}`, http.StatusBadRequest},
+		{"too long", &fakeVoiceSvc{name: "f", err: voice.ErrTextTooLong}, `{"text":"x"}`, http.StatusBadRequest},
+		{"bad json", &fakeVoiceSvc{name: "f"}, `nope`, http.StatusBadRequest},
+		{"provider down", &fakeVoiceSvc{name: "f", err: errors.New("HTTP 401: key sk-secret refused")}, `{"text":"hi"}`, http.StatusBadGateway},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			srv, c := djTestServer(t, tc.svc)
+			rec := do(t, srv, c, http.MethodPost, "/api/v1/dj/say", tc.body)
+			if rec.Code != tc.want {
+				t.Fatalf("got %d %s, want %d", rec.Code, rec.Body.String(), tc.want)
+			}
+			if strings.Contains(rec.Body.String(), "sk-secret") {
+				t.Fatal("provider error text must not reach the browser")
+			}
+		})
+	}
+}
+
+func TestDJSayIsRateLimited(t *testing.T) {
+	srv, c := djTestServer(t, &fakeVoiceSvc{name: "f"})
+	var last int
+	for i := 0; i < djSayPerMinute+1; i++ {
+		last = do(t, srv, c, http.MethodPost, "/api/v1/dj/say", `{"text":"hi"}`).Code
+	}
+	if last != http.StatusTooManyRequests {
+		t.Fatalf("request %d got %d, want 429", djSayPerMinute+1, last)
+	}
+}
+
+func TestDJClipServesAudio(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "clip.mp3")
+	if err := os.WriteFile(p, []byte("ID3clip"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	id := "0123456789abcdef0123456789abcdef"
+	srv, c := djTestServer(t, &fakeVoiceSvc{clips: map[string]string{id: p}})
+	rec := doGET(t, srv, "/api/v1/dj/clips/"+id, c.Value)
+	if rec.Code != http.StatusOK || rec.Body.String() != "ID3clip" {
+		t.Fatalf("got %d %q", rec.Code, rec.Body.String())
+	}
+	if ct := rec.Header().Get("Content-Type"); ct != "audio/mpeg" {
+		t.Fatalf("content-type = %q", ct)
+	}
+	if rec = doGET(t, srv, "/api/v1/dj/clips/ffffffffffffffffffffffffffffffff", c.Value); rec.Code != http.StatusNotFound {
+		t.Fatalf("unknown clip: %d", rec.Code)
+	}
+	if rec = doGET(t, srv, "/api/v1/dj/clips/"+id, ""); rec.Code != http.StatusUnauthorized {
+		t.Fatalf("clips need a session: %d", rec.Code)
+	}
+}
+
+func TestAdaptersAvailableListsVoiceProviders(t *testing.T) {
+	srv, c := adapterTestServer(t, adapterServerOpts{})
+	reg := registry.NewRegistry(voice.Type)
+	reg.Register("elevenlabs", func() registry.Plugin { return &fakeAdapter{typ: voice.Type, name: "elevenlabs"} })
+	srv.deps.VoiceReg = reg
+	rec := do(t, srv, c, http.MethodGet, "/api/v1/adapters/available", "")
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"type":"voice","name":"elevenlabs"`) {
+		t.Fatalf("got %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+type fakeLLMSvc struct {
+	name string
+	out  string
+}
+
+func (f *fakeLLMSvc) Active() string { return f.name }
+func (f *fakeLLMSvc) Complete(context.Context, llm.Request) (string, error) {
+	if f.name == "" {
+		return "", llm.ErrNoLLM
+	}
+	return f.out, nil
+}
+
+func djLineServer(t *testing.T, m LLMService) (*Server, *http.Cookie) {
+	t.Helper()
+	srv, c := djTestServer(t, &fakeVoiceSvc{name: "kokoro"})
+	srv.deps.LLM = m
+	return srv, c
+}
+
+func TestDJStatusNamesVoiceAndWriter(t *testing.T) {
+	srv, c := djLineServer(t, &fakeLLMSvc{name: "anthropic"})
+	rec := doGET(t, srv, "/api/v1/dj/status", c.Value)
+	want := `{"voice":{"available":true,"name":"kokoro"},"writer":{"available":true,"name":"anthropic"}}`
+	if rec.Code != http.StatusOK || strings.TrimSpace(rec.Body.String()) != want {
+		t.Fatalf("got %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestDJLineUsesTheModel(t *testing.T) {
+	srv, c := djLineServer(t, &fakeLLMSvc{name: "anthropic", out: "Here's Cirrus, one you've had on repeat."})
+	body := `{"lane":"on-repeat","reason":{"artist":"Bonobo","play_count":14},"next":[{"title":"Cirrus","artist":"Bonobo"}],"hour":21}`
+	rec := do(t, srv, c, http.MethodPost, "/api/v1/dj/line", body)
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"source":"llm"`) || !strings.Contains(rec.Body.String(), "Cirrus") {
+		t.Fatalf("got %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestDJLineFallsBackToTemplates(t *testing.T) {
+	srv, c := djLineServer(t, nil)
+	rec := do(t, srv, c, http.MethodPost, "/api/v1/dj/line", `{"next":[{"title":"Cirrus","artist":"Bonobo"}],"hour":-1}`)
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"source":"template"`) {
+		t.Fatalf("got %d %s", rec.Code, rec.Body.String())
+	}
+	if rec := do(t, srv, c, http.MethodPost, "/api/v1/dj/line", `{"next":[]}`); rec.Code != http.StatusBadRequest {
+		t.Fatalf("nothing to introduce: %d", rec.Code)
+	}
+	if rec := do(t, srv, c, http.MethodPost, "/api/v1/dj/line", `nope`); rec.Code != http.StatusBadRequest {
+		t.Fatalf("bad json: %d", rec.Code)
+	}
+}
+
+type fakeDJCatalog struct{}
+
+func (fakeDJCatalog) Artists(context.Context) ([]dj.Name, error) {
+	return []dj.Name{{Key: "bonobo", Name: "Bonobo"}}, nil
+}
+func (fakeDJCatalog) Genres(context.Context) ([]dj.Name, error) {
+	return []dj.Name{{Key: "hip hop", Name: "Hip hop"}}, nil
+}
+
+func TestDJRequestReadsArtistsGenresAndPeriods(t *testing.T) {
+	srv, c := djLineServer(t, nil)
+	srv.deps.DJCatalog = fakeDJCatalog{}
+	rec := do(t, srv, c, http.MethodPost, "/api/v1/dj/request", `{"text":"more like Bonobo"}`)
+	want := `{"understood":true,"seed":{"kind":"artist","id":"bonobo","artist":"Bonobo","label":"Bonobo"},"lane":"sounds-like","source":"rules"}`
+	if rec.Code != http.StatusOK || strings.TrimSpace(rec.Body.String()) != want {
+		t.Fatalf("got %d %s", rec.Code, rec.Body.String())
+	}
+	rec = do(t, srv, c, http.MethodPost, "/api/v1/dj/request", `{"text":"90s hip hop"}`)
+	if !strings.Contains(rec.Body.String(), `"id":"hip hop"`) || !strings.Contains(rec.Body.String(), `"fromYear":1990,"toYear":1999`) {
+		t.Fatalf("got %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestDJRequestAsksTheModelWhenRulesFail(t *testing.T) {
+	srv, c := djLineServer(t, &fakeLLMSvc{name: "anthropic", out: `{"artist":"Radiohead"}`})
+	srv.deps.DJCatalog = fakeDJCatalog{}
+	rec := do(t, srv, c, http.MethodPost, "/api/v1/dj/request", `{"text":"that band with the creep song"}`)
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"missing":"Radiohead"`) || !strings.Contains(rec.Body.String(), `"understood":false`) {
+		t.Fatalf("got %d %s", rec.Code, rec.Body.String())
+	}
+	if rec := do(t, srv, c, http.MethodPost, "/api/v1/dj/request", `{"text":"  "}`); rec.Code != http.StatusBadRequest {
+		t.Fatalf("empty: %d", rec.Code)
+	}
+}

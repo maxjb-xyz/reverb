@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { presetRange } from '../lib/range'
+import { presetRange, presetKeyOf, currentRange } from '../lib/range'
 import type { Range } from '../lib/range'
 import { summary, topTracks, topArtists, topAlbums, recent, timeline, clock } from '../lib/statsApi'
 import { RangeSelector } from '../components/stats/RangeSelector'
@@ -13,8 +13,12 @@ import { Skeleton } from '../components/ui/Skeleton'
 import { Button } from '../components/ui/Button'
 import { PageHeader } from '../components/ui/PageHeader'
 
-function rangeKey(r: Range): [number, number] {
-  return [r.from, r.to]
+// Preset ranges ("Last 30 days") are keyed by name and recomputed on every
+// fetch, so a refetch after a new play reaches up to now. Custom ranges are
+// fixed and keyed by their bounds.
+function rangeKey(r: Range): (string | number)[] {
+  const preset = presetKeyOf(r)
+  return preset ? ['preset', preset] : ['custom', r.from, r.to]
 }
 
 export default function Stats() {
@@ -22,43 +26,43 @@ export default function Stats() {
 
   const summaryQ = useQuery({
     queryKey: ['stats', 'summary', ...rangeKey(range)],
-    queryFn: () => summary(range),
+    queryFn: () => summary(currentRange(range)),
     staleTime: 60_000,
   })
 
   const topTracksQ = useQuery({
     queryKey: ['stats', 'top', 'tracks', ...rangeKey(range)],
-    queryFn: () => topTracks(range, 10),
+    queryFn: () => topTracks(currentRange(range), 10),
     staleTime: 60_000,
   })
 
   const topArtistsQ = useQuery({
     queryKey: ['stats', 'top', 'artists', ...rangeKey(range)],
-    queryFn: () => topArtists(range, 10),
+    queryFn: () => topArtists(currentRange(range), 10),
     staleTime: 60_000,
   })
 
   const topAlbumsQ = useQuery({
     queryKey: ['stats', 'top', 'albums', ...rangeKey(range)],
-    queryFn: () => topAlbums(range, 10),
+    queryFn: () => topAlbums(currentRange(range), 10),
     staleTime: 60_000,
   })
 
   const recentQ = useQuery({
-    queryKey: ['stats', 'recent', range.to],
-    queryFn: () => recent(range.to, 20),
+    queryKey: ['stats', 'recent', ...rangeKey(range)],
+    queryFn: () => recent(currentRange(range).to, 20),
     staleTime: 60_000,
   })
 
   const timelineQ = useQuery({
     queryKey: ['stats', 'timeline', ...rangeKey(range)],
-    queryFn: () => timeline(range),
+    queryFn: () => timeline(currentRange(range)),
     staleTime: 60_000,
   })
 
   const clockQ = useQuery({
     queryKey: ['stats', 'clock', ...rangeKey(range)],
-    queryFn: () => clock(range),
+    queryFn: () => clock(currentRange(range)),
     staleTime: 60_000,
   })
 
@@ -129,7 +133,7 @@ export default function Stats() {
           <section aria-label="Listening over time">
             <h2 className="text-base font-bold text-text-primary mb-3">Listening over time</h2>
             <div className="rounded-lg bg-raised px-4 pt-4 pb-2">
-              <TimelineChart data={timelineBuckets} metric="plays" />
+              <TimelineChart data={timelineBuckets} metric="plays" range={currentRange(range)} />
             </div>
           </section>
 

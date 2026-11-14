@@ -20,8 +20,8 @@ export function Toaster() {
           role="status"
           data-testid="toast"
           className={[
-            'flex items-center gap-3 px-4 py-3 rounded-lg shadow-pop border border-border-subtle',
-            'bg-raised pointer-events-auto text-sm font-medium',
+            'flex items-center gap-3 px-4 py-3 rounded-xl shadow-pop border border-white/[.06] animate-toast-in',
+            'bg-raised/90 backdrop-blur-xl pointer-events-auto text-sm font-medium',
             toast.kind === 'success' ? 'text-success' : '',
             toast.kind === 'error' ? 'text-error' : '',
             toast.kind === 'info' ? 'text-text-primary' : '',

@@ -227,7 +227,7 @@ describe('Discographies page', () => {
 
     render(wrap(<Collection />))
 
-    const skeletons = document.querySelectorAll('.animate-pulse')
+    const skeletons = document.querySelectorAll('.rvb-shimmer')
     expect(skeletons.length).toBeGreaterThan(0)
   })
 

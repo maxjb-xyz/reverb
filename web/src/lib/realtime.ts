@@ -8,6 +8,8 @@ export interface WebSocketLike {
   onclose: (() => void) | null
   onerror: (() => void) | null
   close(): void
+  /** Present on real sockets; test stubs may leave it out. */
+  send?(data: string): void
 }
 
 export interface RealtimeHandlers {
@@ -27,6 +29,7 @@ const BASE_BACKOFF_MS = 1_000
 export class RealtimeConnection {
   private socket: WebSocketLike | null = null
   private closedByUser = false
+  private open = false
   private backoff = BASE_BACKOFF_MS
   private retryTimer: ReturnType<typeof setTimeout> | null = null
   // Declared as plain fields (NOT constructor parameter properties): the tsconfig
@@ -58,6 +61,7 @@ export class RealtimeConnection {
     const s = this.makeSocket(this.url())
     this.socket = s
     s.onopen = () => {
+      this.open = true
       this.backoff = BASE_BACKOFF_MS // reset on a successful connect
       this.handlers.onOpen?.()
     }
@@ -72,6 +76,7 @@ export class RealtimeConnection {
       }
     }
     s.onclose = () => {
+      this.open = false
       this.handlers.onClose?.()
       if (!this.closedByUser) this.scheduleReconnect()
     }
@@ -87,6 +92,18 @@ export class RealtimeConnection {
     this.retryTimer = setTimeout(() => {
       if (!this.closedByUser) this.connect()
     }, delay)
+  }
+
+  /** Send a frame to the server. False when the socket is not open. */
+  send(frame: { type: string; payload: unknown }): boolean {
+    const s = this.socket
+    if (!s || !this.open || typeof s.send !== 'function') return false
+    try {
+      s.send(JSON.stringify(frame))
+      return true
+    } catch {
+      return false
+    }
   }
 
   close() {

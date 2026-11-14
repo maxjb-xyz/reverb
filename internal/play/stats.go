@@ -237,9 +237,11 @@ func interfaceToInt64(v interface{}) int64 {
 }
 
 // Timeline returns play counts and ms played bucketed into day, week, or month
-// UTC buckets for the given [from, to) window, in ascending Start order.
-// Only non-empty buckets are returned.
-func (s *Stats) Timeline(ctx context.Context, userID string, from, to int64, bucket string) ([]TimeBucket, error) {
+// buckets for the given [from, to) window, in ascending Start order. Buckets
+// follow the listener's calendar: tzOffsetMin (minutes east of UTC) shifts each
+// play into local time, and Start is the instant of local midnight that opens
+// the bucket. Only non-empty buckets are returned.
+func (s *Stats) Timeline(ctx context.Context, userID string, from, to int64, bucket string, tzOffsetMin int) ([]TimeBucket, error) {
 	plays, err := s.q.StatsPlaysInWindow(ctx, db.StatsPlaysInWindowParams{
 		UserID:     userID,
 		PlayedAt:   from,
@@ -251,7 +253,8 @@ func (s *Stats) Timeline(ctx context.Context, userID string, from, to int64, buc
 
 	buckets := map[int64]*TimeBucket{}
 	for _, p := range plays {
-		start := bucketStart(p.PlayedAt, bucket)
+		offset := int64(tzOffsetMin) * 60
+		start := bucketStart(p.PlayedAt+offset, bucket) - offset
 		b, ok := buckets[start]
 		if !ok {
 			b = &TimeBucket{Start: start}
@@ -269,7 +272,8 @@ func (s *Stats) Timeline(ctx context.Context, userID string, from, to int64, buc
 	return out, nil
 }
 
-// bucketStart returns the UTC bucket boundary for a unix-second timestamp.
+// bucketStart returns the bucket boundary for a unix-second timestamp, reading
+// the timestamp as wall-clock time (callers shift it into local time first).
 // bucket must be "day", "week", or "month"; defaults to "day".
 func bucketStart(playedAt int64, bucket string) int64 {
 	t := time.Unix(playedAt, 0).UTC()

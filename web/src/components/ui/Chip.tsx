@@ -20,7 +20,7 @@ export function Chip({ selected = false, onClick, children, asTab = false, asTog
       onClick={onClick}
       className={[
         'inline-flex items-center px-3 py-1.5 rounded-full text-sm font-semibold',
-        'transition-colors cursor-pointer whitespace-nowrap',
+        'rvb-press cursor-pointer whitespace-nowrap',
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
         selected
           ? 'bg-text-primary text-on-accent'

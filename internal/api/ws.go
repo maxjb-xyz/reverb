@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"time"
 
@@ -11,6 +12,7 @@ import (
 	"github.com/maxjb-xyz/reverb/internal/core"
 	"github.com/maxjb-xyz/reverb/internal/download"
 	"github.com/maxjb-xyz/reverb/internal/events"
+	"github.com/maxjb-xyz/reverb/internal/playback"
 	"github.com/maxjb-xyz/reverb/internal/request"
 )
 
@@ -104,17 +106,47 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
-	// Detect client disconnect: a reader goroutine cancels ctx on read error.
+	// The reader goroutine passes client frames to this loop and cancels
+	// readCtx on a read error (the client went away).
 	readCtx, cancelRead := context.WithCancel(ctx)
 	defer cancelRead()
+	c.SetReadLimit(wsReadLimit)
+	inbound := make(chan wsInbound, 16)
 	go func() {
 		for {
-			if _, _, err := c.Read(readCtx); err != nil {
+			var f wsInbound
+			if err := wsjson.Read(readCtx, c, &f); err != nil {
 				cancelRead()
+				return
+			}
+			select {
+			case inbound <- f:
+			case <-readCtx.Done():
 				return
 			}
 		}
 	}()
+
+	// The playback device this socket registered, once it says hello. Until
+	// then (and on servers without a hub) devOut and devDone stay nil, which
+	// blocks those select cases forever.
+	var dev *playback.Conn
+	var devOut <-chan playback.Message
+	var devDone <-chan struct{}
+	defer func() {
+		if dev != nil {
+			dev.Close()
+		}
+	}()
+
+	write := func(v wsEnvelope) bool {
+		// Bound each write so a client that stops reading (but keeps the
+		// connection open) can't stall the writer indefinitely. On timeout
+		// or error we return, letting the defers unsubscribe + close.
+		writeCtx, writeCancel := context.WithTimeout(readCtx, 10*time.Second)
+		defer writeCancel()
+		return wsjson.Write(writeCtx, c, v) == nil
+	}
 
 	for {
 		select {
@@ -124,15 +156,41 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 			if !wsShouldForward(cu, ev) {
 				continue
 			}
-			// Bound each write so a client that stops reading (but keeps the
-			// connection open) can't stall the writer indefinitely. On timeout
-			// or error we return, letting the defers unsubscribe + close.
-			writeCtx, writeCancel := context.WithTimeout(readCtx, 10*time.Second)
-			err := wsjson.Write(writeCtx, c, wsEnvelope{Type: ev.Topic, Payload: ev.Payload})
-			writeCancel()
-			if err != nil {
+			if !write(wsEnvelope{Type: ev.Topic, Payload: ev.Payload}) {
 				return
 			}
+		case f := <-inbound:
+			switch {
+			case f.Type == playback.MsgHello && dev == nil && s.deps.Playback != nil:
+				var info playback.DeviceInfo
+				if json.Unmarshal(f.Payload, &info) != nil {
+					continue
+				}
+				if d, ok := s.deps.Playback.Connect(ctx, cu.ID, info); ok {
+					dev, devOut, devDone = d, d.Out(), d.Done()
+				}
+			case dev != nil:
+				dev.Handle(f.Type, f.Payload)
+			}
+		case m := <-devOut:
+			if !write(wsEnvelope{Type: m.Type, Payload: m.Payload}) {
+				return
+			}
+		case <-devDone:
+			// The hub dropped this device (replaced by a newer connection of
+			// the same tab, or too far behind). Close so the client reconnects
+			// and says hello again.
+			return
 		}
 	}
 }
+
+// wsInbound is a frame from the client: {type, payload}.
+type wsInbound struct {
+	Type    string          `json:"type"`
+	Payload json.RawMessage `json:"payload"`
+}
+
+// wsReadLimit caps one client frame. A playback state carries the queue (up
+// to playback.MaxQueue tracks of a few hundred bytes each).
+const wsReadLimit = 1 << 20

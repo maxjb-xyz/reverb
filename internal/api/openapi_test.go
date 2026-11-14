@@ -25,6 +25,7 @@ func TestServesOpenAPI(t *testing.T) {
 		"/downloads:",
 		"/ws:",
 		"/stream/{id}:",
+		"/dj/say:",
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("spec missing %q", want)

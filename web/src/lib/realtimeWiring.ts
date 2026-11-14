@@ -10,6 +10,7 @@ import { getNotifications, useNotificationStore, type Notification } from './not
 import { useAuthStore } from './authStore'
 import { useToastStore } from './toastStore'
 import { usePendingPlay } from './pendingPlayStore'
+import { handlePlaybackFrame, setPlaybackTransport } from './playbackSession'
 import type { DownloadEvent, DownloadRemovedEvent, LibraryUpdatedEvent, QueueStateEvent, RealtimeEvent, Track } from './types'
 
 // trackFromJob synthesizes a minimal library Track for play-when-ready auto-play,
@@ -59,6 +60,10 @@ export function useRealtime(makeSocket?: (url: string) => WebSocketLike): void {
     }
 
     function onEvent(frame: RealtimeEvent) {
+      if (frame.type.startsWith('playback.')) {
+        handlePlaybackFrame(frame.type, frame.payload)
+        return
+      }
       switch (frame.type) {
         case 'download.queued':
         case 'download.progress':
@@ -137,6 +142,10 @@ export function useRealtime(makeSocket?: (url: string) => WebSocketLike): void {
     }
 
     function onOpen() {
+      // Join the account's listening session as a device.
+      setPlaybackTransport((f) => {
+        conn.send(f)
+      })
       // Resync the full job list on (re)connect so we never miss a transition.
       void getDownloads().then((jobs) => useDownloads.getState().setAll(jobs))
       // Resync the paused flag (another client may have paused while we were away).
@@ -163,8 +172,15 @@ export function useRealtime(makeSocket?: (url: string) => WebSocketLike): void {
         .catch(() => {})
     }
 
-    const conn = new RealtimeConnection({ onEvent, onOpen }, makeSocket)
-    return () => conn.close()
+    function onClose() {
+      setPlaybackTransport(null)
+    }
+
+    const conn = new RealtimeConnection({ onEvent, onOpen, onClose }, makeSocket)
+    return () => {
+      setPlaybackTransport(null)
+      conn.close()
+    }
     // playTrackList is stable (zustand action); makeSocket is test-only/stable.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [qc])

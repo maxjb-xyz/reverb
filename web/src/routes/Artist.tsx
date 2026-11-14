@@ -10,11 +10,13 @@ import { postBatchRequest } from '../lib/requestApi'
 import { useAuthStore } from '../lib/authStore'
 import { useToastStore } from '../lib/toastStore'
 import { Cover, Skeleton, EmptyState, MediaCard, ConfirmDialog } from '../components/ui'
+import { RadioButton } from '../components/radio/RadioButton'
+import { FansAlsoLike } from '../components/radio/FansAlsoLike'
 import { Chip } from '../components/ui/Chip'
 import { Button } from '../components/ui/Button'
 import type { AlbumCoverage, DiscographyAlbum } from '../lib/types'
 import { useAlbumPalette } from '../lib/useAlbumPalette'
-import { rgbToCss } from '../lib/palette'
+import { PageHero, StickyHeroBar } from '../components/ui/PageHero'
 import * as statsApi from '../lib/statsApi'
 import type { EntityStats } from '../lib/statsApi'
 import { presetRange, msToHuman } from '../lib/range'
@@ -162,6 +164,7 @@ export default function Artist() {
       (tintAlbum?.libraryAlbumId ? coverUrl(tintAlbum.libraryAlbumId, 300) : undefined) ||
       (detail?.coverArtId ? coverUrl(detail.coverArtId, 300) : detail?.coverUrl),
   )
+  const [heroGone, setHeroGone] = useState(false)
 
   if (isLoading) {
     return (
@@ -178,7 +181,7 @@ export default function Artist() {
         {/* Album grid skeleton */}
         <section>
           <Skeleton className="h-6 w-24 mb-4" />
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+          <div className="rvb-stagger grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
             {Array.from({ length: 5 }).map((_, i) => (
               <div key={i} className="space-y-2">
                 <Skeleton className="aspect-square w-full" rounded="md" />
@@ -240,10 +243,7 @@ export default function Artist() {
   return (
     <div className="space-y-8">
       {/* Subtle gradient wash behind header */}
-      <div
-        className="relative -mx-4 -mt-4 px-4 pt-4 pb-6 rounded-b-2xl overflow-hidden bg-gradient-to-b from-raised to-transparent"
-        style={palette ? { background: `linear-gradient(to bottom, ${rgbToCss(palette.rgb, 0.55)} 0%, transparent 100%)` } : undefined}
-      >
+      <PageHero rgb={palette?.rgb} onVisibleChange={(v) => setHeroGone(!v)}>
         {/* Artist header */}
         <header className="relative z-10 flex items-end gap-4 pt-2 sm:gap-6">
           <div className="h-24 w-24 flex-none sm:h-[188px] sm:w-[188px]">
@@ -313,9 +313,11 @@ export default function Artist() {
                 only Download (the auto_approve branch wins). The download path is
                 guarded by a confirm so a stray click can't enqueue a large batch
                 (spec §10). */}
-            {(canAutoApprove && detail.resolved && allMissingTracks.length > 0) ||
+            {hasLibraryAlbums ||
+            (canAutoApprove && detail.resolved && allMissingTracks.length > 0) ||
             (!canAutoApprove && canRequest && notOwnedRequestItems.length > 0) ? (
-              <div className="mt-4 flex items-center gap-3">
+              <div className="mt-4 flex flex-wrap items-center gap-3">
+                {hasLibraryAlbums && <RadioButton seed={{ kind: 'artist', artist: detail.name }} label="Artist radio" />}
                 {canAutoApprove && detail.resolved && allMissingTracks.length > 0 && (
                   <Button
                     variant="secondary"
@@ -340,7 +342,8 @@ export default function Artist() {
             ) : null}
           </div>
         </header>
-      </div>
+      </PageHero>
+      <StickyHeroBar visible={heroGone} title={detail.name} rgb={palette?.rgb} />
 
       {/* Kind filters */}
       <div className="flex items-center gap-2">
@@ -359,7 +362,7 @@ export default function Artist() {
       {detail.libraryAlbums && detail.libraryAlbums.length > 0 && (
         <section data-testid="library-albums-section">
           <h2 className="text-base font-bold text-text-primary mb-4">In your library</h2>
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+          <div className="rvb-stagger grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
             {detail.libraryAlbums.map((al) => (
               <MediaCard
                 key={al.libraryAlbumId ?? al.externalId}
@@ -388,7 +391,7 @@ export default function Artist() {
           <h2 className="text-base font-bold text-text-primary mb-4">Discography</h2>
         )}
         {visibleAlbums.length > 0 ? (
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+          <div className="rvb-stagger grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
             {visibleAlbums.map((al) => (
               <AlbumCard
                 key={al.externalId}
@@ -411,6 +414,8 @@ export default function Artist() {
         )}
       </section>
       )}
+
+      <FansAlsoLike artist={detail.name} />
 
       {/* Request all disclosure modal */}
       <ConfirmDialog
@@ -437,7 +442,7 @@ export default function Artist() {
               role="dialog"
               aria-modal="true"
               aria-label="Request all albums"
-              className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-80 max-w-[calc(100vw-2rem)] rounded-xl border border-border-subtle bg-raised p-4 shadow-pop"
+              className="animate-fade-in fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-80 max-w-[calc(100vw-2rem)] rounded-xl border border-border-subtle bg-raised p-4 shadow-pop"
               onClick={(e) => e.stopPropagation()}
             >
               <p className="text-sm font-bold text-text-primary">

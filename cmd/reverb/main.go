@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"net"
@@ -12,31 +13,53 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/maxjb-xyz/reverb/internal/analysis"
+	"github.com/maxjb-xyz/reverb/internal/analysis/sidecar"
 	"github.com/maxjb-xyz/reverb/internal/api"
 	"github.com/maxjb-xyz/reverb/internal/auth"
 	"github.com/maxjb-xyz/reverb/internal/catalog"
 	"github.com/maxjb-xyz/reverb/internal/config"
+	"github.com/maxjb-xyz/reverb/internal/core"
+	"github.com/maxjb-xyz/reverb/internal/discord"
+	"github.com/maxjb-xyz/reverb/internal/dj"
 	"github.com/maxjb-xyz/reverb/internal/download"
 	"github.com/maxjb-xyz/reverb/internal/download/lidarr"
 	"github.com/maxjb-xyz/reverb/internal/download/spotdl"
+	"github.com/maxjb-xyz/reverb/internal/engine"
 	"github.com/maxjb-xyz/reverb/internal/events"
+	"github.com/maxjb-xyz/reverb/internal/libindex"
+	"github.com/maxjb-xyz/reverb/internal/library"
 	"github.com/maxjb-xyz/reverb/internal/library/embedded"
 	"github.com/maxjb-xyz/reverb/internal/library/lyrics"
 	"github.com/maxjb-xyz/reverb/internal/library/subsonic"
+	"github.com/maxjb-xyz/reverb/internal/llm"
+	anthropicllm "github.com/maxjb-xyz/reverb/internal/llm/anthropic"
+	"github.com/maxjb-xyz/reverb/internal/llm/openaichat"
+	"github.com/maxjb-xyz/reverb/internal/mixes"
 	"github.com/maxjb-xyz/reverb/internal/notification"
 	"github.com/maxjb-xyz/reverb/internal/play"
+	"github.com/maxjb-xyz/reverb/internal/playback"
 	"github.com/maxjb-xyz/reverb/internal/playlistsync"
 	"github.com/maxjb-xyz/reverb/internal/registry"
 	"github.com/maxjb-xyz/reverb/internal/request"
 	"github.com/maxjb-xyz/reverb/internal/resolver"
 	"github.com/maxjb-xyz/reverb/internal/scrobble"
 	"github.com/maxjb-xyz/reverb/internal/scrobble/lastfm"
+	"github.com/maxjb-xyz/reverb/internal/search"
 	"github.com/maxjb-xyz/reverb/internal/search/deezer"
 	"github.com/maxjb-xyz/reverb/internal/search/spotify"
 	"github.com/maxjb-xyz/reverb/internal/store"
 	"github.com/maxjb-xyz/reverb/internal/store/db"
+	"github.com/maxjb-xyz/reverb/internal/taste"
+	"github.com/maxjb-xyz/reverb/internal/voice"
+	"github.com/maxjb-xyz/reverb/internal/voice/elevenlabs"
+	"github.com/maxjb-xyz/reverb/internal/voice/kokoro"
+	"github.com/maxjb-xyz/reverb/internal/voice/openaispeech"
 	"github.com/maxjb-xyz/reverb/internal/wiring"
 )
+
+// djClipCacheSize is how many rendered DJ voice lines are kept on disk.
+const djClipCacheSize = 500
 
 func main() {
 	log.Printf("reverb %s starting", version)
@@ -90,6 +113,19 @@ func main() {
 	downloaderReg := registry.NewRegistry("downloader")
 	downloaderReg.Register("spotdl", func() registry.Plugin { return spotdl.New() })
 	downloaderReg.Register("lidarr", func() registry.Plugin { return lidarr.New() })
+	voiceReg := registry.NewRegistry(voice.Type)
+	voiceReg.Register("openai-speech", func() registry.Plugin { return openaispeech.New() })
+	voiceReg.Register("elevenlabs", func() registry.Plugin { return elevenlabs.New() })
+	// The built-in CPU voice shares one runtime (install + worker process) across
+	// adapter rebuilds. Nothing is installed until an admin enables it.
+	kokoroRT := kokoro.NewRuntime(filepath.Join(filepath.Dir(cfg.DBPath), "kokoro"), os.Getenv)
+	defer kokoroRT.Close()
+	voiceReg.Register("kokoro", func() registry.Plugin { return kokoro.New(kokoroRT) })
+	llmReg := registry.NewRegistry(llm.Type)
+	llmReg.Register("anthropic", func() registry.Plugin { return anthropicllm.New() })
+	llmReg.Register("openai-chat", func() registry.Plugin { return openaichat.New() })
+	analyzerReg := registry.NewRegistry(analysis.Type)
+	analyzerReg.Register(sidecar.Name, func() registry.Plugin { return sidecar.New() })
 	// Surface the async capability to the admin UI (/adapters/available).
 	registry.RegisterCapability("async", func(p registry.Plugin) bool {
 		_, ok := p.(download.AsyncDownloader)
@@ -151,6 +187,18 @@ func main() {
 	// AddTrack mints stable catalog ids for library-source tracks at persist time.
 	// Must be set BEFORE Build so BuildSyncService picks it up via b.canonicalMinter.
 	builder.SetCanonicalMinter(catalogSvc)
+	builder.SetVoiceRegistry(voiceReg)
+	builder.SetLLMRegistry(llmReg)
+	builder.SetAnalyzerRegistry(analyzerReg)
+
+	// The DJ's voice. Rendered clips are cached under the data dir and survive
+	// voice changes (they are keyed on the voice), so the cache is boot-bound.
+	voiceSvc := voice.NewService(voice.NewCache(filepath.Join(filepath.Dir(cfg.DBPath), "dj-voice"), djClipCacheSize))
+	reloader.voice = voiceSvc
+	llmSvc := llm.NewService()
+	reloader.llm = llmSvc
+	analysisSvc := analysis.NewService(st.Q(), libraryAudio(reloader.servicesProvider()), time.Now)
+	reloader.analysis = analysisSvc
 
 	bundle, err := builder.Build(context.Background())
 	if err != nil {
@@ -161,6 +209,35 @@ func main() {
 	// live-matcher holder so the resolver singleton sees it on its first call.
 	// Matches the pre-P2 behaviour (publishMatcher was called here before the reorder).
 	reloader.publishMatcher(bundle.Matcher)
+	voiceSvc.Set(bundle.Voice)
+	llmSvc.Set(bundle.LLM)
+	analysisSvc.Set(bundle.Analyzer)
+	reloader.publishServices(bundle)
+
+	// Recommendation index: the library's tracks with genres/years, plus the
+	// artist-similarity map from search sources. Follows hot-reloads through
+	// the reloader's live services; re-runs when the library changes.
+	// Deezer needs no account, so the engine can use it for similar artists
+	// and new songs even when it isn't a search source (admins can switch
+	// that off).
+	engineDeezer := deezer.New()
+	_ = engineDeezer.Init(nil)
+	engineLive := engineSources(reloader.servicesProvider(), engineDeezer, engineDeezerOn(st.Q().GetSetting))
+	indexSvc := libindex.New(st.DB(), engineLive, time.Now, libindex.Options{})
+	reloader.onReload = indexSvc.Kick
+	libChanged := make(chan struct{}, 1)
+	{
+		evs, _ := bus.Subscribe(download.TopicLibraryUpdate)
+		go func() {
+			for range evs {
+				select {
+				case libChanged <- struct{}{}:
+				default:
+				}
+			}
+		}()
+	}
+	indexSvc.Start(ctx, libChanged, 45*time.Second, 6*time.Hour)
 
 	// Start the bundled-library supervisor (no-op in external mode).
 	if bundle.Supervisor != nil {
@@ -180,6 +257,10 @@ func main() {
 	if bundle.Supervisor != nil && bundle.Manager != nil {
 		go waitReadyThenBackfill(ctx, bundle.Supervisor.Ready, bundle.Manager.BackfillUnlinked)
 	}
+	// Index as soon as the bundled library is actually serving.
+	if bundle.Supervisor != nil {
+		go whenReady(ctx, bundle.Supervisor.Ready, indexSvc.Kick)
+	}
 
 	// Start the playlist-sync scheduler when a sync service is configured. It ticks
 	// every 15 minutes, syncing due playlists, and stops when ctx is cancelled.
@@ -187,16 +268,39 @@ func main() {
 		go playlistsync.NewScheduler(bundle.Sync, 15*time.Minute).Run(ctx)
 		// One-time migration: copy existing Navidrome playlists into managed playlists.
 		// Runs in the background so startup is not blocked; guarded by a settings flag.
-		go func() {
+		// With the built-in library, wait until it answers.
+		migrate := func() {
 			if err := bundle.Sync.MigrateLibraryPlaylists(ctx); err != nil {
 				log.Printf("WARNING: library playlist migration: %v", err)
 			}
-		}()
+		}
+		if bundle.Supervisor != nil {
+			go whenReady(ctx, bundle.Supervisor.Ready, migrate)
+		} else {
+			go migrate()
+		}
 	}
 
 	// catalogSvc is already constructed above (before Build) and injected into the Manager.
 	playSvc := play.NewService(st.Q(), catalogSvc, time.Now, uuid.NewString)
 	statsSvc := play.NewStats(st.Q())
+	tasteSvc := taste.NewService(st.Q(), catalogSvc, time.Now, uuid.NewString)
+	engineSvc := engine.New(st.Q(), tasteSvc, indexSvc, func() []search.ArtistTopTracksProvider {
+		_, sources := engineLive()
+		var out []search.ArtistTopTracksProvider
+		for _, src := range sources {
+			if p, ok := src.(search.ArtistTopTracksProvider); ok {
+				out = append(out, p)
+			}
+		}
+		return out
+	}, time.Now, nil, engine.DefaultOptions)
+	mixSvc := mixes.New(st.Q(), engineSvc, tasteSvc, indexSvc, time.Now, uuid.NewString)
+	discoverSvc := newDiscoverService(st.Q(), engineSvc, reloader)
+	discoverSvc.Start(ctx, 2*time.Minute, time.Hour)
+	// Optional audio analysis: idle unless an analyzer is configured.
+	engineSvc.SetSonic(analysisSvc)
+	analysisSvc.Start(ctx, 3*time.Minute, 30*time.Minute)
 
 	// Scrobbling: cfg() reads app key/secret from settings on every call so that
 	// admin changes (Task 5 UI) take effect without a restart.
@@ -209,12 +313,52 @@ func main() {
 	scrobbleSvc := scrobble.NewService(st.Q(), lastfm.New(), scrobbleCfg, time.Now, uuid.NewString)
 	go scrobbleSvc.RunWorker(ctx, 30*time.Second)
 
+	// Account-level playback sessions (devices + the active one's state).
+	// The state is saved to the settings table every 15s and on shutdown.
+	playbackHub := playback.NewHub(playback.NewSettingsStore(
+		func(ctx context.Context, key string) (string, error) { return st.Q().GetSetting(ctx, key) },
+		func(ctx context.Context, key, value string) error {
+			return st.Q().UpsertSetting(ctx, db.UpsertSettingParams{Key: key, Value: value})
+		},
+	), time.Now, nil)
+	go playbackHub.Run(ctx, 15*time.Second)
+
+	// The optional Discord bot: a device on each linked account's session.
+	// It starts once an admin saves a bot token (or REVERB_DISCORD_TOKEN).
+	discordSettings := settingsKV{q: st.Q()}
+	discordLinks := discord.NewLinks(discordSettings, time.Now)
+	// The bot reads the live library so admin changes apply without a restart.
+	discordLib := liveLibrary{get: reloader.servicesProvider()}
+	discordCore := &discord.Core{
+		Hub:     playbackHub,
+		Links:   discordLinks,
+		Library: discordLib,
+		Opener:  &discord.FFmpegOpener{Library: discordLib, Path: os.Getenv("REVERB_FFMPEG_PATH")},
+		Users: func(ctx context.Context, userID string) (string, bool) {
+			u, err := st.Q().GetUserByID(ctx, userID)
+			if err != nil || u.Disabled != 0 {
+				return "", false
+			}
+			return u.Username, true
+		},
+	}
+	discordSvc := &discord.Service{Core: discordCore, EnvToken: os.Getenv("REVERB_DISCORD_TOKEN")}
+
 	deps := api.Deps{
 		Auth:          authSvc,
+		Playback:      playbackHub,
+		DiscordLinks:  discordLinks,
 		Library:       bundle.Library,
 		Lib:           libraryReg,
 		Search:        searchReg,
 		Downloader:    downloaderReg,
+		VoiceReg:      voiceReg,
+		Voice:         voiceSvc,
+		LLMReg:        llmReg,
+		AnalyzerReg:   analyzerReg,
+		Analysis:      analysisSvc,
+		LLM:           llmSvc,
+		DJCatalog:     dj.NewCachedCatalog(dj.NewLibraryCatalog(st.Q()), 5*time.Minute, time.Now),
 		Adapters:      st.Q(),
 		PlaylistOwner: st.Q(),
 		Events:        bus,
@@ -229,6 +373,11 @@ func main() {
 		Play:          playSvc,
 		Stats:         statsSvc,
 		Scrobble:      scrobbleSvc,
+		Taste:         tasteSvc,
+		LibIndex:      indexSvc,
+		Engine:        engineSvc,
+		Mixes:         mixSvc,
+		Discover:      discoverSvc,
 		Lyrics: &lyrics.Service{
 			Store: st.Q(),
 			Client: &lyrics.LRCLibClient{
@@ -266,7 +415,17 @@ func main() {
 			return "built-in", string(h)
 		}
 	}
+	deps.Discord = discordSvc
 	srv := api.NewServer(deps)
+	// /request goes through the API's request path (roles, quota,
+	// auto-approve); set before the bot connects.
+	discordCore.Requests = srv.DiscordRequester()
+	go func() {
+		tok, _ := st.Q().GetSetting(ctx, api.KeyDiscordToken)
+		if err := discordSvc.Apply(ctx, tok); err != nil {
+			log.Printf("discord bot: %v", err)
+		}
+	}()
 
 	addr := fmt.Sprintf(":%d", cfg.Port)
 	ln, err := net.Listen("tcp", addr)
@@ -282,6 +441,9 @@ func main() {
 
 	httpSrv := newHTTPServer(srv.Handler())
 	if err := serveWithShutdown(httpSrv, ln, stop, func(ctx context.Context) error {
+		// Keep where everyone was in their queue.
+		discordSvc.Stop()
+		playbackHub.Shutdown()
 		if bundle.Supervisor != nil {
 			return bundle.Supervisor.Shutdown(ctx)
 		}
@@ -322,4 +484,39 @@ func (a *authManagerLister) ListManagerIDs(ctx context.Context) ([]string, error
 		}
 	}
 	return ids, nil
+}
+
+// settingsKV adapts the settings table to discord.Settings.
+type settingsKV struct{ q *db.Queries }
+
+func (k settingsKV) Get(ctx context.Context, key string) (string, error) {
+	return k.q.GetSetting(ctx, key)
+}
+
+func (k settingsKV) Put(ctx context.Context, key, value string) error {
+	return k.q.UpsertSetting(ctx, db.UpsertSettingParams{Key: key, Value: value})
+}
+
+// liveLibrary is the current library adapter (it changes when an admin edits
+// the library settings), for the Discord bot.
+type liveLibrary struct {
+	get func() (library.LibraryAdapter, []search.SearchSource)
+}
+
+var errNoLibrary = errors.New("no library configured")
+
+func (l liveLibrary) Search(ctx context.Context, q string, types []core.EntityType) (core.SearchResults, error) {
+	lib, _ := l.get()
+	if lib == nil {
+		return core.SearchResults{}, errNoLibrary
+	}
+	return lib.Search(ctx, q, types)
+}
+
+func (l liveLibrary) Stream(ctx context.Context, trackID string, opts core.StreamOpts, rangeHeader string) (core.StreamHandle, error) {
+	lib, _ := l.get()
+	if lib == nil {
+		return core.StreamHandle{}, errNoLibrary
+	}
+	return lib.Stream(ctx, trackID, opts, rangeHeader)
 }

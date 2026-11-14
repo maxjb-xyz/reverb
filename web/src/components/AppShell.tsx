@@ -1,5 +1,5 @@
-import { Suspense, useEffect } from 'react'
-import { Outlet } from 'react-router-dom'
+import { Suspense, useEffect, useRef } from 'react'
+import { Outlet, useLocation, useNavigationType } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { TopBar } from './shell/TopBar'
 import { LibraryRail } from './shell/LibraryRail'
@@ -14,6 +14,8 @@ import { LyricsView } from './lyrics/LyricsView'
 import { CommandPalette } from './CommandPalette'
 import { Toaster } from './ui/Toaster'
 import { Skeleton } from './ui/Skeleton'
+import { STICKY_SLOT_ID } from './ui/PageHero'
+import { pageKey } from '../lib/pageKey'
 import { useRealtime } from '../lib/realtimeWiring'
 import { usePlayer, engine } from '../lib/playerStore'
 import { useUI } from '../lib/uiStore'
@@ -21,9 +23,12 @@ import { useAlbumPalette } from '../lib/useAlbumPalette'
 import { trackCoverUrl } from '../lib/libraryApi'
 import { rgbToCss } from '../lib/palette'
 import { startPlayTracker } from '../lib/playTracker'
+import { startListenTracker } from '../lib/listenTracker'
+import { startRadioRefill } from '../lib/radio'
+import { startDJWatcher } from '../lib/dj'
 import { startNowPlaying } from '../lib/nowPlaying'
 import { startMediaSession } from '../lib/mediaSession'
-import { recordPlay } from '../lib/playApi'
+import { recordPlay, updatePlay } from '../lib/playApi'
 import { useToastStore } from '../lib/toastStore'
 
 function RouteLoading() {
@@ -51,21 +56,60 @@ export function AppShell() {
   // download store, TanStack invalidation, and play-when-ready auto-play.
   useRealtime()
 
-  // One app-wide play tracker: scores qualified plays off the audio engine and
-  // POSTs them to /api/v1/plays.  Starts once when AppShell mounts and cleans
+  // One app-wide play tracker: scores qualified plays off the audio engine,
+  // POSTs them to /api/v1/plays, then PATCHes the final listened time.  Starts once when AppShell mounts and cleans
   // up (unsubscribes) when it unmounts.
   const queryClient = useQueryClient()
   const pushToast = useToastStore((s) => s.push)
   useEffect(() => startPlayTracker(engine, async (input) => {
     try {
-      await recordPlay(input)
+      const id = await recordPlay(input)
       await queryClient.invalidateQueries({ queryKey: ['stats'] })
+      return id
     } catch {
       pushToast("Couldn't record this play. Check your connection and try again.", 'error')
+      return null
     }
+  }, {
+    // Once the song ends, record how much of it was really heard. Quiet on
+    // failure: the play itself is already counted.
+    update: async (id, progress, keepalive) => {
+      try {
+        await updatePlay(id, progress, keepalive)
+        if (!keepalive) await queryClient.invalidateQueries({ queryKey: ['stats'] })
+      } catch {
+        /* the play stays with the time heard when it was recorded */
+      }
+    },
   }), [pushToast, queryClient])
+  // Taste signals: how every started track ended (finished / skipped / stopped).
+  useEffect(() => startListenTracker(engine), [])
+  useEffect(() => startRadioRefill(engine), [])
+  useEffect(() => startDJWatcher(engine), [])
   useEffect(() => startNowPlaying(engine), [])
-  useEffect(() => startMediaSession(engine), [])
+  // Media keys go through the player store, so on a remote they control the
+  // device that is playing rather than this tab's idle engine.
+  useEffect(
+    () =>
+      startMediaSession({
+        subscribe: (cb) => engine.subscribe(cb),
+        play: () => usePlayer.getState().play(),
+        pause: () => usePlayer.getState().pause(),
+        next: () => usePlayer.getState().next(),
+        prev: () => usePlayer.getState().prev(),
+        seekMs: (ms) => usePlayer.getState().seekMs(ms),
+      }),
+    [],
+  )
+
+  // A new page starts at the top. Back/forward (POP) leaves the scroll alone.
+  const location = useLocation()
+  const navType = useNavigationType()
+  const mainRef = useRef<HTMLElement>(null)
+  const key = pageKey(location.pathname)
+  useEffect(() => {
+    if (navType !== 'POP') mainRef.current?.scrollTo?.({ top: 0 })
+  }, [key, navType])
 
   const current = usePlayer((s) => s.current)
   const rightPanel = useUI((s) => s.rightPanel)
@@ -119,8 +163,10 @@ export function AppShell() {
         </div>
 
         {/* Center main content — bg-surface rounded card that scrolls */}
-        <main className="flex-1 min-h-0 overflow-auto bg-surface rounded-lg relative">
-          <div className="px-4 py-5 sm:px-6 sm:py-6 lg:px-8">
+        <main ref={mainRef} className="rvb-panel flex-1 min-h-0 overflow-auto bg-surface rounded-lg relative">
+          {/* Zero-height sticky slot: pages portal their compact header bar here. */}
+          <div id={STICKY_SLOT_ID} className="sticky top-0 z-30 h-0" />
+          <div key={key} data-testid="page" className="rvb-page px-4 py-5 sm:px-6 sm:py-6 lg:px-8">
             <Suspense fallback={<RouteLoading />}>
               <Outlet />
             </Suspense>

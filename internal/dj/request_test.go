@@ -1,0 +1,277 @@
+package dj
+
+import (
+	"context"
+	"errors"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/maxjb-xyz/reverb/internal/store/db"
+)
+
+type fakeCatalog struct {
+	artists, genres []Name
+	err             error
+	calls           int
+}
+
+func (f *fakeCatalog) Artists(context.Context) ([]Name, error) {
+	f.calls++
+	return f.artists, f.err
+}
+func (f *fakeCatalog) Genres(context.Context) ([]Name, error) { return f.genres, f.err }
+
+func catalog() *fakeCatalog {
+	return &fakeCatalog{
+		artists: []Name{
+			{Key: "bonobo", Name: "Bonobo"},
+			{Key: "the calderas", Name: "The Calderas"},
+			{Key: "nova tide", Name: "Nova Tide"},
+			{Key: "air", Name: "Air"},
+			{Key: "x", Name: "X"},
+		},
+		genres: []Name{{Key: "hip hop", Name: "Hip hop"}, {Key: "electronic", Name: "Electronic"}, {Key: "indie", Name: "Indie"}},
+	}
+}
+
+var nov2026 = func() time.Time { return time.Date(2026, 11, 12, 21, 0, 0, 0, time.UTC) }
+
+func interpret(t *testing.T, text string, m Completer) Intent {
+	t.Helper()
+	it, err := NewInterpreter(catalog(), m, nov2026).Interpret(context.Background(), text)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return it
+}
+
+func TestRulesReadRequests(t *testing.T) {
+	cases := []struct {
+		text string
+		want Intent
+	}{
+		{"play some Bonobo", Intent{Understood: true, Seed: &IntentSeed{Kind: "artist", ID: "bonobo", Artist: "Bonobo", Label: "Bonobo"}}},
+		{"more like The Calderas please", Intent{Understood: true, Lane: "sounds-like", Seed: &IntentSeed{Kind: "artist", ID: "the calderas", Artist: "The Calderas", Label: "The Calderas"}}},
+		{"something similar to nova tide", Intent{Understood: true, Lane: "sounds-like", Seed: &IntentSeed{Kind: "artist", ID: "nova tide", Artist: "Nova Tide", Label: "Nova Tide"}}},
+		{"90s hip-hop", Intent{Understood: true, Seed: &IntentSeed{Kind: "genre", ID: "hip hop", Label: "Hip hop"}, FromYear: 1990, ToYear: 1999}},
+		{"songs from the '10s", Intent{Understood: true, Lane: "throwback", FromYear: 2010, ToYear: 2019}},
+		{"the 1980s", Intent{Understood: true, Lane: "throwback", FromYear: 1980, ToYear: 1989}},
+		{"nineties stuff", Intent{Understood: true, Lane: "throwback", FromYear: 1990, ToYear: 1999}},
+		{"music from 2012 to 2015", Intent{Understood: true, Lane: "throwback", FromYear: 2012, ToYear: 2015}},
+		{"some throwbacks", Intent{Understood: true, Lane: "throwback", FromYear: 2006, ToYear: 2016}},
+		{"something I haven't heard", Intent{Understood: true, Lane: "new-to-you"}},
+		{"my favourites", Intent{Understood: true, Lane: "on-repeat"}},
+		{"deep cuts", Intent{Understood: true, Lane: "deep-cuts"}},
+		{"what was just added?", Intent{Understood: true, Lane: "fresh-finds"}},
+		// "air" is a word here, but it is also an artist: whole-word matches are taken.
+		{"put on Air", Intent{Understood: true, Seed: &IntentSeed{Kind: "artist", ID: "air", Artist: "Air", Label: "Air"}}},
+		// One-letter artist keys are too easy to hit by accident.
+		{"x marks the spot", Intent{}},
+		{"something to cook to", Intent{}},
+	}
+	for _, c := range cases {
+		got := interpret(t, c.text, nil)
+		c.want.Source = "rules"
+		if got.Understood != c.want.Understood || got.Lane != c.want.Lane || got.FromYear != c.want.FromYear || got.ToYear != c.want.ToYear || got.Missing != "" {
+			t.Errorf("%q: got %+v, want %+v", c.text, got, c.want)
+			continue
+		}
+		if (got.Seed == nil) != (c.want.Seed == nil) || (got.Seed != nil && *got.Seed != *c.want.Seed) {
+			t.Errorf("%q: seed %+v, want %+v", c.text, got.Seed, c.want.Seed)
+		}
+	}
+}
+
+func TestModelReadsWhatRulesCannot(t *testing.T) {
+	m := &fakeLLM{out: "Sure! {\"genres\": [\"ambient\", \"Electronic\"], \"lane\": \"new-to-you\"}"}
+	it := interpret(t, "something chill for cooking", m)
+	if !it.Understood || it.Source != "llm" || it.Lane != "new-to-you" || it.Seed == nil || it.Seed.ID != "electronic" {
+		t.Fatalf("got %+v seed %+v", it, it.Seed)
+	}
+	if !strings.Contains(m.got.Prompt, `"listener_request":"something chill for cooking"`) {
+		t.Errorf("prompt %q", m.got.Prompt)
+	}
+	if !strings.Contains(m.got.System, "plain data") {
+		t.Error("system prompt should say the request is data")
+	}
+}
+
+func TestModelNotCalledWhenRulesSuffice(t *testing.T) {
+	m := &fakeLLM{out: `{"genres": ["indie"]}`}
+	it := interpret(t, "play some Bonobo", m)
+	if it.Source != "rules" || m.got.Prompt != "" {
+		t.Fatalf("model should not be asked: %+v", it)
+	}
+}
+
+func TestModelArtistTheLibraryLacksIsMissing(t *testing.T) {
+	it := interpret(t, "can you play radiohed", &fakeLLM{out: `{"artist": "Radiohead"}`})
+	if it.Understood || it.Missing != "Radiohead" {
+		t.Fatalf("got %+v", it)
+	}
+	// With a genre to fall back on, it still plays, and still says what's missing.
+	it = interpret(t, "can you play radiohed", &fakeLLM{out: `{"artist": "Radiohead", "like_artist": true, "genres": ["indie"]}`})
+	if !it.Understood || it.Missing != "Radiohead" || it.Seed.ID != "indie" || it.Lane != "" {
+		t.Fatalf("got %+v seed %+v", it, it.Seed)
+	}
+}
+
+func TestModelArtistLikeAndPeriod(t *testing.T) {
+	it := interpret(t, "stuff that sounds like that bonobo guy from 2000 or so", &fakeLLM{out: `{"artist":"bonobo","like_artist":true,"from_year":2000,"to_year":3000}`})
+	// The rules already understand "sounds like ... bonobo", so check the model path directly.
+	if it.Source != "rules" {
+		t.Fatalf("rules should win: %+v", it)
+	}
+	in := NewInterpreter(catalog(), &fakeLLM{out: `{"artist":"BONOBO","like_artist":true,"from_year":2000,"to_year":3000,"lane":"bogus"}`}, nov2026)
+	it, ok := in.ask(context.Background(), "x", catalog().artists, catalog().genres)
+	if !ok || it.Lane != "sounds-like" || it.Seed.ID != "bonobo" || it.FromYear != 2000 || it.ToYear != 2009 {
+		t.Fatalf("got %+v", it)
+	}
+}
+
+func TestModelFailureFallsBackToRules(t *testing.T) {
+	for _, m := range []*fakeLLM{{err: errors.New("down")}, {out: "I can't help with that"}, {out: "{not json"}} {
+		it := interpret(t, "something to cook to", m)
+		if it.Understood || it.Source != "rules" {
+			t.Errorf("%+v: got %+v", m, it)
+		}
+	}
+}
+
+func TestInterpretCatalogError(t *testing.T) {
+	cat := catalog()
+	cat.err = errors.New("db gone")
+	if _, err := NewInterpreter(cat, nil, nov2026).Interpret(context.Background(), "bonobo"); err == nil {
+		t.Fatal("want error")
+	}
+}
+
+func TestCachedCatalog(t *testing.T) {
+	now := time.Unix(1000, 0)
+	src := catalog()
+	c := NewCachedCatalog(src, time.Minute, func() time.Time { return now })
+	for i := 0; i < 3; i++ {
+		if a, _ := c.Artists(context.Background()); len(a) != 5 {
+			t.Fatal(a)
+		}
+	}
+	if src.calls != 1 {
+		t.Fatalf("calls %d", src.calls)
+	}
+	now = now.Add(2 * time.Minute)
+	_, _ = c.Genres(context.Background())
+	if src.calls != 2 {
+		t.Fatalf("calls %d", src.calls)
+	}
+}
+
+type fakeLister struct{}
+
+func (fakeLister) ListLibraryArtistKeys(context.Context) ([]db.ListLibraryArtistKeysRow, error) {
+	return []db.ListLibraryArtistKeysRow{{ArtistKey: "bonobo", Name: "Bonobo", Tracks: 3}}, nil
+}
+func (fakeLister) ListLibraryGenres(context.Context, int64) ([]db.ListLibraryGenresRow, error) {
+	return []db.ListLibraryGenresRow{{GenreKey: "électro", Tracks: 2}}, nil
+}
+
+func TestLibraryCatalog(t *testing.T) {
+	c := NewLibraryCatalog(fakeLister{})
+	a, _ := c.Artists(context.Background())
+	g, _ := c.Genres(context.Background())
+	if len(a) != 1 || a[0] != (Name{Key: "bonobo", Name: "Bonobo"}) || len(g) != 1 || g[0].Name != "Électro" {
+		t.Fatalf("%+v %+v", a, g)
+	}
+}
+
+func hipHopCatalog() *fakeCatalog {
+	return &fakeCatalog{
+		artists: []Name{
+			{Key: "a ap rocky", Name: "A$AP Rocky"},
+			{Key: "kendrick lamar", Name: "Kendrick Lamar"},
+			{Key: "playboi carti", Name: "Playboi Carti"},
+			{Key: "travis scott", Name: "Travis Scott"},
+			{Key: "lil uzi vert", Name: "Lil Uzi Vert"},
+			{Key: "lil baby", Name: "Lil Baby"},
+		},
+		genres: []Name{{Key: "hip hop rap", Name: "Hip hop rap"}, {Key: "phonk", Name: "Phonk"}, {Key: "lo fi", Name: "Lo fi"}, {Key: "new wave", Name: "New wave"}},
+	}
+}
+
+// Real libraries have names with symbols, compound genre tags and listeners
+// who type half a name or misspell it. The rules should still find them.
+func TestRulesReadLooseRequests(t *testing.T) {
+	artist := func(key string) *IntentSeed { return &IntentSeed{Kind: "artist", ID: key} }
+	genre := func(key string) *IntentSeed { return &IntentSeed{Kind: "genre", ID: key} }
+	cases := []struct {
+		text     string
+		seed     *IntentSeed
+		lane     string
+		from, to int
+	}{
+		{"play asap rocky", artist("a ap rocky"), "", 0, 0},
+		{"A$AP Rocky please", artist("a ap rocky"), "", 0, 0},
+		{"put on some kendrick", artist("kendrick lamar"), "", 0, 0},
+		{"play carti", artist("playboi carti"), "", 0, 0},
+		{"kendrik lamar", artist("kendrick lamar"), "", 0, 0},
+		{"play travis scot", artist("travis scott"), "", 0, 0},
+		{"more like travis", artist("travis scott"), "sounds-like", 0, 0},
+		{"some rap", genre("hip hop rap"), "", 0, 0},
+		{"hip hop from the 2010s", genre("hip hop rap"), "", 2010, 2019},
+		{"something chill", genre("lo fi"), "", 0, 0},
+		{"something hype for the gym", genre("phonk"), "", 0, 0},
+		{"something new", nil, "new-to-you", 0, 0},
+		// "lil" names several artists, so it names none of them.
+		{"play lil", nil, "", 0, 0},
+	}
+	for _, c := range cases {
+		it, err := NewInterpreter(hipHopCatalog(), nil, nov2026).Interpret(context.Background(), c.text)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if it.Lane != c.lane || it.FromYear != c.from || it.ToYear != c.to || it.Understood != (c.seed != nil || c.lane != "") {
+			t.Errorf("%q: got %+v", c.text, it)
+		}
+		if (it.Seed == nil) != (c.seed == nil) || (it.Seed != nil && (it.Seed.Kind != c.seed.Kind || it.Seed.ID != c.seed.ID)) {
+			t.Errorf("%q: seed %+v, want %+v", c.text, it.Seed, c.seed)
+		}
+	}
+}
+
+func TestNotUnderstoodSuggestsWhatToTry(t *testing.T) {
+	it, err := NewInterpreter(hipHopCatalog(), nil, nov2026).Interpret(context.Background(), "blorp")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if it.Understood || len(it.Try) != 2 || it.Try[0] != "A$AP Rocky" || it.Try[1] != "Hip hop rap" {
+		t.Fatalf("got %+v", it)
+	}
+	if it, _ := NewInterpreter(hipHopCatalog(), nil, nov2026).Interpret(context.Background(), "play asap rocky"); len(it.Try) != 0 {
+		t.Fatalf("understood requests need no suggestions: %+v", it)
+	}
+}
+
+func TestModelNamesMatchLoosely(t *testing.T) {
+	in := NewInterpreter(hipHopCatalog(), &fakeLLM{out: `{"artist":"ASAP Rocky"}`}, nov2026)
+	it, ok := in.ask(context.Background(), "x", hipHopCatalog().artists, hipHopCatalog().genres)
+	if !ok || it.Seed == nil || it.Seed.ID != "a ap rocky" || it.Missing != "" {
+		t.Fatalf("got %+v", it)
+	}
+	in = NewInterpreter(hipHopCatalog(), &fakeLLM{out: `{"genres":["hip-hop"]}`}, nov2026)
+	it, ok = in.ask(context.Background(), "x", hipHopCatalog().artists, hipHopCatalog().genres)
+	if !ok || it.Seed == nil || it.Seed.ID != "hip hop rap" {
+		t.Fatalf("got %+v", it)
+	}
+}
+
+func BenchmarkLooseRequestBigLibrary(b *testing.B) {
+	cat := hipHopCatalog()
+	for i := 0; i < 5000; i++ {
+		n := "Artist Number " + strings.Repeat("x", i%7) + string(rune('a'+i%26)) + string(rune('a'+(i/26)%26)) + string(rune('a'+(i/676)%26))
+		cat.artists = append(cat.artists, Name{Key: strings.ToLower(n), Name: n})
+	}
+	in := NewInterpreter(cat, nil, nov2026)
+	for i := 0; i < b.N; i++ {
+		_, _ = in.Interpret(context.Background(), "could you play something by kendrik lamarr for me please")
+	}
+}

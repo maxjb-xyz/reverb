@@ -290,3 +290,80 @@ func TestDelete_OwnerScoped(t *testing.T) {
 		t.Fatalf("expected play %q to remain, got %q", ownerPlayID, after[0].ID)
 	}
 }
+
+func TestRecordPlay_ReturnsTheNewPlayID(t *testing.T) {
+	s, q := newTestPlayService(t)
+	ctx := context.Background()
+
+	id, err := s.RecordPlay(ctx, "user-1", play.PlayInput{
+		Title: "Hurt", Artist: "Johnny Cash", Album: "American IV",
+		DurationMs: 218000, MsPlayed: 109000, PlayedAt: 1719000000,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows, err := q.ListRecentPlays(ctx, db.ListRecentPlaysParams{UserID: "user-1", PlayedAt: 9999999999, Limit: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 || rows[0].ID != id || id == "" {
+		t.Fatalf("RecordPlay id = %q, rows = %+v", id, rows)
+	}
+}
+
+// The play is recorded once it qualifies (half the song). UpdateProgress then
+// records how much was really heard, so listening time is not halved.
+func TestUpdateProgress_RaisesListenedTimeAndCompleted(t *testing.T) {
+	s, q := newTestPlayService(t)
+	stats := play.NewStats(q)
+	ctx := context.Background()
+
+	id, err := s.RecordPlay(ctx, "user-1", play.PlayInput{
+		Title: "Hurt", Artist: "Johnny Cash", Album: "American IV",
+		DurationMs: 218000, MsPlayed: 109000, PlayedAt: 1719000000,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.UpdateProgress(ctx, "user-1", id, 217000, true); err != nil {
+		t.Fatal(err)
+	}
+	sum, err := stats.Summary(ctx, "user-1", 0, 9999999999)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sum.MsPlayed != 217000 {
+		t.Fatalf("MsPlayed = %d, want 217000", sum.MsPlayed)
+	}
+
+	// A stale, smaller update never lowers what was recorded.
+	if err := s.UpdateProgress(ctx, "user-1", id, 120000, false); err != nil {
+		t.Fatal(err)
+	}
+	sum, _ = stats.Summary(ctx, "user-1", 0, 9999999999)
+	if sum.MsPlayed != 217000 {
+		t.Fatalf("MsPlayed after stale update = %d, want 217000", sum.MsPlayed)
+	}
+}
+
+func TestUpdateProgress_OwnerScoped(t *testing.T) {
+	s, q := newTestPlayService(t)
+	stats := play.NewStats(q)
+	ctx := context.Background()
+
+	id, err := s.RecordPlay(ctx, "user-1", play.PlayInput{
+		Title: "Hurt", Artist: "Johnny Cash", Album: "American IV",
+		DurationMs: 218000, MsPlayed: 109000, PlayedAt: 1719000000,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Another user cannot change user-1's play.
+	if err := s.UpdateProgress(ctx, "user-2", id, 218000, true); err != nil {
+		t.Fatal(err)
+	}
+	sum, _ := stats.Summary(ctx, "user-1", 0, 9999999999)
+	if sum.MsPlayed != 109000 {
+		t.Fatalf("MsPlayed = %d, want 109000 (untouched)", sum.MsPlayed)
+	}
+}

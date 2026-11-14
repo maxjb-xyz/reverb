@@ -401,6 +401,316 @@ paths:
                     required: [source, externalId, artist, title]
               required: [tracks]
       responses: { "200": { description: array of DownloadJob }, "400": { description: invalid } }
+  /plays:
+    post:
+      summary: >
+        Record a play for the session user. The player sends it once the song
+        qualifies (half its length or four minutes), and it is queued for
+        scrobbling. Body fields are PascalCase (LibraryTrackID, Title, Artist,
+        Album, ISRC, DurationMs, MsPlayed, Completed, PlayedAt).
+      responses:
+        "200": { description: "{id: string} — the new play's id, for PATCH /plays/{id}" }
+        "400": { description: invalid request body }
+        "503": { description: play service unavailable }
+  /plays/{id}:
+    patch:
+      summary: >
+        Record how much of a play was finally heard ({MsPlayed, Completed}).
+        Values only rise. Owner-scoped: another user's id is a silent no-op.
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses: { "204": { description: ok }, "400": { description: invalid request body } }
+    delete:
+      summary: Delete one of the session user's plays (owner-scoped, idempotent)
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses: { "204": { description: ok } }
+  /stats/timeline:
+    get:
+      summary: >
+        Plays and listened time per day, week or month in [from, to). Buckets
+        follow the listener's calendar: tzOffsetMinutes (minutes east of UTC)
+        sets local midnight, and Start is that instant. Empty buckets are omitted.
+      parameters:
+        - { name: from, in: query, schema: { type: integer } }
+        - { name: to, in: query, schema: { type: integer } }
+        - { name: bucket, in: query, schema: { type: string, enum: [day, week, month] } }
+        - { name: tzOffsetMinutes, in: query, schema: { type: integer } }
+      responses: { "200": { description: "array of {Start, Plays, MsPlayed}" } }
+  /listens:
+    post:
+      summary: >
+        Record how one started track ended for the session user (taste signal).
+        Unlike /plays (scrobble-qualified plays only), every outcome is stored,
+        including skips. contextKind/contextId say where it was played from
+        (album, playlist, radio, dj, mix, ...).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                libraryTrackId: { type: string }
+                title: { type: string }
+                artist: { type: string }
+                album: { type: string }
+                isrc: { type: string }
+                durationMs: { type: integer }
+                msPlayed: { type: integer }
+                outcome: { type: string, enum: [completed, skip_early, skip_late, stopped] }
+                contextKind: { type: string }
+                contextId: { type: string }
+                startedAt: { type: integer, description: unix seconds; 0 or omitted = now }
+              required: [title, artist, msPlayed, outcome]
+      responses: { "204": { description: recorded }, "400": { description: invalid }, "503": { description: taste service unavailable } }
+  /taste/profile:
+    get:
+      summary: The session user's top artists and tracks by taste score, plus counts.
+      responses: { "200": { description: "{ topArtists, topTracks, trackCount, artistCount, hiddenTracks, hiddenArtists }" } }
+  /taste/feedback:
+    get:
+      summary: The session user's thumbs-downs, newest first.
+      responses: { "200": { description: "array of { targetKind, targetKey, label, sublabel, libraryId, createdAt }" } }
+    put:
+      summary: >
+        Thumbs-down a track ("not this song") or an artist ("less of this
+        artist"). Track feedback needs the track's metadata; artist feedback
+        needs only artist.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                targetKind: { type: string, enum: [track, artist] }
+                libraryTrackId: { type: string }
+                libraryArtistId: { type: string }
+                title: { type: string }
+                artist: { type: string }
+                album: { type: string }
+                isrc: { type: string }
+                durationMs: { type: integer }
+              required: [targetKind, artist]
+      responses: { "200": { description: the stored feedback row }, "400": { description: invalid } }
+  /taste/feedback/{kind}/{key}:
+    delete:
+      summary: Undo a thumbs-down. kind is track or artist; key is the row's targetKey (percent-encoded).
+      parameters:
+        - { name: kind, in: path, required: true, schema: { type: string, enum: [track, artist] } }
+        - { name: key, in: path, required: true, schema: { type: string } }
+      responses: { "204": { description: removed (or was not present) } }
+  /artists/similar:
+    get:
+      summary: >
+        Artists similar to the named one ("fans also like"), best first, from
+        the recommendation index's artist-similarity map. Each entry says how
+        many tracks the library owns (0 = not in the library) and, when owned,
+        the library artist id.
+      parameters:
+        - { name: name, in: query, required: true, schema: { type: string } }
+      responses: { "200": { description: "{ artist, similar: [{ key, name, source, externalId, imageUrl, rank, ownedTracks, libraryArtistId }] }" }, "400": { description: name missing } }
+  /engine/index:
+    get:
+      summary: Recommendation index status (managers). Tracks and artists indexed, artists with a similarity list, last run.
+      responses: { "200": { description: "{ running, tracks, artists, artistsWithSimilar, similarSources, lastIndexedAt, lastError }. similarSources names where similar artists come from (empty when nothing can look them up)" }, "403": { description: not a manager } }
+  /engine/index/rebuild:
+    post:
+      summary: Queue a re-index of the library and similarity map now (managers).
+      responses: { "202": { description: queued }, "403": { description: not a manager } }
+  /engine/settings:
+    get:
+      summary: >
+        Server-wide recommendation switches (managers). deezer (default true)
+        lets the engine use Deezer's public API for similar artists and new
+        songs even when Deezer isn't an enabled search source.
+      responses: { "200": { description: "{ deezer }" }, "403": { description: not a manager } }
+    put:
+      summary: Change the recommendation switches (managers). Body { deezer }. Re-runs the index.
+      responses: { "200": { description: "{ deezer }" }, "400": { description: deezer missing }, "403": { description: not a manager } }
+  /engine/analysis:
+    get:
+      summary: >
+        Optional audio analysis status (managers). With an "analyzer" provider
+        configured (for example audio-sidecar pointed at Reverb's reference
+        service), Reverb sends each library song to it in the background and
+        stores an embedding; radio and the sounds-like lane then add songs that
+        sound alike (reason kind sounds_like, with seedTitle and seedArtist).
+      responses:
+        "200": { description: "{ enabled, running, model?, analyzed, failed, total, lastError? }" }
+        "403": { description: not a manager }
+        "503": { description: audio analysis unavailable }
+  /engine/analysis/run:
+    post:
+      summary: Carry on analyzing now instead of at the next tick (managers).
+      responses: { "202": { description: queued }, "403": { description: not a manager } }
+  /engine/next:
+    post:
+      summary: >
+        The next songs for a radio station or a DJ lane, picked by the
+        recommendation engine from the user's taste, the library index and the
+        artist-similarity map. Each item carries a structured reason. Radio
+        refills pass the queue so far in exclude.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                seed:
+                  type: object
+                  description: "What the station is built around. kind: track (id = library track id), artist (id = artist key, or artist = name), genre (id = genre), taste (no seed)."
+                  properties:
+                    kind: { type: string, enum: [track, artist, genre, taste] }
+                    id: { type: string }
+                    title: { type: string }
+                    artist: { type: string }
+                lane:
+                  type: string
+                  description: Empty for radio, or a DJ lane.
+                  enum: ["", on-repeat, throwback, deep-cuts, sounds-like, new-to-you, fresh-finds]
+                fromYear: { type: integer, description: "first year: the throwback period, or on other lanes a period every pick must fall in" }
+                toYear: { type: integer, description: "last year of that period" }
+                exclude: { type: array, items: { type: string }, description: Library track ids (or catalog ids) not to pick. }
+                includeExternal: { type: boolean, description: "Also suggest songs that aren't in the library (owned: false, external set)." }
+                n: { type: integer, description: "batch size, default 20, max 100" }
+      responses:
+        "200": { description: "{ station: { id, kind, lane, label }, items: [{ owned, track?, external?, year, genres, score, reason: { kind, artist, artistKey, seedArtist, seedTitle, genre, year, playCount } }] }" }
+        "400": { description: invalid station or lane }
+        "404": { description: seed track not in the library index }
+  /engine/stations:
+    get:
+      summary: Radio stations suggested from the user's taste (favourite artists, then their genres; the library's biggest genres for a new user).
+      parameters:
+        - { name: n, in: query, schema: { type: integer, default: 8, maximum: 24 } }
+      responses: { "200": { description: "{ stations: [{ seed, label, sublabel, coverArtId, libraryArtistId }] }" } }
+  /engine/genres:
+    get:
+      summary: The library's genres, biggest first, for picking a genre station or mix seed.
+      responses: { "200": { description: "{ genres: [{ key, label, tracks }] }" } }
+  /mixes:
+    get:
+      summary: >
+        The session user's mixes with their songs. Daily mixes come first
+        (made by Reverb from clusters of the user's favourite artists, rebuilt
+        each day), then custom mixes. A mix that is due for its refresh is
+        rebuilt on read.
+      responses: { "200": { description: "{ mixes: [Mix] } where Mix is { id, kind (daily|custom), name, description, recipe, items: [engine item], coverArtId, generatedAt, createdAt }" } }
+    post:
+      summary: Save a custom mix and build it.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, recipe]
+              properties:
+                name: { type: string, maxLength: 100 }
+                recipe:
+                  type: object
+                  properties:
+                    seeds: { type: array, maxItems: 10, items: { type: object, description: "an engine seed: { kind: track|artist|genre|taste, id?, title?, artist? }" }, description: "No seeds means the user's own taste." }
+                    lane: { type: string, enum: ["", on-repeat, throwback, deep-cuts, sounds-like, new-to-you, fresh-finds] }
+                    fromYear: { type: integer }
+                    toYear: { type: integer }
+                    size: { type: integer, default: 30, maximum: 100 }
+                    refresh: { type: string, enum: [daily, weekly, manual], default: daily }
+      responses: { "201": { description: Mix }, "400": { description: invalid recipe }, "409": { description: too many mixes } }
+  /mixes/{id}:
+    parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+    get:
+      summary: One mix, rebuilt first if it is due.
+      responses: { "200": { description: Mix }, "404": { description: not found } }
+    put:
+      summary: Rename a custom mix or change its recipe; it is rebuilt.
+      responses: { "200": { description: Mix }, "400": { description: invalid recipe }, "404": { description: not found }, "409": { description: daily mixes can't be edited } }
+    delete:
+      summary: Delete a custom mix.
+      responses: { "204": { description: deleted }, "404": { description: not found }, "409": { description: daily mixes can't be deleted } }
+  /mixes/{id}/refresh:
+    post:
+      summary: Rebuild a mix now with new songs.
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses: { "200": { description: Mix }, "404": { description: not found } }
+  /mixes/daily/rebuild:
+    post:
+      summary: Rebuild the session user's daily mixes now from their latest listening (normally once a day). Custom mixes are untouched.
+      responses: { "200": { description: "{ mixes: [Mix] }" } }
+  /discover/regenerate:
+    post:
+      summary: >
+        Swap this week's Discover Weekly picks for new ones, using the user's
+        current length and mix. Songs Reverb already started downloading stay
+        (the keep rule still applies to them); only picks nothing was
+        downloaded for are replaced, and they aren't offered again. New
+        downloads count against the weekly cap.
+      responses:
+        "200": { description: The week, as GET /discover }
+        "409": { description: Discover Weekly is off for this user }
+        "503": { description: discover unavailable }
+  /discover:
+    get:
+      summary: >
+        The session user's Discover Weekly. Built on first read each week
+        (Monday to Sunday): mostly songs not in the library, picked by the
+        engine from artists like the user's favourites, the rest owned songs
+        they haven't played. When the user may add music (owner or
+        auto_approve), downloads are on and a downloader is configured, the
+        new songs are downloaded ahead of time, up to the weekly cap. Reading
+        it also closes earlier weeks: each song Reverb downloaded for Discover
+        is kept or deleted by the user's keep rule. A song stays whenever it
+        is in any playlist, another user played it through, or it was already
+        in the library or downloaded before Discover asked for it.
+      responses:
+        "200":
+          description: >
+            { week ("2027-W02"), startsAt, endsAt (unix seconds), prefs,
+            downloads (bool: songs are fetched ahead for this user), items:
+            [{ id, state (suggested|downloading|kept|removed|expired), owned,
+            track?, external?, reason, jobId?, jobStatus?, progress? }] }
+        "503": { description: discover unavailable }
+  /discover/prefs:
+    get:
+      summary: The session user's Discover Weekly preferences.
+      responses: { "200": { description: "{ enabled, size, newShare, keepRule }" } }
+    put:
+      summary: Save the session user's Discover Weekly preferences.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                enabled: { type: boolean, default: true }
+                size: { type: integer, minimum: 10, maximum: 100, default: 30 }
+                newShare: { type: integer, minimum: 0, maximum: 100, default: 70, description: "Percent of songs that aren't in the library yet." }
+                keepRule:
+                  type: string
+                  enum: [playlist, played, always]
+                  default: playlist
+                  description: >
+                    What happens to downloaded songs when the week ends.
+                    playlist keeps only songs added to a playlist; played also
+                    keeps songs the user played through; always keeps everything.
+      responses: { "200": { description: "the saved prefs" }, "400": { description: invalid prefs } }
+  /discover/settings:
+    get:
+      summary: Server-wide Discover settings (managers).
+      responses: { "200": { description: "{ downloads (bool, default true), weeklyCap (songs per user per week, default 30) }" }, "403": { description: not a manager } }
+    put:
+      summary: Save server-wide Discover settings (managers).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                downloads: { type: boolean }
+                weeklyCap: { type: integer, minimum: 0, maximum: 500 }
+      responses: { "200": { description: "the saved settings" }, "400": { description: invalid settings }, "403": { description: not a manager } }
   /ws:
     get:
       summary: >
@@ -408,6 +718,167 @@ paths:
         is the EventBus topic (download.queued, download.progress,
         download.complete, download.failed, library.updated). Used by the client
         to flip a result to in-library, drive progress rings, and resync.
+
+        The same socket carries the account's listening session (one per
+        account, Spotify Connect style). A client joins as a device by sending
+        playback.hello {id,name,kind}. It may then send playback.claim (State:
+        "I started playing here", makes it the active device), playback.state
+        (State, only from the active device), playback.command ({action,...},
+        relayed to the active device) and playback.transfer {deviceId,play}.
+        The server sends playback.session {devices,activeDeviceId,state,serverTime}
+        to every device on any change, playback.activate {state,play} to the
+        device taking over, playback.deactivate to the one losing it, and
+        playback.command to the active device. State is {queue,index,positionMs,
+        playing,shuffle,repeat,volume,updatedAt}; queues are capped at 1000 tracks
+        and frames at 1 MiB. See internal/playback.
       responses:
         "101": { description: Switching Protocols (WebSocket upgrade) }
         "401": { description: unauthorized }
+  /admin/integrations/discord:
+    get:
+      summary: The Discord bot's token state and status (the token is never returned). Needs can_manage_library.
+      responses:
+        "200": { description: '{"tokenSet":bool,"status":{"state":"off|connecting|online|error","botName","inviteUrl","error","sessions","fromEnv"}}' }
+    put:
+      summary: >
+        Save the Discord bot token and (re)start the bot; answers once it is online
+        or failed. {"token":""} reconnects with the saved token, {"clear":true}
+        removes it. REVERB_DISCORD_TOKEN, when set, wins over the saved token.
+      responses:
+        "200": { description: same shape as GET }
+        "400": { description: bad body }
+  /discord/link:
+    get:
+      summary: Whether the Discord bot is available and the caller's Discord account is linked
+      responses:
+        "200": { description: '{"available":bool,"linked":bool,"discordName"?:string}' }
+    delete:
+      summary: Unlink the caller's Discord account
+      responses:
+        "204": { description: unlinked }
+  /discord/link-code:
+    post:
+      summary: A one-time code (10 minutes) the caller runs as /link <code> in Discord
+      responses:
+        "200": { description: '{"code":"ABCD-EFGH","expiresAt":unix seconds}' }
+        "503": { description: the bot is not online }
+  /dj/voice:
+    get:
+      summary: Whether the DJ has a voice configured, and which provider
+      responses:
+        "200": { description: '{"available":bool,"name":string}; name is "" when no voice is enabled' }
+  /dj/status:
+    get:
+      summary: Which DJ voice and writer model are configured
+      responses:
+        "200": { description: '{"voice":{"available":bool,"name":string},"writer":{"available":bool,"name":string}}' }
+  /dj/line:
+    post:
+      summary: >
+        Write what the DJ says before a block of songs. Uses the writer model
+        when one is configured and falls back to templates on any problem, so a
+        valid request always gets a line. Rate-limited per user.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                lane: { type: string, enum: [on-repeat, throwback, deep-cuts, sounds-like, new-to-you, fresh-finds, request] }
+                reason:
+                  type: object
+                  properties:
+                    artist: { type: string }
+                    play_count: { type: integer }
+                    last_played: { type: string, description: 'spoken phrase, e.g. "last spring"' }
+                    seed: { type: string }
+                previous: { $ref: '#/components/schemas/DJTrack' }
+                next: { type: array, maxItems: 5, items: { $ref: '#/components/schemas/DJTrack' } }
+                listener: { type: string }
+                hour: { type: integer, description: listener local hour 0-23, -1 unknown }
+                request: { type: string, maxLength: 200 }
+              required: [next]
+      responses:
+        "200": { description: '{"text":string,"source":"llm"|"template"}' }
+        "400": { description: next is empty or the body is not JSON }
+        "429": { description: too many lines this minute }
+  /dj/request:
+    post:
+      summary: >
+        Read what the listener asked the DJ for ("90s hip hop", "more like
+        Bonobo", "something I haven't heard") as an engine seed, lane and
+        period, to pass on to /engine/next. Rules match the library's own artist
+        and genre names, loosely (symbols, part of a name, a typo, part of a
+        genre tag, a mood); the writer model, when configured, reads what they
+        can't. Only library artists and genres are returned; an artist the
+        library lacks comes back as `missing`. Shares /dj/line's rate limit.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                text: { type: string, maxLength: 200 }
+              required: [text]
+      responses:
+        "200":
+          description: The request in engine terms.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  understood: { type: boolean, description: false when nothing in the request can be played }
+                  seed:
+                    type: object
+                    properties:
+                      kind: { type: string, enum: [artist, genre] }
+                      id: { type: string, description: artist or genre key }
+                      artist: { type: string }
+                      label: { type: string }
+                  lane: { type: string, enum: [on-repeat, throwback, deep-cuts, sounds-like, new-to-you, fresh-finds], description: omitted for radio around the seed }
+                  fromYear: { type: integer }
+                  toYear: { type: integer }
+                  missing: { type: string, description: an artist asked for that the library lacks }
+                  source: { type: string, enum: [rules, llm] }
+                  try: { type: array, items: { type: string }, description: "when not understood: the library's biggest artist and genre, to suggest" }
+                required: [understood, source]
+        "400": { description: text is empty or the body is not JSON }
+        "429": { description: too many DJ requests this minute }
+  /dj/say:
+    post:
+      summary: >
+        Render a DJ line with the active voice provider (cached by voice and
+        text) and return a clip URL. Rate-limited per user.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                text: { type: string, maxLength: 600 }
+              required: [text]
+      responses:
+        "200": { description: '{"id":string,"url":"/api/v1/dj/clips/{id}"}' }
+        "400": { description: text empty or longer than 600 characters }
+        "429": { description: too many lines this minute }
+        "502": { description: the voice provider failed }
+        "503": { description: no voice is configured, or the built-in voice is still being set up (Retry-After) }
+  /dj/clips/{id}:
+    get:
+      summary: A rendered DJ voice clip (immutable; audio/*)
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses: { "200": { description: audio bytes }, "404": { description: clip not found } }
+components:
+  schemas:
+    DJTrack:
+      type: object
+      properties:
+        title: { type: string }
+        artist: { type: string }
+        album: { type: string }
+        year: { type: integer }
+      required: [title]

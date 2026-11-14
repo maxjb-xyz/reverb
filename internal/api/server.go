@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"database/sql"
+	"github.com/maxjb-xyz/reverb/internal/analysis"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -13,16 +14,24 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/maxjb-xyz/reverb/internal/auth"
 	"github.com/maxjb-xyz/reverb/internal/core"
+	"github.com/maxjb-xyz/reverb/internal/discord"
+	"github.com/maxjb-xyz/reverb/internal/discover"
+	"github.com/maxjb-xyz/reverb/internal/dj"
+	"github.com/maxjb-xyz/reverb/internal/engine"
 	"github.com/maxjb-xyz/reverb/internal/events"
+	"github.com/maxjb-xyz/reverb/internal/libindex"
 	"github.com/maxjb-xyz/reverb/internal/library"
+	"github.com/maxjb-xyz/reverb/internal/mixes"
 	"github.com/maxjb-xyz/reverb/internal/notification"
 	"github.com/maxjb-xyz/reverb/internal/play"
+	"github.com/maxjb-xyz/reverb/internal/playback"
 	"github.com/maxjb-xyz/reverb/internal/registry"
 	"github.com/maxjb-xyz/reverb/internal/request"
 	"github.com/maxjb-xyz/reverb/internal/resolver"
 	"github.com/maxjb-xyz/reverb/internal/scrobble"
 	"github.com/maxjb-xyz/reverb/internal/search"
 	"github.com/maxjb-xyz/reverb/internal/store/db"
+	"github.com/maxjb-xyz/reverb/internal/taste"
 )
 
 // Streamer is the subset of *search.Aggregator the SSE handler needs.
@@ -146,6 +155,45 @@ type Deps struct {
 	// Lyrics resolves track lyrics (local tags → LRCLIB, DB-cached). Nil in
 	// tests/legacy wiring — the lyrics endpoint serves 204.
 	Lyrics LyricsProvider
+	// VoiceReg holds the DJ voice adapters, shown with the other providers.
+	VoiceReg *registry.Registry
+	// Voice is the DJ's voice. Nil disables the /dj/say endpoint.
+	Voice VoiceService
+	// LLMReg holds the DJ writer models, shown with the other providers.
+	LLMReg *registry.Registry
+	// AnalyzerReg holds the optional audio analyzers, shown with the other providers.
+	AnalyzerReg *registry.Registry
+	// Analysis runs the optional audio analysis (nil in tests that don't need it).
+	Analysis *analysis.Service
+	// LLM writes DJ lines. Nil means templates only.
+	LLM LLMService
+	// DJCatalog lists the library's artists and genres for reading DJ
+	// requests. Nil reads requests with lanes and periods only.
+	DJCatalog dj.Catalog
+	// Taste records listen outcomes, playlist/download signals and thumbs-down,
+	// and serves per-user taste profiles. Nil in tests/legacy wiring — listen
+	// and feedback endpoints answer 503 and signal hooks are skipped.
+	Taste *taste.Service
+	// LibIndex is the recommendation engine's library index and artist-
+	// similarity map. Nil in tests/legacy wiring — its endpoints answer 503.
+	LibIndex *libindex.Service
+	// Engine picks songs for radio, the DJ's lanes and mixes. Nil in
+	// tests/legacy wiring — its endpoints answer 503.
+	Engine *engine.Engine
+	// Mixes serves daily and custom mixes. Nil in tests/legacy wiring — its
+	// endpoints answer 503.
+	Mixes *mixes.Service
+	// Discover serves Discover Weekly. Nil in tests/legacy wiring — its
+	// endpoints answer 503.
+	Discover *discover.Service
+	// Playback holds each account's listening session and its devices (the
+	// Spotify Connect-style device picker). Nil turns the WebSocket's
+	// playback frames off.
+	Playback *playback.Hub
+	// Discord runs the optional Discord bot; DiscordLinks ties Discord
+	// accounts to Reverb accounts. Nil turns the endpoints off.
+	Discord      DiscordBot
+	DiscordLinks *discord.Links
 }
 
 type Server struct {
@@ -155,6 +203,10 @@ type Server struct {
 	// authLimiter throttles the login/signup/setup endpoints per client IP to
 	// slow online password guessing.
 	authLimiter *rateLimiter
+	// djSayLimiter throttles voice-line rendering per user.
+	djSayLimiter *rateLimiter
+	// djLineLimiter throttles DJ line writing per user.
+	djLineLimiter *rateLimiter
 
 	// live holds the currently active services. Handlers read them through the
 	// getters under the RLock; reload swaps them under the write lock so adapter
@@ -177,6 +229,8 @@ func NewServer(deps Deps) *Server {
 	// Auth endpoints: at most 10 attempts per IP per minute. Generous enough that
 	// a human never notices, tight enough that bcrypt-slowed guessing stays slow.
 	s.authLimiter = newRateLimiter(10, time.Minute, nil)
+	s.djSayLimiter = newRateLimiter(djSayPerMinute, time.Minute, nil)
+	s.djLineLimiter = newRateLimiter(djLinePerMinute, time.Minute, nil)
 	s.live.library = deps.Library
 	s.live.search = deps.SearchAggregator
 	s.live.coverage = deps.Coverage
@@ -300,12 +354,16 @@ func (s *Server) routes() {
 			pr.Get("/notifications", s.handleListNotifications)
 			pr.Post("/notifications/read", s.handleMarkNotificationsRead)
 			pr.Post("/plays", s.handlePlay)
+			pr.Patch("/plays/{id}", s.handleUpdatePlay)
 			pr.Delete("/plays/{id}", s.handleDeletePlay)
 			// scrobbling
 			pr.Post("/scrobble/lastfm/auth-url", s.handleScrobbleAuthURL)
 			pr.Post("/scrobble/lastfm/complete", s.handleScrobbleComplete)
 			pr.Delete("/scrobble/lastfm", s.handleScrobbleUnlink)
 			pr.Get("/scrobble/links", s.handleScrobbleLinks)
+			pr.Get("/discord/link", s.handleGetDiscordLink)
+			pr.Post("/discord/link-code", s.handleCreateDiscordLinkCode)
+			pr.Delete("/discord/link", s.handleDeleteDiscordLink)
 			pr.Post("/scrobble/nowplaying", s.handleScrobbleNowPlaying)
 			pr.Get("/stats/summary", s.handleStatsSummary)
 			pr.Get("/stats/top/tracks", s.handleStatsTopTracks)
@@ -316,6 +374,32 @@ func (s *Server) routes() {
 			pr.Get("/stats/recent", s.handleStatsRecent)
 			pr.Get("/stats/entity", s.handleStatsEntity)
 			pr.Post("/stats/play-counts", s.handlePlayCounts)
+			pr.Get("/dj/voice", s.handleDJVoice)
+			pr.Get("/dj/status", s.handleDJStatus)
+			pr.Post("/dj/line", s.handleDJLine)
+			pr.Post("/dj/request", s.handleDJRequest)
+			pr.Post("/dj/say", s.handleDJSay)
+			pr.Get("/dj/clips/{id}", s.handleDJClip)
+			pr.Post("/listens", s.handleListen)
+			pr.Get("/taste/profile", s.handleTasteProfile)
+			pr.Get("/taste/feedback", s.handleListTasteFeedback)
+			pr.Put("/taste/feedback", s.handleSetTasteFeedback)
+			pr.Delete("/taste/feedback/{kind}/{key}", s.handleClearTasteFeedback)
+			pr.Get("/artists/similar", s.handleSimilarArtists)
+			pr.Post("/engine/next", s.handleEngineNext)
+			pr.Get("/engine/stations", s.handleEngineStations)
+			pr.Get("/engine/genres", s.handleEngineGenres)
+			pr.Get("/mixes", s.handleListMixes)
+			pr.Post("/mixes", s.handleCreateMix)
+			pr.Get("/mixes/{id}", s.handleGetMix)
+			pr.Put("/mixes/{id}", s.handleUpdateMix)
+			pr.Delete("/mixes/{id}", s.handleDeleteMix)
+			pr.Post("/mixes/{id}/refresh", s.handleRefreshMix)
+			pr.Post("/mixes/daily/rebuild", s.handleRebuildDailyMixes)
+			pr.Get("/discover", s.handleDiscover)
+			pr.Post("/discover/regenerate", s.handleRegenerateDiscover)
+			pr.Get("/discover/prefs", s.handleGetDiscoverPrefs)
+			pr.Put("/discover/prefs", s.handlePutDiscoverPrefs)
 
 			// manage library & integrations: adapter CRUD + server settings.
 			pr.Group(func(mr chi.Router) {
@@ -327,9 +411,19 @@ func (s *Server) routes() {
 				mr.Delete("/adapters/{id}", s.handleDeleteAdapter)
 				mr.Post("/adapters/test", s.handleTestAdapter)
 				mr.Get("/settings", s.handleGetSettings)
+				mr.Get("/engine/index", s.handleIndexStatus)
+				mr.Post("/engine/index/rebuild", s.handleIndexRebuild)
+				mr.Get("/engine/settings", s.handleGetEngineSettings)
+				mr.Put("/engine/settings", s.handlePutEngineSettings)
+				mr.Get("/engine/analysis", s.handleAnalysisStatus)
+				mr.Post("/engine/analysis/run", s.handleAnalysisRun)
+				mr.Get("/discover/settings", s.handleGetDiscoverSettings)
+				mr.Put("/discover/settings", s.handlePutDiscoverSettings)
 				mr.Put("/settings", s.handlePutSettings)
 				mr.Get("/admin/integrations/lastfm", s.handleGetLastfmIntegration)
 				mr.Put("/admin/integrations/lastfm", s.handlePutLastfmIntegration)
+				mr.Get("/admin/integrations/discord", s.handleGetDiscordIntegration)
+				mr.Put("/admin/integrations/discord", s.handlePutDiscordIntegration)
 			})
 
 			// download tracks + manage the queue: enqueue create/batch, plus the

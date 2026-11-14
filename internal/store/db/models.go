@@ -36,12 +36,31 @@ type AlbumExternalMap struct {
 	CreatedAt       int64   `json:"created_at"`
 }
 
+type ArtistExternal struct {
+	ArtistKey  string `json:"artist_key"`
+	Source     string `json:"source"`
+	ExternalID string `json:"external_id"`
+	Name       string `json:"name"`
+	FetchedAt  int64  `json:"fetched_at"`
+}
+
 type ArtistExternalMap struct {
 	LibraryArtistID  string  `json:"library_artist_id"`
 	Source           string  `json:"source"`
 	ExternalArtistID string  `json:"external_artist_id"`
 	Confidence       float64 `json:"confidence"`
 	CreatedAt        int64   `json:"created_at"`
+}
+
+type ArtistSimilar struct {
+	ArtistKey         string `json:"artist_key"`
+	Source            string `json:"source"`
+	SimilarKey        string `json:"similar_key"`
+	SimilarName       string `json:"similar_name"`
+	SimilarExternalID string `json:"similar_external_id"`
+	SimilarImage      string `json:"similar_image"`
+	Rank              int64  `json:"rank"`
+	FetchedAt         int64  `json:"fetched_at"`
 }
 
 type BackendBinding struct {
@@ -82,6 +101,38 @@ type DiscographyCache struct {
 	FetchedAt        int64  `json:"fetched_at"`
 }
 
+type DiscoverItem struct {
+	ID             string `json:"id"`
+	UserID         string `json:"user_id"`
+	Week           string `json:"week"`
+	Position       int64  `json:"position"`
+	Owned          int64  `json:"owned"`
+	LibraryTrackID string `json:"library_track_id"`
+	Source         string `json:"source"`
+	ExternalID     string `json:"external_id"`
+	Title          string `json:"title"`
+	Artist         string `json:"artist"`
+	Album          string `json:"album"`
+	CoverUrl       string `json:"cover_url"`
+	Isrc           string `json:"isrc"`
+	DurationMs     int64  `json:"duration_ms"`
+	ItemJson       string `json:"item_json"`
+	JobID          string `json:"job_id"`
+	Preexisting    int64  `json:"preexisting"`
+	State          string `json:"state"`
+	DecidedAt      int64  `json:"decided_at"`
+	CreatedAt      int64  `json:"created_at"`
+}
+
+type DiscoverPref struct {
+	UserID    string `json:"user_id"`
+	Enabled   int64  `json:"enabled"`
+	Size      int64  `json:"size"`
+	NewShare  int64  `json:"new_share"`
+	KeepRule  string `json:"keep_rule"`
+	UpdatedAt int64  `json:"updated_at"`
+}
+
 type DownloadJob struct {
 	ID             string         `json:"id"`
 	DedupKey       string         `json:"dedup_key"`
@@ -115,6 +166,48 @@ type Invite struct {
 	CreatedAt int64          `json:"created_at"`
 }
 
+type LibraryTrack struct {
+	LibraryTrackID string `json:"library_track_id"`
+	Title          string `json:"title"`
+	Artist         string `json:"artist"`
+	ArtistKey      string `json:"artist_key"`
+	ArtistID       string `json:"artist_id"`
+	Album          string `json:"album"`
+	AlbumID        string `json:"album_id"`
+	CoverArtID     string `json:"cover_art_id"`
+	TrackNumber    int64  `json:"track_number"`
+	DiscNumber     int64  `json:"disc_number"`
+	DurationMs     int64  `json:"duration_ms"`
+	BitRate        int64  `json:"bit_rate"`
+	Suffix         string `json:"suffix"`
+	ContentType    string `json:"content_type"`
+	Isrc           string `json:"isrc"`
+	Year           int64  `json:"year"`
+	Genres         string `json:"genres"`
+	AddedAt        int64  `json:"added_at"`
+	Epoch          int64  `json:"epoch"`
+}
+
+type LibraryTrackGenre struct {
+	LibraryTrackID string `json:"library_track_id"`
+	GenreKey       string `json:"genre_key"`
+}
+
+type ListenEvent struct {
+	ID             string `json:"id"`
+	UserID         string `json:"user_id"`
+	CatalogID      string `json:"catalog_id"`
+	LibraryTrackID string `json:"library_track_id"`
+	ArtistKey      string `json:"artist_key"`
+	StartedAt      int64  `json:"started_at"`
+	MsPlayed       int64  `json:"ms_played"`
+	DurationMs     int64  `json:"duration_ms"`
+	Outcome        string `json:"outcome"`
+	ContextKind    string `json:"context_kind"`
+	ContextID      string `json:"context_id"`
+	CreatedAt      int64  `json:"created_at"`
+}
+
 type Lyric struct {
 	TrackKey  string `json:"track_key"`
 	Synced    int64  `json:"synced"`
@@ -137,6 +230,21 @@ type MatchCache struct {
 	ArtistID       string         `json:"artist_id"`
 	AlbumID        string         `json:"album_id"`
 	CoverArtID     string         `json:"cover_art_id"`
+}
+
+type Mix struct {
+	ID          string `json:"id"`
+	UserID      string `json:"user_id"`
+	Kind        string `json:"kind"`
+	Position    int64  `json:"position"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Recipe      string `json:"recipe"`
+	Items       string `json:"items"`
+	CoverArtID  string `json:"cover_art_id"`
+	GeneratedAt int64  `json:"generated_at"`
+	CreatedAt   int64  `json:"created_at"`
+	UpdatedAt   int64  `json:"updated_at"`
 }
 
 type Notification struct {
@@ -244,6 +352,36 @@ type SyncedPlaylist struct {
 	CreatedAt       int64          `json:"created_at"`
 	Mode            string         `json:"mode"`
 	OwnerUserID     sql.NullString `json:"owner_user_id"`
+}
+
+type TasteFeedback struct {
+	UserID     string `json:"user_id"`
+	TargetKind string `json:"target_kind"`
+	TargetKey  string `json:"target_key"`
+	Label      string `json:"label"`
+	Sublabel   string `json:"sublabel"`
+	LibraryID  string `json:"library_id"`
+	CreatedAt  int64  `json:"created_at"`
+}
+
+type TasteSignal struct {
+	ID         string `json:"id"`
+	UserID     string `json:"user_id"`
+	Kind       string `json:"kind"`
+	CatalogID  string `json:"catalog_id"`
+	ArtistKey  string `json:"artist_key"`
+	ArtistName string `json:"artist_name"`
+	CreatedAt  int64  `json:"created_at"`
+}
+
+type TrackFeature struct {
+	LibraryTrackID string  `json:"library_track_id"`
+	Model          string  `json:"model"`
+	Embedding      []byte  `json:"embedding"`
+	Tempo          float64 `json:"tempo"`
+	Energy         float64 `json:"energy"`
+	Error          string  `json:"error"`
+	AnalyzedAt     int64   `json:"analyzed_at"`
 }
 
 type User struct {

@@ -8,7 +8,7 @@ import type { AdapterInstance, AvailableAdapter } from '../../lib/adaptersApi'
 interface AdapterSectionProps {
   title: string
   subtitle?: string
-  type: 'library' | 'search' | 'downloader'
+  type: 'library' | 'search' | 'downloader' | 'voice' | 'llm' | 'analyzer'
   instances: AdapterInstance[]
   available: AvailableAdapter[]
   onCreate: (name: string, config: Record<string, unknown>) => Promise<void>
@@ -24,17 +24,25 @@ const EMPTY_MESSAGES: Record<string, string> = {
   library: 'No library providers configured',
   search: 'No search providers configured',
   downloader: 'No downloaders configured',
+  voice: 'No voice configured. The DJ shows its lines as text.',
+  llm: 'No model configured. The DJ writes its lines from templates.',
+  analyzer: 'No audio analysis. Recommendations use tags, listening and similar artists.',
 }
 
 const TYPE_LABEL: Record<string, string> = {
   library: 'library',
   search: 'search',
   downloader: 'downloader',
+  voice: 'voice',
+  llm: 'model',
+  analyzer: 'analyzer',
 }
 
-/** Search and downloader sections order by priority; library shows insertion order. */
+/** Ordered sections (search, downloader, voice) sort by priority; library shows insertion order. */
+const ORDERED_TYPES = new Set(['search', 'downloader', 'voice', 'llm', 'analyzer'])
+
 function sortInstances(type: string, instances: AdapterInstance[]): AdapterInstance[] {
-  if (type === 'search' || type === 'downloader') {
+  if (ORDERED_TYPES.has(type)) {
     return [...instances].sort((a, b) => a.priority - b.priority)
   }
   return instances
@@ -61,7 +69,7 @@ export function AdapterSection({
   onMoveInColumn,
 }: AdapterSectionProps) {
   const ordered = sortInstances(type, instances)
-  const showOrder = type === 'search' || type === 'downloader'
+  const showOrder = ORDERED_TYPES.has(type)
   // Downloaders are ordered via the two-column granularity ordering below the
   // management list. Suppress priority reorder arrows for downloader type.
   const reorderDisabled = REORDER_DISABLED_TYPES.has(type)

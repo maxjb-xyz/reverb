@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import type { ReactElement } from 'react'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, within, fireEvent, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router-dom'
 import { AdminProviders } from './Admin'
@@ -254,6 +254,45 @@ describe('Admin', () => {
     expect(screen.getByRole('heading', { name: /downloaders/i })).toBeInTheDocument()
     // No multi-instance "Library providers" list anymore.
     expect(screen.queryByRole('heading', { name: /library providers/i })).toBeNull()
+  })
+
+  it('Providers tab has a DJ voice section where ElevenLabs can be added', () => {
+    mockUseAvailableAdapters.mockReturnValue({
+      data: [
+        makeAvailable({
+          type: 'voice',
+          name: 'elevenlabs',
+          configSchema: { fields: [{ key: 'api_key', label: 'API key', type: 'string', required: true, secret: true }] },
+        }),
+      ],
+      isLoading: false,
+    })
+    wrap(<AdminProviders />)
+    expect(screen.getByRole('heading', { name: /dj voice/i })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /add voice/i }))
+    const form = screen.getByText('Add ElevenLabs').closest('form') ?? screen.getByText('Add ElevenLabs').parentElement!.parentElement!
+    expect(within(form as HTMLElement).getByLabelText(/api key/i)).toBeInTheDocument()
+  })
+
+  it('Providers tab has a DJ writer section for a language model', () => {
+    mockUseAvailableAdapters.mockReturnValue({
+      data: [makeAvailable({ type: 'llm', name: 'anthropic', configSchema: { fields: [] } })],
+      isLoading: false,
+    })
+    wrap(<AdminProviders />)
+    expect(screen.getByRole('heading', { name: /dj writer/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /add model/i })).toBeEnabled()
+  })
+
+  it('Providers tab has an optional audio analysis section', () => {
+    mockUseAvailableAdapters.mockReturnValue({
+      data: [makeAvailable({ type: 'analyzer', name: 'audio-sidecar', configSchema: { fields: [] } })],
+      isLoading: false,
+    })
+    wrap(<AdminProviders />)
+    expect(screen.getByRole('heading', { name: /audio analysis/i })).toBeInTheDocument()
+    expect(screen.getByText(/No audio analysis\. Recommendations use tags/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /add analyzer/i })).toBeEnabled()
   })
 
   it('Providers tab renders the ScrobblingSection with Last.fm heading', async () => {

@@ -179,6 +179,46 @@ func (a *Adapter) GetArtist(ctx context.Context, externalID string) (core.Extern
 	return core.ExternalArtist{Source: "deezer", ExternalID: id64(artist.ID), Name: artist.Name, CoverURL: cover}, nil
 }
 
+// SimilarArtists returns Deezer's related artists (GET /artist/{id}/related).
+func (a *Adapter) SimilarArtists(ctx context.Context, externalID string, limit int) ([]core.ExternalArtist, error) {
+	if limit <= 0 {
+		limit = 20
+	}
+	params := url.Values{}
+	params.Set("limit", strconv.Itoa(limit))
+	var response struct {
+		Data []artistSearchDTO `json:"data"`
+	}
+	if err := a.client.get(ctx, "/artist/"+url.PathEscape(externalID)+"/related", params, &response); err != nil {
+		return nil, err
+	}
+	out := make([]core.ExternalArtist, 0, len(response.Data))
+	for _, ar := range response.Data {
+		out = append(out, core.ExternalArtist{Source: "deezer", ExternalID: id64(ar.ID), Name: ar.Name, CoverURL: ar.PictureMedium})
+	}
+	return out, nil
+}
+
+// ArtistTopTracks returns an artist's most popular tracks (GET /artist/{id}/top).
+func (a *Adapter) ArtistTopTracks(ctx context.Context, externalID string, limit int) ([]core.ExternalResult, error) {
+	if limit <= 0 {
+		limit = 10
+	}
+	params := url.Values{}
+	params.Set("limit", strconv.Itoa(limit))
+	var response struct {
+		Data []trackDTO `json:"data"`
+	}
+	if err := a.client.get(ctx, "/artist/"+url.PathEscape(externalID)+"/top", params, &response); err != nil {
+		return nil, err
+	}
+	out := make([]core.ExternalResult, 0, len(response.Data))
+	for _, t := range response.Data {
+		out = append(out, mapTrack(t))
+	}
+	return out, nil
+}
+
 // GetArtistDiscography returns the albums Deezer exposes for an artist. Deezer
 // paginates this endpoint with index/limit; cap it to keep artist pages bounded.
 func (a *Adapter) GetArtistDiscography(ctx context.Context, externalID string) ([]core.ExternalAlbum, error) {

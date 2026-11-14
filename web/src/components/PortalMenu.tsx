@@ -73,7 +73,7 @@ export function PortalMenu({
         role="menu"
         aria-label={label}
         style={{ top, right }}
-        className={`fixed z-50 ${widthClass} rounded-xl border border-border-subtle bg-raised shadow-pop`}
+        className={`fixed z-50 ${widthClass} origin-top-right animate-menu-in rounded-xl border border-white/[.06] bg-raised/95 backdrop-blur-xl shadow-pop`}
       >
         {children}
       </div>
